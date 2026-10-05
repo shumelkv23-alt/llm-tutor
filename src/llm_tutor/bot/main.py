@@ -19,6 +19,7 @@ async def main() -> None:
         api_key=settings.openrouter_api_key.get_secret_value(),
         default_model=settings.tutor_model,
         temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
         max_retries=settings.llm_max_retries,
     )
 

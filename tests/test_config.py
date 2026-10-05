@@ -27,6 +27,7 @@ def test_defaults_load_with_explicit_keys() -> None:
     assert settings.tutor_model == "anthropic/claude-sonnet-4.5"
     assert settings.db_path == "data/llm_tutor.sqlite3"
     assert settings.llm_temperature == 0.4
+    assert settings.llm_max_tokens == 2048
     assert settings.context_dialog_tail == 8
 
 

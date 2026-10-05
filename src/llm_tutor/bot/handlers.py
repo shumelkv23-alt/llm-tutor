@@ -8,7 +8,7 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.schemas import ChatMessage
 
 START_SYSTEM_PROMPT = (
@@ -16,15 +16,28 @@ START_SYSTEM_PROMPT = (
     "Отвечай кратко, по-дружески и по делу."
 )
 
+# Telegram отклоняет сообщения длиннее 4096 символов — оставляем запас.
+MAX_REPLY_LENGTH = 4000
+
 
 async def build_start_reply(client: LLMClient, model: str, user_text: str) -> str:
-    """Логика ответа на /start: вызов модели + подпись с именем модели."""
+    """Логика ответа на /start: вызов модели + подпись с именем модели.
+
+    Сбои LLM ловятся здесь, чтобы ученик не получал молчание.
+    """
     messages = [
         ChatMessage(role="system", content=START_SYSTEM_PROMPT),
-        ChatMessage(role="user", content=user_text or "/start"),
+        ChatMessage(role="user", content=user_text or "Привет!"),
     ]
-    answer = await client.chat(messages, model=model)
-    return f"[модель: {model}]\n\n{answer}"
+    try:
+        answer = await client.chat(messages, model=model)
+    except LLMError:
+        return "Не смог получить ответ от модели — попробуй ещё раз чуть позже."
+
+    reply = f"[модель: {model}]\n\n{answer}"
+    if len(reply) > MAX_REPLY_LENGTH:
+        return reply[:MAX_REPLY_LENGTH] + "…"
+    return reply
 
 
 def make_router(client: LLMClient, model: str) -> Router:

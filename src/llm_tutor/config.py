@@ -1,9 +1,13 @@
 """Конфигурация приложения через переменные окружения (pydantic-settings)."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Корень проекта (два уровня вверх от src/llm_tutor/config.py) — не зависит от cwd.
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
@@ -13,9 +17,13 @@ class Settings(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
-        extra="ignore",
+        # «Запретить лишнее»: опечатка в имени переменной .env (напр. TUTOR_MDOEL)
+        # упадёт, а не молча останется дефолтом.
+        extra="forbid",
+        # Не светить значения секретов в тексте ValidationError (утечка через stderr).
+        hide_input_in_errors=True,
     )
 
     # --- OpenRouter / LLM ---
@@ -28,6 +36,7 @@ class Settings(BaseSettings):
 
     llm_temperature: float = 0.4
     llm_max_retries: int = 1
+    llm_max_tokens: int = 2048
 
     # --- Telegram ---
     telegram_bot_token: SecretStr

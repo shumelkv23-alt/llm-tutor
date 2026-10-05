@@ -4,6 +4,7 @@
 Смена модели = правка `.env`, код не трогается.
 """
 
+import asyncio
 from typing import Sequence, Type, TypeVar
 
 import httpx
@@ -13,9 +14,20 @@ from llm_tutor.llm.schemas import ChatMessage
 
 T = TypeVar("T", bound=BaseModel)
 
+# Статусы, которые имеет смысл повторять: лимиты и временные сбои провайдера.
+_RETRYABLE_STATUS = {429, 500, 502, 503, 504}
+
 
 class LLMError(RuntimeError):
-    """Ошибка обращения к LLM-провайдеру (сеть, HTTP, парсинг)."""
+    """Ошибка обращения к LLM-провайдеру (сеть, HTTP, парсинг).
+
+    ``retryable`` помечает ошибки, которые имеет смысл повторить
+    (сеть, лимиты, временные сбои провайдера).
+    """
+
+    def __init__(self, message: str, *, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 class LLMClient:
@@ -28,15 +40,22 @@ class LLMClient:
         api_key: str,
         default_model: str,
         temperature: float = 0.4,
+        max_tokens: int = 2048,
         max_retries: int = 1,
         timeout: float = 60.0,
+        backoff_base: float = 1.0,
     ) -> None:
-        self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._default_model = default_model
         self._temperature = temperature
+        self._max_tokens = max_tokens
         self._max_retries = max_retries
-        self._timeout = timeout
+        self._backoff_base = backoff_base
+        self._http = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=timeout)
+
+    async def aclose(self) -> None:
+        """Закрыть общий HTTP-клиент (на shutdown приложения)."""
+        await self._http.aclose()
 
     async def chat(
         self,
@@ -45,10 +64,9 @@ class LLMClient:
         model: str | None = None,
         temperature: float | None = None,
     ) -> str:
-        """Обычный текстовый ответ модели."""
+        """Обычный текстовый ответ модели (с ретраем на временные сбои)."""
         payload = self._build_payload(messages, model, temperature)
-        data = await self._post(payload)
-        return self._extract_content(data)
+        return await self._request(payload)
 
     async def chat_structured(
         self,
@@ -58,19 +76,9 @@ class LLMClient:
         model: str | None = None,
         temperature: float | None = None,
     ) -> T:
-        """Ответ в JSON, провалидированный pydantic-схемой, с ретраем на провал."""
+        """Ответ в JSON, провалидированный pydantic-схемой, с ретраем."""
         payload = self._build_payload(messages, model, temperature, json_mode=True)
-        last_error: ValidationError | None = None
-        for _ in range(self._max_retries + 1):
-            data = await self._post(payload)
-            content = self._extract_content(data)
-            try:
-                return schema.model_validate_json(content)
-            except ValidationError as exc:  # JSON не соответствует схеме — пробуем ещё раз
-                last_error = exc
-        raise LLMError(
-            f"LLM не вернул валидный JSON за {self._max_retries + 1} попыток: {last_error}"
-        )
+        return await self._request(payload, schema=schema)
 
     # --- внутреннее ---
 
@@ -86,26 +94,56 @@ class LLMClient:
             "model": model or self._default_model,
             "messages": [m.model_dump() for m in messages],
             "temperature": self._temperature if temperature is None else temperature,
+            "max_tokens": self._max_tokens,
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
         return payload
 
+    async def _request(self, payload: dict, *, schema: Type[T] | None = None) -> str | T:
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            if attempt > 0:
+                await asyncio.sleep(self._backoff_base * (2 ** (attempt - 1)))
+
+            try:
+                data = await self._post(payload)
+            except LLMError as exc:
+                last_error = exc
+                if exc.retryable and attempt < self._max_retries:
+                    continue
+                raise
+
+            content = self._extract_content(data)
+            if schema is None:
+                return content
+
+            try:
+                return schema.model_validate_json(content)
+            except ValidationError as exc:
+                last_error = exc
+                # JSON не соответствует схеме — пробуем ещё раз (если есть попытки).
+
+        raise LLMError(
+            f"LLM не вернул валидный ответ за {self._max_retries + 1} попыток: {last_error}"
+        )
+
     async def _post(self, payload: dict) -> dict:
-        url = f"{self._base_url}/chat/completions"
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
-                response = await client.post(url, json=payload, headers=headers)
+            response = await self._http.post("/chat/completions", json=payload, headers=headers)
         except httpx.HTTPError as exc:
-            raise LLMError(f"Сетевая ошибка при обращении к OpenRouter: {exc}") from exc
+            raise LLMError(
+                f"Сетевая ошибка при обращении к OpenRouter: {exc}", retryable=True
+            ) from exc
 
         if response.status_code >= 400:
             raise LLMError(
-                f"OpenRouter вернул HTTP {response.status_code}: {response.text[:200]}"
+                f"OpenRouter вернул HTTP {response.status_code}: {response.text[:200]}",
+                retryable=response.status_code in _RETRYABLE_STATUS,
             )
         try:
             return response.json()
@@ -115,6 +153,9 @@ class LLMClient:
     @staticmethod
     def _extract_content(data: dict) -> str:
         try:
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMError(f"Неожиданная структура ответа OpenRouter: {data!r}") from exc
+        if content is None:
+            raise LLMError("OpenRouter вернул пустой content")
+        return content
