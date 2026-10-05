@@ -42,7 +42,6 @@ htmlcov/
 data/*.sqlite3
 data/*.db
 data/*.sqlite
-*.db
 
 # --- Логи и временное ---
 *.log

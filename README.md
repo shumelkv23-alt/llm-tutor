@@ -15,7 +15,9 @@ Telegram-бот-тьютор на основе LLM, который ведёт у
 
 ```bash
 uv sync                     # установить зависимости
-cp .env.example .env        # заполнить OPENROUTER_API_KEY
+# заполни OPENROUTER_API_KEY в .env:
+#   Windows (cmd/PowerShell): copy .env.example .env
+#   macOS/Linux (bash):       cp .env.example .env
 uv run python -m llm_tutor.bot.main   # запустить бота (после Среза 1)
 ```
 

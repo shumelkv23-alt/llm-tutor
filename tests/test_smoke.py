@@ -2,41 +2,31 @@
 
 from importlib import metadata
 
-import aiogram
-import bs4
-import httpx
-import markdownify
-import networkx
-import pydantic
-import pydantic_settings
-import pytest_asyncio
-import respx
+import aiogram  # noqa: F401  — импорт сам по себе и есть сигнал, что модуль ставится
+import bs4  # noqa: F401
+import httpx  # noqa: F401
+import markdownify  # noqa: F401
+import networkx  # noqa: F401
+import pydantic  # noqa: F401
+import pydantic_settings  # noqa: F401
+import pytest_asyncio  # noqa: F401
+import respx  # noqa: F401
 
-# Имя модуля (для импорта) -> имя дистрибутива (для metadata.version)
-DISTRIBUTIONS = {
-    "aiogram": "aiogram",
-    "httpx": "httpx",
-    "pydantic": "pydantic",
-    "pydantic_settings": "pydantic-settings",
-    "networkx": "networkx",
-    "bs4": "beautifulsoup4",
-    "markdownify": "markdownify",
-    "pytest_asyncio": "pytest-asyncio",
-    "respx": "respx",
-}
+# Имя дистрибутива для metadata.version() — проверяет реально установленную версию.
+DISTRIBUTIONS = [
+    "aiogram",
+    "httpx",
+    "pydantic",
+    "pydantic-settings",
+    "networkx",
+    "beautifulsoup4",
+    "markdownify",
+    "pytest-asyncio",
+    "respx",
+]
 
 
 def test_dependencies_installed() -> None:
-    """Все ключевые зависимости импортируются и имеют известную версию."""
-    assert aiogram
-    assert bs4
-    assert httpx
-    assert markdownify
-    assert networkx
-    assert pydantic
-    assert pydantic_settings
-    assert pytest_asyncio
-    assert respx
-
-    for dist_name in DISTRIBUTIONS.values():
+    """Все ключевые зависимости известны пакетному менеджеру и имеют версию."""
+    for dist_name in DISTRIBUTIONS:
         assert metadata.version(dist_name), f"дистрибутив {dist_name} не найден"
