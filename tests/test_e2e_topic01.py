@@ -48,8 +48,8 @@ def _client(settings: Settings) -> LLMClient:
 
 
 @respx.mock
-async def test_without_material_still_answers_with_border_mark() -> None:
-    """Материала нет — модель отвечает и помечает границу, отказа больше нет."""
+async def test_offtopic_question_still_gets_an_answer() -> None:
+    """Вопрос вне темы получает ответ с пометкой происхождения, а не отказ."""
     settings = Settings(
         _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
     )
@@ -64,7 +64,7 @@ async def test_without_material_still_answers_with_border_mark() -> None:
     client = _client(settings)
     try:
         reply = await handle_turn(
-            conn, client, "m", "как работает groupby?", now=1.0, settings=settings
+            conn, client, "m", "как обучают нейросети?", now=1.0, settings=settings
         )
 
         assert reply == "Это за пределами темы 1"

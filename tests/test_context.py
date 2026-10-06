@@ -143,19 +143,30 @@ def test_state_defaults_to_session_state(conn, settings) -> None:
 
 
 def test_evicted_material_is_not_reported_as_missing(conn, settings) -> None:
-    """Материал, вытесненный бюджетом, не должен выглядеть как «в курсе нет»."""
+    """Материал, вытесненный бюджетом, не должен выглядеть как ненайденный."""
     ingest_text(conn, "# T\n\n## S\n\n" + "groupby " * 400, "u")
     session_id = repos.ensure_open_session(conn, now=1.0)
 
     package = build_context(conn, session_id, "groupby", budget_tokens=1, settings=settings)
 
-    assert package.found_material is True
+    assert package.material_state == "found"
     assert len(package.chunks) == 1  # самый релевантный чанк всё равно остаётся
 
 
-def test_empty_db_has_no_material_flag(conn, settings) -> None:
+def test_empty_index_means_no_material(conn, settings) -> None:
     session_id = repos.ensure_open_session(conn, now=1.0)
 
     package = build_context(conn, session_id, "groupby", settings=settings)
 
-    assert package.found_material is False
+    assert package.material_state == "empty"
+
+
+def test_search_miss_on_loaded_material_is_not_emptiness(conn, settings) -> None:
+    """Материал загружен, но по этим словам не совпал — это НЕ «нет материалов»."""
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    session_id = repos.ensure_open_session(conn, now=1.0)
+
+    package = build_context(conn, session_id, "зюйдвест абракадабра", settings=settings)
+
+    assert package.material_state == "no_match"
+    assert "материалы курса загружены" in package.messages[0].content.lower()

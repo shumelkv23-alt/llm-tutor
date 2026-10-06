@@ -22,6 +22,7 @@ from llm_tutor.config import (
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import (
+    MaterialState,
     format_course_block,
     format_mastery_block,
     format_profile_block,
@@ -48,13 +49,15 @@ _PROFILE_KEYS = ("pandas_experience", "goal", "time_budget")
 class ContextPackage:
     """Готовый пакет для LLM плюс найденные чанки.
 
-    ``found_material`` запоминает факт находки ДО урезания бюджетом: иначе
-    вытесненный материал выглядел бы как «в курсе этого нет».
+    ``material_state`` запоминает состояние материалов ДО урезания бюджетом
+    (иначе вытесненный материал выглядел бы как ненайденный) и различает
+    «не нашлось по словам» и «материалов нет вовсе» — от этого зависит
+    промпт, а промах поиска НЕ означает, что тема вне курса.
     """
 
     messages: list[ChatMessage]
     chunks: list[Chunk]
-    found_material: bool = False
+    material_state: MaterialState = "empty"
 
 
 def _mastery_slice(
@@ -87,12 +90,25 @@ def _mastery_slice(
     ]
 
 
+def _material_state(conn: sqlite3.Connection, chunks: list[Chunk]) -> MaterialState:
+    """Состояние материалов курса для промпта.
+
+    Промах поиска НЕ значит «вне курса»: поиск ключевой, а материал
+    англоязычный при русских вопросах. Различаем «не нашлось по словам» и
+    «материалов нет вовсе» — иначе ученик услышит, что ключевая тема курса
+    лежит за его пределами.
+    """
+    if chunks:
+        return "found"
+    return "empty" if repos.count_chunks(conn) == 0 else "no_match"
+
+
 def _system_prompt(
     conn: sqlite3.Connection,
     state: SessionState,
     graph: CourseGraph | None,
     *,
-    has_material: bool,
+    material: MaterialState,
     now: float,
     settings: Settings,
 ) -> str:
@@ -111,7 +127,7 @@ def _system_prompt(
         except KeyError:
             node_name = None
     blocks = [
-        tutor_system_prompt(state.hint_level, has_material=has_material),
+        tutor_system_prompt(state.hint_level, material=material),
         profile,
         format_state_block(
             node_name=node_name,
@@ -185,12 +201,12 @@ def build_context(
             if message.role in ("user", "assistant")
         ]
 
-    found_material = bool(chunks)
+    material_state = _material_state(conn, chunks)
     system = _system_prompt(
         conn,
         session_state,
         graph,
-        has_material=found_material,
+        material=material_state,
         now=stamp,
         settings=s,
     )
@@ -202,4 +218,4 @@ def build_context(
         f"{block}\n\n---\n\nВопрос ученика: {user_message}" if block else user_message
     )
     messages.append(ChatMessage(role="user", content=final_content))
-    return ContextPackage(messages=messages, chunks=chunks, found_material=found_material)
+    return ContextPackage(messages=messages, chunks=chunks, material_state=material_state)

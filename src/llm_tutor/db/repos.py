@@ -585,6 +585,11 @@ def set_fact(
 # --- chunks (материалы курса для RAG, Срез 3) ---
 
 
+def count_chunks(conn: sqlite3.Connection) -> int:
+    """Сколько чанков курса загружено (0 — материалов нет вовсе)."""
+    return int(conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+
+
 def replace_chunks(
     conn: sqlite3.Connection, source_url: str, chunks: Sequence[Chunk]
 ) -> int:
