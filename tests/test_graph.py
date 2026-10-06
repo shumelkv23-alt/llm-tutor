@@ -9,6 +9,7 @@ from llm_tutor.course.seed import (
     DEFAULT_SEED_PATH,
     SeedError,
     load_seed,
+    items_without_rubric,
     load_seed_data,
     nodes_without_items,
 )
@@ -293,6 +294,35 @@ def test_seed_rejects_unknown_concept_in_item(tmp_path) -> None:
 
     with pytest.raises(SeedError, match="концепты"):
         load_seed_data(path)
+
+
+def test_seed_rejects_duplicate_item_ids(tmp_path) -> None:
+    """Дубли id молча схлопнулись бы в upsert — содержимое разошлось бы с файлом."""
+    data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    data["items"].append(dict(data["items"][0]))
+    path = tmp_path / "seed.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(SeedError, match="Дубли id"):
+        load_seed_data(path)
+
+
+def test_open_item_without_rubric_is_reported(tmp_path) -> None:
+    """Открытое задание без рубрики проверить нечем — о нём нужно сказать."""
+    data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    for item in data["items"]:
+        if item["id"] == 9:
+            item["rubric_id"] = None
+    path = tmp_path / "seed.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    seed = load_seed_data(path)
+
+    assert items_without_rubric(seed) == [9]
+
+
+def test_seed_without_open_items_reports_nothing() -> None:
+    assert items_without_rubric(load_seed_data(DEFAULT_SEED_PATH)) == []
 
 
 def test_seed_cli_missing_file_reports_clearly(tmp_path) -> None:

@@ -20,6 +20,7 @@ from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.prompts import LLM_FAILURE_REPLY, NO_COURSE_ANSWER
 from llm_tutor.student import beta, survey
 
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
@@ -35,6 +36,63 @@ def _set_pending(conn, item_id: int, concept_id: str) -> None:
     repos.update_session_state(
         conn, session_id, state.model_copy(update={"pending_item_id": item_id, "current_node_id": concept_id})
     )
+
+
+def _client(settings: Settings) -> LLMClient:
+    return LLMClient(
+        base_url=settings.openrouter_base_url,
+        api_key="test-key",
+        default_model=settings.tutor_model,
+        max_retries=0,
+    )
+
+
+@respx.mock
+async def test_without_material_refuses_without_calling_model() -> None:
+    """Материала нет — детерминированный отказ, модель не вызывается."""
+    settings = Settings(
+        _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
+    )
+    conn = get_conn(":memory:")
+    migrate(conn)
+    load_seed(conn)  # материал специально не загружаем
+    route = respx.post(OPENROUTER).mock(return_value=_completion("{}"))
+    client = _client(settings)
+    try:
+        reply = await handle_turn(
+            conn, client, "m", "как работает groupby?", now=1.0, settings=settings
+        )
+
+        assert reply == NO_COURSE_ANSWER
+        assert not route.called
+    finally:
+        await client.aclose()
+        conn.close()
+
+
+@respx.mock
+async def test_provider_error_is_reported_and_turn_persisted() -> None:
+    """Сбой провайдера не оставляет ученика без ответа, ход записан."""
+    settings = Settings(
+        _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
+    )
+    conn = get_conn(":memory:")
+    migrate(conn)
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    respx.post(OPENROUTER).mock(return_value=httpx.Response(500, text="boom"))
+    client = _client(settings)
+    try:
+        reply = await handle_turn(
+            conn, client, "m", "как работает groupby?", now=1.0, settings=settings
+        )
+
+        assert reply == LLM_FAILURE_REPLY
+        session_id = repos.get_open_session(conn)
+        assert len(repos.get_messages(conn, session_id)) == 2
+    finally:
+        await client.aclose()
+        conn.close()
 
 
 @respx.mock
@@ -70,12 +128,7 @@ async def test_full_topic01_scenario() -> None:
 
     respx.post(OPENROUTER).mock(side_effect=_handler)
 
-    client = LLMClient(
-        base_url=settings.openrouter_base_url,
-        api_key="test-key",
-        default_model=settings.tutor_model,
-        max_retries=0,
-    )
+    client = _client(settings)
     try:
         # 1. Анкета: профиль и слабый априор, без обращения к модели
         survey.apply_answers(

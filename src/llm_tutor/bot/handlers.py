@@ -42,7 +42,12 @@ from llm_tutor.db.repos import (
     update_session_state,
 )
 from llm_tutor.llm.client import LLMClient, LLMError
-from llm_tutor.llm.prompts import BUSY_REPLY, EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
+from llm_tutor.llm.prompts import (
+    BOT_FAILURE_REPLY,
+    BUSY_REPLY,
+    EMPTY_GRAPH_REPLY,
+    LLM_FAILURE_REPLY,
+)
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.schemas import Item
 from llm_tutor.student.planner import MODE_LABELS, ready_nodes
@@ -210,7 +215,12 @@ def make_router(
 
     @router.message(Command("plan"))
     async def on_plan(message: Message) -> None:
-        await message.answer(render_plan(conn, settings=settings))
+        try:
+            text = render_plan(conn, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой построения маршрута")
+            text = BOT_FAILURE_REPLY
+        await message.answer(_truncate(text))
 
     @router.message(Command("task"))
     async def on_task(message: Message, state: FSMContext) -> None:
@@ -219,10 +229,13 @@ def make_router(
         if await state.get_state() is not None:
             await message.answer(BUSY_REPLY)
             return
-        text = start_practice(conn, settings=settings)
-        await message.answer(
-            _truncate(text), reply_markup=_answer_keyboard(_pending_item(conn))
-        )
+        try:
+            text = _truncate(start_practice(conn, settings=settings))
+            keyboard = _answer_keyboard(_pending_item(conn))
+        except Exception:  # noqa: BLE001 — лучше сообщение, чем тишина
+            logger.exception("Сбой выдачи задания")
+            text, keyboard = BOT_FAILURE_REPLY, None
+        await message.answer(text, reply_markup=keyboard)
 
     @router.message(Command("skip"))
     async def on_skip(message: Message) -> None:

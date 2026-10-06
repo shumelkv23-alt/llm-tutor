@@ -44,24 +44,32 @@ class Agreement:
         return self.true_positive / actual_positive if actual_positive else 0.0
 
     @property
-    def kappa(self) -> float:
-        """Kappa Коэна: согласие за вычетом случайного.
-
-        Пустая выборка или полное совпадение маргиналов (ожидание 1.0) — 0.0:
-        метрика не определена, а не «идеальна».
-        """
+    def expected_agreement(self) -> float:
+        """Согласие, ожидаемое по случайности (нужно для kappa)."""
         if self.total == 0:
             return 0.0
-        observed = self.accuracy
         predicted_positive = (self.true_positive + self.false_positive) / self.total
         actual_positive = (self.true_positive + self.false_negative) / self.total
-        expected = (
+        return (
             predicted_positive * actual_positive
             + (1 - predicted_positive) * (1 - actual_positive)
         )
-        if expected >= 1.0:
+
+    @property
+    def kappa_defined(self) -> bool:
+        """Определена ли kappa: на вырожденной выборке она бессмысленна."""
+        return self.total > 0 and self.expected_agreement < 1.0
+
+    @property
+    def kappa(self) -> float:
+        """Kappa Коэна: согласие за вычетом случайного.
+
+        Когда метрика не определена (пустая выборка или полное совпадение
+        маргиналов) — 0.0; вызывающий может отличить это по ``kappa_defined``.
+        """
+        if not self.kappa_defined:
             return 0.0
-        return (observed - expected) / (1.0 - expected)
+        return (self.accuracy - self.expected_agreement) / (1.0 - self.expected_agreement)
 
 
 def agreement(pairs: Iterable[tuple[bool, bool]]) -> Agreement:

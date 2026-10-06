@@ -84,6 +84,7 @@ def verdict_to_result(
                 criterion=criterion.criterion,
                 passed=passed,
                 quote=entry.quote if entry and passed else None,
+                criterion_id=criterion.id,
             )
         )
     return GradeResult(

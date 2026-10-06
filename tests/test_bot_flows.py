@@ -299,6 +299,21 @@ async def test_task_is_refused_during_flow(conn, settings) -> None:
     assert session_id is None or repos.get_session_state(conn, session_id).pending_item_id is None
 
 
+async def test_task_reports_failure_instead_of_silence(conn, settings, monkeypatch) -> None:
+    """Сбой выдачи задания не должен оставлять ученика без ответа."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    monkeypatch.setattr(
+        "llm_tutor.bot.handlers.start_practice",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    message = FakeMessage()
+
+    await _named(router, "message", "on_task")(message, _fsm())
+
+    assert "пошло не так" in message.last_text
+
+
 async def test_skip_command_clears_task_without_evidence(conn, settings) -> None:
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)

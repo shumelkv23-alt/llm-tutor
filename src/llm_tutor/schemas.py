@@ -149,6 +149,9 @@ class CriterionResult(BaseModel):
     criterion: str
     passed: bool
     quote: str | None = None  # дословная цитата из ответа как основание
+    # id критерия рубрики (если результат получен по рубрике) — по нему
+    # результаты сопоставляются с разметкой, а не по порядку списка.
+    criterion_id: int | None = None
 
 
 class GradeResult(BaseModel):

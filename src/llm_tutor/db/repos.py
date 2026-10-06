@@ -6,9 +6,12 @@ f-строки). Соединение приходит снаружи, что у
 """
 
 import json
+import logging
 import sqlite3
 import time
 from typing import Sequence, get_args
+
+from pydantic import ValidationError
 
 from llm_tutor.schemas import (
     Chunk,
@@ -25,6 +28,8 @@ from llm_tutor.schemas import (
 
 # Роли, допустимые в messages — те же, что в доменной модели Role.
 _VALID_ROLES = frozenset(get_args(Role))
+
+logger = logging.getLogger(__name__)
 
 
 # --- sessions ---
@@ -376,11 +381,21 @@ def upsert_item(conn: sqlite3.Connection, item: Item) -> None:
 
 
 def get_items(conn: sqlite3.Connection) -> list[Item]:
-    """Активные задания банка (порядок — по id, детерминированный)."""
+    """Активные задания банка (порядок — по id, детерминированный).
+
+    Повреждённая строка (например, запись в обход валидации) пропускается с
+    предупреждением: из-за одного задания ученик не должен остаться без банка.
+    """
     rows = conn.execute(
         f"SELECT {_ITEM_COLUMNS} FROM items WHERE active = 1 ORDER BY id"
     ).fetchall()
-    return [_row_to_item(row) for row in rows]
+    items: list[Item] = []
+    for row in rows:
+        try:
+            items.append(_row_to_item(row))
+        except ValidationError:
+            logger.warning("Задание %s повреждено и пропущено", row["id"])
+    return items
 
 
 def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:

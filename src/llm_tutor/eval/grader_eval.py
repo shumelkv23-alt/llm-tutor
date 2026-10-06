@@ -14,6 +14,7 @@
 import argparse
 import asyncio
 import json
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,8 +26,10 @@ from llm_tutor.course.seed import DEFAULT_SEED_PATH, load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.eval.metrics import Agreement, agreement
-from llm_tutor.grader.rubric import check_quote, grade_with_verdict
-from llm_tutor.llm.client import LLMClient
+from llm_tutor.grader.rubric import RubricError, check_quote, grade_with_verdict
+from llm_tutor.llm.client import LLMClient, LLMError
+
+logger = logging.getLogger(__name__)
 
 # Корень проекта (src/llm_tutor/eval/grader_eval.py → src → корень).
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -91,13 +94,21 @@ async def run_eval(
         if item is None:
             failed.append(case.id)
             continue
-        verdict, criteria, result = await grade_with_verdict(
-            conn, client, model, item, case.answer, settings=settings
-        )
+        try:
+            verdict, _, result = await grade_with_verdict(
+                conn, client, model, item, case.answer, settings=settings
+            )
+        except (LLMError, RubricError) as exc:
+            # Прогон платный и долгий: одна сетевая ошибка не должна стирать
+            # уже собранные результаты.
+            logger.warning("Кейс %s не оценён: %s", case.id, exc)
+            failed.append(case.id)
+            continue
+
         labels = {label.id: label.passed for label in case.criteria}
-        for criterion, graded in zip(criteria, result.criteria):
-            if criterion.id in labels:
-                pairs.append((graded.passed, labels[criterion.id]))
+        for graded in result.criteria:
+            if graded.criterion_id in labels:
+                pairs.append((graded.passed, labels[graded.criterion_id]))
         hallucinated += sum(
             1
             for entry in verdict.criteria
@@ -115,12 +126,15 @@ async def run_eval(
 def format_report(report: EvalReport) -> str:
     """Человекочитаемый отчёт по итогам прогона."""
     a = report.agreement
+    # На вырожденной выборке kappa не определена: «100% и 0.000» выглядело бы
+    # как баг, поэтому честно пишем, что метрика бессмысленна.
+    kappa = f"{a.kappa:.3f}" if a.kappa_defined else "не определена"
     return "\n".join(
         [
             f"Ответов в наборе: {report.cases}",
             f"Решений по критериям: {a.total}",
             f"Согласие (accuracy): {a.accuracy:.1%}",
-            f"Kappa Коэна: {a.kappa:.3f}",
+            f"Kappa Коэна: {kappa}",
             f"Точность (precision): {a.precision:.1%}",
             f"Полнота (recall): {a.recall:.1%}",
             "Матрица ошибок (засчитано/размечено):",

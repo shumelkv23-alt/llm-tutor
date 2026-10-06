@@ -45,6 +45,16 @@ def _check_references(seed: Seed) -> None:
     на старте бота (или, хуже, падением при ответе ученика) — а не подсказкой
     автору, который правит банк руками.
     """
+    # Дубли id молча схлопнулись бы в upsert, и содержимое тихо разошлось бы
+    # с файлом. Узлы и рёбра проверяет CourseGraph.
+    for title, ids in (
+        ("рубрик", [rubric.id for rubric in seed.rubrics]),
+        ("критериев", [criterion.id for criterion in seed.criteria]),
+        ("заданий", [item.id for item in seed.items]),
+    ):
+        if len(set(ids)) != len(ids):
+            raise SeedError(f"Дубли id {title}: {sorted(ids)}")
+
     rubric_ids = {rubric.id for rubric in seed.rubrics}
     node_ids = {node.id for node in seed.nodes}
 
@@ -85,6 +95,19 @@ def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) ->
         conn, seed.nodes, seed.edges, seed.items, seed.rubrics, seed.criteria
     )
     return seed
+
+
+def items_without_rubric(seed: Seed) -> list[int]:
+    """Открытые и код-задания без рубрики: проверить их нечем, но они грузятся.
+
+    Задание не выдаётся (рубрики нет), но автору об этом надо сказать вслух —
+    иначе вопрос просто пропадёт из практики.
+    """
+    return sorted(
+        item.id
+        for item in seed.items
+        if item.answer_type in ("open", "code") and item.rubric_id is None
+    )
 
 
 def nodes_without_items(seed: Seed) -> list[str]:
@@ -131,6 +154,9 @@ def main(argv: list[str] | None = None) -> int:
     missing = nodes_without_items(seed)
     if missing:
         print(f"Без заданий (диагностика их не возьмёт): {', '.join(missing)}")
+    without_rubric = items_without_rubric(seed)
+    if without_rubric:
+        print(f"Открытые задания без рубрики (проверить нечем): {without_rubric}")
     return 0
 
 

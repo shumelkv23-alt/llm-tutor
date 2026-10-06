@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from llm_tutor.db import repos
-from llm_tutor.schemas import Chunk, Event, SessionState
+from llm_tutor.schemas import Chunk, Event, Item, SessionState
 
 
 def _add_concept(conn, concept_id: str) -> None:
@@ -202,6 +202,22 @@ def test_replace_chunks_rolls_back_on_failure(conn) -> None:
         )
 
     assert [r["content"] for r in conn.execute("SELECT content FROM chunks")] == ["old"]
+
+
+def test_get_items_skips_corrupt_row(conn) -> None:
+    """Одна битая строка не должна лишать ученика всего банка заданий."""
+    repos.replace_seed(conn, [], [], [])
+    repos.upsert_item(conn, Item(id=1, prompt="?", answer_type="short", answer="ок"))
+    # Строка в обход валидатора: choice без вариантов и с эталоном вне диапазона
+    conn.execute(
+        "INSERT INTO items (id, prompt, answer_type, options, answer, concept_weights) "
+        "VALUES (900, '?', 'choice', '[]', '7', '{}')"
+    )
+    conn.commit()
+
+    ids = {item.id for item in repos.get_items(conn)}
+
+    assert ids == {1}
 
 
 # --- параметризация ---
