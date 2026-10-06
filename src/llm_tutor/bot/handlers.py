@@ -9,10 +9,12 @@ import sqlite3
 import time
 
 from aiogram import F, Router
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.types import Message
 
+from llm_tutor.config import Settings
 from llm_tutor.core.context import DEFAULT_DIALOG_TAIL, DEFAULT_RAG_TOP_K, build_context
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db.repos import (
     add_message,
     ensure_open_session,
@@ -23,6 +25,19 @@ from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import NO_COURSE_ANSWER
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import has_searchable_content
+from llm_tutor.schemas import NodeMode
+from llm_tutor.student.planner import ready_nodes
+
+# Человекочитаемые названия режимов прохода узла (см. student/planner.py).
+MODE_LABELS: dict[NodeMode, str] = {
+    "skip": "пропустить",
+    "verify": "проверить и идти дальше",
+    "compressed": "сжатый проход",
+    "full": "полный проход",
+    "reinforce": "усиленный проход",
+    "revisit": "вернуться к пререквизиту",
+    "review": "повторение",
+}
 
 START_SYSTEM_PROMPT = (
     "Ты — тьютор по курсу машинного обучения (mlcourse.ai), тема 1 «Pandas / EDA». "
@@ -132,6 +147,28 @@ async def handle_message(
     return reply
 
 
+def render_plan(
+    conn: sqlite3.Connection,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Текст ``/plan``: готовые узлы маршрута с режимом прохода."""
+    graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return "Граф курса пуст. Загрузи seed: python -m llm_tutor.course.seed"
+
+    nodes = ready_nodes(conn, graph, now=now, settings=settings)
+    if not nodes:
+        return "Готовых узлов нет — сначала закрой текущие пререквизиты."
+
+    lines = ["Что можно взять сейчас:"]
+    for node in nodes:
+        name = graph.concept(node.concept_id).name
+        lines.append(f"• {name} — {MODE_LABELS[node.mode]} (приоритет {node.priority:.2f})")
+    return "\n".join(lines)
+
+
 def make_router(
     conn: sqlite3.Connection,
     client: LLMClient,
@@ -147,6 +184,10 @@ def make_router(
     async def on_start(message: Message) -> None:
         reply = await handle_start(conn, client, model, START_GREETING)
         await message.answer(reply)
+
+    @router.message(Command("plan"))
+    async def on_plan(message: Message) -> None:
+        await message.answer(render_plan(conn))
 
     # Обработчик свободного текста: идёт после CommandStart и не трогает
     # команды (иначе будущий CommandStop был бы перехвачен).

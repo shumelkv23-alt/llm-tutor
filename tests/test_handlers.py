@@ -3,8 +3,15 @@
 import pytest
 from aiogram import Router
 
-from llm_tutor.bot.handlers import build_start_reply, handle_message, handle_start, make_router
+from llm_tutor.bot.handlers import (
+    build_start_reply,
+    handle_message,
+    handle_start,
+    make_router,
+    render_plan,
+)
 from llm_tutor.course.ingest import ingest_text
+from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMError
@@ -225,6 +232,25 @@ async def test_handle_message_survives_unexpected_error(conn) -> None:
 
 
 # --- сборка роутера ---
+
+
+# --- маршрут (/plan) ---
+
+
+def test_render_plan_lists_ready_node_with_mode(conn, settings) -> None:
+    """На холодном старте готов корневой узел — с режимом сжатого прохода."""
+    load_seed(conn)
+
+    text = render_plan(conn, now=0.0, settings=settings)
+
+    assert "Основы Python" in text
+    assert "сжатый проход" in text
+
+
+def test_render_plan_empty_graph_hints_seed(conn, settings) -> None:
+    text = render_plan(conn, now=0.0, settings=settings)
+
+    assert "seed" in text.lower()
 
 
 def test_make_router_registers_start_handler(conn) -> None:

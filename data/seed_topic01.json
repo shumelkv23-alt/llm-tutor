@@ -1,0 +1,188 @@
+{
+  "course": "mlcourse.ai/topic01",
+  "comment": "Граф концептов topic01 «Pandas / EDA». Рёбра: from -> to означает «from требуется для to». hard=false — мягкий пререквизит (штраф, не блокировка).",
+  "nodes": [
+    {
+      "id": "python_basics",
+      "name": "Основы Python",
+      "difficulty": 0.25,
+      "description": "Списки, словари, циклы, функции, срезы — база, без которой pandas не читается.",
+      "source_url": null
+    },
+    {
+      "id": "numpy_basics",
+      "name": "Основы NumPy",
+      "difficulty": 0.35,
+      "description": "ndarray, векторные операции, broadcasting. Серия и DataFrame стоят на NumPy.",
+      "source_url": null
+    },
+    {
+      "id": "pandas_intro",
+      "name": "Series и DataFrame",
+      "difficulty": 0.25,
+      "description": "Две базовые структуры pandas: одномерная Series и двумерный DataFrame.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "pandas_series",
+      "name": "Series",
+      "difficulty": 0.3,
+      "description": "Одномерный индексированный массив одного типа; столбец DataFrame — это Series.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "pandas_dataframe",
+      "name": "DataFrame",
+      "difficulty": 0.3,
+      "description": "Двумерная таблица: строки — объекты, столбцы — признаки.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "read_csv",
+      "name": "Загрузка данных: read_csv",
+      "difficulty": 0.3,
+      "description": "Чтение таблиц из csv/tsv/xlsx в DataFrame.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "df_inspect",
+      "name": "Осмотр данных",
+      "difficulty": 0.35,
+      "description": "head, shape, info, dtypes — первые шаги знакомства с таблицей.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "describe_stats",
+      "name": "Описательные статистики",
+      "difficulty": 0.4,
+      "description": "describe и ручные сводки: среднее, медиана, квартили, разброс.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "dtype_conversion",
+      "name": "Типы данных и astype",
+      "difficulty": 0.45,
+      "description": "Категориальные типы, приведение типов через astype, экономия памяти.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "indexing_loc_iloc",
+      "name": "Доступ к данным: loc и iloc",
+      "difficulty": 0.5,
+      "description": "Выбор по метке (loc) и по позиции (iloc); отличие срезов от обычных списков.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "boolean_indexing",
+      "name": "Булева индексация",
+      "difficulty": 0.55,
+      "description": "Фильтрация строк по условию, комбинация масок через & и |.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "sorting",
+      "name": "Сортировка",
+      "difficulty": 0.4,
+      "description": "sort_values / sort_index, порядок по нескольким столбцам.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "value_counts",
+      "name": "Частоты: value_counts",
+      "difficulty": 0.4,
+      "description": "Распределение значений категориального признака.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "apply_functions",
+      "name": "apply: функции к осям",
+      "difficulty": 0.55,
+      "description": "Применение функции к ячейкам, столбцам и строкам; когда это уместно.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "groupby",
+      "name": "Группировка: groupby",
+      "difficulty": 0.6,
+      "description": "Разбиение по ключу, применение агрегата, объединение результата (split-apply-combine).",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "agg_functions",
+      "name": "Агрегации",
+      "difficulty": 0.55,
+      "description": "sum/mean/count и явные agg со словарём функций по столбцам.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "summary_tables",
+      "name": "Сводные таблицы: crosstab и pivot_table",
+      "difficulty": 0.65,
+      "description": "Двумерные сводки: crosstab для частот, pivot_table для агрегатов по двум осям.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "df_transformations",
+      "name": "Трансформации DataFrame",
+      "difficulty": 0.55,
+      "description": "Создание и удаление столбцов: assign/insert/drop, вычисляемые признаки.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "visualization_basics",
+      "name": "Базовая визуализация",
+      "difficulty": 0.5,
+      "description": "Matplotlib/Seaborn: гистограммы, ящики с усами, зависимость признака от целевой переменной.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "eda_workflow",
+      "name": "Процесс EDA",
+      "difficulty": 0.7,
+      "description": "Гипотеза → срез/сводка → вывод; как из таблицы делать наблюдения, а не просто числа.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    },
+    {
+      "id": "churn_eda_case",
+      "name": "Кейс: EDA оттока телеком-клиентов",
+      "difficulty": 0.75,
+      "description": "Сквозной разбор: от загрузки датасета до выводов о причинах оттока.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+    }
+  ],
+  "edges": [
+    {"from_id": "python_basics", "to_id": "numpy_basics", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "python_basics", "to_id": "pandas_intro", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "numpy_basics", "to_id": "pandas_series", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "pandas_intro", "to_id": "pandas_series", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_intro", "to_id": "pandas_dataframe", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_series", "to_id": "pandas_dataframe", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_dataframe", "to_id": "read_csv", "type": "requires", "hard": false, "weight": 0.6},
+    {"from_id": "pandas_dataframe", "to_id": "df_inspect", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "read_csv", "to_id": "df_inspect", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "df_inspect", "to_id": "describe_stats", "type": "requires", "hard": false, "weight": 0.6},
+    {"from_id": "df_inspect", "to_id": "dtype_conversion", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_dataframe", "to_id": "indexing_loc_iloc", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "indexing_loc_iloc", "to_id": "boolean_indexing", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_dataframe", "to_id": "sorting", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "pandas_series", "to_id": "value_counts", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "pandas_dataframe", "to_id": "value_counts", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_dataframe", "to_id": "apply_functions", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "boolean_indexing", "to_id": "apply_functions", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "pandas_dataframe", "to_id": "groupby", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "groupby", "to_id": "agg_functions", "type": "requires", "hard": false, "weight": 0.7},
+    {"from_id": "agg_functions", "to_id": "summary_tables", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "groupby", "to_id": "summary_tables", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_dataframe", "to_id": "summary_tables", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "pandas_dataframe", "to_id": "df_transformations", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "apply_functions", "to_id": "df_transformations", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "pandas_dataframe", "to_id": "visualization_basics", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "describe_stats", "to_id": "visualization_basics", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "visualization_basics", "to_id": "eda_workflow", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "groupby", "to_id": "eda_workflow", "type": "requires", "hard": false, "weight": 0.7},
+    {"from_id": "describe_stats", "to_id": "eda_workflow", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "eda_workflow", "to_id": "churn_eda_case", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "summary_tables", "to_id": "churn_eda_case", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "groupby", "to_id": "churn_eda_case", "type": "requires", "hard": false, "weight": 0.7}
+  ]
+}

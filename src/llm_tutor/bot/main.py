@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 
 from llm_tutor.bot.handlers import make_router
 from llm_tutor.config import get_settings
+from llm_tutor.course.seed import load_seed
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
 
@@ -17,6 +18,7 @@ async def main() -> None:
 
     conn = get_conn(settings.db_path)
     migrate(conn)
+    load_seed(conn)  # граф темы — идемпотентный upsert seed-файла
 
     client = LLMClient(
         base_url=settings.openrouter_base_url,
