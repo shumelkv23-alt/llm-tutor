@@ -25,18 +25,24 @@ from aiogram.types import (
 
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
-from llm_tutor.core.turn import STALE_ITEM_REPLY, handle_turn, start_practice
+from llm_tutor.core.turn import (
+    STALE_ITEM_REPLY,
+    handle_turn,
+    skip_pending,
+    start_practice,
+)
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.db.repos import (
     add_message,
     ensure_open_session,
     get_fact,
+    get_open_session,
     get_session_state,
     update_session_state,
 )
 from llm_tutor.llm.client import LLMClient, LLMError
-from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
+from llm_tutor.llm.prompts import BUSY_REPLY, EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.schemas import Item
 from llm_tutor.student.planner import MODE_LABELS, ready_nodes
@@ -107,12 +113,33 @@ async def handle_start(
 
 
 def _pending_item(conn: sqlite3.Connection) -> Item | None:
-    """Задание, ответа на которое сейчас ждём (из состояния сессии)."""
-    session_id = ensure_open_session(conn, time.time())
+    """Задание, ответа на которое сейчас ждём (из состояния сессии).
+
+    Сессию НЕ создаёт: это чтение, а не ход.
+    """
+    session_id = get_open_session(conn)
+    if session_id is None:
+        return None
     state = get_session_state(conn, session_id)
     if state.pending_item_id is None:
         return None
     return repos.get_item(conn, state.pending_item_id)
+
+
+async def _run_turn(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    user_text: str,
+    *,
+    settings: Settings | None,
+) -> str:
+    """Ход с подстраховкой: неожиданный сбой не оставит ученика без ответа."""
+    try:
+        return await handle_turn(conn, client, model, user_text, settings=settings)
+    except Exception:  # noqa: BLE001 — бот не должен молчать
+        logger.exception("Неожиданный сбой хода")
+        return LLM_FAILURE_REPLY
 
 
 def _answer_keyboard(item: Item | None) -> InlineKeyboardMarkup | None:
@@ -186,9 +213,20 @@ def make_router(
         await message.answer(render_plan(conn, settings=settings))
 
     @router.message(Command("task"))
-    async def on_task(message: Message) -> None:
+    async def on_task(message: Message, state: FSMContext) -> None:
+        # Посреди анкеты или подбора маршрута задание не выдаём: иначе в
+        # состоянии повиснет pending_item_id, конфликтующий с FSM-потоком.
+        if await state.get_state() is not None:
+            await message.answer(BUSY_REPLY)
+            return
         text = start_practice(conn, settings=settings)
-        await message.answer(_truncate(text), reply_markup=_answer_keyboard(_pending_item(conn)))
+        await message.answer(
+            _truncate(text), reply_markup=_answer_keyboard(_pending_item(conn))
+        )
+
+    @router.message(Command("skip"))
+    async def on_skip(message: Message) -> None:
+        await message.answer(_truncate(skip_pending(conn, settings=settings)))
 
     @router.callback_query(F.data.startswith(f"{ANSWER_CALLBACK_PREFIX}:"))
     async def on_answer(callback: CallbackQuery) -> None:
@@ -199,7 +237,9 @@ def make_router(
             await callback.message.answer(STALE_ITEM_REPLY)
             await callback.answer()
             return
-        reply = await handle_turn(conn, client, model, item.options[index], settings=settings)
+        reply = await _run_turn(
+            conn, client, model, item.options[index], settings=settings
+        )
         await callback.message.answer(_truncate(reply))
         await callback.answer()
 
@@ -208,7 +248,7 @@ def make_router(
     # их шаги обрабатывают свои роутеры.
     @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
-        reply = await handle_turn(conn, client, model, message.text or "", settings=settings)
+        reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await message.answer(_truncate(reply))
 
     return router

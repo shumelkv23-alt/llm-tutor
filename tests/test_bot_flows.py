@@ -53,6 +53,14 @@ def _handler(router, kind: str, index: int) -> object:
     return getattr(router, kind).handlers[index].callback
 
 
+def _named(router, kind: str, name: str):
+    """Находит хендлер по имени функции — не зависит от порядка регистрации."""
+    for handler in getattr(router, kind).handlers:
+        if handler.callback.__name__ == name:
+            return handler.callback
+    raise AssertionError(f"нет хендлера {name}")
+
+
 # --- анкета ---
 
 
@@ -222,7 +230,7 @@ async def test_task_command_sends_question_with_buttons(conn, settings) -> None:
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
 
-    await _handler(router, "message", 2)(message)  # /task
+    await _named(router, "message", "on_task")(message, _fsm())
 
     assert message.sent[-1][1] is not None  # задание с вариантами
     state = _state(conn)
@@ -235,7 +243,7 @@ async def test_button_answer_goes_through_turn(conn, settings) -> None:
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
-    await _handler(router, "message", 2)(message)  # /task
+    await _named(router, "message", "on_task")(message, _fsm())
 
     await _handler(router, "callback_query", 0)(FakeCallback("answer:0", message))
 
@@ -246,11 +254,11 @@ async def test_button_answer_goes_through_turn(conn, settings) -> None:
 async def test_text_answer_goes_through_turn(conn, settings) -> None:
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
-    await _handler(router, "message", 2)(FakeMessage())  # /task
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
     item = repos.get_item(conn, _state(conn).pending_item_id)
     answer = FakeMessage(item.options[0] if item.options else str(item.answer))
 
-    await _handler(router, "message", 3)(answer)
+    await _named(router, "message", "on_text")(answer)
 
     assert repos.get_events(conn)
     assert "Верно" in answer.last_text
@@ -270,7 +278,34 @@ async def test_free_text_goes_to_tutor_turn(conn, settings) -> None:
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage("привет!")
 
-    await _handler(router, "message", 3)(message)
+    await _named(router, "message", "on_text")(message)
 
     assert message.last_text == "ок"
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
+
+
+async def test_task_is_refused_during_flow(conn, settings) -> None:
+    """Во время анкеты или подбора маршрута задание не выдаём."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    state = _fsm()
+    await state.set_state(DiagnosticFlow.answering)
+    message = FakeMessage()
+
+    await _named(router, "message", "on_task")(message, state)
+
+    assert "Сначала" in message.last_text
+    session_id = repos.get_open_session(conn)
+    assert session_id is None or repos.get_session_state(conn, session_id).pending_item_id is None
+
+
+async def test_skip_command_clears_task_without_evidence(conn, settings) -> None:
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
+    message = FakeMessage()
+
+    await _named(router, "message", "on_skip")(message)
+
+    assert _state(conn).pending_item_id is None
+    assert repos.get_events(conn) == []

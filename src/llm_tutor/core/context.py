@@ -46,10 +46,15 @@ _PROFILE_KEYS = ("pandas_experience", "goal", "time_budget")
 
 @dataclass(frozen=True)
 class ContextPackage:
-    """Готовый пакет для LLM плюс найденные чанки (для решения «не нашёл»)."""
+    """Готовый пакет для LLM плюс найденные чанки.
+
+    ``found_material`` запоминает факт находки ДО урезания бюджетом: иначе
+    вытесненный материал выглядел бы как «в курсе этого нет».
+    """
 
     messages: list[ChatMessage]
     chunks: list[Chunk]
+    found_material: bool = False
 
 
 def _mastery_slice(
@@ -127,7 +132,11 @@ def _fit_budget(
     question: str,
     budget_tokens: int,
 ) -> tuple[list[ChatMessage], list[Chunk]]:
-    """Урезает материал, затем диалог, пока пакет не влезет в бюджет."""
+    """Урезает материал, затем диалог, пока пакет не влезет в бюджет.
+
+    Материал не вытесняется целиком: хотя бы самый релевантный чанк остаётся,
+    иначе RAG молча превратился бы в обычный чат.
+    """
     limit = budget_tokens * CHARS_PER_TOKEN
 
     def size() -> int:
@@ -139,7 +148,7 @@ def _fit_budget(
         )
 
     tail, chunks = list(tail), list(chunks)
-    while chunks and size() > limit:
+    while len(chunks) > 1 and size() > limit:
         chunks.pop()  # наименее релевантные — в конце списка
     while tail and size() > limit:
         tail.pop(0)  # самый старый ход диалога
@@ -176,21 +185,16 @@ def build_context(
             if message.role in ("user", "assistant")
         ]
 
+    found_material = bool(chunks)
     system = _system_prompt(
         conn,
         session_state,
         graph,
-        has_material=bool(chunks),
+        has_material=found_material,
         now=stamp,
         settings=s,
     )
     tail, chunks = _fit_budget(system, tail, chunks, user_message, budget_tokens)
-    if not chunks:
-        # Бюджет вытеснил весь материал — правила должны честно сказать об этом.
-        system = _system_prompt(
-            conn, session_state, graph, has_material=False, now=stamp, settings=s
-        )
-        tail, _ = _fit_budget(system, tail, [], user_message, budget_tokens)
 
     messages = [ChatMessage(role="system", content=system), *tail]
     block = format_course_block(chunks)
@@ -198,4 +202,4 @@ def build_context(
         f"{block}\n\n---\n\nВопрос ученика: {user_message}" if block else user_message
     )
     messages.append(ChatMessage(role="user", content=final_content))
-    return ContextPackage(messages=messages, chunks=chunks)
+    return ContextPackage(messages=messages, chunks=chunks, found_material=found_material)

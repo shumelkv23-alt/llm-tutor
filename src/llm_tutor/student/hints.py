@@ -23,7 +23,9 @@ def next_hint_level(current: int, suggested: int) -> int:
     """Уровень подсказки на следующий ход.
 
     Снижать можно свободно (ученик пошёл сам), поднимать — не более чем на
-    шаг от текущего.
+    шаг от текущего. Обе границы держатся независимо от состояния: даже
+    испорченное ``current`` не выведет уровень за 0..``MAX_HINT_LEVEL``.
     """
-    clamped = min(MAX_HINT_LEVEL, max(0, suggested))
-    return clamped if clamped <= current else current + 1
+    safe_current = min(MAX_HINT_LEVEL, max(0, current))
+    target = min(MAX_HINT_LEVEL, max(0, suggested))
+    return min(target, safe_current + 1)

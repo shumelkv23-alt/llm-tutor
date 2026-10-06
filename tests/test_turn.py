@@ -4,7 +4,14 @@ import sqlite3
 
 import pytest
 
-from llm_tutor.core.turn import STALE_ITEM_REPLY, handle_turn, post_turn, start_practice
+from llm_tutor.core.turn import (
+    NOTHING_TO_SKIP_REPLY,
+    STALE_ITEM_REPLY,
+    handle_turn,
+    post_turn,
+    skip_pending,
+    start_practice,
+)
 from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
@@ -182,3 +189,49 @@ def test_post_turn_rolls_back_everything_on_failure(conn, settings) -> None:
 
     assert repos.get_messages(conn, session_id) == []
     assert repos.get_session_state(conn, session_id).hint_level == 0
+
+
+async def test_typed_option_number_is_accepted(conn, settings) -> None:
+    """Номер пункта из списка задания (нумерация с 1) — верный ответ."""
+    load_seed(conn)
+    client = _FakeTutor("тьютор не должен вызываться")
+    start_practice(conn, now=1.0, settings=settings)
+    measured = _state(conn).current_node_id
+
+    reply = await handle_turn(conn, client, "m", "1", now=2.0, settings=settings)
+
+    assert "Верно" in reply
+    assert client.calls == []
+    assert repos.get_mastery(conn, measured)["alpha"] > 1.0
+
+
+async def test_question_while_task_pending_keeps_task(conn, settings) -> None:
+    """Вопрос вместо ответа не съедает задание и не пишет неверный ответ."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    start_practice(conn, now=1.0, settings=settings)
+    pending_before = _state(conn).pending_item_id
+
+    reply = await handle_turn(
+        conn, _FakeTutor("объясняю"), "m", "а что такое groupby?", now=2.0, settings=settings
+    )
+
+    assert "объясняю" in reply
+    assert "ждёт ответа" in reply  # ученику сказали, что задание не сброшено
+    assert _state(conn).pending_item_id == pending_before
+    assert repos.get_events(conn) == []  # свидетельство не записано
+
+
+def test_skip_pending_clears_without_evidence(conn, settings) -> None:
+    load_seed(conn)
+    start_practice(conn, now=1.0, settings=settings)
+
+    reply = skip_pending(conn, now=2.0, settings=settings)
+
+    assert _state(conn).pending_item_id is None
+    assert repos.get_events(conn) == []
+    assert reply
+
+
+def test_skip_without_task_is_harmless(conn, settings) -> None:
+    assert skip_pending(conn, now=1.0, settings=settings) == NOTHING_TO_SKIP_REPLY
