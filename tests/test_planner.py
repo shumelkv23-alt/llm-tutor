@@ -7,7 +7,7 @@ from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Event
 from llm_tutor.student import beta
-from llm_tutor.student.planner import _importance, ready_nodes
+from llm_tutor.student.planner import _importance, mode_for_node, ready_nodes
 
 
 def _graph(concepts: list[str], edges: list[tuple[str, str, bool]]) -> CourseGraph:
@@ -207,3 +207,27 @@ def test_limit_caps_result_and_zero_is_empty(conn, settings) -> None:
 
     assert len(ready_nodes(conn, graph, limit=2, now=0.0, settings=settings)) == 2
     assert ready_nodes(conn, graph, limit=0, now=0.0, settings=settings) == []
+
+
+# --- режим узла как отдельная функция (Срез 9) ---
+
+
+def test_mode_for_node_matches_ready_nodes(conn, settings) -> None:
+    """Режим узла считается одинаково в маршруте и в списке готовых."""
+    graph = _graph(["a", "b"], [("a", "b", True)])
+    _set_mastery(conn, "a", 0.8, total=1.0)
+
+    nodes = {
+        node.concept_id: node.mode
+        for node in ready_nodes(conn, graph, now=0.0, settings=settings)
+    }
+
+    for concept_id, mode in nodes.items():
+        assert mode_for_node(conn, graph, concept_id, now=0.0, settings=settings) == mode
+
+
+def test_mode_for_node_is_skip_for_confident_mastery(conn, settings) -> None:
+    graph = _graph(["a"], [])
+    _set_mastery(conn, "a", 0.95, total=40.0)
+
+    assert mode_for_node(conn, graph, "a", now=0.0, settings=settings) == "skip"

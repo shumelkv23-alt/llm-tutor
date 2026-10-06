@@ -139,6 +139,37 @@ def _choose_mode(
     return "full"
 
 
+def mode_for_node(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    concept_id: str,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> NodeMode:
+    """Режим прохода узла по текущей модели ученика.
+
+    Тот же расчёт, что в ``ready_nodes``; вынесен отдельно, потому что режим
+    нужен ещё и маршруту (``student/route.py``).
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    mastery = beta.estimate(conn, concept_id, now=stamp, settings=s)
+    failures = _recent_failures(conn, concept_id, stamp, FAILURE_WINDOW_DAYS)
+    weak_soft = any(
+        beta.estimate(conn, prereq_id, now=stamp, settings=s).mean
+        < s.mastery_verify_threshold
+        for prereq_id in graph.soft_prerequisites(concept_id)
+    )
+    return _choose_mode(
+        mastery,
+        weak_soft_prereq=weak_soft,
+        overdue=mastery.next_review is not None and stamp >= mastery.next_review,
+        stuck=failures >= STUCK_FAILURES,
+        settings=s,
+    )
+
+
 def ready_nodes(
     conn: sqlite3.Connection,
     graph: CourseGraph,
@@ -182,18 +213,7 @@ def ready_nodes(
     for node_id in candidates:
         mastery = means[node_id]
         failures = _recent_failures(conn, node_id, stamp, FAILURE_WINDOW_DAYS)
-        overdue = mastery.next_review is not None and stamp >= mastery.next_review
-        weak_soft = any(
-            means[p].mean < s.mastery_verify_threshold
-            for p in graph.soft_prerequisites(node_id)
-        )
-        mode = _choose_mode(
-            mastery,
-            weak_soft_prereq=weak_soft,
-            overdue=overdue,
-            stuck=failures >= STUCK_FAILURES,
-            settings=s,
-        )
+        mode = mode_for_node(conn, graph, node_id, now=stamp, settings=s)
         if mode == "skip":
             continue
 
