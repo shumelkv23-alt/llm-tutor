@@ -454,6 +454,54 @@
         "Число пропущенных значений"
       ],
       "answer": "0"
+    },
+    {
+      "id": 6,
+      "prompt": "Что вернёт срез списка a[1:3] в Python?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "python_basics": 1.0
+      },
+      "difficulty": 0.25,
+      "options": [
+        "Элементы с индексами 1 и 2",
+        "Элементы с индексами 1, 2 и 3",
+        "Список без элементов 1 и 2",
+        "Длину списка"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 7,
+      "prompt": "Что делает выражение np.array([1, 2, 3]) * 2?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "numpy_basics": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Возвращает новый массив [2, 4, 6]",
+        "Падает: массив нельзя умножить на число",
+        "Возвращает строку '[1, 2, 3, 1, 2, 3]'",
+        "Возвращает число 12"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 8,
+      "prompt": "Чем Series отличается от DataFrame?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "pandas_series": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Series одномерная и хранит данные одного типа, DataFrame двумерный",
+        "Series быстрее, а по структуре они одинаковы",
+        "Series умеет хранить только числа",
+        "DataFrame — это просто список списков Python"
+      ],
+      "answer": "0"
     }
   ]
 }

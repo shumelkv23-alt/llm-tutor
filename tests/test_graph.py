@@ -237,7 +237,8 @@ def test_nodes_without_items_reports_gate_nodes() -> None:
 
     missing = nodes_without_items(seed)
 
-    assert "python_basics" in missing  # база графа без задания
+    assert "python_basics" not in missing  # корень банком покрыт
+    assert missing  # но несущие узлы без заданий ещё есть — о них предупреждаем
     assert "churn_eda_case" not in missing  # лист без зависимых — не проблема
 
 
