@@ -22,11 +22,9 @@ from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import (
     EMPTY_GRAPH_REPLY,
     LLM_FAILURE_REPLY,
-    NO_COURSE_ANSWER,
     NO_TASK_REPLY,
 )
 from llm_tutor.llm.schemas import TutorReply
-from llm_tutor.rag.retriever import has_searchable_content
 from llm_tutor.schemas import Event, Item, SessionState
 from llm_tutor.student import beta, diagnostic, hints
 
@@ -230,11 +228,6 @@ async def _tutor_branch(
         settings=settings,
     )
     idle_state = state.model_copy(update={"last_activity": now})
-
-    if not package.found_material and has_searchable_content(user_text):
-        # Осмысленный вопрос, а материала нет вовсе — честный отказ без LLM.
-        # (Материал, вытесненный бюджетом, сюда не попадает: см. found_material.)
-        return NO_COURSE_ANSWER, [], [], idle_state
 
     try:
         answer = await client.chat_structured(package.messages, TutorReply, model=model)

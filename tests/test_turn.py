@@ -17,7 +17,7 @@ from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 from llm_tutor.llm.client import LLMError
-from llm_tutor.llm.prompts import LLM_FAILURE_REPLY, NO_COURSE_ANSWER
+from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import beta
 
@@ -114,16 +114,17 @@ async def test_hint_level_can_drop(conn, settings) -> None:
     assert _state(conn).hint_level == 0
 
 
-async def test_offtopic_question_is_refused_without_llm(conn, settings) -> None:
+async def test_offtopic_question_goes_to_model(conn, settings) -> None:
+    """Вопрос рядом с курсом уходит модели, а не в детерминированный отказ."""
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
-    client = _FakeTutor("не должно вызываться")
+    client = _FakeTutor("это за пределами темы 1, но вот как это работает")
 
     reply = await handle_turn(
         conn, client, "m", "how do I train a neural network?", now=1.0, settings=settings
     )
 
-    assert reply == NO_COURSE_ANSWER
-    assert client.calls == []
+    assert reply == "это за пределами темы 1, но вот как это работает"
+    assert len(client.calls) == 1  # модель спросили
 
 
 async def test_llm_failure_is_reported_and_turn_persisted(conn, settings) -> None:

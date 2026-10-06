@@ -48,15 +48,6 @@ def build_fts_query(user_query: str) -> str:
     return " OR ".join(f'"{token}"' for token in unique)
 
 
-def has_searchable_content(user_query: str) -> bool:
-    """Есть ли в реплике значимые для поиска токены.
-
-    ``False`` — приветствие, благодарность или одна пунктуация: это реплика
-    диалога, а не вопрос по материалу, и «нет в курсе» на неё отвечать нельзя.
-    """
-    return bool(build_fts_query(user_query))
-
-
 def retrieve(
     conn: sqlite3.Connection,
     query: str,

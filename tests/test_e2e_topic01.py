@@ -20,7 +20,7 @@ from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
-from llm_tutor.llm.prompts import LLM_FAILURE_REPLY, NO_COURSE_ANSWER
+from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
 from llm_tutor.student import beta, survey
 
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
@@ -48,23 +48,27 @@ def _client(settings: Settings) -> LLMClient:
 
 
 @respx.mock
-async def test_without_material_refuses_without_calling_model() -> None:
-    """Материала нет — детерминированный отказ, модель не вызывается."""
+async def test_without_material_still_answers_with_border_mark() -> None:
+    """Материала нет — модель отвечает и помечает границу, отказа больше нет."""
     settings = Settings(
         _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
     )
     conn = get_conn(":memory:")
     migrate(conn)
     load_seed(conn)  # материал специально не загружаем
-    route = respx.post(OPENROUTER).mock(return_value=_completion("{}"))
+    route = respx.post(OPENROUTER).mock(
+        return_value=_completion(
+            json.dumps({"reply": "Это за пределами темы 1", "hint_level": 0})
+        )
+    )
     client = _client(settings)
     try:
         reply = await handle_turn(
             conn, client, "m", "как работает groupby?", now=1.0, settings=settings
         )
 
-        assert reply == NO_COURSE_ANSWER
-        assert not route.called
+        assert reply == "Это за пределами темы 1"
+        assert route.called
     finally:
         await client.aclose()
         conn.close()
