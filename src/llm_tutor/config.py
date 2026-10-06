@@ -91,6 +91,13 @@ class Settings(BaseSettings):
     # приниматься только по нему (§9.2 архитектуры).
     rubric_evidence_weight: float = Field(default=0.5, ge=0.0, le=1.0)
 
+    # --- Маршрут и ведение, Срезы 9–10 ---
+    # Сколько шагов должно измениться, чтобы сообщать о пересмотре маршрута
+    # (§6.4: «если различия малы — оставить старый план»).
+    route_min_significant_changes: int = Field(default=2, ge=1)
+    # Сколько заданий подряд без подсказок закрывают узел (§6.1).
+    guide_success_streak: int = Field(default=2, ge=1)
+
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL
     context_rag_top_k: int = DEFAULT_RAG_TOP_K
