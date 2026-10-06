@@ -50,8 +50,10 @@ from llm_tutor.llm.prompts import (
 )
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.schemas import Item
-from llm_tutor.student.planner import MODE_LABELS, ready_nodes
-from llm_tutor.student.survey import GOAL_CONCEPT_KEY, is_completed as survey_completed
+from llm_tutor.schemas import SessionState
+from llm_tutor.student import route as route_mod
+from llm_tutor.student.planner import MODE_LABELS
+from llm_tutor.student.survey import is_completed as survey_completed
 
 START_SYSTEM_PROMPT = (
     "Ты — тьютор по курсу машинного обучения (mlcourse.ai), тема 1 «Pandas / EDA». "
@@ -164,33 +166,60 @@ def _answer_keyboard(item: Item | None) -> InlineKeyboardMarkup | None:
     )
 
 
+def _first_state(conn: sqlite3.Connection) -> SessionState:
+    """Состояние открытой сессии (или пустое, если сессии ещё нет)."""
+    session_id = get_open_session(conn)
+    return repos.get_session_state(conn, session_id) if session_id else SessionState()
+
+
 def render_plan(
     conn: sqlite3.Connection,
     *,
+    state: SessionState | None = None,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Текст ``/plan``: готовые узлы маршрута с режимом прохода."""
+    """Текст ``/plan``: маршрут к цели с прогрессом."""
     graph = CourseGraph.load(conn)
     if not graph.node_ids:
         return EMPTY_GRAPH_REPLY
 
-    # Цель из анкеты учитываем, только если такой узел есть в графе
-    # (seed мог поменяться между запусками).
-    goal = get_fact(conn, GOAL_CONCEPT_KEY)
-    if goal not in graph.node_ids:
-        goal = None
-
-    nodes = ready_nodes(conn, graph, goal_concept_id=goal, now=now, settings=settings)
-    if not nodes:
-        # Фронт готовности непуст всегда (корни без пререквизитов), поэтому
-        # пустой маршрут = всё доступное освоено, а не «нет пререквизитов».
+    session_state = state or _first_state(conn)
+    route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=session_state.current_node_id,
+        now=now,
+        settings=settings,
+    )
+    if not route.steps:
+        return EMPTY_GRAPH_REPLY
+    if route.closed_count == len(route.steps):
+        # Пустой маршрут = всё доступное освоено, а не «нет пререквизитов».
         return "Всё доступное уже освоено — можно двигаться дальше или взять цель посложнее."
 
-    lines = ["Что можно взять сейчас:"]
-    for node in nodes:
-        name = graph.concept(node.concept_id).name
-        lines.append(f"• {name} — {MODE_LABELS[node.mode]} (приоритет {node.priority:.2f})")
+    goal_name = (
+        graph.concept(route.goal_concept_id).name
+        if route.goal_concept_id is not None
+        else "вершина темы"
+    )
+    lines = [
+        f"Маршрут: закрыто {route.closed_count} из {len(route.steps)}. Цель — {goal_name}."
+    ]
+    current = next((step for step in route.steps if step.status == "current"), None)
+    if current is not None:
+        lines.append(
+            f"Сейчас: {graph.concept(current.concept_id).name} "
+            f"({MODE_LABELS[current.mode]})."
+        )
+    ahead = [step for step in route.steps if step.status == "ahead"][:5]
+    if ahead:
+        names = ", ".join(
+            f"{graph.concept(step.concept_id).name} ({MODE_LABELS[step.mode]})"
+            for step in ahead
+        )
+        lines.append(f"Дальше: {names}.")
     return "\n".join(lines)
 
 

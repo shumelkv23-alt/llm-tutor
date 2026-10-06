@@ -14,6 +14,7 @@ from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMError
 from llm_tutor.llm.schemas import ChatMessage
+from llm_tutor.schemas import SessionState
 
 
 class _FakeClient:
@@ -142,14 +143,22 @@ async def test_state_survives_restart(tmp_path) -> None:
 # --- маршрут (/plan) ---
 
 
-def test_render_plan_lists_ready_node_with_mode(conn, settings) -> None:
-    """На холодном старте готов корневой узел — с режимом сжатого прохода."""
+def test_render_plan_shows_route_progress(conn, settings) -> None:
+    """Маршрут — это путь с прогрессом, а не список доступного."""
     load_seed(conn)
+    repos.set_fact(conn, "goal_concept_id", "summary_tables")
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.update_session_state(
+        conn, session_id, SessionState(current_node_id="groupby")
+    )
 
     text = render_plan(conn, now=0.0, settings=settings)
 
-    assert "Основы Python" in text
-    assert "сжатый проход" in text
+    assert "закрыто" in text
+    assert "из" in text  # «закрыто 0 из N»
+    assert "Цель" in text
+    assert "Сейчас" in text
+    assert "Дальше" in text
 
 
 def test_render_plan_reports_all_mastered(conn, settings) -> None:

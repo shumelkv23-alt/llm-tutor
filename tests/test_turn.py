@@ -318,3 +318,14 @@ async def test_open_answer_without_confirmed_quote_is_not_credited(conn, setting
     )
 
     assert "Не совсем" in reply
+
+
+async def test_turn_records_route_in_state(conn, settings) -> None:
+    """После хода в состоянии сессии лежит снимок маршрута."""
+    load_seed(conn)
+
+    await handle_turn(conn, _FakeTutor(), "m", "привет!", now=1.0, settings=settings)
+
+    state = _state(conn)
+    assert state.route is not None
+    assert state.route.steps

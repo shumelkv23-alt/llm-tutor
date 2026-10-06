@@ -122,6 +122,12 @@ def goal_concept_id(conn: sqlite3.Connection) -> str | None:
     return repos.get_fact(conn, GOAL_CONCEPT_KEY)
 
 
+def goal_for(conn: sqlite3.Connection, graph: CourseGraph) -> str | None:
+    """Цель из анкеты, если такой узел есть в графе (seed мог поменяться)."""
+    goal = goal_concept_id(conn)
+    return goal if goal is not None and goal in graph.node_ids else None
+
+
 def refresh(
     conn: sqlite3.Connection,
     state: SessionState,
@@ -135,12 +141,16 @@ def refresh(
     fresh = build_route(
         conn,
         graph,
-        goal_concept_id=goal_concept_id(conn),
+        goal_concept_id=goal_for(conn, graph),
         current_node_id=state.current_node_id,
         previous=state.route,
         now=now,
         settings=s,
     )
+    if state.route is None:
+        # Первый расчёт — это не «изменение»: сообщать не о чем.
+        return fresh, None
+
     changes = diff_routes(state.route, fresh)
     note = (
         format_route_change(changes)

@@ -26,7 +26,7 @@ from llm_tutor.llm.prompts import (
 )
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, Item, SessionState
-from llm_tutor.student import beta, diagnostic, hints
+from llm_tutor.student import beta, diagnostic, hints, route as route_mod
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +273,13 @@ async def handle_turn(
         if state.pending_item_id is not None:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
             reply = f"{reply}\n\n{PENDING_ITEM_NOTE}"
+
+    # Маршрут пересчитывается на каждом ходу, но ученику сообщается только
+    # о значимом изменении (§6.4 — «малые различия» не тревожат план).
+    fresh_route, route_note = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
+    new_state = new_state.model_copy(update={"route": fresh_route})
+    if route_note:
+        reply = f"{reply}\n\n{route_note}"
 
     post_turn(
         conn,
