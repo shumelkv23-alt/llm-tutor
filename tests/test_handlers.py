@@ -179,6 +179,27 @@ async def test_handle_message_catches_llm_error(conn) -> None:
     assert "не смог получить ответ" in reply.lower()
 
 
+async def test_handle_message_greeting_reaches_llm(conn) -> None:
+    """Приветствие — это реплика диалога, а не вопрос вне курса."""
+    client = _FakeClient("Привет! Чем помочь по Pandas?")
+
+    reply = await handle_message(conn, client, "m", "привет!", now=1.0)
+
+    assert reply == "Привет! Чем помочь по Pandas?"
+    assert len(client.calls) == 1
+
+
+async def test_handle_message_greeting_uses_no_material_prompt(conn) -> None:
+    """Без материала модель получает промпт, запрещающий выдумывать факты курса."""
+    client = _FakeClient()
+
+    await handle_message(conn, client, "m", "спасибо!", now=1.0)
+
+    messages, _ = client.calls[0]
+    assert messages[0].role == "system"
+    assert "фрагментов материалов курса нет" in messages[0].content
+
+
 async def test_handle_message_offtopic_not_in_course(conn) -> None:
     """Материал в базе есть, но вопрос вне темы → «не нашёл», без вызова LLM."""
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")

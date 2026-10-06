@@ -187,6 +187,34 @@ def test_section_label_includes_parent_headings() -> None:
     assert chunk.section == "Grouping > Sorting"
 
 
+def test_oversized_single_token_is_hard_split() -> None:
+    """Токен длиннее бюджета (URL/base64) режется, а не остаётся гигантским чанком."""
+    md = "# T\n\n" + "A" * 5000
+    chunks = chunk_markdown(md, "u", max_chars=500)
+    assert len(chunks) > 1
+    assert max(len(c.content) for c in chunks) <= 500
+
+
+def test_long_code_block_keeps_newlines() -> None:
+    """Длинный код-блок режется с сохранением переводов строк, а не склейкой."""
+    code = "\n".join(f"df['c{i}'] = {i}" for i in range(400))
+    md = f"# T\n\n```python\n{code}\n```\n"
+
+    chunks = chunk_markdown(md, "u", max_chars=500)
+    joined = "\n".join(c.content for c in chunks)
+
+    assert len(chunks) > 1
+    assert "\n" in joined  # не однострочник
+    assert "df['c0'] = 0" in joined
+    assert all(len(c.content) <= 500 for c in chunks)
+
+
+def test_closing_hashes_are_not_part_of_section() -> None:
+    """`## Title ##` — закрывающие решётки это синтаксис ATX, а не заголовок."""
+    (chunk,) = chunk_markdown("# T\n\n## Grouping ##\n\ntext\n", "u")
+    assert chunk.section == "Grouping"
+
+
 def test_ingest_file_idempotent_across_path_forms(conn, tmp_path, monkeypatch) -> None:
     """Один файл под относительным и абсолютным путём — один источник."""
     path = tmp_path / "m.md"

@@ -16,6 +16,33 @@ EventSource = Literal["autotest", "checked", "rubric", "dialogue", "self"]
 # Режим прохода узла (см. student/planner.py).
 NodeMode = Literal["skip", "verify", "compressed", "full", "reinforce", "revisit", "review"]
 
+# Тип связи между концептами графа курса.
+EdgeType = Literal["requires", "part_of", "leads_to"]
+
+
+class Concept(BaseModel):
+    """Узел графа курса (концепт)."""
+
+    id: str
+    name: str
+    difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
+    description: str | None = None
+    source_url: str | None = None
+
+
+class Edge(BaseModel):
+    """Ребро графа курса: ``from_id`` требуется для ``to_id``.
+
+    ``hard=True`` — без пререквизита узел заблокирован; ``hard=False`` —
+    мягкий пререквизит (штраф к приоритету, не блокировка).
+    """
+
+    from_id: str
+    to_id: str
+    type: EdgeType = "requires"
+    hard: bool = True
+    weight: float = Field(default=1.0, ge=0.0)
+
 
 class Message(BaseModel):
     """Одна реплика диалога, сохраняемая в ``messages``."""

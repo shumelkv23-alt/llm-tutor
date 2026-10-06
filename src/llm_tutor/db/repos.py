@@ -7,9 +7,12 @@ f-строки). Соединение приходит снаружи, что у
 
 import sqlite3
 import time
-from typing import Sequence
+from typing import Sequence, get_args
 
-from llm_tutor.schemas import Chunk, Event, Message, SessionState
+from llm_tutor.schemas import Chunk, Concept, Edge, Event, Message, Role, SessionState
+
+# Роли, допустимые в messages — те же, что в доменной модели Role.
+_VALID_ROLES = frozenset(get_args(Role))
 
 
 # --- sessions ---
@@ -71,11 +74,16 @@ def get_session_state(conn: sqlite3.Connection, session_id: int) -> SessionState
 def update_session_state(
     conn: sqlite3.Connection, session_id: int, state: SessionState
 ) -> None:
-    """Сохраняет состояние сессии (перезапись JSON целиком)."""
-    conn.execute(
+    """Сохраняет состояние сессии (перезапись JSON целиком).
+
+    Несуществующая сессия — ``KeyError``: молчаливый no-op терял бы состояние.
+    """
+    cur = conn.execute(
         "UPDATE sessions SET state = ? WHERE id = ?",
         (state.model_dump_json(), session_id),
     )
+    if cur.rowcount == 0:
+        raise KeyError(f"сессия {session_id} не найдена")
     conn.commit()
 
 
@@ -85,13 +93,19 @@ def update_session_state(
 def add_message(
     conn: sqlite3.Connection,
     session_id: int,
-    role: str,
+    role: Role,
     content: str,
     *,
     ts: float | None = None,
     meta: str | None = None,
 ) -> int:
-    """Пишет реплику в ``messages`` и возвращает её id."""
+    """Пишет реплику в ``messages`` и возвращает её id.
+
+    Роль валидируется на входе: мусорная роль на записи сломала бы чтение
+    всей сессии позже (``Message.role`` — ``Literal``).
+    """
+    if role not in _VALID_ROLES:
+        raise ValueError(f"Недопустимая роль сообщения: {role!r}")
     stamp = time.time() if ts is None else ts
     cur = conn.execute(
         "INSERT INTO messages (session_id, ts, role, content, meta) VALUES (?, ?, ?, ?, ?)",
@@ -175,6 +189,73 @@ def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[
     ]
 
 
+# --- concepts / edges (граф курса, Срез 4) ---
+
+
+def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
+    """Создаёт или обновляет концепт графа."""
+    conn.execute(
+        "INSERT INTO concepts (id, name, difficulty, description, source_url) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "name = excluded.name, difficulty = excluded.difficulty, "
+        "description = excluded.description, source_url = excluded.source_url",
+        (
+            concept.id,
+            concept.name,
+            concept.difficulty,
+            concept.description,
+            concept.source_url,
+        ),
+    )
+    conn.commit()
+
+
+def upsert_edge(conn: sqlite3.Connection, edge: Edge) -> None:
+    """Создаёт или обновляет ребро графа (по тройке from/to/type)."""
+    conn.execute(
+        "INSERT INTO edges (from_id, to_id, type, hard, weight) VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(from_id, to_id, type) DO UPDATE SET "
+        "hard = excluded.hard, weight = excluded.weight",
+        (edge.from_id, edge.to_id, edge.type, int(edge.hard), edge.weight),
+    )
+    conn.commit()
+
+
+def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
+    """Все концепты графа (порядок — по id, детерминированный)."""
+    rows = conn.execute(
+        "SELECT id, name, difficulty, description, source_url FROM concepts ORDER BY id"
+    ).fetchall()
+    return [
+        Concept(
+            id=r["id"],
+            name=r["name"],
+            difficulty=r["difficulty"],
+            description=r["description"],
+            source_url=r["source_url"],
+        )
+        for r in rows
+    ]
+
+
+def get_edges(conn: sqlite3.Connection) -> list[Edge]:
+    """Все рёбра графа (порядок — по from_id/to_id, детерминированный)."""
+    rows = conn.execute(
+        "SELECT from_id, to_id, type, hard, weight FROM edges ORDER BY from_id, to_id, type"
+    ).fetchall()
+    return [
+        Edge(
+            from_id=r["from_id"],
+            to_id=r["to_id"],
+            type=r["type"],
+            hard=bool(r["hard"]),
+            weight=r["weight"],
+        )
+        for r in rows
+    ]
+
+
 # --- mastery (производная модель ученика, Срез 4) ---
 
 
@@ -243,26 +324,30 @@ def set_fact(
 # --- chunks (материалы курса для RAG, Срез 3) ---
 
 
-def delete_chunks_by_source(conn: sqlite3.Connection, source_url: str) -> int:
-    """Удаляет чанки источника (для идемпотентного повторного ingest)."""
-    cur = conn.execute("DELETE FROM chunks WHERE source_url = ?", (source_url,))
-    conn.commit()
-    return cur.rowcount
+def replace_chunks(
+    conn: sqlite3.Connection, source_url: str, chunks: Sequence[Chunk]
+) -> int:
+    """Атомарно заменяет чанки источника: delete + insert в одной транзакции.
 
-
-def add_chunks(conn: sqlite3.Connection, chunks: Sequence[Chunk]) -> int:
-    """Вставляет чанки пачкой (один коммит), FTS наполняется триггерами."""
-    for chunk in chunks:
-        conn.execute(
-            "INSERT INTO chunks (concept_id, source_url, section, seq, content) "
-            "VALUES (?, ?, ?, ?, ?)",
-            (
-                chunk.concept_id,
-                chunk.source_url,
-                chunk.section,
-                chunk.seq,
-                chunk.content,
-            ),
-        )
+    Отдельные коммиты на удаление и вставку оставили бы источник без чанков
+    при сбое между ними. FTS наполняется триггерами. Возвращает число чанков.
+    """
+    try:
+        conn.execute("DELETE FROM chunks WHERE source_url = ?", (source_url,))
+        for chunk in chunks:
+            conn.execute(
+                "INSERT INTO chunks (concept_id, source_url, section, seq, content) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    chunk.concept_id,
+                    chunk.source_url,
+                    chunk.section,
+                    chunk.seq,
+                    chunk.content,
+                ),
+            )
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
     return len(chunks)

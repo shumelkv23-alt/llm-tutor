@@ -27,19 +27,18 @@ async def main() -> None:
         max_retries=settings.llm_max_retries,
     )
 
-    bot = Bot(token=settings.telegram_bot_token.get_secret_value())
-    dispatcher = Dispatcher()
-    dispatcher.include_router(
-        make_router(
-            conn,
-            client,
-            settings.tutor_model,
-            rag_top_k=settings.context_rag_top_k,
-            dialog_tail=settings.context_dialog_tail,
-        )
-    )
-
     try:
+        bot = Bot(token=settings.telegram_bot_token.get_secret_value())
+        dispatcher = Dispatcher()
+        dispatcher.include_router(
+            make_router(
+                conn,
+                client,
+                settings.tutor_model,
+                rag_top_k=settings.context_rag_top_k,
+                dialog_tail=settings.context_dialog_tail,
+            )
+        )
         await dispatcher.start_polling(bot)
     finally:
         await client.aclose()

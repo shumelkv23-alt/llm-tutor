@@ -1,9 +1,11 @@
 """Тесты тонкого репозитория (CRUD поверх SQLite)."""
 
+import sqlite3
+
 import pytest
 
 from llm_tutor.db import repos
-from llm_tutor.schemas import Event, SessionState
+from llm_tutor.schemas import Chunk, Event, SessionState
 
 
 def _add_concept(conn, concept_id: str) -> None:
@@ -78,6 +80,19 @@ def test_add_message_returns_positive_id(conn) -> None:
     session_id = repos.ensure_open_session(conn, now=1.0)
     message_id = repos.add_message(conn, session_id, "user", "x", ts=1.0)
     assert message_id > 0
+
+
+def test_add_message_rejects_invalid_role(conn) -> None:
+    """Мусорная роль падает на записи, а не ломает чтение всей сессии позже."""
+    session_id = repos.ensure_open_session(conn, now=1.0)
+
+    with pytest.raises(ValueError, match="роль"):
+        repos.add_message(conn, session_id, "tutor", "x", ts=1.0)
+
+
+def test_update_session_state_missing_raises(conn) -> None:
+    with pytest.raises(KeyError):
+        repos.update_session_state(conn, 999, SessionState())
 
 
 def test_get_messages_returns_id_and_meta(conn) -> None:
@@ -161,6 +176,32 @@ def test_set_fact_preserves_unset_fields(conn) -> None:
     ).fetchone()
     assert row["source"] == "self"
     assert row["confidence"] == 0.8
+
+
+# --- chunks ---
+
+
+def test_replace_chunks_swaps_source_chunks(conn) -> None:
+    repos.replace_chunks(conn, "u", [Chunk(source_url="u", seq=0, content="old")])
+
+    count = repos.replace_chunks(conn, "u", [Chunk(source_url="u", seq=0, content="new")])
+
+    assert count == 1
+    assert [r["content"] for r in conn.execute("SELECT content FROM chunks")] == ["new"]
+
+
+def test_replace_chunks_rolls_back_on_failure(conn) -> None:
+    """Сбой вставки откатывает и удаление — чанки источника не теряются."""
+    repos.replace_chunks(conn, "u", [Chunk(source_url="u", seq=0, content="old")])
+
+    with pytest.raises(sqlite3.IntegrityError):  # FK: концепта 'ghost' нет
+        repos.replace_chunks(
+            conn,
+            "u",
+            [Chunk(source_url="u", seq=0, content="new", concept_id="ghost")],
+        )
+
+    assert [r["content"] for r in conn.execute("SELECT content FROM chunks")] == ["old"]
 
 
 # --- параметризация ---

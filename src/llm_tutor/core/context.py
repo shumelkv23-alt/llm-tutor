@@ -12,7 +12,11 @@ from dataclasses import dataclass
 
 from llm_tutor.config import DEFAULT_DIALOG_TAIL, DEFAULT_RAG_TOP_K
 from llm_tutor.db.repos import get_messages
-from llm_tutor.llm.prompts import TUTOR_SYSTEM_PROMPT, format_course_block
+from llm_tutor.llm.prompts import (
+    TUTOR_NO_MATERIAL_SYSTEM_PROMPT,
+    TUTOR_SYSTEM_PROMPT,
+    format_course_block,
+)
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import retrieve
 from llm_tutor.schemas import Chunk
@@ -39,7 +43,8 @@ def build_context(
     effective_k = top_k if top_k > 0 else DEFAULT_RAG_TOP_K
     chunks = retrieve(conn, user_message, k=effective_k)
 
-    messages = [ChatMessage(role="system", content=TUTOR_SYSTEM_PROMPT)]
+    system_prompt = TUTOR_SYSTEM_PROMPT if chunks else TUTOR_NO_MATERIAL_SYSTEM_PROMPT
+    messages = [ChatMessage(role="system", content=system_prompt)]
 
     if dialog_tail > 0:
         tail = get_messages(conn, session_id)[-dialog_tail:]

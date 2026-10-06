@@ -18,7 +18,7 @@ import httpx
 from bs4 import BeautifulSoup
 from markdownify import markdownify
 
-from llm_tutor.db.repos import add_chunks, delete_chunks_by_source
+from llm_tutor.db.repos import replace_chunks
 from llm_tutor.schemas import Chunk
 
 # Бюджет чанка ~700 токенов: прокси по символам (~4 символа ≈ 1 токен).
@@ -108,7 +108,9 @@ def _parse_markdown(text: str) -> list[_Item]:
         heading = _HEADING_RE.match(lines[i])
         if heading:
             flush_para()
-            items.append(_Item("heading", heading.group(2).strip(), len(heading.group(1))))
+            # Закрывающие решётки — синтаксис ATX, а не часть заголовка.
+            title = heading.group(2).strip().rstrip("#").strip()
+            items.append(_Item("heading", title, len(heading.group(1))))
             i += 1
             continue
 
@@ -122,12 +124,21 @@ def _parse_markdown(text: str) -> list[_Item]:
     return items
 
 
-def _split_long(text: str, max_chars: int) -> list[str]:
-    """Режет слишком длинный блок по словам на куски не длиннее ``max_chars``."""
+def _wrap_line(line: str, max_chars: int) -> list[str]:
+    """Режет одну строку на куски ≤ ``max_chars``, не разрывая слова.
+
+    Слово длиннее бюджета (URL, base64) режется жёстко по символам.
+    """
     pieces: list[str] = []
     current: list[str] = []
     size = 0
-    for word in text.split():
+    for word in line.split():
+        while len(word) > max_chars:
+            if current:
+                pieces.append(" ".join(current))
+                current, size = [], 0
+            pieces.append(word[:max_chars])
+            word = word[max_chars:]
         if current and size + len(word) + 1 > max_chars:
             pieces.append(" ".join(current))
             current, size = [], 0
@@ -136,6 +147,28 @@ def _split_long(text: str, max_chars: int) -> list[str]:
     if current:
         pieces.append(" ".join(current))
     return pieces
+
+
+def _split_long(text: str, max_chars: int) -> list[str]:
+    """Режет длинный блок на куски не длиннее ``max_chars``, сохраняя переводы строк.
+
+    Режем по строкам, а не склейкой всего текста: код в материалах чувствителен
+    к ``\\n`` и отступам — склейка через пробел превратила бы многострочный
+    пример в неисполнимый однострочник.
+    """
+    pieces: list[str] = []
+    buffer: list[str] = []
+    size = 0
+    for line in text.split("\n"):
+        for chunk in _wrap_line(line, max_chars):
+            if buffer and size + len(chunk) + 1 > max_chars:
+                pieces.append("\n".join(buffer))
+                buffer, size = [], 0
+            buffer.append(chunk)
+            size += len(chunk) + 1
+    if buffer:
+        pieces.append("\n".join(buffer))
+    return [piece for piece in pieces if piece]
 
 
 def chunk_markdown(
@@ -203,9 +236,7 @@ def ingest_text(
 ) -> int:
     """Разбирает текст и записывает чанки (идемпотентно по ``source_url``)."""
     chunks = chunk_markdown(to_markdown(text), source_url, max_chars=max_chars)
-    delete_chunks_by_source(conn, source_url)
-    add_chunks(conn, chunks)
-    return len(chunks)
+    return replace_chunks(conn, source_url, chunks)
 
 
 def fetch_url(url: str, *, timeout: float = 30.0) -> str:
@@ -255,8 +286,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     conn = get_conn(args.db)
-    migrate(conn)
     try:
+        migrate(conn)
         if args.source.startswith(("http://", "https://")):
             count = ingest_url(conn, args.source)
         else:

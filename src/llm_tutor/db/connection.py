@@ -59,10 +59,20 @@ def migrate(conn: sqlite3.Connection) -> None:
         version = int(path.name[:3])
         if version <= current:
             continue
-        conn.executescript(path.read_text(encoding="utf-8"))
-        # PRAGMA не принимает плейсхолдеры; version — целое из имени файла.
-        conn.execute(f"PRAGMA user_version = {version}")
-        conn.commit()
+        if version > SCHEMA_VERSION:
+            # Иначе код сам переведёт БД в состояние новее своего и «окирпичит» её.
+            raise RuntimeError(
+                f"Миграция {path.name} новее этой версии приложения "
+                f"(SCHEMA_VERSION={SCHEMA_VERSION}). Обнови приложение."
+            )
+        script = path.read_text(encoding="utf-8")
+        try:
+            # PRAGMA user_version транзакционен: схема и её версия применяются
+            # атомарно — сбой посередине скрипта не оставит половину DDL.
+            conn.executescript(f"BEGIN;\n{script}\nPRAGMA user_version = {version};\nCOMMIT;")
+        except sqlite3.Error as exc:
+            conn.rollback()
+            raise RuntimeError(f"Миграция {path.name} не применилась: {exc}") from exc
         current = version
 
     if current < SCHEMA_VERSION:

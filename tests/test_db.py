@@ -157,6 +157,41 @@ def test_migrate_requires_file_for_each_version(monkeypatch) -> None:
         fresh.close()
 
 
+def test_migrate_rejects_migration_newer_than_app(monkeypatch, tmp_path) -> None:
+    """Миграция новее приложения не применяется — иначе БД «окирпичится»."""
+    (tmp_path / "001_init.sql").write_text("CREATE TABLE a (id INTEGER);", encoding="utf-8")
+    (tmp_path / "002_future.sql").write_text("CREATE TABLE b (id INTEGER);", encoding="utf-8")
+    monkeypatch.setattr(connection, "MIGRATIONS_DIR", tmp_path)
+    monkeypatch.setattr(connection, "SCHEMA_VERSION", 1)
+
+    fresh = get_conn(":memory:")
+    try:
+        with pytest.raises(RuntimeError, match="новее этой версии"):
+            migrate(fresh)
+        # Версия осталась на 001 — самозапирания нет.
+        assert fresh.execute("PRAGMA user_version").fetchone()[0] == 1
+    finally:
+        fresh.close()
+
+
+def test_migrate_failure_rolls_back_and_names_file(monkeypatch, tmp_path) -> None:
+    """Сбой в середине миграции откатывает её целиком и называет файл."""
+    (tmp_path / "001_init.sql").write_text(
+        "CREATE TABLE ok_table (id INTEGER);\nCREATE TABLE bad (id INTEGER) IS BROKEN;",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(connection, "MIGRATIONS_DIR", tmp_path)
+
+    fresh = get_conn(":memory:")
+    try:
+        with pytest.raises(RuntimeError, match="001_init.sql"):
+            migrate(fresh)
+        assert "ok_table" not in _object_names(fresh)  # первая таблица откатилась
+        assert fresh.execute("PRAGMA user_version").fetchone()[0] == 0
+    finally:
+        fresh.close()
+
+
 def test_get_conn_anchors_relative_path_to_project_root(monkeypatch, tmp_path) -> None:
     """Относительный путь БД резолвится от корня проекта, а не от cwd."""
     monkeypatch.setattr(connection, "_PROJECT_ROOT", tmp_path)

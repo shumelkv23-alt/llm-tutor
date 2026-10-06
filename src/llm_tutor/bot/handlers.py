@@ -22,6 +22,7 @@ from llm_tutor.db.repos import (
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import NO_COURSE_ANSWER
 from llm_tutor.llm.schemas import ChatMessage
+from llm_tutor.rag.retriever import has_searchable_content
 
 START_SYSTEM_PROMPT = (
     "Ты — тьютор по курсу машинного обучения (mlcourse.ai), тема 1 «Pandas / EDA». "
@@ -105,8 +106,9 @@ async def handle_message(
 ) -> str:
     """Ход на свободный вопрос: RAG-контекст → ответ с опорой на материал курса.
 
-    Если ретривер не нашёл ни одного чанка — детерминированное «нет в курсе»
-    без вызова LLM (дёшево и предсказуемо).
+    Если ретривер не нашёл чанка на осмысленный запрос — детерминированное
+    «нет в курсе» без вызова LLM (дёшево и предсказуемо). Реплики без значимых
+    токенов (приветствие, благодарность) идут к модели как обычный диалог.
     """
     ts = time.time() if now is None else now
     session_id = ensure_open_session(conn, ts)
@@ -114,7 +116,7 @@ async def handle_message(
     package = build_context(
         conn, session_id, user_text, top_k=rag_top_k, dialog_tail=dialog_tail
     )
-    if not package.chunks:
+    if not package.chunks and has_searchable_content(user_text):
         reply = NO_COURSE_ANSWER
     else:
         try:
