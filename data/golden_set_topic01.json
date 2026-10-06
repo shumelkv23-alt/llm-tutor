@@ -1,0 +1,386 @@
+{
+  "course": "mlcourse.ai/topic01",
+  "comment": "Золотой набор для eval грейдера: ответы на задания 9 и 10 с разметкой по id критериев. Разметка сделана вручную и является мнением одного человека — набор грубый, для фильтра, а не для калибровки.",
+  "cases": [
+    {
+      "id": 1,
+      "item_id": 9,
+      "answer": "groupby разбивает строки на группы по значению столбца, потом agg считает агрегат по каждой группе, на выходе таблица, где строка — это группа",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": true
+        },
+        {
+          "id": 2,
+          "passed": true
+        },
+        {
+          "id": 3,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "item_id": 9,
+      "answer": "groupby группирует данные по столбцу, а agg применяет функцию вроде среднего к каждой группе",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": true
+        },
+        {
+          "id": 2,
+          "passed": true
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "item_id": 9,
+      "answer": "groupby сортирует таблицу по столбцу",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": false
+        },
+        {
+          "id": 2,
+          "passed": false
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "item_id": 9,
+      "answer": "groupby разбивает строки на группы по ключу",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": true
+        },
+        {
+          "id": 2,
+          "passed": false
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "item_id": 9,
+      "answer": "группируем по городу и считаем среднюю зарплату в каждой группе",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": true
+        },
+        {
+          "id": 2,
+          "passed": true
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "item_id": 9,
+      "answer": "groupby — это агрегация, он сразу считает среднее по всей таблице",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": false
+        },
+        {
+          "id": 2,
+          "passed": true
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "item_id": 9,
+      "answer": "разбиваем строки на группы по значению столбца и к каждой группе применяем агрегат, получаем таблицу по группам",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": true
+        },
+        {
+          "id": 2,
+          "passed": true
+        },
+        {
+          "id": 3,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "item_id": 9,
+      "answer": "agg нужен, чтобы применить функцию к группам",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": false
+        },
+        {
+          "id": 2,
+          "passed": true
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "item_id": 9,
+      "answer": "groupby группирует по ключу и возвращает таблицу, строки которой — группы",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": true
+        },
+        {
+          "id": 2,
+          "passed": false
+        },
+        {
+          "id": 3,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "item_id": 9,
+      "answer": "не знаю, не разбирался",
+      "criteria": [
+        {
+          "id": 1,
+          "passed": false
+        },
+        {
+          "id": 2,
+          "passed": false
+        },
+        {
+          "id": 3,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "item_id": 10,
+      "answer": "df.groupby('city')['age'].mean()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "item_id": 10,
+      "answer": "df.groupby('city').age.mean()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "item_id": 10,
+      "answer": "df.groupby('city').mean()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "item_id": 10,
+      "answer": "df.groupby('city')['age'].sum()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": false
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "item_id": 10,
+      "answer": "df.sort_values('city')['age'].mean()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": false
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "item_id": 10,
+      "answer": "df.groupby('city')['age'].mean()  # среднее по городам",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "item_id": 10,
+      "answer": "df['age'].mean()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": false
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": false
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "item_id": 10,
+      "answer": "df.groupby('city').agg({'age': 'mean'})",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "item_id": 10,
+      "answer": "df.groupby('city')['age'].count()",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": true
+        },
+        {
+          "id": 5,
+          "passed": false
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "item_id": 10,
+      "answer": "df.pivot_table(index='city', values='age', aggfunc='mean')",
+      "criteria": [
+        {
+          "id": 4,
+          "passed": false
+        },
+        {
+          "id": 5,
+          "passed": true
+        },
+        {
+          "id": 6,
+          "passed": true
+        }
+      ]
+    }
+  ]
+}
