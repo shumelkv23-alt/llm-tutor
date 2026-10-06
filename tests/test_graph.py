@@ -7,6 +7,7 @@ import pytest
 from llm_tutor.course.graph import CourseGraph, CourseGraphError
 from llm_tutor.course.seed import (
     DEFAULT_SEED_PATH,
+    SeedError,
     load_seed,
     load_seed_data,
     nodes_without_items,
@@ -269,6 +270,29 @@ def test_nodes_without_items_reports_gate_nodes() -> None:
     assert "python_basics" not in missing  # корень банком покрыт
     assert missing  # но несущие узлы без заданий ещё есть — о них предупреждаем
     assert "churn_eda_case" not in missing  # лист без зависимых — не проблема
+
+
+def test_seed_rejects_unknown_rubric_reference(tmp_path) -> None:
+    """Опечатка в id рубрики — понятная ошибка автору, а не IntegrityError."""
+    data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    for item in data["items"]:
+        if item["id"] == 9:
+            item["rubric_id"] = 99
+    path = tmp_path / "seed.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(SeedError, match="рубрику"):
+        load_seed_data(path)
+
+
+def test_seed_rejects_unknown_concept_in_item(tmp_path) -> None:
+    data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    data["items"][0]["concept_weights"] = {"ghost": 1.0}
+    path = tmp_path / "seed.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises(SeedError, match="концепты"):
+        load_seed_data(path)
 
 
 def test_seed_cli_missing_file_reports_clearly(tmp_path) -> None:

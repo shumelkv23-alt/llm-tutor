@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr, ValidationInfo, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Корень проекта (два уровня вверх от src/llm_tutor/config.py) — не зависит от cwd.
@@ -81,14 +81,15 @@ class Settings(BaseSettings):
     item_repeat_cooldown_days: float = 1.0
 
     # --- Анкета холодного старта, Срез 4.5 ---
-    # Вес самооценки (source='self') — слабое свидетельство.
-    self_evidence_weight: float = 0.3
+    # Вес самооценки (source='self') — слабое свидетельство. Границы важны:
+    # отрицательный вес сломал бы запись события прямо посреди хода.
+    self_evidence_weight: float = Field(default=0.3, ge=0.0, le=1.0)
 
     # --- Рубричный грейдер, Срез 6 ---
     # Вердикт модели по открытому ответу — свидетельство ограниченного веса:
     # ни одно «высокоставочное» решение (например, пропуск темы) не должно
     # приниматься только по нему (§9.2 архитектуры).
-    rubric_evidence_weight: float = 0.5
+    rubric_evidence_weight: float = Field(default=0.5, ge=0.0, le=1.0)
 
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL

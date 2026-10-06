@@ -286,6 +286,21 @@ async def test_open_answer_is_graded_with_limited_weight(conn, settings) -> None
     assert _state(conn).pending_item_id is None
 
 
+async def test_uncheckable_task_is_dropped_not_stuck(conn, settings) -> None:
+    """Задание, которое нечем проверить, снимается, а не висит вечно."""
+    load_seed(conn)
+    conn.execute("UPDATE criteria SET active = 0 WHERE rubric_id = 1")
+    conn.commit()
+    _set_state(conn, pending_item_id=9, current_node_id="groupby")
+
+    reply = await handle_turn(conn, _FakeTutor(), "m", "любой ответ", now=2.0, settings=settings)
+
+    assert "не удалось проверить" in reply
+    assert _state(conn).pending_item_id is None
+    assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
+    assert repos.get_events(conn) == []
+
+
 async def test_open_answer_without_confirmed_quote_is_not_credited(conn, settings) -> None:
     """Модель «засчитала», но цитаты в ответе нет — балл нулевой."""
     load_seed(conn)

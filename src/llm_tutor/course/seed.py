@@ -34,6 +34,38 @@ class Seed(BaseModel):
     criteria: list[Criterion] = Field(default_factory=list)
 
 
+class SeedError(ValueError):
+    """Seed внутренне несогласован: битые ссылки между его разделами."""
+
+
+def _check_references(seed: Seed) -> None:
+    """Проверяет ссылки между разделами seed.
+
+    Опечатка в id рубрики или концепта иначе всплыла бы сырым ``IntegrityError``
+    на старте бота (или, хуже, падением при ответе ученика) — а не подсказкой
+    автору, который правит банк руками.
+    """
+    rubric_ids = {rubric.id for rubric in seed.rubrics}
+    node_ids = {node.id for node in seed.nodes}
+
+    for criterion in seed.criteria:
+        if criterion.rubric_id not in rubric_ids:
+            raise SeedError(
+                f"Критерий {criterion.id} ссылается на неизвестную рубрику "
+                f"{criterion.rubric_id}"
+            )
+    for item in seed.items:
+        if item.rubric_id is not None and item.rubric_id not in rubric_ids:
+            raise SeedError(
+                f"Задание {item.id} ссылается на неизвестную рубрику {item.rubric_id}"
+            )
+        unknown = sorted(set(item.concept_weights) - node_ids)
+        if unknown:
+            raise SeedError(
+                f"Задание {item.id} ссылается на неизвестные концепты: {unknown}"
+            )
+
+
 def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     """Читает и валидирует seed-файл (без записи в БД)."""
     source = Path(path)
@@ -42,6 +74,7 @@ def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     raw = json.loads(source.read_text(encoding="utf-8"))
     seed = Seed.model_validate(raw)
     CourseGraph(seed.nodes, seed.edges)  # падает на цикле/дубле/битой ссылке
+    _check_references(seed)
     return seed
 
 

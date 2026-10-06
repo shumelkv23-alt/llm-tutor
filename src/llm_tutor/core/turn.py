@@ -46,6 +46,9 @@ SKIP_REPLY = (
     "Можно взять новое задание: /task."
 )
 NOTHING_TO_SKIP_REPLY = "Сейчас нет задания, которое нужно пропустить."
+GRADING_FAILED_REPLY = (
+    "Это задание не удалось проверить — снимаю его. Возьми новое: /task."
+)
 
 
 def _render_item(item: Item) -> str:
@@ -150,13 +153,26 @@ async def _answer_branch(
             state.model_copy(update={"pending_item_id": None}),
         )
 
-    if item.answer_type in diagnostic.AUTO_CHECKABLE:
-        result = autocheck.check(item, _normalize_choice_answer(item, user_text))
-    elif item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
-        result = await rubric.grade(conn, client, model, item, user_text, settings=settings)
-    else:
+    try:
+        if item.answer_type in diagnostic.AUTO_CHECKABLE:
+            result = autocheck.check(item, _normalize_choice_answer(item, user_text))
+        elif item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
+            result = await rubric.grade(
+                conn, client, model, item, user_text, settings=settings
+            )
+        else:
+            return (
+                STALE_ITEM_REPLY,
+                [],
+                [],
+                state.model_copy(update={"pending_item_id": None}),
+            )
+    except (rubric.RubricError, autocheck.AutoCheckError):
+        # Задание нельзя проверить (рубрику убрали, эталон битый) — снимаем его,
+        # иначе оно залипнет и ученик не сможет выйти из него иначе как /skip.
+        logger.warning("Задание %s не проверяется, снимаю", item.id)
         return (
-            STALE_ITEM_REPLY,
+            GRADING_FAILED_REPLY,
             [],
             [],
             state.model_copy(update={"pending_item_id": None}),

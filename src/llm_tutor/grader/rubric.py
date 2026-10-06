@@ -7,6 +7,7 @@
 по весам критериев — модель балл не выставляет.
 """
 
+import re
 import sqlite3
 from collections.abc import Sequence
 
@@ -25,6 +26,12 @@ class RubricError(ValueError):
     """Задание не подходит для рубричной проверки."""
 
 
+# Минимальная содержательность цитаты: односимвольная или пунктуационная
+# цитата подтверждает что угодно, то есть защитой не является.
+MIN_QUOTE_LENGTH = 3
+_ALNUM_RE = re.compile(r"\w", re.UNICODE)
+
+
 class CriterionVerdict(BaseModel):
     """Вердикт модели по одному критерию (цитату ещё проверит код)."""
 
@@ -41,10 +48,17 @@ class RubricVerdict(BaseModel):
 
 
 def check_quote(quote: str | None, answer: str) -> bool:
-    """Есть ли дословная цитата в ответе (регистр и пробелы не в счёт)."""
-    if not quote:
+    """Есть ли дословная цитата в ответе (регистр и пробелы не в счёт).
+
+    Цитата должна остаться содержательной ПОСЛЕ нормализации: цитата из
+    кавычки, пробела или одного символа нормализуется в пустую строку, а
+    пустая строка — подстрока чего угодно, то есть подтверждала бы любой
+    критерий при любом ответе.
+    """
+    normalized = normalize_answer(quote or "")
+    if len(normalized) < MIN_QUOTE_LENGTH or not _ALNUM_RE.search(normalized):
         return False
-    return normalize_answer(quote) in normalize_answer(answer)
+    return normalized in normalize_answer(answer)
 
 
 def verdict_to_result(
@@ -79,6 +93,43 @@ def verdict_to_result(
     )
 
 
+def _rubric_criteria(conn: sqlite3.Connection, item: Item) -> list[Criterion]:
+    """Активные критерии рубрики задания (падает, если рубрики нет)."""
+    if item.rubric_id is None:
+        raise RubricError(f"У задания {item.id} нет рубрики")
+    criteria = repos.get_criteria(conn, item.rubric_id)
+    if not criteria:
+        raise RubricError(f"У рубрики {item.rubric_id} нет активных критериев")
+    return criteria
+
+
+def _messages(item: Item, criteria: Sequence[Criterion], answer: str) -> list[ChatMessage]:
+    """Изолированный запрос: правила + задание с критериями и ответ ученика."""
+    return [
+        ChatMessage(role="system", content=GRADER_SYSTEM_PROMPT),
+        ChatMessage(
+            role="user", content=format_grader_request(item.prompt, criteria, answer)
+        ),
+    ]
+
+
+async def grade_with_verdict(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    item: Item,
+    answer: str,
+    *,
+    settings: Settings | None = None,
+) -> tuple[RubricVerdict, list[Criterion], GradeResult]:
+    """Как ``grade``, но отдаёт ещё вердикт модели и критерии — для eval."""
+    criteria = _rubric_criteria(conn, item)
+    verdict = await client.chat_structured(
+        _messages(item, criteria, answer), RubricVerdict, model=model
+    )
+    return verdict, criteria, verdict_to_result(criteria, verdict, answer)
+
+
 async def grade(
     conn: sqlite3.Connection,
     client: LLMClient,
@@ -89,17 +140,5 @@ async def grade(
     settings: Settings | None = None,
 ) -> GradeResult:
     """Оценивает открытый или код-ответ по рубрике задания."""
-    if item.rubric_id is None:
-        raise RubricError(f"У задания {item.id} нет рубрики")
-    criteria = repos.get_criteria(conn, item.rubric_id)
-    if not criteria:
-        raise RubricError(f"У рубрики {item.rubric_id} нет активных критериев")
-
-    messages = [
-        ChatMessage(role="system", content=GRADER_SYSTEM_PROMPT),
-        ChatMessage(
-            role="user", content=format_grader_request(item.prompt, criteria, answer)
-        ),
-    ]
-    verdict = await client.chat_structured(messages, RubricVerdict, model=model)
-    return verdict_to_result(criteria, verdict, answer)
+    _, _, result = await grade_with_verdict(conn, client, model, item, answer, settings=settings)
+    return result

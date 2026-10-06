@@ -5,7 +5,8 @@ import pytest
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Event, Item
-from llm_tutor.student import beta
+from llm_tutor.course.seed import load_seed
+from llm_tutor.student import beta, diagnostic
 from llm_tutor.student.diagnostic import (
     DiagnosticQuestion,
     next_question,
@@ -127,6 +128,18 @@ def test_freshly_answered_item_is_not_asked_again(conn, settings) -> None:
 
     assert soon is None  # кулдаун ещё идёт
     assert day_later is not None  # через сутки вопрос снова осмыслен
+
+
+def test_rubric_item_without_criteria_is_not_offered(conn, settings) -> None:
+    """Задание, которое нечем проверить, выдавать нельзя."""
+    load_seed(conn)
+    conn.execute("UPDATE criteria SET active = 0 WHERE rubric_id = 1")
+    conn.commit()
+
+    ids = {item.id for item in diagnostic._available_items(conn, include_rubric=True)}
+
+    assert 9 not in ids  # рубрика 1 осталась без критериев
+    assert 10 in ids
 
 
 def test_open_item_is_not_used_for_diagnostics(conn, settings) -> None:

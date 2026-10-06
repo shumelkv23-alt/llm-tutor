@@ -53,15 +53,22 @@ def _available_items(
     ``include_rubric`` добавляет открытые и код-задания с рубрикой — их
     проверяет грейдер, поэтому диагностика (которая считает сама) их не берёт.
     """
+    gradable_rubrics = (
+        {
+            rubric.id
+            for rubric in repos.get_rubrics(conn)
+            if repos.get_criteria(conn, rubric.id)
+        }
+        if include_rubric
+        else set()
+    )
+
     items = []
     for item in repos.get_items(conn):
         if item.answer_type in AUTO_CHECKABLE and item.answer is not None:
             items.append(item)
-        elif (
-            include_rubric
-            and item.answer_type in RUBRIC_CHECKABLE
-            and item.rubric_id is not None
-        ):
+        elif item.answer_type in RUBRIC_CHECKABLE and item.rubric_id in gradable_rubrics:
+            # Задание без активных критериев выдать нельзя: проверить нечем.
             items.append(item)
     return items
 
