@@ -1,10 +1,8 @@
 """Модели сообщений для общения с LLM (OpenAI-совместимый формат OpenRouter)."""
 
-from typing import Literal
-
 from pydantic import BaseModel
 
-Role = Literal["system", "user", "assistant"]
+from llm_tutor.schemas import Role
 
 
 class ChatMessage(BaseModel):

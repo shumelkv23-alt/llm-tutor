@@ -9,6 +9,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Корень проекта (два уровня вверх от src/llm_tutor/config.py) — не зависит от cwd.
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Дефолты сборки контекста (Срез 3) — единый источник для Settings и core.context.
+DEFAULT_DIALOG_TAIL = 8
+DEFAULT_RAG_TOP_K = 4
+
 
 class Settings(BaseSettings):
     """Настройки, читаемые из `.env` и переменных окружения.
@@ -67,9 +71,9 @@ class Settings(BaseSettings):
     diagnostic_max_questions: int = 20
     diagnostic_uncertainty_threshold: float = 0.15
 
-    # --- Сборка контекста, Срез 5 ---
-    context_dialog_tail: int = 8
-    context_rag_top_k: int = 4
+    # --- Сборка контекста, Срез 3 ---
+    context_dialog_tail: int = DEFAULT_DIALOG_TAIL
+    context_rag_top_k: int = DEFAULT_RAG_TOP_K
 
     @field_validator("openrouter_api_key", "telegram_bot_token")
     @classmethod
