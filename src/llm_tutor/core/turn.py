@@ -50,8 +50,8 @@ GRADING_FAILED_REPLY = (
 )
 # По текущему узлу заданий в банке нет — ведём диалогом, узел не рвём.
 NO_TASK_FOR_NODE_REPLY = (
-    "По этому узлу заданий у меня нет — идём разговором: спрашивай, объясню. "
-    "Закроем узел, когда разберёмся."
+    "По этому узлу новых заданий сейчас нет — свежие ты уже отвечал. "
+    "Возьми ещё раз то же: /task, или спрашивай — объясню."
 )
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
@@ -283,6 +283,7 @@ async def handle_turn(
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
     options: list[str] | None = None
+    answered_item_id = state.pending_item_id
 
     if state.pending_item_id is not None and not _looks_like_question(user_text):
         reply, events, mastery, new_state = await _answer_branch(
@@ -295,10 +296,20 @@ async def handle_turn(
         )
         if closed_note:
             reply = f"{reply}\n\n{closed_note}"
-            new_state, task_text, options = _issue_task(
-                conn, graph, new_state, now=stamp, settings=s
-            )
-            reply = f"{reply}\n\n{task_text}"
+        # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
+        new_state, task_text, options = _issue_task(
+            conn,
+            graph,
+            new_state,
+            exclude_item_ids=(
+                frozenset({answered_item_id})
+                if answered_item_id is not None
+                else frozenset()
+            ),
+            now=stamp,
+            settings=s,
+        )
+        reply = f"{reply}\n\n{task_text}"
     else:
         reply, events, mastery, new_state = await _tutor_branch(
             conn, client, model, session_id, user_text, state, graph, now=stamp, settings=s
@@ -380,17 +391,32 @@ def _issue_task(
     graph: CourseGraph,
     state: SessionState,
     *,
+    exclude_item_ids: frozenset[int] = frozenset(),
     now: float,
     settings: Settings,
 ) -> tuple[SessionState, str, list[str] | None]:
-    """Выдаёт задание по текущему узлу и переводит занятие в фазу практики."""
+    """Выдаёт задание по текущему узлу и переводит занятие в фазу практики.
+
+    ``exclude_item_ids`` — задания, только что отвеченные в этом же ходу: их
+    события ещё не записаны (запись идёт одним коммитом после), поэтому защита
+    от повтора должна учитывать их явно.
+    """
     if state.current_node_id is not None:
         question = diagnostic.question_for_node(
-            conn, state.current_node_id, now=now, settings=settings
+            conn,
+            state.current_node_id,
+            asked_item_ids=exclude_item_ids,
+            now=now,
+            settings=settings,
         )
     else:
         question = diagnostic.next_question(
-            conn, graph, include_rubric=True, now=now, settings=settings
+            conn,
+            graph,
+            include_rubric=True,
+            asked_item_ids=exclude_item_ids,
+            now=now,
+            settings=settings,
         )
 
     if question is None:

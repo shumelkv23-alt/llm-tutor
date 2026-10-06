@@ -181,7 +181,7 @@ async def test_full_topic01_scenario() -> None:
 
         # 6. Состояние сессии пережило все ходы и осталось согласованным
         state = repos.get_session_state(conn, session_id)
-        assert state.pending_item_id is None
+        assert state.pending_item_id != 9  # отвеченное задание снято
         assert state.attempts == 2
         messages = repos.get_messages(conn, session_id)
         assert [m.role for m in messages][:2] == ["user", "assistant"]

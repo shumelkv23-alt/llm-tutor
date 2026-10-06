@@ -248,7 +248,7 @@ async def test_button_answer_goes_through_turn(conn, settings) -> None:
     await _handler(router, "callback_query", 0)(FakeCallback("answer:0", message))
 
     assert repos.get_events(conn)  # ответ проверен кодом и записан
-    assert _state(conn).pending_item_id is None
+    assert _state(conn).pending_item_id != 6  # отвеченное задание снято
 
 
 async def test_text_answer_goes_through_turn(conn, settings) -> None:

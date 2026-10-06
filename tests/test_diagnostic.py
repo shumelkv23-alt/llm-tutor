@@ -110,7 +110,8 @@ def test_stops_when_items_exhausted(conn, settings) -> None:
 
 
 def test_freshly_answered_item_is_not_asked_again(conn, settings) -> None:
-    """Повторный вопрос сразу после ответа накрутил бы счётчики."""
+    """При включённой паузе повторный вопрос сразу после ответа не задаётся."""
+    cool = settings.model_copy(update={"item_repeat_cooldown_days": 1.0})
     _concept(conn, "a")
     graph = _graph(["a"])
     item = _item(conn, item_id=1, concept_id="a", answer_type="short", answer="read_csv")
@@ -120,11 +121,11 @@ def test_freshly_answered_item_is_not_asked_again(conn, settings) -> None:
         DiagnosticQuestion(item=item, concept_id="a"),
         "read_csv",
         now=0.0,
-        settings=settings,
+        settings=cool,
     )
 
-    soon = next_question(conn, graph, now=100.0, settings=settings)
-    day_later = next_question(conn, graph, now=2 * beta.SECONDS_PER_DAY, settings=settings)
+    soon = next_question(conn, graph, now=100.0, settings=cool)
+    day_later = next_question(conn, graph, now=2 * beta.SECONDS_PER_DAY, settings=cool)
 
     assert soon is None  # кулдаун ещё идёт
     assert day_later is not None  # через сутки вопрос снова осмыслен
