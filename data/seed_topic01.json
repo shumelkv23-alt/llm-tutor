@@ -151,38 +151,236 @@
     }
   ],
   "edges": [
-    {"from_id": "python_basics", "to_id": "numpy_basics", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "python_basics", "to_id": "pandas_intro", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "numpy_basics", "to_id": "pandas_series", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pandas_intro", "to_id": "pandas_series", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_intro", "to_id": "pandas_dataframe", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_series", "to_id": "pandas_dataframe", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_dataframe", "to_id": "read_csv", "type": "requires", "hard": false, "weight": 0.6},
-    {"from_id": "pandas_dataframe", "to_id": "df_inspect", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "read_csv", "to_id": "df_inspect", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "df_inspect", "to_id": "describe_stats", "type": "requires", "hard": false, "weight": 0.6},
-    {"from_id": "df_inspect", "to_id": "dtype_conversion", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_dataframe", "to_id": "indexing_loc_iloc", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "indexing_loc_iloc", "to_id": "boolean_indexing", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_dataframe", "to_id": "sorting", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pandas_series", "to_id": "value_counts", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pandas_dataframe", "to_id": "value_counts", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_dataframe", "to_id": "apply_functions", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "boolean_indexing", "to_id": "apply_functions", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pandas_dataframe", "to_id": "groupby", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "groupby", "to_id": "agg_functions", "type": "requires", "hard": false, "weight": 0.7},
-    {"from_id": "agg_functions", "to_id": "summary_tables", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "groupby", "to_id": "summary_tables", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_dataframe", "to_id": "summary_tables", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "pandas_dataframe", "to_id": "df_transformations", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "apply_functions", "to_id": "df_transformations", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pandas_dataframe", "to_id": "visualization_basics", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "describe_stats", "to_id": "visualization_basics", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "visualization_basics", "to_id": "eda_workflow", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "groupby", "to_id": "eda_workflow", "type": "requires", "hard": false, "weight": 0.7},
-    {"from_id": "describe_stats", "to_id": "eda_workflow", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "eda_workflow", "to_id": "churn_eda_case", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "summary_tables", "to_id": "churn_eda_case", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "groupby", "to_id": "churn_eda_case", "type": "requires", "hard": false, "weight": 0.7}
+    {
+      "from_id": "python_basics",
+      "to_id": "numpy_basics",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "python_basics",
+      "to_id": "pandas_intro",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "numpy_basics",
+      "to_id": "pandas_series",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "pandas_intro",
+      "to_id": "pandas_series",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_intro",
+      "to_id": "pandas_dataframe",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_series",
+      "to_id": "pandas_dataframe",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "read_csv",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "df_inspect",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "read_csv",
+      "to_id": "df_inspect",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "df_inspect",
+      "to_id": "describe_stats",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "df_inspect",
+      "to_id": "dtype_conversion",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "indexing_loc_iloc",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "indexing_loc_iloc",
+      "to_id": "boolean_indexing",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "sorting",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_series",
+      "to_id": "value_counts",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "value_counts",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "apply_functions",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "boolean_indexing",
+      "to_id": "apply_functions",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "groupby",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "groupby",
+      "to_id": "agg_functions",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "agg_functions",
+      "to_id": "summary_tables",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "groupby",
+      "to_id": "summary_tables",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "summary_tables",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "df_transformations",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "apply_functions",
+      "to_id": "df_transformations",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "pandas_dataframe",
+      "to_id": "visualization_basics",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "describe_stats",
+      "to_id": "visualization_basics",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "visualization_basics",
+      "to_id": "eda_workflow",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "groupby",
+      "to_id": "eda_workflow",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.7
+    },
+    {
+      "from_id": "describe_stats",
+      "to_id": "eda_workflow",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "eda_workflow",
+      "to_id": "churn_eda_case",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "summary_tables",
+      "to_id": "churn_eda_case",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "groupby",
+      "to_id": "churn_eda_case",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.7
+    }
   ]
 }

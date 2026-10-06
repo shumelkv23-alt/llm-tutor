@@ -17,9 +17,6 @@ async def main() -> None:
     settings = get_settings()
 
     conn = get_conn(settings.db_path)
-    migrate(conn)
-    load_seed(conn)  # граф темы — идемпотентный upsert seed-файла
-
     client = LLMClient(
         base_url=settings.openrouter_base_url,
         api_key=settings.openrouter_api_key.get_secret_value(),
@@ -30,6 +27,8 @@ async def main() -> None:
     )
 
     try:
+        migrate(conn)
+        load_seed(conn)  # граф темы — идемпотентный upsert seed-файла
         bot = Bot(token=settings.telegram_bot_token.get_secret_value())
         dispatcher = Dispatcher()
         dispatcher.include_router(

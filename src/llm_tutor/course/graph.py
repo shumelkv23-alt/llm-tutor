@@ -1,8 +1,14 @@
 """Граф концептов курса поверх NetworkX (Срез 4.2).
 
-Граф пререквизитов — DAG: строка ``from_id`` требуется для ``to_id``.
-Учитываются только рёбра типа ``requires``; ``hard`` различает жёсткий
-пререквизит (блокирует узел) и мягкий (штраф к приоритету, не блокировка).
+Граф пререквизитов — DAG: ребро ``from_id -> to_id`` означает «``from_id``
+требуется для ``to_id``». В граф входят только рёбра типа ``requires``:
+``part_of``/``leads_to`` зарезервированы в схеме, но пререквизитами не
+являются — иначе связь другого типа между той же парой вытеснила бы
+``requires`` (у ``DiGraph`` на пару вершин одно ребро), а цикл из ``part_of``
+блокировал бы весь граф.
+
+``hard`` различает жёсткий пререквизит (блокирует узел) и мягкий (штраф к
+приоритету, не блокировка).
 """
 
 import sqlite3
@@ -17,26 +23,35 @@ _REQUIRES = "requires"
 
 
 class CourseGraphError(ValueError):
-    """Некорректный граф курса: цикл или ребро на несуществующий концепт."""
+    """Некорректный граф: цикл, дубль или ссылка на несуществующий концепт."""
 
 
 class CourseGraph:
     """DAG концептов курса: пререквизиты, зависимости, топологический порядок."""
 
     def __init__(self, concepts: Sequence[Concept], edges: Sequence[Edge]) -> None:
-        self._concepts: dict[str, Concept] = {c.id: c for c in concepts}
+        self._concepts: dict[str, Concept] = {}
+        for concept in concepts:
+            if concept.id in self._concepts:
+                raise CourseGraphError(f"Дубль концепта в графе: {concept.id}")
+            self._concepts[concept.id] = concept
+
         self._graph = nx.DiGraph()
         self._graph.add_nodes_from(self._concepts)
 
+        seen: set[tuple[str, str, str]] = set()
         for edge in edges:
+            key = (edge.from_id, edge.to_id, edge.type)
+            if key in seen:
+                raise CourseGraphError(
+                    f"Дубль ребра в графе: {edge.from_id} -> {edge.to_id} ({edge.type})"
+                )
+            seen.add(key)
             self._check_endpoints(edge)
-            self._graph.add_edge(
-                edge.from_id,
-                edge.to_id,
-                type=edge.type,
-                hard=edge.hard,
-                weight=edge.weight,
-            )
+            if edge.type == _REQUIRES:
+                self._graph.add_edge(
+                    edge.from_id, edge.to_id, hard=edge.hard, weight=edge.weight
+                )
         self.validate_dag()
 
     @classmethod
@@ -53,7 +68,7 @@ class CourseGraph:
                 )
 
     def validate_dag(self) -> None:
-        """Падает с ``CourseGraphError``, если в графе есть цикл."""
+        """Падает с ``CourseGraphError``, если в пререквизитах есть цикл."""
         try:
             cycle = nx.find_cycle(self._graph)
         except nx.NetworkXNoCycle:
@@ -83,7 +98,7 @@ class CourseGraph:
         return [
             (src, data)
             for src, _, data in self._graph.in_edges(node_id, data=True)
-            if data["type"] == _REQUIRES and (not hard_only or data["hard"])
+            if not hard_only or data["hard"]
         ]
 
     def prerequisites(self, node_id: str) -> list[str]:
@@ -101,18 +116,12 @@ class CourseGraph:
 
     def dependents(self, node_id: str) -> list[str]:
         """Прямые зависимые узлы (те, для кого ``node_id`` — пререквизит)."""
-        return sorted(
-            dst
-            for _, dst, data in self._graph.out_edges(node_id, data=True)
-            if data["type"] == _REQUIRES
-        )
+        return sorted(self._graph.successors(node_id))
 
     def edge_weight(self, from_id: str, to_id: str) -> float:
-        """Вес ребра ``requires`` (0.0, если рёбра нет)."""
+        """Вес ребра-пререквизита (0.0, если рёбра нет)."""
         data = self._graph.get_edge_data(from_id, to_id)
-        if not data or data.get("type") != _REQUIRES:
-            return 0.0
-        return float(data["weight"])
+        return float(data["weight"]) if data else 0.0
 
     def topo_order(self) -> list[str]:
         """Топологический порядок обхода (узел идёт после всех пререквизитов)."""
@@ -125,3 +134,12 @@ class CourseGraph:
     def descendants(self, node_id: str) -> set[str]:
         """Все (транзитивные) узлы, зависящие от данного."""
         return nx.descendants(self._graph, node_id)
+
+    def distance(self, from_id: str, to_id: str) -> int | None:
+        """Длина кратчайшего пути ``from_id -> to_id`` (``None``, если пути нет)."""
+        self.concept(from_id)
+        self.concept(to_id)
+        try:
+            return nx.shortest_path_length(self._graph, from_id, to_id)
+        except nx.NetworkXNoPath:
+            return None

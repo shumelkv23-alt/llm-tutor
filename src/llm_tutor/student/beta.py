@@ -20,6 +20,19 @@ from llm_tutor.db import repos
 
 SECONDS_PER_DAY = 86_400.0
 
+# Расписание повторения [эвристика]: чем увереннее владение, тем реже повторять.
+# Интервал ~ mean/(1−mean) дней со страховкой снизу (знаменатель) и потолком.
+REVIEW_BASE_DAYS = 1.0
+REVIEW_MAX_DAYS = 30.0
+_MIN_FAILURE_MASS = 0.05
+
+
+def _next_review(mean: float, now: float) -> float:
+    """Момент следующего повторения концепта (см. константы выше)."""
+    ratio = mean / max(1.0 - mean, _MIN_FAILURE_MASS)
+    days = min(REVIEW_MAX_DAYS, max(0.25 * REVIEW_BASE_DAYS, REVIEW_BASE_DAYS * ratio))
+    return now + days * SECONDS_PER_DAY
+
 
 @dataclass(frozen=True)
 class Mastery:
@@ -113,6 +126,7 @@ def update(
     Перед добавлением применяется decay от ``last_seen`` до ``now`` — иначе
     старые счётчики «капали» бы без затухания. ``correct`` — доля верного
     (обычно 0 или 1), ``weight`` — надёжность источника свидетельства.
+    Заодно назначается ``next_review`` — момент следующего повторения.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
@@ -121,8 +135,11 @@ def update(
     alpha += weight * correct
     beta += weight * (1.0 - correct)
 
-    repos.upsert_mastery(conn, concept_id, alpha=alpha, beta=beta, last_seen=stamp)
-    return _to_mastery(concept_id, alpha, beta, stamp, None)
+    next_review = _next_review(alpha / (alpha + beta), stamp)
+    repos.upsert_mastery(
+        conn, concept_id, alpha=alpha, beta=beta, last_seen=stamp, next_review=next_review
+    )
+    return _to_mastery(concept_id, alpha, beta, stamp, next_review)
 
 
 def propagate_success(

@@ -3,9 +3,11 @@
 import pytest
 
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Event
-from llm_tutor.student.planner import ready_nodes
+from llm_tutor.student import beta
+from llm_tutor.student.planner import _importance, ready_nodes
 
 
 def _graph(concepts: list[str], edges: list[tuple[str, str, bool]]) -> CourseGraph:
@@ -129,6 +131,48 @@ def test_confidently_mastered_node_is_skipped(conn, settings) -> None:
     ids = [node.concept_id for node in ready_nodes(conn, graph, now=0.0, settings=settings)]
 
     assert ids == ["b"]  # a освоен уверенно и в маршрут не попадает
+
+
+# --- реальный seed-граф ---
+
+
+def test_cold_start_offers_only_baseline_nodes(conn, settings) -> None:
+    """На холодном старте маршрут — только узлы без жёстких пререквизитов.
+
+    Иначе ученик с порога получает `read_csv`/`sorting`/`agg_functions` в
+    обход базы, ради которой весь граф и строился.
+    """
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+
+    ids = {
+        node.concept_id
+        for node in ready_nodes(conn, graph, limit=100, now=0.0, settings=settings)
+    }
+
+    roots = {n for n in graph.node_ids if not graph.hard_prerequisites(n)}
+    assert ids == roots
+    assert not ids & {"read_csv", "sorting", "agg_functions", "describe_stats"}
+
+
+def test_goal_proximity_raises_importance() -> None:
+    """Слагаемое «близость к цели» — реальный градиент, а не константа."""
+    near = _importance(descendants=1, max_descendants=3, distance=1, max_distance=3)
+    far = _importance(descendants=1, max_descendants=3, distance=3, max_distance=3)
+
+    assert near > far
+
+
+def test_review_mode_reachable_after_scheduled_interval(conn, settings) -> None:
+    """Расписание из beta.update делает режим «повторение» достижимым в проде."""
+    graph = _graph(["a"], [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    beta.update(conn, "a", correct=1.0, weight=4.0, now=0.0, settings=settings)
+
+    due = repos.get_mastery(conn, "a")["next_review"]
+    nodes = ready_nodes(conn, graph, now=due + 1.0, settings=settings)
+
+    assert _modes(nodes) == {"a": "review"}
 
 
 # --- цель и лимит ---

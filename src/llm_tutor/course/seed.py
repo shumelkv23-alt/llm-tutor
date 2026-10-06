@@ -33,19 +33,19 @@ class Seed(BaseModel):
 
 def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     """Читает и валидирует seed-файл (без записи в БД)."""
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    source = Path(path)
+    if not source.is_file():
+        raise FileNotFoundError(f"Seed-файл не найден: {source}")
+    raw = json.loads(source.read_text(encoding="utf-8"))
     seed = Seed.model_validate(raw)
-    CourseGraph(seed.nodes, seed.edges)  # падает на цикле/битой ссылке
+    CourseGraph(seed.nodes, seed.edges)  # падает на цикле/дубле/битой ссылке
     return seed
 
 
 def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) -> Seed:
-    """Идемпотентно пишет seed-граф в БД (upsert по id концепта и ребра)."""
+    """Идемпотентно приводит граф в БД к seed-файлу (истина — seed)."""
     seed = load_seed_data(path)
-    for concept in seed.nodes:
-        repos.upsert_concept(conn, concept)
-    for edge in seed.edges:
-        repos.upsert_edge(conn, edge)
+    repos.replace_graph(conn, seed.nodes, seed.edges)
     return seed
 
 
@@ -65,8 +65,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     conn = get_conn(args.db)
-    migrate(conn)
     try:
+        migrate(conn)
         seed = load_seed(conn, args.seed)
     finally:
         conn.close()

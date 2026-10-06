@@ -247,6 +247,19 @@ def test_render_plan_lists_ready_node_with_mode(conn, settings) -> None:
     assert "сжатый проход" in text
 
 
+def test_render_plan_reports_all_mastered(conn, settings) -> None:
+    """Когда весь граф освоен, /plan не врёт про незакрытые пререквизиты."""
+    seed = load_seed(conn)
+    for concept in seed.nodes:
+        repos.upsert_mastery(
+            conn, concept.id, alpha=38.0, beta=2.0, last_seen=0.0, next_review=1e9
+        )
+
+    text = render_plan(conn, now=0.0, settings=settings)
+
+    assert "освоено" in text
+
+
 def test_render_plan_empty_graph_hints_seed(conn, settings) -> None:
     text = render_plan(conn, now=0.0, settings=settings)
 

@@ -104,6 +104,36 @@ def test_update_applies_decay_before_adding(conn, settings) -> None:
     assert updated.last_seen == 30 * DAY
 
 
+def test_update_schedules_next_review(conn, settings) -> None:
+    """update назначает повторение — иначе режим «повторение» в проде мёртв."""
+    _concept(conn, "a")
+
+    result = beta.update(conn, "a", correct=1.0, now=0.0, settings=settings)
+
+    assert result.next_review is not None
+    assert repos.get_mastery(conn, "a")["next_review"] == result.next_review
+
+
+def test_next_review_grows_with_mastery(conn, settings) -> None:
+    """Чем увереннее владение, тем дальше следующий повтор."""
+    _concept(conn, "a")
+    weak = beta.update(conn, "a", correct=0.0, now=0.0, settings=settings)
+
+    strong = weak
+    for _ in range(6):
+        strong = beta.update(conn, "a", correct=1.0, now=0.0, settings=settings)
+
+    assert strong.next_review > weak.next_review
+
+
+def test_estimate_preserves_stored_next_review(conn, settings) -> None:
+    """Ленивое чтение не теряет назначенное повторение."""
+    _concept(conn, "a")
+    repos.upsert_mastery(conn, "a", alpha=5.0, beta=1.0, last_seen=0.0, next_review=999.0)
+
+    assert beta.estimate(conn, "a", now=0.0, settings=settings).next_review == 999.0
+
+
 def test_more_evidence_lowers_uncertainty(conn, settings) -> None:
     _concept(conn, "a")
     before = beta.estimate(conn, "a", now=0.0, settings=settings)

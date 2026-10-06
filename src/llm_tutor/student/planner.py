@@ -39,9 +39,47 @@ def _recent_failures(
     )
 
 
-def _goal_relevance(node_id: str, goal_concept_id: str | None) -> float:
-    """1.0, если узел нужен для цели (вне цели этот компонент выключен)."""
-    return 1.0 if goal_concept_id is not None else 0.0
+def _scope(graph: CourseGraph, goal_concept_id: str | None) -> set[str]:
+    """Узлы под рассмотрение: весь граф или путь к цели (предки + сама цель)."""
+    if goal_concept_id is None:
+        return set(graph.node_ids)
+    graph.concept(goal_concept_id)  # падает, если цели нет в графе
+    return graph.ancestors(goal_concept_id) | {goal_concept_id}
+
+
+def _eligible(graph: CourseGraph, means: dict[str, beta.Mastery], threshold: float, node_id: str) -> bool:
+    """Готов ли узел: все жёсткие пререквизиты доведены до порога освоения."""
+    return all(means[p].mean >= threshold for p in graph.hard_prerequisites(node_id))
+
+
+def _goal_distances(
+    graph: CourseGraph, candidates: list[str], goal_concept_id: str | None
+) -> dict[str, int]:
+    """Расстояние от каждого кандидата до цели по рёбрам пререквизитов."""
+    if goal_concept_id is None:
+        return {}
+    return {
+        node_id: distance
+        for node_id in candidates
+        if (distance := graph.distance(node_id, goal_concept_id)) is not None
+    }
+
+
+def _importance(
+    *,
+    descendants: int,
+    max_descendants: int,
+    distance: int | None,
+    max_distance: int,
+) -> float:
+    """Важность узла (0..1): сколько открывает и насколько близок к цели.
+
+    Вторая половина слагаемого (близость к цели) работает только когда цель
+    задана — иначе все кандидаты одинаково «не про цель», и она бы выродилась
+    в константу после нормализации.
+    """
+    relevance = 0.0 if distance is None else 1.0 - distance / max(max_distance, 1)
+    return 0.5 * relevance + 0.5 * (descendants / max_descendants)
 
 
 def _readiness(graph: CourseGraph, node_id: str, means: dict[str, beta.Mastery], threshold: float) -> float:
@@ -103,31 +141,31 @@ def ready_nodes(
 
     Жёсткие пререквизиты проверяются по порогу ``mastery_verify_threshold``.
     Узлы с режимом ``skip`` (уверенно освоены) в маршрут не попадают.
+
+    Пустой результат при непустом графе означает, что всё доступное уже
+    освоено: фронт готовности всегда содержит хотя бы корневые узлы.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
     if limit <= 0:
         return []
 
-    means = {node_id: beta.estimate(conn, node_id, now=stamp, settings=s) for node_id in graph.node_ids}
-
-    scope = set(graph.node_ids)
-    if goal_concept_id is not None:
-        graph.concept(goal_concept_id)  # падает, если цели нет в графе
-        scope = graph.ancestors(goal_concept_id) | {goal_concept_id}
-
+    means = {
+        node_id: beta.estimate(conn, node_id, now=stamp, settings=s)
+        for node_id in graph.node_ids
+    }
     candidates = [
         node_id
-        for node_id in scope
-        if all(
-            means[p].mean >= s.mastery_verify_threshold
-            for p in graph.hard_prerequisites(node_id)
-        )
+        for node_id in _scope(graph, goal_concept_id)
+        if _eligible(graph, means, s.mastery_verify_threshold, node_id)
     ]
     if not candidates:
         return []
 
-    max_descendants = max(len(graph.descendants(n)) for n in candidates) or 1
+    descendant_counts = {node_id: len(graph.descendants(node_id)) for node_id in candidates}
+    max_descendants = max(descendant_counts.values()) or 1
+    distances = _goal_distances(graph, candidates, goal_concept_id)
+    max_distance = max(distances.values(), default=0)
 
     scored: list[tuple[str, float, NodeMode]] = []
     for node_id in candidates:
@@ -148,8 +186,11 @@ def ready_nodes(
         if mode == "skip":
             continue
 
-        importance = 0.5 * _goal_relevance(node_id, goal_concept_id) + 0.5 * (
-            len(graph.descendants(node_id)) / max_descendants
+        importance = _importance(
+            descendants=descendant_counts[node_id],
+            max_descendants=max_descendants,
+            distance=distances.get(node_id),
+            max_distance=max_distance,
         )
         priority = (
             s.priority_w1 * importance

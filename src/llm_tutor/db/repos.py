@@ -192,8 +192,8 @@ def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[
 # --- concepts / edges (граф курса, Срез 4) ---
 
 
-def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
-    """Создаёт или обновляет концепт графа."""
+def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
+    """Upsert концепта без коммита (для вызова внутри чужой транзакции)."""
     conn.execute(
         "INSERT INTO concepts (id, name, difficulty, description, source_url) "
         "VALUES (?, ?, ?, ?, ?) "
@@ -208,17 +208,61 @@ def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
             concept.source_url,
         ),
     )
-    conn.commit()
 
 
-def upsert_edge(conn: sqlite3.Connection, edge: Edge) -> None:
-    """Создаёт или обновляет ребро графа (по тройке from/to/type)."""
+def _write_edge(conn: sqlite3.Connection, edge: Edge) -> None:
+    """Upsert ребра без коммита (по тройке from/to/type)."""
     conn.execute(
         "INSERT INTO edges (from_id, to_id, type, hard, weight) VALUES (?, ?, ?, ?, ?) "
         "ON CONFLICT(from_id, to_id, type) DO UPDATE SET "
         "hard = excluded.hard, weight = excluded.weight",
         (edge.from_id, edge.to_id, edge.type, int(edge.hard), edge.weight),
     )
+
+
+def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
+    """Создаёт или обновляет концепт графа."""
+    _write_concept(conn, concept)
+    conn.commit()
+
+
+def replace_graph(
+    conn: sqlite3.Connection, concepts: Sequence[Concept], edges: Sequence[Edge]
+) -> None:
+    """Атомарно приводит граф в БД к заданному набору узлов и рёбер.
+
+    Seed — источник истины: его узлы/рёбра upsert-ятся, а всё, чего в нём
+    больше нет, удаляется. Иначе в БД копятся «призрачные» связи, и
+    планировщик блокирует узлы по пререквизитам, которых в seed уже нет.
+
+    Узел, на который ссылаются события или чанки, не удаляется — падаем с
+    понятной ошибкой, откатив всю операцию (журнал ученика не переписываем).
+    """
+    node_ids = {concept.id for concept in concepts}
+    edge_keys = {(edge.from_id, edge.to_id, edge.type) for edge in edges}
+    try:
+        for concept in concepts:
+            _write_concept(conn, concept)
+        for edge in edges:
+            _write_edge(conn, edge)
+        for row in conn.execute("SELECT from_id, to_id, type FROM edges").fetchall():
+            key = (row["from_id"], row["to_id"], row["type"])
+            if key not in edge_keys:
+                conn.execute(
+                    "DELETE FROM edges WHERE from_id = ? AND to_id = ? AND type = ?", key
+                )
+        for row in conn.execute("SELECT id FROM concepts").fetchall():
+            if row["id"] not in node_ids:
+                conn.execute("DELETE FROM concepts WHERE id = ?", (row["id"],))
+    except sqlite3.IntegrityError as exc:
+        conn.rollback()
+        raise RuntimeError(
+            f"Не убрать концепт из графа: на него ссылаются данные ученика ({exc}). "
+            "Оставь узел в seed или перенеси данные вручную."
+        ) from exc
+    except Exception:
+        conn.rollback()
+        raise
     conn.commit()
 
 
