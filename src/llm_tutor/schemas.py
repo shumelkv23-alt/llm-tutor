@@ -6,7 +6,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 Role = Literal["system", "user", "assistant"]
 
@@ -32,6 +32,8 @@ class Concept(BaseModel):
     difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
     description: str | None = None
     source_url: str | None = None
+    # Убранный из seed узел не удаляется (на него ссылаются события), а гасится.
+    active: bool = True
 
 
 class Edge(BaseModel):
@@ -71,6 +73,28 @@ class Item(BaseModel):
     options: list[str] = Field(default_factory=list)  # варианты для choice
     answer: str | None = None  # эталон: для choice — индекс варианта, иначе текст
     rubric_id: int | None = None
+    # Убранное из seed задание не удаляется (на него ссылаются события), а гасится.
+    active: bool = True
+
+    @model_validator(mode="after")
+    def _check_reference_answer(self) -> "Item":
+        """Проверяемая связка тип ↔ варианты ↔ эталон.
+
+        Битый эталон опаснее отсутствующего: без этой проверки задание с
+        индексом вне диапазона молча писал бы result=0 за верный ответ и
+        отравлял модель ученика.
+        """
+        if self.answer_type == "choice":
+            if not self.options:
+                raise ValueError(f"у choice-задания {self.id} должны быть варианты")
+            index = (self.answer or "").strip()
+            if not index.isdigit() or not 0 <= int(index) < len(self.options):
+                raise ValueError(
+                    f"эталон choice-задания {self.id} — индекс в 0..{len(self.options) - 1}"
+                )
+        elif self.answer_type == "short" and not (self.answer or "").strip():
+            raise ValueError(f"у short-задания {self.id} должен быть непустой эталон")
+        return self
 
 
 class Event(BaseModel):

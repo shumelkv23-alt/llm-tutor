@@ -9,7 +9,7 @@ MIGRATIONS_DIR = _PROJECT_ROOT / "migrations"
 
 # Текущая (максимальная известная) версия схемы. Управляется номером файла
 # миграции NNN_*.sql; здесь — ожидаемая по коду.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def get_conn(db_path: str) -> sqlite3.Connection:

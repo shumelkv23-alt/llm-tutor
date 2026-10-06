@@ -50,6 +50,21 @@ def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) ->
     return seed
 
 
+def nodes_without_items(seed: Seed) -> list[str]:
+    """«Несущие» узлы без задания в банке — диагностика их проверить не сможет.
+
+    Возвращаются только узлы с зависимыми: непроверенная база запирает весь
+    маршрут, тогда как лист без задания — терпимо.
+    """
+    graph = CourseGraph(seed.nodes, seed.edges)
+    covered = {concept_id for item in seed.items for concept_id in item.concept_weights}
+    return sorted(
+        node_id
+        for node_id in graph.node_ids
+        if node_id not in covered and graph.dependents(node_id)
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI: загрузить seed-граф в БД."""
     import argparse
@@ -76,6 +91,9 @@ def main(argv: list[str] | None = None) -> int:
         f"Загружено: {len(seed.nodes)} концептов, {len(seed.edges)} рёбер, "
         f"{len(seed.items)} заданий ({seed.course})"
     )
+    missing = nodes_without_items(seed)
+    if missing:
+        print(f"Без заданий (диагностика их не возьмёт): {', '.join(missing)}")
     return 0
 
 

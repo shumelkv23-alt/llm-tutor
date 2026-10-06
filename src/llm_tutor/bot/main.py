@@ -9,7 +9,7 @@ from llm_tutor.bot.diagnostic import make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.config import get_settings
-from llm_tutor.course.seed import load_seed
+from llm_tutor.course.seed import load_seed, nodes_without_items
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
 
@@ -30,7 +30,12 @@ async def main() -> None:
 
     try:
         migrate(conn)
-        load_seed(conn)  # граф темы — идемпотентный upsert seed-файла
+        seed = load_seed(conn)  # граф темы — идемпотентный upsert seed-файла
+        missing = nodes_without_items(seed)
+        if missing:
+            logging.warning(
+                "Узлы без заданий — диагностика их не проверит: %s", ", ".join(missing)
+            )
         bot = Bot(token=settings.telegram_bot_token.get_secret_value())
         dispatcher = Dispatcher()
         # FSM-потоки (анкета, диагностика) идут первыми: их шаги не должны

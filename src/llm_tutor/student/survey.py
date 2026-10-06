@@ -126,10 +126,13 @@ def apply_answers(
     """Сохраняет ответы анкеты в ``facts`` и раздаёт слабый априор по концептам.
 
     ``answers`` — ключ вопроса → индекс выбранного варианта. Незаполненные
-    вопросы просто не сохраняются (анкету можно прервать).
+    вопросы просто не сохраняются (анкету можно прервать). Повторное
+    применение факты перезаписывает, но априор **не** начисляет заново:
+    иначе самооценка накрутила бы счётчики.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
+    first_completion = not is_completed(conn)
 
     for key, index in answers.items():
         question = question_by_key(key)
@@ -143,7 +146,7 @@ def apply_answers(
             repos.set_fact(conn, GOAL_CONCEPT_KEY, option.target_concept, source="self")
 
     experience = answers.get(EXPERIENCE_KEY)
-    if experience is not None:
+    if experience is not None and first_completion:
         for concept_id, correct in _EXPERIENCE_PRIOR[experience].items():
             _apply_prior(conn, concept_id, correct, now=stamp, settings=s)
 

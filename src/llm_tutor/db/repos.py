@@ -205,17 +205,20 @@ def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[
 def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     """Upsert концепта без коммита (для вызова внутри чужой транзакции)."""
     conn.execute(
-        "INSERT INTO concepts (id, name, difficulty, description, source_url) "
-        "VALUES (?, ?, ?, ?, ?) "
+        "INSERT INTO concepts (id, name, difficulty, description, source_url, active) "
+        "VALUES (?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "name = excluded.name, difficulty = excluded.difficulty, "
-        "description = excluded.description, source_url = excluded.source_url",
+        "description = excluded.description, source_url = excluded.source_url, "
+        # Вернувшийся в seed узел снова активен.
+        "active = 1",
         (
             concept.id,
             concept.name,
             concept.difficulty,
             concept.description,
             concept.source_url,
+            int(concept.active),
         ),
     )
 
@@ -234,12 +237,15 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
     """Upsert задания банка без коммита."""
     conn.execute(
         "INSERT INTO items "
-        "(id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "(id, concept_weights, difficulty, answer_type, prompt, options, answer,"
+        " rubric_id, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "concept_weights = excluded.concept_weights, difficulty = excluded.difficulty, "
         "answer_type = excluded.answer_type, prompt = excluded.prompt, "
-        "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id",
+        "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id, "
+        # Вернувшееся в seed задание снова активно.
+        "active = 1",
         (
             item.id,
             json.dumps(item.concept_weights, ensure_ascii=False),
@@ -249,6 +255,7 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
             json.dumps(item.options, ensure_ascii=False),
             item.answer,
             item.rubric_id,
+            int(item.active),
         ),
     )
 
@@ -260,7 +267,7 @@ def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
 
 
 _ITEM_COLUMNS = (
-    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id"
+    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id, active"
 )
 
 
@@ -274,23 +281,26 @@ def _row_to_item(row: sqlite3.Row) -> Item:
         options=json.loads(row["options"]),
         answer=row["answer"],
         rubric_id=row["rubric_id"],
+        active=bool(row["active"]),
     )
 
 
 def upsert_item(conn: sqlite3.Connection, item: Item) -> None:
-    """Создаёт или обновляет задание банка."""
+    """Создаёт или обновляет задание банка (путь авторской правки банка)."""
     _write_item(conn, item)
     conn.commit()
 
 
 def get_items(conn: sqlite3.Connection) -> list[Item]:
-    """Все задания банка (порядок — по id, детерминированный)."""
-    rows = conn.execute(f"SELECT {_ITEM_COLUMNS} FROM items ORDER BY id").fetchall()
+    """Активные задания банка (порядок — по id, детерминированный)."""
+    rows = conn.execute(
+        f"SELECT {_ITEM_COLUMNS} FROM items WHERE active = 1 ORDER BY id"
+    ).fetchall()
     return [_row_to_item(row) for row in rows]
 
 
 def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
-    """Задание по id или ``None``."""
+    """Задание по id (в том числе погашенное) или ``None``."""
     row = conn.execute(
         f"SELECT {_ITEM_COLUMNS} FROM items WHERE id = ?", (item_id,)
     ).fetchone()
@@ -306,11 +316,11 @@ def replace_seed(
     """Атомарно приводит граф и банк заданий в БД к содержимому seed.
 
     Seed — источник истины: его узлы/рёбра/задания upsert-ятся, а всё, чего
-    в нём больше нет, удаляется. Иначе в БД копятся «призрачные» связи, и
-    планировщик блокирует узлы по пререквизитам, которых в seed уже нет.
+    в нём больше нет, гасится (``active = 0``) — физически удалять нельзя,
+    на узлы ссылаются события, чанки и mastery, а на задания — события.
+    Погашенное не попадает в граф и банк, но журнал ученика остаётся целым.
 
-    Запись, на которую ссылаются данные ученика (события, чанки), не
-    удаляется — падаем с понятной ошибкой, откатив всю операцию.
+    Рёбра удаляются по-настоящему: на них никто не ссылается.
     """
     node_ids = {concept.id for concept in concepts}
     edge_keys = {(edge.from_id, edge.to_id, edge.type) for edge in edges}
@@ -328,18 +338,12 @@ def replace_seed(
                 conn.execute(
                     "DELETE FROM edges WHERE from_id = ? AND to_id = ? AND type = ?", key
                 )
-        for row in conn.execute("SELECT id FROM concepts").fetchall():
+        for row in conn.execute("SELECT id FROM concepts WHERE active = 1").fetchall():
             if row["id"] not in node_ids:
-                conn.execute("DELETE FROM concepts WHERE id = ?", (row["id"],))
-        for row in conn.execute("SELECT id FROM items").fetchall():
+                conn.execute("UPDATE concepts SET active = 0 WHERE id = ?", (row["id"],))
+        for row in conn.execute("SELECT id FROM items WHERE active = 1").fetchall():
             if row["id"] not in item_ids:
-                conn.execute("DELETE FROM items WHERE id = ?", (row["id"],))
-    except sqlite3.IntegrityError as exc:
-        conn.rollback()
-        raise RuntimeError(
-            f"Не убрать запись из seed: на неё ссылаются данные ученика ({exc}). "
-            "Оставь её в seed или перенеси данные вручную."
-        ) from exc
+                conn.execute("UPDATE items SET active = 0 WHERE id = ?", (row["id"],))
     except Exception:
         conn.rollback()
         raise
@@ -347,9 +351,10 @@ def replace_seed(
 
 
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
-    """Все концепты графа (порядок — по id, детерминированный)."""
+    """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(
-        "SELECT id, name, difficulty, description, source_url FROM concepts ORDER BY id"
+        "SELECT id, name, difficulty, description, source_url, active "
+        "FROM concepts WHERE active = 1 ORDER BY id"
     ).fetchall()
     return [
         Concept(
@@ -358,15 +363,19 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
             difficulty=r["difficulty"],
             description=r["description"],
             source_url=r["source_url"],
+            active=bool(r["active"]),
         )
         for r in rows
     ]
 
 
 def get_edges(conn: sqlite3.Connection) -> list[Edge]:
-    """Все рёбра графа (порядок — по from_id/to_id, детерминированный)."""
+    """Рёбра между активными концептами (порядок детерминированный)."""
     rows = conn.execute(
-        "SELECT from_id, to_id, type, hard, weight FROM edges ORDER BY from_id, to_id, type"
+        "SELECT from_id, to_id, type, hard, weight FROM edges "
+        "WHERE from_id IN (SELECT id FROM concepts WHERE active = 1) "
+        "AND to_id IN (SELECT id FROM concepts WHERE active = 1) "
+        "ORDER BY from_id, to_id, type"
     ).fetchall()
     return [
         Edge(

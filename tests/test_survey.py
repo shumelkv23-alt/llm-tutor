@@ -90,6 +90,17 @@ def test_unknown_question_key_raises(conn, settings) -> None:
         survey.apply_answers(conn, {"favourite_food": 0}, now=0.0, settings=settings)
 
 
+def test_reapplying_survey_does_not_double_prior(conn, settings) -> None:
+    """Повторный проход анкеты не должен накручивать самооценку дважды."""
+    load_seed(conn)
+    survey.apply_answers(conn, {EXPERIENCE: 3}, now=0.0, settings=settings)
+    after_first = repos.get_mastery(conn, "pandas_dataframe")["alpha"]
+
+    survey.apply_answers(conn, {EXPERIENCE: 3}, now=0.0, settings=settings)
+
+    assert repos.get_mastery(conn, "pandas_dataframe")["alpha"] == after_first
+
+
 def test_is_completed_reflects_experience_fact(conn, settings) -> None:
     load_seed(conn)
     assert survey.is_completed(conn) is False

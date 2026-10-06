@@ -148,13 +148,35 @@ def test_migrate_missing_dir_raises_clear_error(monkeypatch) -> None:
 
 def test_migrate_requires_file_for_each_version(monkeypatch) -> None:
     """SCHEMA_VERSION выше максимальной миграции → ошибка, а не ложная версия."""
-    monkeypatch.setattr(connection, "SCHEMA_VERSION", 2)  # нет файла 002_*.sql
+    monkeypatch.setattr(connection, "SCHEMA_VERSION", 99)  # нет файла 099_*.sql
     fresh = get_conn(":memory:")
     try:
         with pytest.raises(RuntimeError, match="Нет миграций"):
             migrate(fresh)
     finally:
         fresh.close()
+
+
+def test_migrate_upgrades_existing_database(monkeypatch, tmp_path) -> None:
+    """БД со схемой прошлой версии обновляется миграцией, а не ломается."""
+    (tmp_path / "001_init.sql").write_text(
+        (connection.MIGRATIONS_DIR / "001_init.sql").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(connection, "MIGRATIONS_DIR", tmp_path)
+    monkeypatch.setattr(connection, "SCHEMA_VERSION", 1)
+    old = get_conn(":memory:")
+    try:
+        migrate(old)
+        assert old.execute("PRAGMA user_version").fetchone()[0] == 1
+
+        monkeypatch.undo()  # возвращаем реальные миграции и SCHEMA_VERSION
+        migrate(old)
+
+        assert old.execute("PRAGMA user_version").fetchone()[0] == connection.SCHEMA_VERSION
+        assert "active" in {r["name"] for r in old.execute("PRAGMA table_info(items)")}
+    finally:
+        old.close()
 
 
 def test_migrate_rejects_migration_newer_than_app(monkeypatch, tmp_path) -> None:

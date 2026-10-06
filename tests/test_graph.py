@@ -5,7 +5,12 @@ import json
 import pytest
 
 from llm_tutor.course.graph import CourseGraph, CourseGraphError
-from llm_tutor.course.seed import DEFAULT_SEED_PATH, load_seed, load_seed_data
+from llm_tutor.course.seed import (
+    DEFAULT_SEED_PATH,
+    load_seed,
+    load_seed_data,
+    nodes_without_items,
+)
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Event
 
@@ -175,7 +180,8 @@ def test_load_seed_writes_items(conn) -> None:
     assert repos.get_item(conn, stored[0].id) == stored[0]
 
 
-def test_load_seed_prunes_stale_items(conn, tmp_path) -> None:
+def test_load_seed_deactivates_stale_items(conn, tmp_path) -> None:
+    """Убранное из seed задание гаснет, а не удаляется (на него ссылается журнал)."""
     load_seed(conn)
     data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
     data["items"] = [item for item in data["items"] if item["id"] != 5]
@@ -184,7 +190,8 @@ def test_load_seed_prunes_stale_items(conn, tmp_path) -> None:
 
     load_seed(conn, path)
 
-    assert repos.get_item(conn, 5) is None
+    assert repos.get_item(conn, 5).active is False
+    assert 5 not in {item.id for item in repos.get_items(conn)}
 
 
 def test_get_item_missing_returns_none(conn) -> None:
@@ -212,16 +219,26 @@ def test_load_seed_prunes_stale_concepts(conn, tmp_path) -> None:
     assert "sorting" not in CourseGraph.load(conn).node_ids
 
 
-def test_load_seed_refuses_to_prune_concept_with_events(conn, tmp_path) -> None:
-    """Узел со ссылками в журнале событий не удаляется — операция откатывается."""
+def test_load_seed_deactivates_concept_with_events(conn, tmp_path) -> None:
+    """Узел со ссылками в журнале не удаляется и не роняет старт — гаснет."""
     load_seed(conn)
     repos.add_event(conn, Event(source="checked", result=1.0, concept_id="sorting", ts=1.0))
     path = _write_trimmed_seed(tmp_path, drop_nodes={"sorting"})
 
-    with pytest.raises(RuntimeError, match="данные ученика"):
-        load_seed(conn, path)
+    load_seed(conn, path)  # не падает
 
-    assert "sorting" in CourseGraph.load(conn).node_ids
+    assert "sorting" not in CourseGraph.load(conn).node_ids  # узел ушёл из графа
+    assert repos.get_events(conn, "sorting")  # но журнал цел
+
+
+def test_nodes_without_items_reports_gate_nodes() -> None:
+    """Несущий узел без задания запирал бы маршрут — о нём надо предупреждать."""
+    seed = load_seed_data(DEFAULT_SEED_PATH)
+
+    missing = nodes_without_items(seed)
+
+    assert "python_basics" in missing  # база графа без задания
+    assert "churn_eda_case" not in missing  # лист без зависимых — не проблема
 
 
 def test_seed_cli_missing_file_reports_clearly(tmp_path) -> None:

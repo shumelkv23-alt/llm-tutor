@@ -10,8 +10,9 @@ import re
 
 from llm_tutor.schemas import CriterionResult, GradeResult, Item
 
-# Относительный допуск сравнения чисел: «1e6» и «1000000» — один ответ.
-_NUMBER_REL_TOLERANCE = 1e-3
+# Допуск сравнения чисел — только на разницу представления («0.3» и
+# «0.30000000000000004»). Не «примерная близость»: 1000 и 1001 — разные ответы.
+_NUMBER_REL_TOLERANCE = 1e-9
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _SURROUNDING_RE = re.compile(r"^[\s\"'«»`]+|[\s\"'«»`]+$")
@@ -55,14 +56,19 @@ def _option_text(item: Item, raw: str) -> str | None:
 
 def _check_choice(item: Item, answer: str) -> bool:
     expected = _option_text(item, item.answer or "")
-    given = _option_text(item, answer)
-    return expected is not None and given == expected
+    if expected is None:
+        # Битый эталон (индекс вне вариантов) — падаем, а не пишем «неверно»
+        # за верный ответ: молчаливый ноль отравил бы модель ученика.
+        raise AutoCheckError(f"У задания {item.id} эталон вне вариантов: {item.answer!r}")
+    return _option_text(item, answer) == expected
 
 
 def _check_short(item: Item, answer: str) -> bool:
     expected = _normalize(item.answer or "")
+    if not expected:
+        raise AutoCheckError(f"У задания {item.id} пустой эталон")
     given = _normalize(answer)
-    if not given or not expected:
+    if not given:
         return False
     if given == expected:
         return True

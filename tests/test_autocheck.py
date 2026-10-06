@@ -1,6 +1,7 @@
 """Тесты детерминированной автопроверки choice/short (Срез 4.6)."""
 
 import pytest
+from pydantic import ValidationError
 
 from llm_tutor.grader.autocheck import AutoCheckError, check
 from llm_tutor.schemas import Item
@@ -92,6 +93,48 @@ def test_short_does_not_fuzzy_match() -> None:
     assert check(_short("read_csv"), "readcsv").score == 0.0
 
 
+def test_short_does_not_accept_nearby_large_numbers() -> None:
+    """Допуск только на разницу представления, не на «примерно равно»."""
+    assert check(_short("1000"), "1001").score == 0.0
+    assert check(_short("2024"), "2023").score == 0.0
+
+
+# --- битый эталон ---
+
+
+def test_choice_with_out_of_range_reference_is_rejected_by_model() -> None:
+    """Опечатка в индексе эталона не должна доехать до ученика."""
+    with pytest.raises(ValidationError, match="индекс"):
+        Item(id=1, prompt="?", answer_type="choice", options=["a", "b"], answer="7")
+
+
+def test_choice_without_options_is_rejected_by_model() -> None:
+    with pytest.raises(ValidationError, match="варианты"):
+        Item(id=1, prompt="?", answer_type="choice", options=[], answer="0")
+
+
+def test_short_without_reference_is_rejected_by_model() -> None:
+    with pytest.raises(ValidationError, match="эталон"):
+        Item(id=2, prompt="?", answer_type="short", answer="")
+
+
+def test_check_raises_on_unresolvable_choice_reference() -> None:
+    """Второй рубеж: строка из БД мимо валидации не даёт «неверно» за верный ответ."""
+    broken = Item.model_construct(
+        id=9, prompt="?", answer_type="choice", options=["a", "b"], answer="7"
+    )
+
+    with pytest.raises(AutoCheckError, match="вне вариантов"):
+        check(broken, "0")
+
+
+def test_check_raises_on_empty_short_reference() -> None:
+    broken = Item.model_construct(id=9, prompt="?", answer_type="short", answer="")
+
+    with pytest.raises(AutoCheckError, match="пустой эталон"):
+        check(broken, "ответ")
+
+
 # --- неприменимые задания ---
 
 
@@ -100,8 +143,3 @@ def test_open_item_is_not_auto_checkable() -> None:
 
     with pytest.raises(AutoCheckError, match="answer_type"):
         check(item, "ответ")
-
-
-def test_item_without_reference_answer_is_rejected() -> None:
-    with pytest.raises(AutoCheckError, match="эталон"):
-        check(_short(None), "ответ")

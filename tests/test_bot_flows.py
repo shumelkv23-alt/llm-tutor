@@ -135,6 +135,49 @@ async def test_diagnostic_checks_text_answer(conn, settings) -> None:
     assert beta.estimate(conn, "read_csv", settings=settings).mean > 0.5
 
 
+async def test_text_on_choice_question_is_not_recorded(conn, settings) -> None:
+    """Болтовня на вопрос с кнопками не должна засчитаться неверным ответом."""
+    load_seed(conn)
+    router = make_diagnostic_router(conn, settings)
+    state = _fsm()
+    await _handler(router, "message", 0)(FakeMessage(), state)  # /diagnostic -> вопрос с кнопками
+    reply = FakeMessage("не знаю, если честно")
+
+    await _handler(router, "message", 1)(reply, state)
+
+    assert repos.get_events(conn) == []
+    assert "кнопкой" in reply.last_text
+
+
+async def test_button_on_text_question_is_not_recorded(conn, settings) -> None:
+    load_seed(conn)
+    router = make_diagnostic_router(conn, settings)
+    state = _fsm()
+    await state.set_state(DiagnosticFlow.answering)
+    await state.update_data(
+        item_id=2, concept_id="read_csv", expects_choice=False, asked=[], left=1,
+        correct=0, total=0,
+    )
+    message = FakeMessage()
+
+    await _handler(router, "callback_query", 0)(FakeCallback("diag:0", message), state)
+
+    assert repos.get_events(conn) == []
+    assert "текстом" in message.last_text
+
+
+async def test_survey_text_gets_button_hint(conn, settings) -> None:
+    """Напечатанный вместо кнопки ответ не должен пропадать в тишину."""
+    router = make_survey_router(conn, settings)
+    state = _fsm()
+    await ask_survey(FakeMessage(), state)
+    message = FakeMessage()
+
+    await _handler(router, "message", 0)(message)
+
+    assert "кнопкой" in message.last_text
+
+
 async def test_diagnostic_skips_when_graph_empty(conn, settings) -> None:
     router = make_diagnostic_router(conn, settings)
     message = FakeMessage()

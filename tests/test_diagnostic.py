@@ -108,6 +108,27 @@ def test_stops_when_items_exhausted(conn, settings) -> None:
     assert result is None
 
 
+def test_freshly_answered_item_is_not_asked_again(conn, settings) -> None:
+    """Повторный вопрос сразу после ответа накрутил бы счётчики."""
+    _concept(conn, "a")
+    graph = _graph(["a"])
+    item = _item(conn, item_id=1, concept_id="a", answer_type="short", answer="read_csv")
+    record_answer(
+        conn,
+        graph,
+        DiagnosticQuestion(item=item, concept_id="a"),
+        "read_csv",
+        now=0.0,
+        settings=settings,
+    )
+
+    soon = next_question(conn, graph, now=100.0, settings=settings)
+    day_later = next_question(conn, graph, now=2 * beta.SECONDS_PER_DAY, settings=settings)
+
+    assert soon is None  # кулдаун ещё идёт
+    assert day_later is not None  # через сутки вопрос снова осмыслен
+
+
 def test_open_item_is_not_used_for_diagnostics(conn, settings) -> None:
     """Рубричные задания диагностика не берёт — их проверяет LLM (Срез 6)."""
     _concept(conn, "a")

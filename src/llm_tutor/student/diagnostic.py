@@ -44,12 +44,28 @@ def uncertainty_priority(
 
 
 def _checkable_items(conn: sqlite3.Connection) -> list[Item]:
-    """Задания банка, пригодные для автопроверки."""
+    """Активные задания банка, пригодные для автопроверки."""
     return [
         item
         for item in repos.get_items(conn)
         if item.answer_type in AUTO_CHECKABLE and item.answer is not None
     ]
+
+
+def _freshly_answered_items(
+    conn: sqlite3.Connection, now: float, cooldown_days: float
+) -> set[int]:
+    """Задания, отвеченные недавно: повтор сейчас накрутил бы счётчики."""
+    if cooldown_days <= 0:
+        return set()
+    threshold = now - cooldown_days * beta.SECONDS_PER_DAY
+    return {
+        event.item_id
+        for event in repos.get_events(conn)
+        if event.item_id is not None
+        and event.ts is not None
+        and event.ts >= threshold
+    }
 
 
 def _best_item(items: Iterable[Item], concept_id: str, target_difficulty: float) -> Item | None:
@@ -76,7 +92,10 @@ def next_question(
     s = settings or get_settings()
     stamp = time.time() if now is None else now
 
-    items = [item for item in _checkable_items(conn) if item.id not in asked_item_ids]
+    unavailable = set(asked_item_ids) | _freshly_answered_items(
+        conn, stamp, s.item_repeat_cooldown_days
+    )
+    items = [item for item in _checkable_items(conn) if item.id not in unavailable]
     if not items:
         return None
 
@@ -125,12 +144,15 @@ def record_answer(
             conn, concept_id, correct=result.score, weight=weight, now=stamp, settings=s
         )
 
-    if result.score >= SUCCESS_SCORE:
+    # Успех поднимает пререквизиты измеренного узла. Если задание вдруг не
+    # описывает этот узел (seed поменялся между показом и ответом) — не трогаем
+    # чужие пререквизиты.
+    if result.score >= SUCCESS_SCORE and question.concept_id in question.item.concept_weights:
         beta.propagate_success(
             conn,
             graph,
             question.concept_id,
-            weight=question.item.concept_weights.get(question.concept_id, 1.0),
+            weight=question.item.concept_weights[question.concept_id],
             now=stamp,
             settings=s,
         )

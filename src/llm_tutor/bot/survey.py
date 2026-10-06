@@ -23,6 +23,7 @@ SURVEY_DONE_REPLY = (
     "Спасибо! Профиль заполнен.\n"
     "Могу подобрать маршрут — жми /diagnostic (это не экзамен, а пара коротких вопросов)."
 )
+BUTTON_HINT_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"
 
 
 class SurveyFlow(StatesGroup):
@@ -77,5 +78,11 @@ def make_survey_router(conn, settings: Settings) -> Router:
         await state.clear()
         await callback.message.answer(SURVEY_DONE_REPLY)
         await callback.answer()
+
+    @router.message(SurveyFlow.question, F.text, ~F.text.startswith("/"))
+    async def on_text(message: Message) -> None:
+        # Анкета принимает только нажатия: иначе напечатанный «1» пропадал
+        # в тишину (тьютор-путь отсечён StateFilter(None)).
+        await message.answer(BUTTON_HINT_REPLY)
 
     return router

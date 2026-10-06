@@ -30,6 +30,8 @@ WRONG_REPLY = "Не совсем ✗ — ничего страшного, это
 EMPTY_GRAPH_REPLY = "Граф курса пуст. Загрузи seed: python -m llm_tutor.course.seed"
 NO_QUESTIONS_REPLY = "Спрашивать пока нечего — по всем доступным узлам картина уже есть."
 BROKEN_STATE_REPLY = "Состояние захода потерялось — начнём заново, жми /diagnostic."
+CHOOSE_BUTTON_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"
+WRITE_TEXT_REPLY = "Здесь нужен короткий ответ текстом — напиши его сообщением."
 
 
 class DiagnosticFlow(StatesGroup):
@@ -80,9 +82,27 @@ async def _ask_next(target: Message, state: FSMContext, conn, settings: Settings
         await _finish(target, state, data)
         return
 
-    await state.update_data(item_id=question.item.id, concept_id=question.concept_id)
+    await state.update_data(
+        item_id=question.item.id,
+        concept_id=question.concept_id,
+        # Помним, какой ответ ждём: чужой тип ввода нельзя записывать ответом.
+        expects_choice=bool(question.item.options),
+    )
     keyboard = _choice_keyboard(question.item) if question.item.options else None
     await target.answer(question.item.prompt, reply_markup=keyboard)
+
+
+def _mismatch_hint(data: dict, *, via_keyboard: bool) -> str | None:
+    """Подсказка, если тип ввода не совпал с типом текущего задания.
+
+    Состояние без текущего задания — не «не тот тип ввода», а потерянный
+    заход: им занимается ``_record``.
+    """
+    if not data.get("item_id"):
+        return None
+    if data.get("expects_choice", False) == via_keyboard:
+        return None
+    return CHOOSE_BUTTON_REPLY if via_keyboard is False else WRITE_TEXT_REPLY
 
 
 async def _record(
@@ -139,12 +159,22 @@ def make_diagnostic_router(conn, settings: Settings) -> Router:
     )
     async def on_choice(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
+        hint = _mismatch_hint(await state.get_data(), via_keyboard=True)
+        if hint is not None:
+            await callback.message.answer(hint)
+            return
         await _record(
             callback.message, state, conn, settings, (callback.data or "").split(":")[1]
         )
 
     @router.message(DiagnosticFlow.answering, F.text, ~F.text.startswith("/"))
     async def on_text(message: Message, state: FSMContext) -> None:
+        # Ответ есть ответ только на вопрос того же типа: иначе болтовня
+        # засчиталась бы как неверный ответ и съела слот захода.
+        hint = _mismatch_hint(await state.get_data(), via_keyboard=False)
+        if hint is not None:
+            await message.answer(hint)
+            return
         await _record(message, state, conn, settings, message.text or "")
 
     return router
