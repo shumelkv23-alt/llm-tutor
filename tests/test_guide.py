@@ -11,8 +11,8 @@ def _mastery(mean: float, uncertainty: float) -> beta.Mastery:
 def test_two_correct_answers_without_hints_close_node(settings) -> None:
     state = SessionState(current_node_id="groupby")
 
-    state = guide.register_answer(state, correct=True, hints_used=0, settings=settings)
-    state = guide.register_answer(state, correct=True, hints_used=0, settings=settings)
+    state = guide.register_answer(state, correct=True, hinted=False, settings=settings)
+    state = guide.register_answer(state, correct=True, hinted=False, settings=settings)
 
     assert state.node_streak == 2
     assert guide.is_node_closed(state, _mastery(0.6, 0.2), settings=settings) is True
@@ -22,8 +22,8 @@ def test_answer_with_hints_resets_streak(settings) -> None:
     """Задача, решённая с подсказкой, доказательством не считается."""
     state = SessionState(current_node_id="groupby")
 
-    state = guide.register_answer(state, correct=True, hints_used=0, settings=settings)
-    state = guide.register_answer(state, correct=True, hints_used=2, settings=settings)
+    state = guide.register_answer(state, correct=True, hinted=False, settings=settings)
+    state = guide.register_answer(state, correct=True, hinted=True, settings=settings)
 
     assert state.node_streak == 0
     assert guide.is_node_closed(state, _mastery(0.6, 0.2), settings=settings) is False
@@ -31,9 +31,9 @@ def test_answer_with_hints_resets_streak(settings) -> None:
 
 def test_wrong_answer_resets_streak(settings) -> None:
     state = SessionState(current_node_id="groupby")
-    state = guide.register_answer(state, correct=True, hints_used=0, settings=settings)
+    state = guide.register_answer(state, correct=True, hinted=False, settings=settings)
 
-    state = guide.register_answer(state, correct=False, hints_used=0, settings=settings)
+    state = guide.register_answer(state, correct=False, hinted=False, settings=settings)
 
     assert state.node_streak == 0
 
@@ -41,7 +41,7 @@ def test_wrong_answer_resets_streak(settings) -> None:
 def test_answer_moves_to_check_phase(settings) -> None:
     state = SessionState(current_node_id="groupby", phase="practice")
 
-    state = guide.register_answer(state, correct=True, hints_used=0, settings=settings)
+    state = guide.register_answer(state, correct=True, hinted=False, settings=settings)
 
     assert state.phase == "check"
 
@@ -64,7 +64,7 @@ def test_streak_length_comes_from_settings(settings) -> None:
     strict = settings.model_copy(update={"guide_success_streak": 3})
     state = SessionState(current_node_id="groupby")
     for _ in range(2):
-        state = guide.register_answer(state, correct=True, hints_used=0, settings=strict)
+        state = guide.register_answer(state, correct=True, hinted=False, settings=strict)
 
     assert guide.is_node_closed(state, _mastery(0.6, 0.2), settings=strict) is False
 

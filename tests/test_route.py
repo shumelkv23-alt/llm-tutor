@@ -241,3 +241,14 @@ def test_next_node_is_none_when_nothing_ahead(conn, settings) -> None:
     route = route_mod.build_route(conn, graph, now=0.0, settings=settings)
 
     assert route_mod.next_node_id(conn, graph, route, now=0.0, settings=settings) is None
+
+
+def test_route_change_text_mentions_added_and_removed() -> None:
+    changes = route_mod.RouteChanges(
+        closed=(), added=("b",), removed=("c",), current_changed=False
+    )
+
+    text = route_mod.format_route_change(changes)
+
+    assert "добавилось b" in text
+    assert "ушло c" in text

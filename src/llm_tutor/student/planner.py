@@ -10,6 +10,8 @@
 import sqlite3
 import time
 
+from collections.abc import Mapping
+
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -58,9 +60,24 @@ def _scope(graph: CourseGraph, goal_concept_id: str | None) -> set[str]:
     return graph.ancestors(goal_concept_id) | {goal_concept_id}
 
 
-def _eligible(graph: CourseGraph, means: dict[str, beta.Mastery], threshold: float, node_id: str) -> bool:
-    """Готов ли узел: все жёсткие пререквизиты доведены до порога освоения."""
-    return all(means[p].mean >= threshold for p in graph.hard_prerequisites(node_id))
+def _eligible(
+    graph: CourseGraph,
+    means: dict[str, beta.Mastery],
+    threshold: float,
+    node_id: str,
+    completed: frozenset[str] = frozenset(),
+) -> bool:
+    """Готов ли узел: все жёсткие пререквизиты освоены.
+
+    Закрытый узел считается освоенным независимо от среднего: закрытие — это
+    решение по критерию (§6.1), и его пререквизит для зависимых выполнен.
+    Иначе узел, закрытый серией ответов с невысоким средним, не открывал бы
+    следующие за ним.
+    """
+    return all(
+        p in completed or means[p].mean >= threshold
+        for p in graph.hard_prerequisites(node_id)
+    )
 
 
 def _goal_distances(
@@ -178,6 +195,8 @@ def ready_nodes(
     limit: int = 3,
     now: float | None = None,
     settings: Settings | None = None,
+    mastery_overrides: Mapping[str, beta.Mastery] | None = None,
+    completed_ids: frozenset[str] = frozenset(),
 ) -> list[PlannedNode]:
     """Узлы границы готовности, отсортированные по приоритету (топ-``limit``).
 
@@ -192,14 +211,19 @@ def ready_nodes(
     if limit <= 0:
         return []
 
+    # Переопределения — владение с учётом свидетельств текущего хода: запись
+    # идёт одним коммитом после, и без них решение принималось бы по старым
+    # данным (узел закрыт, а следующий по нему ещё «не готов»).
+    overrides = mastery_overrides or {}
     means = {
-        node_id: beta.estimate(conn, node_id, now=stamp, settings=s)
+        node_id: overrides.get(node_id)
+        or beta.estimate(conn, node_id, now=stamp, settings=s)
         for node_id in graph.node_ids
     }
     candidates = [
         node_id
         for node_id in _scope(graph, goal_concept_id)
-        if _eligible(graph, means, s.mastery_verify_threshold, node_id)
+        if _eligible(graph, means, s.mastery_verify_threshold, node_id, completed_ids)
     ]
     if not candidates:
         return []

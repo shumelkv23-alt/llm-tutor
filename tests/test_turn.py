@@ -18,7 +18,7 @@ from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 from llm_tutor.llm.client import LLMError
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
-from llm_tutor.schemas import SessionState
+from llm_tutor.schemas import Route, RouteStep, SessionState
 from llm_tutor.student import beta
 
 
@@ -395,3 +395,79 @@ async def test_node_without_items_says_so_honestly(conn, settings) -> None:
     assert state.current_node_id == "describe_stats"  # узел не потерян
     assert state.pending_item_id is None
     assert state.phase == "explain"  # ведём диалогом
+
+
+# --- фиксы ревью Срез 10 ---
+
+
+async def test_answer_after_asking_is_not_clean(conn, settings) -> None:
+    """Спросил про задание — ответ уже не «без подсказок», что бы ни говорила модель."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    item = repos.get_item(conn, 6)
+    _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
+
+    # модель отдаёт разбор и при этом опускает уровень до нуля
+    await handle_turn(
+        conn, _FakeTutor("вот как это работает"), "m", "а как это работает?", now=1.0,
+        settings=settings,
+    )
+    await handle_turn(conn, _FakeTutor(), "m", item.options[0], now=2.0, settings=settings)
+
+    state = _state(conn)
+    assert state.node_streak == 0  # помощь была — чистым ответ не считается
+
+
+async def test_wrong_answer_does_not_close_by_mastery(conn, settings) -> None:
+    """«Не совсем верно» и «узел закрыт» в одном ходу противоречили бы друг другу."""
+    load_seed(conn)
+    repos.upsert_mastery(conn, "python_basics", alpha=38.0, beta=2.0, last_seen=0.0)
+    item = repos.get_item(conn, 6)
+    _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
+
+    reply = await handle_turn(
+        conn, _FakeTutor(), "m", item.options[1], now=1.0, settings=settings
+    )
+
+    assert "Не совсем" in reply.text
+    assert _state(conn).current_node_id == "python_basics"  # узел не закрыт
+
+
+async def test_node_missing_from_graph_does_not_lock_turn(conn, settings) -> None:
+    """Узел убрали из графа — ход всё равно записывается, занятие не запирается."""
+    load_seed(conn)
+    item = repos.get_item(conn, 6)
+    _set_state(conn, pending_item_id=item.id, current_node_id="ghost_node", node_streak=5)
+
+    reply = await handle_turn(
+        conn, _FakeTutor(), "m", item.options[0], now=1.0, settings=settings
+    )
+
+    assert reply.text
+    assert _state(conn).current_node_id != "ghost_node"  # узел снят
+    assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2  # ход записан
+
+
+def test_route_done_hands_no_task(conn, settings) -> None:
+    """Маршрут исчерпан — заданий больше нет, и это не ошибка."""
+    load_seed(conn)
+    _set_state(
+        conn,
+        route=Route(steps=[RouteStep(concept_id="python_basics", mode="full", status="closed")]),
+    )
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert "пройден" in reply.text.lower()
+    assert _state(conn).pending_item_id is None
+
+
+def test_skip_resets_phase(conn, settings) -> None:
+    """После пропуска занятие не остаётся в фазе практики."""
+    load_seed(conn)
+    item = repos.get_item(conn, 6)
+    _set_state(conn, pending_item_id=item.id, current_node_id="python_basics", phase="practice")
+
+    skip_pending(conn, now=1.0, settings=settings)
+
+    assert _state(conn).phase == "explain"

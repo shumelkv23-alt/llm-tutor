@@ -7,13 +7,14 @@
 
 import sqlite3
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
-from llm_tutor.student import planner
+from llm_tutor.student import beta, planner
 from llm_tutor.student.survey import GOAL_CONCEPT_KEY
 
 
@@ -115,6 +116,7 @@ def next_node_id(
     *,
     now: float | None = None,
     settings: Settings | None = None,
+    mastery_overrides: Mapping[str, beta.Mastery] | None = None,
 ) -> str | None:
     """Следующий узел маршрута: по приоритету среди готовых (§6.3).
 
@@ -133,6 +135,8 @@ def next_node_id(
         limit=max(len(route.steps), 1),
         now=stamp,
         settings=s,
+        mastery_overrides=mastery_overrides,
+        completed_ids=frozenset(closed),
     )
     for node in ready:
         # Готовый узел может быть уже закрытым — тогда он не «следующий».

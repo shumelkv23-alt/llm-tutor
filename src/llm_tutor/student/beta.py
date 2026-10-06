@@ -71,7 +71,7 @@ def decay(alpha: float, beta: float, dt_days: float, lam: float) -> tuple[float,
     return 1.0 + (alpha - 1.0) * factor, 1.0 + (beta - 1.0) * factor
 
 
-def _to_mastery(
+def to_mastery(
     concept_id: str,
     alpha: float,
     beta: float,
@@ -124,7 +124,7 @@ def estimate(
     alpha, beta, last_seen, next_review = _decayed_now(
         repos.get_mastery(conn, concept_id), s, stamp
     )
-    return _to_mastery(concept_id, alpha, beta, last_seen, next_review)
+    return to_mastery(concept_id, alpha, beta, last_seen, next_review)
 
 
 def plan_update(
@@ -189,7 +189,7 @@ def update(
         conn, concept_id, correct=correct, weight=weight, now=now, settings=settings
     )
     write_update(conn, change)
-    return _to_mastery(
+    return to_mastery(
         change.concept_id, change.alpha, change.beta, change.last_seen, change.next_review
     )
 

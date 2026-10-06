@@ -12,6 +12,7 @@
 import logging
 import sqlite3
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
@@ -20,11 +21,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
-from llm_tutor.llm.prompts import (
-    EMPTY_GRAPH_REPLY,
-    LLM_FAILURE_REPLY,
-    NO_TASK_REPLY,
-)
+from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, Item, SessionState
 from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
@@ -55,6 +52,8 @@ NO_TASK_FOR_NODE_REPLY = (
 )
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
+# Маршрут пройден до конца: заданий больше нет, и это не ошибка.
+ROUTE_DONE_REPLY = "Маршрут пройден до конца. Можно свериться: /plan."
 
 
 @dataclass(frozen=True)
@@ -148,11 +147,12 @@ async def _answer_branch(
     *,
     now: float,
     settings: Settings,
-) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState]:
+) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool]:
     """Ученик отвечает на выданное задание.
 
     ``choice``/``short`` проверяет код, ``open``/``code`` — рубричный грейдер
-    (его вердикт идёт в журнал с ограниченным весом).
+    (его вердикт идёт в журнал с ограниченным весом). Пятый элемент — был ли
+    ответ верным: закрывать узел на неудачном ответе нельзя.
     """
     item = (
         repos.get_item(conn, state.pending_item_id)
@@ -165,6 +165,7 @@ async def _answer_branch(
             [],
             [],
             state.model_copy(update={"pending_item_id": None}),
+            False,
         )
 
     try:
@@ -180,6 +181,7 @@ async def _answer_branch(
                 [],
                 [],
                 state.model_copy(update={"pending_item_id": None}),
+                False,
             )
     except (rubric.RubricError, autocheck.AutoCheckError):
         # Задание нельзя проверить (рубрику убрали, эталон битый) — снимаем его,
@@ -190,6 +192,7 @@ async def _answer_branch(
             [],
             [],
             state.model_copy(update={"pending_item_id": None}),
+            False,
         )
 
     measured = state.current_node_id or next(iter(item.concept_weights), "")
@@ -219,13 +222,14 @@ async def _answer_branch(
             "last_activity": now,
         }
     )
+    # Помощь по этому заданию — факт, а не выбранный моделью уровень: спросил
+    # или попросил глубины, значит ответ не «без подсказок».
+    hinted = state.task_hinted or state.hint_level > 0
+    passed = result.score >= diagnostic.SUCCESS_SCORE
     new_state = guide.register_answer(
-        new_state,
-        correct=result.score >= diagnostic.SUCCESS_SCORE,
-        hints_used=state.hint_level,
-        settings=settings,
+        new_state, correct=passed, hinted=hinted, settings=settings
     )
-    return _feedback(item, result.score), events, mastery, new_state
+    return _feedback(item, result.score), events, mastery, new_state, passed
 
 
 async def _tutor_branch(
@@ -265,9 +269,16 @@ async def _tutor_branch(
 
     level = hints.next_hint_level(state.hint_level, answer.hint_level)
     new_state = state.model_copy(update={"hint_level": level, "last_activity": now})
+    if state.pending_item_id is not None:
+        # Пока задание висело, ученик получил помощь: ответ уже не «без подсказок»,
+        # даже если модель на этом ходу опустила уровень до нуля.
+        new_state = new_state.model_copy(update={"task_hinted": True})
     if answer.student_stuck:
         # Ученик просит глубины: узел в усиленный проход, вперёд не идём.
-        return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], guide.on_student_stuck(new_state)
+        stuck_state = guide.on_student_stuck(new_state).model_copy(
+            update={"task_hinted": True}
+        )
+        return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], stuck_state
     return answer.reply, [], [], new_state
 
 
@@ -290,16 +301,28 @@ async def handle_turn(
     answered_item_id = state.pending_item_id
 
     if state.pending_item_id is not None and not _looks_like_question(user_text):
-        reply, events, mastery, new_state = await _answer_branch(
+        reply, events, mastery, new_state, passed = await _answer_branch(
             conn, client, model, graph, user_text, state, now=stamp, settings=s
         )
-        # Узел пройден? Тогда объявляем следующий и сразу выдаём по нему задание —
-        # «за ручку» одним ответом, без лишней команды.
-        new_state, closed_note = _close_node_if_ready(
-            conn, graph, new_state, now=stamp, settings=s
-        )
-        if closed_note:
-            reply = f"{reply}\n\n{closed_note}"
+        # Узел пройден? Только на ВЕРНОМ ответе: «не совсем верно» и «узёл
+        # закрыт» в одном сообщении противоречат друг другу. Владение считаем
+        # с учётом только что отвеченного задания, а не по старым данным.
+        if passed:
+            overrides = {
+                change.concept_id: beta.to_mastery(
+                    change.concept_id,
+                    change.alpha,
+                    change.beta,
+                    change.last_seen,
+                    change.next_review,
+                )
+                for change in mastery
+            }
+            new_state, closed_note = _close_node_if_ready(
+                conn, graph, new_state, overrides=overrides, now=stamp, settings=s
+            )
+            if closed_note:
+                reply = f"{reply}\n\n{closed_note}"
         # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
         new_state, task_text, options = _issue_task(
             conn,
@@ -347,33 +370,50 @@ def _close_node_if_ready(
     graph: CourseGraph,
     state: SessionState,
     *,
+    overrides: Mapping[str, beta.Mastery] | None = None,
     now: float,
     settings: Settings,
 ) -> tuple[SessionState, str | None]:
     """Закрывает пройденный узел и объявляет следующий.
 
     Критерий считает код (``student/guide.py``), не модель: «понятно?» ответом
-    доказательством не считается.
+    доказательством не считается. ``overrides`` — владение С УЧЁТОМ только что
+    отвеченного задания: без них и закрытие, и выбор следующего узла шли бы по
+    старым данным (узел закрыт, а следующий по нему ещё «не готов»).
     """
-    if state.current_node_id is None:
+    node_id = state.current_node_id
+    if node_id is None:
         return state, None
-    mastery = beta.estimate(conn, state.current_node_id, now=now, settings=settings)
-    if not guide.is_node_closed(state, mastery, settings=settings):
+    if not graph.has_node(node_id):
+        # Узел убрали из графа (правка seed или БД руками) — иначе занятие
+        # запиралось бы KeyError на каждом ходу, не записывая ответы.
+        logger.warning("Узел %s больше не в графе, снимаю", node_id)
+        return (
+            state.model_copy(update={"current_node_id": None, "node_streak": 0}),
+            None,
+        )
+
+    current = (overrides or {}).get(node_id) or beta.estimate(
+        conn, node_id, now=now, settings=settings
+    )
+    if not guide.is_node_closed(state, current, settings=settings):
         return state, None
 
-    closed_name = graph.concept(state.current_node_id).name
+    closed_name = graph.concept(node_id).name
     route = state.route or route_mod.build_route(conn, graph, now=now, settings=settings)
     route = route.model_copy(
         update={
             "steps": [
                 step.model_copy(update={"status": "closed"})
-                if step.concept_id == state.current_node_id
+                if step.concept_id == node_id
                 else step
                 for step in route.steps
             ]
         }
     )
-    next_node_id = route_mod.next_node_id(conn, graph, route, now=now, settings=settings)
+    next_node_id = route_mod.next_node_id(
+        conn, graph, route, now=now, settings=settings, mastery_overrides=overrides
+    )
     new_state = state.model_copy(
         update={
             "current_node_id": next_node_id,
@@ -405,34 +445,41 @@ def _issue_task(
     события ещё не записаны (запись идёт одним коммитом после), поэтому защита
     от повтора должна учитывать их явно.
     """
-    if state.current_node_id is not None:
-        question = diagnostic.question_for_node(
-            conn,
-            state.current_node_id,
-            asked_item_ids=exclude_item_ids,
-            now=now,
-            settings=settings,
-        )
-    else:
-        question = diagnostic.next_question(
-            conn,
-            graph,
-            include_rubric=True,
-            asked_item_ids=exclude_item_ids,
-            now=now,
-            settings=settings,
+    route = state.route or route_mod.build_route(
+        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), now=now, settings=settings
+    )
+    # Узел задан маршрутом: если его нет — берём следующий по приоритету.
+    node_id = state.current_node_id or route_mod.next_node_id(
+        conn, graph, route, now=now, settings=settings
+    )
+    if node_id is None:
+        # Маршрут исчерпан — задания выдавать не по чему, и уходить в общий
+        # подбор нельзя: он вернул бы узлы вне маршрута и сломал завершение.
+        return (
+            state.model_copy(update={"phase": "explain", "route": route, "last_activity": now}),
+            ROUTE_DONE_REPLY,
+            None,
         )
 
+    question = diagnostic.question_for_node(
+        conn, node_id, asked_item_ids=exclude_item_ids, now=now, settings=settings
+    )
     if question is None:
-        text = NO_TASK_FOR_NODE_REPLY if state.current_node_id else NO_TASK_REPLY
-        return state.model_copy(update={"phase": "explain", "last_activity": now}), text, None
+        return (
+            state.model_copy(update={"phase": "explain", "route": route, "last_activity": now}),
+            NO_TASK_FOR_NODE_REPLY,
+            None,
+        )
 
     new_state = state.model_copy(
         update={
             "pending_item_id": question.item.id,
             "current_node_id": question.concept_id,
             "hint_level": 0,
+            # Новое задание — помощь по нему ещё не оказана.
+            "task_hinted": False,
             "phase": "practice",
+            "route": route,
             "last_activity": now,
         }
     )
@@ -488,7 +535,9 @@ def skip_pending(
         session_id,
         user_text=SKIP_KICKOFF_TEXT,
         assistant_text=SKIP_REPLY,
-        state=state.model_copy(update={"pending_item_id": None, "last_activity": stamp}),
+        state=state.model_copy(
+            update={"pending_item_id": None, "phase": "explain", "last_activity": stamp}
+        ),
         now=stamp,
     )
     return SKIP_REPLY

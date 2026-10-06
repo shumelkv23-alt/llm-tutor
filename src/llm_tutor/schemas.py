@@ -218,4 +218,7 @@ class SessionState(BaseModel):
     route: Route | None = None
     phase: GuidePhase = "explain"
     node_streak: int = 0
+    # Ученик получил помощь по текущему заданию (спросил или попросил глубины):
+    # ответ после этого чистым не считается, сколько бы ни говорила модель.
+    task_hinted: bool = False
     last_activity: float | None = None
