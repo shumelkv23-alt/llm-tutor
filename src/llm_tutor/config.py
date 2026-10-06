@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     # --- Адаптивная диагностика, Срез 4.5 ---
     diagnostic_max_questions: int = 20
     diagnostic_uncertainty_threshold: float = 0.15
+    # Длина одного захода: первый заход шире, последующие короткие.
+    diagnostic_first_pass: int = 5
+    diagnostic_followup: int = 2
+
+    # --- Анкета холодного старта, Срез 4.5 ---
+    # Вес самооценки (source='self') — слабое свидетельство.
+    self_evidence_weight: float = 0.3
 
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL

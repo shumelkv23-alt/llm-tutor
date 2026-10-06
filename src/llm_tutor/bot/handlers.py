@@ -9,15 +9,18 @@ import sqlite3
 import time
 
 from aiogram import F, Router
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
+from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core.context import DEFAULT_DIALOG_TAIL, DEFAULT_RAG_TOP_K, build_context
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db.repos import (
     add_message,
     ensure_open_session,
+    get_fact,
     get_session_state,
     update_session_state,
 )
@@ -27,6 +30,7 @@ from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import has_searchable_content
 from llm_tutor.schemas import NodeMode
 from llm_tutor.student.planner import ready_nodes
+from llm_tutor.student.survey import GOAL_CONCEPT_KEY, is_completed as survey_completed
 
 # Человекочитаемые названия режимов прохода узла (см. student/planner.py).
 MODE_LABELS: dict[NodeMode, str] = {
@@ -158,7 +162,13 @@ def render_plan(
     if not graph.node_ids:
         return "Граф курса пуст. Загрузи seed: python -m llm_tutor.course.seed"
 
-    nodes = ready_nodes(conn, graph, now=now, settings=settings)
+    # Цель из анкеты учитываем, только если такой узел есть в графе
+    # (seed мог поменяться между запусками).
+    goal = get_fact(conn, GOAL_CONCEPT_KEY)
+    if goal not in graph.node_ids:
+        goal = None
+
+    nodes = ready_nodes(conn, graph, goal_concept_id=goal, now=now, settings=settings)
     if not nodes:
         # Фронт готовности непуст всегда (корни без пререквизитов), поэтому
         # пустой маршрут = всё доступное освоено, а не «нет пререквизитов».
@@ -183,7 +193,11 @@ def make_router(
     router = Router()
 
     @router.message(CommandStart())
-    async def on_start(message: Message) -> None:
+    async def on_start(message: Message, state: FSMContext) -> None:
+        # Пока профиль не заполнен — сначала короткая анкета (Срез 4.7).
+        if not survey_completed(conn):
+            await ask_survey(message, state)
+            return
         reply = await handle_start(conn, client, model, START_GREETING)
         await message.answer(reply)
 
@@ -191,9 +205,10 @@ def make_router(
     async def on_plan(message: Message) -> None:
         await message.answer(render_plan(conn))
 
-    # Обработчик свободного текста: идёт после CommandStart и не трогает
-    # команды (иначе будущий CommandStop был бы перехвачен).
-    @router.message(F.text & ~F.text.startswith("/"))
+    # Обработчик свободного текста: не трогает команды (иначе CommandStop был
+    # бы перехвачен) и не лезет в незавершённые FSM-потоки (анкета, диагностика) —
+    # их шаги обрабатывают свои роутеры.
+    @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
         reply = await handle_message(
             conn,

@@ -166,6 +166,33 @@ def _write_trimmed_seed(tmp_path, *, drop_nodes=(), drop_edges=()) -> "Path":
     return path
 
 
+def test_load_seed_writes_items(conn) -> None:
+    seed = load_seed(conn)
+
+    stored = repos.get_items(conn)
+
+    assert {item.id for item in stored} == {item.id for item in seed.items}
+    assert repos.get_item(conn, stored[0].id) == stored[0]
+
+
+def test_load_seed_prunes_stale_items(conn, tmp_path) -> None:
+    load_seed(conn)
+    data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    data["items"] = [item for item in data["items"] if item["id"] != 5]
+    path = tmp_path / "seed.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    load_seed(conn, path)
+
+    assert repos.get_item(conn, 5) is None
+
+
+def test_get_item_missing_returns_none(conn) -> None:
+    load_seed(conn)
+
+    assert repos.get_item(conn, 999) is None
+
+
 def test_load_seed_prunes_stale_edges(conn, tmp_path) -> None:
     """Ребро, убранное из seed, не остаётся в БД призраком."""
     load_seed(conn)

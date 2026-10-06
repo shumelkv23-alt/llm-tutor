@@ -1,6 +1,6 @@
 {
   "course": "mlcourse.ai/topic01",
-  "comment": "Граф концептов topic01 «Pandas / EDA». Рёбра: from -> to означает «from требуется для to». hard=false — мягкий пререквизит (штраф, не блокировка).",
+  "comment": "Граф концептов topic01 «Pandas / EDA» + банк заданий. Рёбра: from -> to означает «from требуется для to». hard=false — мягкий пререквизит (штраф, не блокировка). items: для choice answer — индекс варианта (строкой), для short — эталонный текст.",
   "nodes": [
     {
       "id": "python_basics",
@@ -381,6 +381,79 @@
       "type": "requires",
       "hard": false,
       "weight": 0.7
+    }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "prompt": "Что такое DataFrame в pandas?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "pandas_intro": 1.0,
+        "pandas_dataframe": 0.5
+      },
+      "difficulty": 0.25,
+      "options": [
+        "Двумерная таблица, где каждый столбец хранит данные одного типа",
+        "Одномерный индексированный массив одного типа",
+        "Список словарей Python без индексов",
+        "Файл на диске с табличными данными"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 2,
+      "prompt": "Каким методом pandas читается CSV-файл в DataFrame? (напиши имя метода)",
+      "answer_type": "short",
+      "concept_weights": {
+        "read_csv": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "read_csv"
+    },
+    {
+      "id": 3,
+      "prompt": "Чем iloc отличается от loc при доступе к данным?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "indexing_loc_iloc": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "iloc выбирает по позиции (целые индексы), loc — по метке",
+        "iloc выбирает по метке, loc — по позиции",
+        "Это полные синонимы",
+        "iloc работает только с Series, loc — только с DataFrame"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 4,
+      "prompt": "Какой метод pandas группирует строки по значению столбца, чтобы затем посчитать агрегат? (имя метода)",
+      "answer_type": "short",
+      "concept_weights": {
+        "groupby": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "groupby"
+    },
+    {
+      "id": 5,
+      "prompt": "Что вернёт df['col'].value_counts()?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "value_counts": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Частоты уникальных значений столбца",
+        "Среднее значение столбца",
+        "Столбец, отсортированный по возрастанию",
+        "Число пропущенных значений"
+      ],
+      "answer": "0"
     }
   ]
 }

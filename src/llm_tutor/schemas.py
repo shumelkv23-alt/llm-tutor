@@ -19,6 +19,10 @@ NodeMode = Literal["skip", "verify", "compressed", "full", "reinforce", "revisit
 # Тип связи между концептами графа курса.
 EdgeType = Literal["requires", "part_of", "leads_to"]
 
+# Тип задания: choice/short проверяются кодом (grader/autocheck.py),
+# open/code — рубрикой (Срез 6).
+AnswerType = Literal["open", "code", "choice", "short"]
+
 
 class Concept(BaseModel):
     """Узел графа курса (концепт)."""
@@ -53,6 +57,20 @@ class Message(BaseModel):
     session_id: int | None = None
     id: int | None = None
     meta: str | None = None  # JSON: вердикт грейдера, время шага
+
+
+class Item(BaseModel):
+    """Задание из банка: что спрашиваем, как проверяем и какой концепт меряем."""
+
+    id: int
+    prompt: str
+    answer_type: AnswerType = "open"
+    # Веса концептов, на которые начисляется свидетельство: {"groupby": 1.0}.
+    concept_weights: dict[str, float] = Field(default_factory=dict)
+    difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
+    options: list[str] = Field(default_factory=list)  # варианты для choice
+    answer: str | None = None  # эталон: для choice — индекс варианта, иначе текст
+    rubric_id: int | None = None
 
 
 class Event(BaseModel):

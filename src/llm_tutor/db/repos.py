@@ -5,11 +5,21 @@ f-строки). Соединение приходит снаружи, что у
 и упрощает тесты (см. ``db.connection``).
 """
 
+import json
 import sqlite3
 import time
 from typing import Sequence, get_args
 
-from llm_tutor.schemas import Chunk, Concept, Edge, Event, Message, Role, SessionState
+from llm_tutor.schemas import (
+    Chunk,
+    Concept,
+    Edge,
+    Event,
+    Item,
+    Message,
+    Role,
+    SessionState,
+)
 
 # Роли, допустимые в messages — те же, что в доменной модели Role.
 _VALID_ROLES = frozenset(get_args(Role))
@@ -220,31 +230,98 @@ def _write_edge(conn: sqlite3.Connection, edge: Edge) -> None:
     )
 
 
+def _write_item(conn: sqlite3.Connection, item: Item) -> None:
+    """Upsert задания банка без коммита."""
+    conn.execute(
+        "INSERT INTO items "
+        "(id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "concept_weights = excluded.concept_weights, difficulty = excluded.difficulty, "
+        "answer_type = excluded.answer_type, prompt = excluded.prompt, "
+        "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id",
+        (
+            item.id,
+            json.dumps(item.concept_weights, ensure_ascii=False),
+            item.difficulty,
+            item.answer_type,
+            item.prompt,
+            json.dumps(item.options, ensure_ascii=False),
+            item.answer,
+            item.rubric_id,
+        ),
+    )
+
+
 def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     """Создаёт или обновляет концепт графа."""
     _write_concept(conn, concept)
     conn.commit()
 
 
-def replace_graph(
-    conn: sqlite3.Connection, concepts: Sequence[Concept], edges: Sequence[Edge]
-) -> None:
-    """Атомарно приводит граф в БД к заданному набору узлов и рёбер.
+_ITEM_COLUMNS = (
+    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id"
+)
 
-    Seed — источник истины: его узлы/рёбра upsert-ятся, а всё, чего в нём
-    больше нет, удаляется. Иначе в БД копятся «призрачные» связи, и
+
+def _row_to_item(row: sqlite3.Row) -> Item:
+    return Item(
+        id=row["id"],
+        prompt=row["prompt"],
+        answer_type=row["answer_type"],
+        concept_weights=json.loads(row["concept_weights"]),
+        difficulty=row["difficulty"],
+        options=json.loads(row["options"]),
+        answer=row["answer"],
+        rubric_id=row["rubric_id"],
+    )
+
+
+def upsert_item(conn: sqlite3.Connection, item: Item) -> None:
+    """Создаёт или обновляет задание банка."""
+    _write_item(conn, item)
+    conn.commit()
+
+
+def get_items(conn: sqlite3.Connection) -> list[Item]:
+    """Все задания банка (порядок — по id, детерминированный)."""
+    rows = conn.execute(f"SELECT {_ITEM_COLUMNS} FROM items ORDER BY id").fetchall()
+    return [_row_to_item(row) for row in rows]
+
+
+def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
+    """Задание по id или ``None``."""
+    row = conn.execute(
+        f"SELECT {_ITEM_COLUMNS} FROM items WHERE id = ?", (item_id,)
+    ).fetchone()
+    return _row_to_item(row) if row else None
+
+
+def replace_seed(
+    conn: sqlite3.Connection,
+    concepts: Sequence[Concept],
+    edges: Sequence[Edge],
+    items: Sequence[Item],
+) -> None:
+    """Атомарно приводит граф и банк заданий в БД к содержимому seed.
+
+    Seed — источник истины: его узлы/рёбра/задания upsert-ятся, а всё, чего
+    в нём больше нет, удаляется. Иначе в БД копятся «призрачные» связи, и
     планировщик блокирует узлы по пререквизитам, которых в seed уже нет.
 
-    Узел, на который ссылаются события или чанки, не удаляется — падаем с
-    понятной ошибкой, откатив всю операцию (журнал ученика не переписываем).
+    Запись, на которую ссылаются данные ученика (события, чанки), не
+    удаляется — падаем с понятной ошибкой, откатив всю операцию.
     """
     node_ids = {concept.id for concept in concepts}
     edge_keys = {(edge.from_id, edge.to_id, edge.type) for edge in edges}
+    item_ids = {item.id for item in items}
     try:
         for concept in concepts:
             _write_concept(conn, concept)
         for edge in edges:
             _write_edge(conn, edge)
+        for item in items:
+            _write_item(conn, item)
         for row in conn.execute("SELECT from_id, to_id, type FROM edges").fetchall():
             key = (row["from_id"], row["to_id"], row["type"])
             if key not in edge_keys:
@@ -254,11 +331,14 @@ def replace_graph(
         for row in conn.execute("SELECT id FROM concepts").fetchall():
             if row["id"] not in node_ids:
                 conn.execute("DELETE FROM concepts WHERE id = ?", (row["id"],))
+        for row in conn.execute("SELECT id FROM items").fetchall():
+            if row["id"] not in item_ids:
+                conn.execute("DELETE FROM items WHERE id = ?", (row["id"],))
     except sqlite3.IntegrityError as exc:
         conn.rollback()
         raise RuntimeError(
-            f"Не убрать концепт из графа: на него ссылаются данные ученика ({exc}). "
-            "Оставь узел в seed или перенеси данные вручную."
+            f"Не убрать запись из seed: на неё ссылаются данные ученика ({exc}). "
+            "Оставь её в seed или перенеси данные вручную."
         ) from exc
     except Exception:
         conn.rollback()

@@ -12,11 +12,11 @@ import os
 import sqlite3
 from pathlib import Path
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Edge
+from llm_tutor.schemas import Concept, Edge, Item
 
 # Корень проекта (src/llm_tutor/course/seed.py → src → корень).
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -24,11 +24,12 @@ DEFAULT_SEED_PATH = _PROJECT_ROOT / "data" / "seed_topic01.json"
 
 
 class Seed(BaseModel):
-    """Содержимое seed-файла: узлы и рёбра графа курса."""
+    """Содержимое seed-файла: граф курса и банк заданий."""
 
     course: str
     nodes: list[Concept]
     edges: list[Edge]
+    items: list[Item] = Field(default_factory=list)
 
 
 def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
@@ -45,7 +46,7 @@ def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
 def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     """Идемпотентно приводит граф в БД к seed-файлу (истина — seed)."""
     seed = load_seed_data(path)
-    repos.replace_graph(conn, seed.nodes, seed.edges)
+    repos.replace_seed(conn, seed.nodes, seed.edges, seed.items)
     return seed
 
 
@@ -71,7 +72,10 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         conn.close()
 
-    print(f"Загружено: {len(seed.nodes)} концептов, {len(seed.edges)} рёбер ({seed.course})")
+    print(
+        f"Загружено: {len(seed.nodes)} концептов, {len(seed.edges)} рёбер, "
+        f"{len(seed.items)} заданий ({seed.course})"
+    )
     return 0
 
 
