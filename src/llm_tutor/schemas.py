@@ -200,7 +200,6 @@ class Route(BaseModel):
 
     goal_concept_id: str | None = None
     steps: list[RouteStep] = Field(default_factory=list)
-    built_at: float | None = None
 
     @property
     def closed_count(self) -> int:

@@ -68,14 +68,17 @@ def build_route(
     steps: list[RouteStep] = []
     for concept_id in _scope(graph, goal_concept_id):
         mode = planner.mode_for_node(conn, graph, concept_id, now=stamp, settings=s)
-        if concept_id in closed_before or mode == "skip":
+        if mode == "skip" or (concept_id in closed_before and mode != "review"):
+            # Закрытый узел остаётся закрытым, пока владение держится. Как
+            # только повторение просрочено (§6.1 «повторение») — возвращаем
+            # узел в маршрут: забытое нельзя считать пройденным (§6.4).
             status = "closed"
         elif concept_id == current_node_id:
             status = "current"
         else:
             status = "ahead"
         steps.append(RouteStep(concept_id=concept_id, mode=mode, status=status))
-    return Route(goal_concept_id=goal_concept_id, steps=steps, built_at=stamp)
+    return Route(goal_concept_id=goal_concept_id, steps=steps)
 
 
 def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
@@ -97,12 +100,45 @@ def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
 
 
 def is_significant(changes: RouteChanges, *, min_steps: int = 2) -> bool:
-    """Стоит ли вообще говорить ученику о пересмотре (§6.4 — «малые различия»)."""
-    return (
-        bool(changes.closed)
-        or changes.current_changed
-        or len(changes.added) + len(changes.removed) >= min_steps
+    """Стоит ли вообще говорить ученику о пересмотре (§6.4 — «малые различия»).
+
+    Смена текущего узла сама по себе не считается: она всегда сопровождается
+    закрытием узла, а сообщения о ней всё равно нечего составить.
+    """
+    return bool(changes.closed) or len(changes.added) + len(changes.removed) >= min_steps
+
+
+def next_node_id(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    route: Route,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> str | None:
+    """Следующий узел маршрута: по приоритету среди готовых (§6.3).
+
+    Приоритет считает планировщик — важность, пробел, готовность, срочность
+    повторения, стоимость и штраф за провал. Маршрут задаёт путь, а не порядок
+    прохода: пойти можно по любому узлу, у которого закрыты пререквизиты.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    in_route = {step.concept_id for step in route.steps}
+    closed = {step.concept_id for step in route.steps if step.status == "closed"}
+    ready = planner.ready_nodes(
+        conn,
+        graph,
+        goal_concept_id=route.goal_concept_id,
+        limit=max(len(route.steps), 1),
+        now=stamp,
+        settings=s,
     )
+    for node in ready:
+        # Готовый узел может быть уже закрытым — тогда он не «следующий».
+        if node.concept_id in in_route and node.concept_id not in closed:
+            return node.concept_id
+    return None
 
 
 def format_route_change(changes: RouteChanges) -> str:

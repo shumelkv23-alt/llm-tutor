@@ -358,8 +358,7 @@ def _close_node_if_ready(
             ]
         }
     )
-    ahead = [step.concept_id for step in route.steps if step.status == "ahead"]
-    next_node_id = ahead[0] if ahead else None
+    next_node_id = route_mod.next_node_id(conn, graph, route, now=now, settings=settings)
     new_state = state.model_copy(
         update={
             "current_node_id": next_node_id,

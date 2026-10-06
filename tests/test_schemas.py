@@ -16,7 +16,6 @@ def test_session_state_roundtrip() -> None:
         attempts=1,
         route=Route(
             goal_concept_id="summary_tables",
-            built_at=1.0,
             steps=[RouteStep(concept_id="x", mode="verify", status="current")],
         ),
         phase="practice",
@@ -29,7 +28,6 @@ def test_session_state_roundtrip() -> None:
 def test_route_roundtrip_and_closed_count() -> None:
     route = Route(
         goal_concept_id="churn_eda_case",
-        built_at=1.0,
         steps=[
             RouteStep(concept_id="groupby", mode="full", status="closed"),
             RouteStep(concept_id="agg_functions", mode="compressed", status="current"),

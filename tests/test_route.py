@@ -179,3 +179,65 @@ def test_route_on_real_seed_covers_path_to_goal(conn, settings) -> None:
     ids = {step.concept_id for step in result.steps}
     assert "groupby" in ids and "summary_tables" in ids
     assert "churn_eda_case" not in ids  # это за целью
+
+
+# --- фиксы ревью: просевший узел, снимок, молчание, приоритет ---
+
+
+def test_decayed_node_leaves_closed_and_goes_for_review(conn, settings) -> None:
+    """Забытый узел должен вернуться в маршрут (§6.4 — долгий перерыв)."""
+    graph = _graph(["a"], [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    # владение ещё выше порога «сжатого прохода», но повторение просрочено
+    repos.upsert_mastery(conn, "a", alpha=3.0, beta=1.0, last_seen=0.0, next_review=-1000.0)
+    previous = Route(steps=[RouteStep(concept_id="a", mode="skip", status="closed")])
+
+    result = route_mod.build_route(
+        conn, graph, previous=previous, now=0.0, settings=settings
+    )
+
+    assert _statuses(result)["a"] != "closed"
+
+
+def test_freshly_closed_node_stays_closed(conn, settings) -> None:
+    """Свежезакрытый узел не должен «раззакрываться» сам собой."""
+    graph = _graph(["a"], [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    repos.upsert_mastery(conn, "a", alpha=3.0, beta=1.0, last_seen=0.0, next_review=1e9)
+    previous = Route(steps=[RouteStep(concept_id="a", mode="full", status="closed")])
+
+    result = route_mod.build_route(
+        conn, graph, previous=previous, now=0.0, settings=settings
+    )
+
+    assert _statuses(result)["a"] == "closed"
+
+
+def test_current_change_alone_is_not_announced() -> None:
+    """Смена текущего узла без закрытий — не повод писать «маршрут перестроен»."""
+    changes = route_mod.RouteChanges(
+        closed=(), added=(), removed=(), current_changed=True
+    )
+
+    assert route_mod.is_significant(changes) is False
+
+
+def test_next_node_follows_priority(conn, settings) -> None:
+    """Следующий узел выбирается по приоритету (§6.3), а не по порядку графа."""
+    graph = _graph(["a", "b", "c", "d"], [("b", "c"), ("b", "d")])
+    route = route_mod.build_route(conn, graph, now=0.0, settings=settings)
+
+    assert route_mod.next_node_id(conn, graph, route, now=0.0, settings=settings) == "b"
+
+
+def test_next_node_is_none_when_nothing_ahead(conn, settings) -> None:
+    graph = _graph(["a", "b"], [("a", "b")])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    repos.upsert_concept(conn, Concept(id="b", name="b"))
+    for node_id in ("a", "b"):
+        repos.upsert_mastery(
+            conn, node_id, alpha=38.0, beta=2.0, last_seen=0.0, next_review=1e9
+        )
+    route = route_mod.build_route(conn, graph, now=0.0, settings=settings)
+
+    assert route_mod.next_node_id(conn, graph, route, now=0.0, settings=settings) is None

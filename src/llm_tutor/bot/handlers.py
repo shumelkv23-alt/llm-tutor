@@ -191,6 +191,7 @@ def render_plan(
         graph,
         goal_concept_id=route_mod.goal_for(conn, graph),
         current_node_id=session_state.current_node_id,
+        previous=session_state.route,  # закрытия берём из снимка сессии
         now=now,
         settings=settings,
     )
