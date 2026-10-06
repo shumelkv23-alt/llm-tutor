@@ -10,7 +10,7 @@ from llm_tutor.core.turn import (
     handle_turn,
     post_turn,
     skip_pending,
-    start_practice,
+    start_practice_reply,
 )
 from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
@@ -25,14 +25,19 @@ from llm_tutor.student import beta
 class _FakeTutor:
     """Подставной клиент: отвечает заготовкой и задаёт уровень подсказки."""
 
-    def __init__(self, reply: str = "Ответ тьютора", hint_level: int = 0) -> None:
+    def __init__(
+        self, reply: str = "Ответ тьютора", hint_level: int = 0, *, student_stuck: bool = False
+    ) -> None:
         self.reply = reply
         self.hint_level = hint_level
+        self.student_stuck = student_stuck
         self.calls: list[list] = []
 
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
         self.calls.append(list(messages))
-        return schema(reply=self.reply, hint_level=self.hint_level)
+        return schema(
+            reply=self.reply, hint_level=self.hint_level, student_stuck=self.student_stuck
+        )
 
     async def chat(self, messages, *, model=None, temperature=None) -> str:
         raise AssertionError("тьюторский ход должен идти через chat_structured")
@@ -86,7 +91,7 @@ async def test_tutor_uses_material_and_persists_turn(conn, settings) -> None:
 
     reply = await handle_turn(conn, client, "m", "как работает groupby?", now=1.0, settings=settings)
 
-    assert reply == "Смотри на groupby"
+    assert reply.text == "Смотри на groupby"
     material_in_prompt = any(
         "groupby aggregates rows" in message.content for message in client.calls[0]
     )
@@ -123,7 +128,7 @@ async def test_offtopic_question_goes_to_model(conn, settings) -> None:
         conn, client, "m", "how do I train a neural network?", now=1.0, settings=settings
     )
 
-    assert reply == "это за пределами темы 1, но вот как это работает"
+    assert reply.text == "это за пределами темы 1, но вот как это работает"
     assert len(client.calls) == 1  # модель спросили
 
 
@@ -132,7 +137,7 @@ async def test_llm_failure_is_reported_and_turn_persisted(conn, settings) -> Non
 
     reply = await handle_turn(conn, _FailingTutor(), "m", "groupby?", now=1.0, settings=settings)
 
-    assert reply == LLM_FAILURE_REPLY
+    assert reply.text == LLM_FAILURE_REPLY
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
 
 
@@ -143,12 +148,12 @@ async def test_answer_is_checked_without_llm(conn, settings) -> None:
     load_seed(conn)
     client = _FakeTutor("тьютор не должен вызываться")
 
-    question = start_practice(conn, now=1.0, settings=settings)
+    reply_ = start_practice_reply(conn, now=1.0, settings=settings)
     item = repos.get_item(conn, _state(conn).pending_item_id)
     reply = await handle_turn(conn, client, "m", item.options[0], now=2.0, settings=settings)
 
-    assert question  # задание выдано
-    assert "Верно" in reply
+    assert reply_.text  # задание выдано
+    assert "Верно" in reply.text
     assert client.calls == []  # проверял код, не модель
     assert _state(conn).pending_item_id is None
     assert any(event.source == "checked" for event in repos.get_events(conn))
@@ -161,8 +166,8 @@ async def test_wrong_answer_shows_correct_option(conn, settings) -> None:
 
     reply = await handle_turn(conn, _FakeTutor(), "m", item.options[1], now=1.0, settings=settings)
 
-    assert "Не совсем" in reply
-    assert item.options[0] in reply
+    assert "Не совсем" in reply.text
+    assert item.options[0] in reply.text
     assert beta.estimate(conn, "pandas_intro", now=1.0, settings=settings).mean < 0.5
 
 
@@ -171,7 +176,7 @@ async def test_stale_pending_item_clears_state(conn, settings) -> None:
 
     reply = await handle_turn(conn, _FakeTutor(), "m", "0", now=1.0, settings=settings)
 
-    assert reply == STALE_ITEM_REPLY
+    assert reply.text == STALE_ITEM_REPLY
     assert _state(conn).pending_item_id is None
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
 
@@ -179,17 +184,17 @@ async def test_stale_pending_item_clears_state(conn, settings) -> None:
 async def test_start_practice_sets_pending_item(conn, settings) -> None:
     load_seed(conn)
 
-    text = start_practice(conn, now=1.0, settings=settings)
+    reply_ = start_practice_reply(conn, now=1.0, settings=settings)
 
     state = _state(conn)
     assert state.pending_item_id is not None
     assert state.current_node_id
     assert state.hint_level == 0
-    assert text
+    assert reply_.text
 
 
 def test_start_practice_without_graph_hints_seed(conn, settings) -> None:
-    assert "seed" in start_practice(conn, now=1.0, settings=settings).lower()
+    assert "seed" in start_practice_reply(conn, now=1.0, settings=settings).text.lower()
 
 
 # --- атомарность хода ---
@@ -220,12 +225,12 @@ async def test_typed_option_number_is_accepted(conn, settings) -> None:
     """Номер пункта из списка задания (нумерация с 1) — верный ответ."""
     load_seed(conn)
     client = _FakeTutor("тьютор не должен вызываться")
-    start_practice(conn, now=1.0, settings=settings)
+    start_practice_reply(conn, now=1.0, settings=settings)
     measured = _state(conn).current_node_id
 
     reply = await handle_turn(conn, client, "m", "1", now=2.0, settings=settings)
 
-    assert "Верно" in reply
+    assert "Верно" in reply.text
     assert client.calls == []
     assert repos.get_mastery(conn, measured)["alpha"] > 1.0
 
@@ -234,22 +239,22 @@ async def test_question_while_task_pending_keeps_task(conn, settings) -> None:
     """Вопрос вместо ответа не съедает задание и не пишет неверный ответ."""
     load_seed(conn)
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
-    start_practice(conn, now=1.0, settings=settings)
+    start_practice_reply(conn, now=1.0, settings=settings)
     pending_before = _state(conn).pending_item_id
 
     reply = await handle_turn(
         conn, _FakeTutor("объясняю"), "m", "а что такое groupby?", now=2.0, settings=settings
     )
 
-    assert "объясняю" in reply
-    assert "ждёт ответа" in reply  # ученику сказали, что задание не сброшено
+    assert "объясняю" in reply.text
+    assert "ждёт ответа" in reply.text  # ученику сказали, что задание не сброшено
     assert _state(conn).pending_item_id == pending_before
     assert repos.get_events(conn) == []  # свидетельство не записано
 
 
 def test_skip_pending_clears_without_evidence(conn, settings) -> None:
     load_seed(conn)
-    start_practice(conn, now=1.0, settings=settings)
+    start_practice_reply(conn, now=1.0, settings=settings)
 
     reply = skip_pending(conn, now=2.0, settings=settings)
 
@@ -276,7 +281,7 @@ async def test_open_answer_is_graded_with_limited_weight(conn, settings) -> None
         conn, client, "m", "groupby разбивает строки по ключу", now=2.0, settings=settings
     )
 
-    assert "Верно" in reply
+    assert "Верно" in reply.text
     events = repos.get_events(conn)
     assert events
     assert {event.source for event in events} == {"rubric"}
@@ -296,7 +301,7 @@ async def test_uncheckable_task_is_dropped_not_stuck(conn, settings) -> None:
 
     reply = await handle_turn(conn, _FakeTutor(), "m", "любой ответ", now=2.0, settings=settings)
 
-    assert "не удалось проверить" in reply
+    assert "не удалось проверить" in reply.text
     assert _state(conn).pending_item_id is None
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
     assert repos.get_events(conn) == []
@@ -317,7 +322,7 @@ async def test_open_answer_without_confirmed_quote_is_not_credited(conn, setting
         conn, _FakeGraderClient(fake), "m", "совсем не про это", now=2.0, settings=settings
     )
 
-    assert "Не совсем" in reply
+    assert "Не совсем" in reply.text
 
 
 async def test_turn_records_route_in_state(conn, settings) -> None:
@@ -329,3 +334,64 @@ async def test_turn_records_route_in_state(conn, settings) -> None:
     state = _state(conn)
     assert state.route is not None
     assert state.route.steps
+
+
+# --- ведение занятия (Срез 10) ---
+
+
+async def test_two_clean_answers_close_node_and_move_on(conn, settings) -> None:
+    """Два чистых ответа закрывают узел, и бот ведёт дальше сам."""
+    load_seed(conn)
+    item = repos.get_item(conn, 6)  # задание по python_basics, верный вариант первый
+
+    for now in (1.0, 2.0):
+        _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
+        reply = await handle_turn(
+            conn, _FakeTutor(), "m", item.options[0], now=now, settings=settings
+        )
+
+    state = _state(conn)
+    assert state.current_node_id != "python_basics"  # ушли с закрытого узла
+    assert state.phase == "practice"  # и сразу получили задание по новому узлу
+    assert state.pending_item_id is not None
+    assert "закрыт" in reply.text.lower()
+
+
+async def test_stuck_keeps_student_on_the_same_node(conn, settings) -> None:
+    """«Не понял» не пускает вперёд."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, current_node_id="groupby", node_streak=1)
+    client = _FakeTutor("давай разберём подробнее", student_stuck=True)
+
+    await handle_turn(conn, client, "m", "не понял groupby", now=1.0, settings=settings)
+
+    state = _state(conn)
+    assert state.mode == "reinforce"
+    assert state.node_streak == 0
+    assert state.current_node_id == "groupby"  # узел не сменился
+
+
+def test_task_reply_carries_options_for_choice_task(conn, settings) -> None:
+    """Задание с вариантами возвращается с подписями для кнопок."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="python_basics")
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert reply.options
+    assert repos.get_item(conn, _state(conn).pending_item_id) is not None
+
+
+async def test_node_without_items_says_so_honestly(conn, settings) -> None:
+    """По узлу нет заданий — бот честно говорит об этом и не рвёт узел."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="describe_stats", phase="practice")
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert "заданий" in reply.text.lower()
+    state = _state(conn)
+    assert state.current_node_id == "describe_stats"  # узел не потерян
+    assert state.pending_item_id is None
+    assert state.phase == "explain"  # ведём диалогом

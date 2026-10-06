@@ -12,6 +12,7 @@
 import logging
 import sqlite3
 import time
+from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core.context import build_context
@@ -26,7 +27,7 @@ from llm_tutor.llm.prompts import (
 )
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, Item, SessionState
-from llm_tutor.student import beta, diagnostic, hints, route as route_mod
+from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,21 @@ NOTHING_TO_SKIP_REPLY = "Сейчас нет задания, которое ну
 GRADING_FAILED_REPLY = (
     "Это задание не удалось проверить — снимаю его. Возьми новое: /task."
 )
+# По текущему узлу заданий в банке нет — ведём диалогом, узел не рвём.
+NO_TASK_FOR_NODE_REPLY = (
+    "По этому узлу заданий у меня нет — идём разговором: спрашивай, объясню. "
+    "Закроем узел, когда разберёмся."
+)
+# Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
+STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
+
+
+@dataclass(frozen=True)
+class TurnReply:
+    """Ответ хода: текст и, если выпало задание с вариантами, подписи кнопок."""
+
+    text: str
+    options: list[str] | None = None
 
 
 def _render_item(item: Item) -> str:
@@ -199,6 +215,12 @@ async def _answer_branch(
             "last_activity": now,
         }
     )
+    new_state = guide.register_answer(
+        new_state,
+        correct=result.score >= diagnostic.SUCCESS_SCORE,
+        hints_used=state.hint_level,
+        settings=settings,
+    )
     return _feedback(item, result.score), events, mastery, new_state
 
 
@@ -238,12 +260,11 @@ async def _tutor_branch(
         return LLM_FAILURE_REPLY, [], [], idle_state
 
     level = hints.next_hint_level(state.hint_level, answer.hint_level)
-    return (
-        answer.reply,
-        [],
-        [],
-        state.model_copy(update={"hint_level": level, "last_activity": now}),
-    )
+    new_state = state.model_copy(update={"hint_level": level, "last_activity": now})
+    if answer.student_stuck:
+        # Ученик просит глубины: узел в усиленный проход, вперёд не идём.
+        return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], guide.on_student_stuck(new_state)
+    return answer.reply, [], [], new_state
 
 
 async def handle_turn(
@@ -254,18 +275,30 @@ async def handle_turn(
     *,
     now: float | None = None,
     settings: Settings | None = None,
-) -> str:
+) -> TurnReply:
     """Один ход диалога: ответ на задание или реплика тьютору."""
     s = settings or get_settings()
     stamp = time.time() if now is None else now
     session_id = repos.ensure_open_session(conn, stamp)
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
+    options: list[str] | None = None
 
     if state.pending_item_id is not None and not _looks_like_question(user_text):
         reply, events, mastery, new_state = await _answer_branch(
             conn, client, model, graph, user_text, state, now=stamp, settings=s
         )
+        # Узел пройден? Тогда объявляем следующий и сразу выдаём по нему задание —
+        # «за ручку» одним ответом, без лишней команды.
+        new_state, closed_note = _close_node_if_ready(
+            conn, graph, new_state, now=stamp, settings=s
+        )
+        if closed_note:
+            reply = f"{reply}\n\n{closed_note}"
+            new_state, task_text, options = _issue_task(
+                conn, graph, new_state, now=stamp, settings=s
+            )
+            reply = f"{reply}\n\n{task_text}"
     else:
         reply, events, mastery, new_state = await _tutor_branch(
             conn, client, model, session_id, user_text, state, graph, now=stamp, settings=s
@@ -291,46 +324,120 @@ async def handle_turn(
         mastery=mastery,
         now=stamp,
     )
-    return reply
+    return TurnReply(text=reply, options=options)
 
 
-def start_practice(
-    conn: sqlite3.Connection, *, now: float | None = None, settings: Settings | None = None
-) -> str:
-    """Выдаёт задание по текущему маршруту и ждёт ответа."""
-    s = settings or get_settings()
-    stamp = time.time() if now is None else now
-    graph = CourseGraph.load(conn)
-    if not graph.node_ids:
-        return EMPTY_GRAPH_REPLY
+def _close_node_if_ready(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    now: float,
+    settings: Settings,
+) -> tuple[SessionState, str | None]:
+    """Закрывает пройденный узел и объявляет следующий.
 
-    session_id = repos.ensure_open_session(conn, stamp)
-    state = repos.get_session_state(conn, session_id)
-    # Практика берёт и задания с рубрикой: открытые ответы проверяет грейдер.
-    question = diagnostic.next_question(
-        conn, graph, include_rubric=True, now=stamp, settings=s
+    Критерий считает код (``student/guide.py``), не модель: «понятно?» ответом
+    доказательством не считается.
+    """
+    if state.current_node_id is None:
+        return state, None
+    mastery = beta.estimate(conn, state.current_node_id, now=now, settings=settings)
+    if not guide.is_node_closed(state, mastery, settings=settings):
+        return state, None
+
+    closed_name = graph.concept(state.current_node_id).name
+    route = state.route or route_mod.build_route(conn, graph, now=now, settings=settings)
+    route = route.model_copy(
+        update={
+            "steps": [
+                step.model_copy(update={"status": "closed"})
+                if step.concept_id == state.current_node_id
+                else step
+                for step in route.steps
+            ]
+        }
     )
+    ahead = [step.concept_id for step in route.steps if step.status == "ahead"]
+    next_node_id = ahead[0] if ahead else None
+    new_state = state.model_copy(
+        update={
+            "current_node_id": next_node_id,
+            "node_streak": 0,
+            "phase": "explain",
+            "mode": None,
+            "hint_level": 0,
+            "route": route,
+        }
+    )
+    if next_node_id is None:
+        return new_state, f"Узел «{closed_name}» закрыт — маршрут пройден до конца."
+    next_name = graph.concept(next_node_id).name
+    return new_state, f"Узел «{closed_name}» закрыт ✓ — идём дальше: {next_name}."
+
+
+def _issue_task(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    now: float,
+    settings: Settings,
+) -> tuple[SessionState, str, list[str] | None]:
+    """Выдаёт задание по текущему узлу и переводит занятие в фазу практики."""
+    if state.current_node_id is not None:
+        question = diagnostic.question_for_node(
+            conn, state.current_node_id, now=now, settings=settings
+        )
+    else:
+        question = diagnostic.next_question(
+            conn, graph, include_rubric=True, now=now, settings=settings
+        )
+
     if question is None:
-        return NO_TASK_REPLY
+        text = NO_TASK_FOR_NODE_REPLY if state.current_node_id else NO_TASK_REPLY
+        return state.model_copy(update={"phase": "explain", "last_activity": now}), text, None
 
     new_state = state.model_copy(
         update={
             "pending_item_id": question.item.id,
             "current_node_id": question.concept_id,
             "hint_level": 0,
-            "last_activity": stamp,
+            "phase": "practice",
+            "last_activity": now,
         }
     )
-    text = _render_item(question.item)
+    return new_state, _render_item(question.item), question.item.options or None
+
+
+def start_practice_reply(
+    conn: sqlite3.Connection, *, now: float | None = None, settings: Settings | None = None
+) -> TurnReply:
+    """Выдаёт задание по текущему маршруту и ждёт ответа.
+
+    Практика берёт и задания с рубрикой: открытые ответы проверяет грейдер.
+    Если по текущему узлу заданий нет — говорим об этом честно, узел не рвём.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return TurnReply(text=EMPTY_GRAPH_REPLY)
+
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    new_state, text, options = _issue_task(conn, graph, state, now=stamp, settings=s)
+
+    fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
     post_turn(
         conn,
         session_id,
         user_text=PRACTICE_KICKOFF_TEXT,
         assistant_text=text,
-        state=new_state,
+        state=new_state.model_copy(update={"route": fresh_route}),
         now=stamp,
     )
-    return text
+    return TurnReply(text=text, options=options)
 
 
 def skip_pending(

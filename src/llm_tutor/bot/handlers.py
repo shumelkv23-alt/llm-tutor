@@ -27,9 +27,10 @@ from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import (
     STALE_ITEM_REPLY,
+    TurnReply,
     handle_turn,
     skip_pending,
-    start_practice,
+    start_practice_reply,
 )
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -140,28 +141,28 @@ async def _run_turn(
     user_text: str,
     *,
     settings: Settings | None,
-) -> str:
+) -> TurnReply:
     """Ход с подстраховкой: неожиданный сбой не оставит ученика без ответа."""
     try:
         return await handle_turn(conn, client, model, user_text, settings=settings)
     except Exception:  # noqa: BLE001 — бот не должен молчать
         logger.exception("Неожиданный сбой хода")
-        return LLM_FAILURE_REPLY
+        return TurnReply(text=LLM_FAILURE_REPLY)
 
 
-def _answer_keyboard(item: Item | None) -> InlineKeyboardMarkup | None:
-    """Кнопки вариантов — только для задания с вариантами."""
-    if item is None or not item.options:
+def _options_keyboard(options: list[str] | None) -> InlineKeyboardMarkup | None:
+    """Кнопки вариантов по подписям (``None``, если вариантов нет)."""
+    if not options:
         return None
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text=option,
+                    text=label,
                     callback_data=f"{ANSWER_CALLBACK_PREFIX}:{index}",
                 )
             ]
-            for index, option in enumerate(item.options)
+            for index, label in enumerate(options)
         ]
     )
 
@@ -259,12 +260,11 @@ def make_router(
             await message.answer(BUSY_REPLY)
             return
         try:
-            text = _truncate(start_practice(conn, settings=settings))
-            keyboard = _answer_keyboard(_pending_item(conn))
+            reply = start_practice_reply(conn, settings=settings)
         except Exception:  # noqa: BLE001 — лучше сообщение, чем тишина
             logger.exception("Сбой выдачи задания")
-            text, keyboard = BOT_FAILURE_REPLY, None
-        await message.answer(text, reply_markup=keyboard)
+            reply = TurnReply(text=BOT_FAILURE_REPLY)
+        await message.answer(_truncate(reply.text), reply_markup=_options_keyboard(reply.options))
 
     @router.message(Command("skip"))
     async def on_skip(message: Message) -> None:
@@ -282,7 +282,9 @@ def make_router(
         reply = await _run_turn(
             conn, client, model, item.options[index], settings=settings
         )
-        await callback.message.answer(_truncate(reply))
+        await callback.message.answer(
+            _truncate(reply.text), reply_markup=_options_keyboard(reply.options)
+        )
         await callback.answer()
 
     # Обработчик свободного текста: не трогает команды (иначе CommandStop был
@@ -291,6 +293,8 @@ def make_router(
     @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
-        await message.answer(_truncate(reply))
+        await message.answer(
+            _truncate(reply.text), reply_markup=_options_keyboard(reply.options)
+        )
 
     return router

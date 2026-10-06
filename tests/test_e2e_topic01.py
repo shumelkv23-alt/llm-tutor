@@ -67,7 +67,7 @@ async def test_offtopic_question_still_gets_an_answer() -> None:
             conn, client, "m", "как обучают нейросети?", now=1.0, settings=settings
         )
 
-        assert reply == "Это за пределами темы 1"
+        assert reply.text == "Это за пределами темы 1"
         assert route.called
     finally:
         await client.aclose()
@@ -91,7 +91,7 @@ async def test_provider_error_is_reported_and_turn_persisted() -> None:
             conn, client, "m", "как работает groupby?", now=1.0, settings=settings
         )
 
-        assert reply == LLM_FAILURE_REPLY
+        assert reply.text == LLM_FAILURE_REPLY
         session_id = repos.get_open_session(conn)
         assert len(repos.get_messages(conn, session_id)) == 2
     finally:
@@ -145,7 +145,7 @@ async def test_full_topic01_scenario() -> None:
         reply = await handle_turn(
             conn, client, "m", "как работает groupby?", now=1.0, settings=settings
         )
-        assert reply == "Смотри на groupby"
+        assert reply.text == "Смотри на groupby"
         session_id = repos.get_open_session(conn)
         assert repos.get_session_state(conn, session_id).hint_level == 1
         assert len(requests) == 1
@@ -154,7 +154,7 @@ async def test_full_topic01_scenario() -> None:
         _set_pending(conn, 6, "python_basics")
         answer = repos.get_item(conn, 6).options[0]
         reply = await handle_turn(conn, client, "m", answer, now=2.0, settings=settings)
-        assert "Верно" in reply
+        assert "Верно" in reply.text
         assert len(requests) == 1  # модель не спрашивали
         assert beta.estimate(conn, "python_basics", now=2.0, settings=settings).mean > 0.5
 
@@ -163,7 +163,7 @@ async def test_full_topic01_scenario() -> None:
         reply = await handle_turn(
             conn, client, "m", "groupby разбивает строки, agg считает", now=3.0, settings=settings
         )
-        assert "Верно" in reply  # 2 из 3 критериев — выше порога
+        assert "Верно" in reply.text  # 2 из 3 критериев — выше порога
         assert len(requests) == 2
         graded = [e for e in repos.get_events(conn) if e.source == "rubric"]
         assert graded

@@ -140,6 +140,35 @@ def next_question(
     return None
 
 
+def question_for_node(
+    conn: sqlite3.Connection,
+    node_id: str,
+    *,
+    asked_item_ids: frozenset[int] = frozenset(),
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> DiagnosticQuestion | None:
+    """Задание именно по этому узлу (ведение занятия, а не диагностика).
+
+    Отличие от ``next_question``: узел задан маршрутом, а не выбран по
+    неопределённости. Целевая сложность — текущее владение узлом.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+
+    unavailable = set(asked_item_ids) | _freshly_answered_items(
+        conn, stamp, s.item_repeat_cooldown_days
+    )
+    items = [
+        item
+        for item in _available_items(conn, include_rubric=True)
+        if item.id not in unavailable
+    ]
+    target = beta.estimate(conn, node_id, now=stamp, settings=s).mean
+    item = _best_item(items, node_id, target_difficulty=target)
+    return DiagnosticQuestion(item=item, concept_id=node_id) if item is not None else None
+
+
 def plan_evidence(
     conn: sqlite3.Connection,
     graph: CourseGraph,

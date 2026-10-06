@@ -304,7 +304,7 @@ async def test_task_reports_failure_instead_of_silence(conn, settings, monkeypat
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     monkeypatch.setattr(
-        "llm_tutor.bot.handlers.start_practice",
+        "llm_tutor.bot.handlers.start_practice_reply",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
     )
     message = FakeMessage()
