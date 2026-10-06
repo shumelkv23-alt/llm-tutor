@@ -194,6 +194,14 @@ def add_event(
     return int(cur.lastrowid)
 
 
+def item_was_answered(conn: sqlite3.Connection, item_id: int) -> bool:
+    """Отвечал ли ученик на это задание раньше (журнал — источник истины)."""
+    row = conn.execute(
+        "SELECT 1 FROM events WHERE item_id = ? LIMIT 1", (item_id,)
+    ).fetchone()
+    return row is not None
+
+
 def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[Event]:
     """События журнала (опционально — только по одному концепту)."""
     if concept_id is None:

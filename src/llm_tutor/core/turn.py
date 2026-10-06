@@ -193,6 +193,9 @@ async def _answer_branch(
         )
 
     measured = state.current_node_id or next(iter(item.concept_weights), "")
+    # Повтор того же вопроса — свидетельство слабее: знания могло и не прибавиться.
+    first_time = not repos.item_was_answered(conn, item.id)
+    evidence_scale = 1.0 if first_time else settings.repeat_evidence_weight
     events, mastery = diagnostic.plan_evidence(
         conn,
         graph,
@@ -200,7 +203,8 @@ async def _answer_branch(
         measured,
         result.score,
         source="checked" if item.answer_type in diagnostic.AUTO_CHECKABLE else "rubric",
-        weight_scale=(
+        weight_scale=evidence_scale
+        * (
             1.0
             if item.answer_type in diagnostic.AUTO_CHECKABLE
             else settings.rubric_evidence_weight
