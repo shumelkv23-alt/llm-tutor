@@ -16,6 +16,12 @@ EventSource = Literal["autotest", "checked", "rubric", "dialogue", "self"]
 # Режим прохода узла (см. student/planner.py).
 NodeMode = Literal["skip", "verify", "compressed", "full", "reinforce", "revisit", "review"]
 
+# Фаза ведения занятия (см. student/guide.py).
+GuidePhase = Literal["explain", "practice", "check"]
+
+# Место узла в маршруте: закрыт, в работе сейчас или ещё впереди.
+RouteStepStatus = Literal["closed", "current", "ahead"]
+
 # Тип связи между концептами графа курса.
 EdgeType = Literal["requires", "part_of", "leads_to"]
 
@@ -181,6 +187,27 @@ class Chunk(BaseModel):
     section: str | None = None
 
 
+class RouteStep(BaseModel):
+    """Один узел маршрута ученика."""
+
+    concept_id: str
+    mode: NodeMode
+    status: RouteStepStatus
+
+
+class Route(BaseModel):
+    """Путь от текущего положения до цели со снимком состояния узлов."""
+
+    goal_concept_id: str | None = None
+    steps: list[RouteStep] = Field(default_factory=list)
+    built_at: float | None = None
+
+    @property
+    def closed_count(self) -> int:
+        """Сколько узлов маршрута уже закрыто."""
+        return sum(1 for step in self.steps if step.status == "closed")
+
+
 class SessionState(BaseModel):
     """Состояние сессии (JSON в ``sessions.state``), меняется после каждого хода."""
 
@@ -189,5 +216,7 @@ class SessionState(BaseModel):
     hint_level: int = 0
     pending_item_id: int | None = None
     attempts: int = 0
-    plan_snapshot: list[PlannedNode] = Field(default_factory=list)
+    route: Route | None = None
+    phase: GuidePhase = "explain"
+    node_streak: int = 0
     last_activity: float | None = None

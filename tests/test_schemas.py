@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from llm_tutor.schemas import Event, Message, PlannedNode, SessionState
+from llm_tutor.schemas import Event, Message, Route, RouteStep, SessionState
 
 
 def test_session_state_roundtrip() -> None:
@@ -14,18 +14,48 @@ def test_session_state_roundtrip() -> None:
         hint_level=2,
         pending_item_id=7,
         attempts=1,
-        plan_snapshot=[PlannedNode(concept_id="x", mode="verify", priority=0.5)],
+        route=Route(
+            goal_concept_id="summary_tables",
+            built_at=1.0,
+            steps=[RouteStep(concept_id="x", mode="verify", status="current")],
+        ),
+        phase="practice",
+        node_streak=1,
         last_activity=123.0,
     )
     assert SessionState.model_validate_json(state.model_dump_json()) == state
 
 
-def test_session_state_defaults() -> None:
-    """Пустое состояние — валидный дефолт."""
+def test_route_roundtrip_and_closed_count() -> None:
+    route = Route(
+        goal_concept_id="churn_eda_case",
+        built_at=1.0,
+        steps=[
+            RouteStep(concept_id="groupby", mode="full", status="closed"),
+            RouteStep(concept_id="agg_functions", mode="compressed", status="current"),
+            RouteStep(concept_id="summary_tables", mode="full", status="ahead"),
+        ],
+    )
+
+    assert Route.model_validate_json(route.model_dump_json()) == route
+    assert route.closed_count == 1
+
+
+def test_session_state_defaults_for_guidance() -> None:
     state = SessionState()
-    assert state.hint_level == 0
-    assert state.plan_snapshot == []
-    assert state.current_node_id is None
+
+    assert state.route is None
+    assert state.phase == "explain"
+    assert state.node_streak == 0
+
+
+def test_old_state_with_plan_snapshot_is_still_readable() -> None:
+    """Сохранённое состояние прошлой версии не должно ронять чтение."""
+    old = '{"plan_snapshot": [{"concept_id": "x", "mode": "full", "priority": 1.0}]}'
+
+    state = SessionState.model_validate_json(old)
+
+    assert state.route is None
 
 
 def test_message_roundtrip() -> None:
