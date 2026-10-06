@@ -6,6 +6,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup
 
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
+from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.course.seed import load_seed
@@ -197,3 +198,79 @@ async def test_diagnostic_survives_lost_state(conn, settings) -> None:
     await _handler(router, "callback_query", 0)(FakeCallback("diag:0", message), state)
 
     assert "заново" in message.last_text
+
+
+# --- практика: /task и ответ через состояние сессии ---
+
+
+class _TutorClient:
+    """Подставной клиент тьюторского хода (структурированный ответ)."""
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        return schema(reply="ок", hint_level=0)
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        return "ок"
+
+
+def _state(conn):
+    return repos.get_session_state(conn, repos.get_open_session(conn))
+
+
+async def test_task_command_sends_question_with_buttons(conn, settings) -> None:
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+
+    await _handler(router, "message", 2)(message)  # /task
+
+    assert message.sent[-1][1] is not None  # задание с вариантами
+    state = _state(conn)
+    assert state.pending_item_id is not None
+    assert state.current_node_id is not None
+    assert state.hint_level == 0
+
+
+async def test_button_answer_goes_through_turn(conn, settings) -> None:
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+    await _handler(router, "message", 2)(message)  # /task
+
+    await _handler(router, "callback_query", 0)(FakeCallback("answer:0", message))
+
+    assert repos.get_events(conn)  # ответ проверен кодом и записан
+    assert _state(conn).pending_item_id is None
+
+
+async def test_text_answer_goes_through_turn(conn, settings) -> None:
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    await _handler(router, "message", 2)(FakeMessage())  # /task
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    answer = FakeMessage(item.options[0] if item.options else str(item.answer))
+
+    await _handler(router, "message", 3)(answer)
+
+    assert repos.get_events(conn)
+    assert "Верно" in answer.last_text
+
+
+async def test_answer_without_pending_item_is_reported(conn, settings) -> None:
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+
+    await _handler(router, "callback_query", 0)(FakeCallback("answer:0", message))
+
+    assert "неактуально" in message.last_text
+
+
+async def test_free_text_goes_to_tutor_turn(conn, settings) -> None:
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage("привет!")
+
+    await _handler(router, "message", 3)(message)
+
+    assert message.last_text == "ок"
+    assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2

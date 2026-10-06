@@ -5,17 +5,14 @@ from aiogram import Router
 
 from llm_tutor.bot.handlers import (
     build_start_reply,
-    handle_message,
     handle_start,
     make_router,
     render_plan,
 )
-from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMError
-from llm_tutor.llm.prompts import NO_COURSE_ANSWER
 from llm_tutor.llm.schemas import ChatMessage
 
 
@@ -140,98 +137,6 @@ async def test_state_survives_restart(tmp_path) -> None:
         assert len(repos.get_messages(second_conn, session_id)) == 2
     finally:
         second_conn.close()
-
-
-# --- ход на свободный вопрос (RAG) ---
-
-
-async def test_handle_message_uses_rag_material(conn) -> None:
-    """Найденный материал уходит в промпт, ответ берётся от модели."""
-    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
-    client = _FakeClient("Ответ по материалу")
-
-    reply = await handle_message(conn, client, "m", "как работает groupby?", now=1.0)
-
-    assert reply == "Ответ по материалу"
-    messages, _ = client.calls[0]
-    assert any("groupby aggregates rows" in m.content for m in messages)
-
-
-async def test_handle_message_short_circuits_without_material(conn) -> None:
-    """Нет материала — детерминированное «нет в курсе», LLM не вызывается."""
-    client = _FakeClient()
-
-    reply = await handle_message(conn, client, "m", "что такое DataFrame?", now=1.0)
-
-    assert reply == NO_COURSE_ANSWER
-    assert client.calls == []
-
-
-async def test_handle_message_persists_turn(conn) -> None:
-    ingest_text(conn, "# T\n\n## S\n\ngroupby aggregation\n", "u")
-    client = _FakeClient("ответ")
-
-    await handle_message(conn, client, "m", "вопрос про groupby", now=1.0)
-
-    session_id = repos.get_open_session(conn)
-    messages = repos.get_messages(conn, session_id)
-    assert [m.role for m in messages] == ["user", "assistant"]
-
-
-async def test_handle_message_catches_llm_error(conn) -> None:
-    ingest_text(conn, "# T\n\n## S\n\ngroupby aggregation\n", "u")
-
-    reply = await handle_message(conn, _FailingClient(), "m", "groupby?", now=1.0)
-
-    assert "не смог получить ответ" in reply.lower()
-
-
-async def test_handle_message_greeting_reaches_llm(conn) -> None:
-    """Приветствие — это реплика диалога, а не вопрос вне курса."""
-    client = _FakeClient("Привет! Чем помочь по Pandas?")
-
-    reply = await handle_message(conn, client, "m", "привет!", now=1.0)
-
-    assert reply == "Привет! Чем помочь по Pandas?"
-    assert len(client.calls) == 1
-
-
-async def test_handle_message_greeting_uses_no_material_prompt(conn) -> None:
-    """Без материала модель получает промпт, запрещающий выдумывать факты курса."""
-    client = _FakeClient()
-
-    await handle_message(conn, client, "m", "спасибо!", now=1.0)
-
-    messages, _ = client.calls[0]
-    assert messages[0].role == "system"
-    assert "фрагментов материалов курса нет" in messages[0].content
-
-
-async def test_handle_message_offtopic_not_in_course(conn) -> None:
-    """Материал в базе есть, но вопрос вне темы → «не нашёл», без вызова LLM."""
-    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
-    client = _FakeClient("не должно вызываться")
-
-    reply = await handle_message(
-        conn, client, "m", "how do I train a neural network?", now=1.0
-    )
-
-    assert reply == NO_COURSE_ANSWER
-    assert client.calls == []
-
-
-async def test_handle_message_survives_unexpected_error(conn) -> None:
-    """Неожиданный сбой LLM не оставляет ученика без ответа."""
-    ingest_text(conn, "# T\n\n## S\n\ngroupby aggregation\n", "u")
-
-    reply = await handle_message(conn, _CrashingClient(), "m", "groupby?", now=1.0)
-
-    assert "не смог получить ответ" in reply.lower()
-    session_id = repos.get_open_session(conn)
-    assert len(repos.get_messages(conn, session_id)) == 2
-
-
-# --- сборка роутера ---
 
 
 # --- маршрут (/plan) ---

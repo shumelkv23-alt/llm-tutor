@@ -2,6 +2,11 @@
 
 Зависимости (соединение с БД, LLM-клиент, модель) внедряются через фабрику
 `make_router`, чтобы логику можно было тестировать без живого aiogram.
+
+Свободный текст идёт в ``core.turn.handle_turn`` — единый ход диалога
+(ответ на задание либо тьюторский путь). Задания выдаются командой ``/task``,
+ответ на них принимается кнопкой или текстом через состояние сессии в БД,
+а не память процесса: рестарт бота заход не теряет.
 """
 
 import logging
@@ -11,12 +16,18 @@ import time
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import (
+    CallbackQuery,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
-from llm_tutor.core.context import DEFAULT_DIALOG_TAIL, DEFAULT_RAG_TOP_K, build_context
+from llm_tutor.core.turn import STALE_ITEM_REPLY, handle_turn, start_practice
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.db import repos
 from llm_tutor.db.repos import (
     add_message,
     ensure_open_session,
@@ -25,23 +36,11 @@ from llm_tutor.db.repos import (
     update_session_state,
 )
 from llm_tutor.llm.client import LLMClient, LLMError
-from llm_tutor.llm.prompts import NO_COURSE_ANSWER
+from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import ChatMessage
-from llm_tutor.rag.retriever import has_searchable_content
-from llm_tutor.schemas import NodeMode
-from llm_tutor.student.planner import ready_nodes
+from llm_tutor.schemas import Item
+from llm_tutor.student.planner import MODE_LABELS, ready_nodes
 from llm_tutor.student.survey import GOAL_CONCEPT_KEY, is_completed as survey_completed
-
-# Человекочитаемые названия режимов прохода узла (см. student/planner.py).
-MODE_LABELS: dict[NodeMode, str] = {
-    "skip": "пропустить",
-    "verify": "проверить и идти дальше",
-    "compressed": "сжатый проход",
-    "full": "полный проход",
-    "reinforce": "усиленный проход",
-    "revisit": "вернуться к пререквизиту",
-    "review": "повторение",
-}
 
 START_SYSTEM_PROMPT = (
     "Ты — тьютор по курсу машинного обучения (mlcourse.ai), тема 1 «Pandas / EDA». "
@@ -55,8 +54,7 @@ START_GREETING = "Привет! Хочу начать учиться."
 # Telegram отклоняет сообщения длиннее 4096 символов — оставляем запас.
 MAX_REPLY_LENGTH = 4000
 
-# Пока не удалось получить ответ — ученик не должен получать молчание.
-LLM_FAILURE_REPLY = "Не смог получить ответ от модели — попробуй ещё раз чуть позже."
+ANSWER_CALLBACK_PREFIX = "answer"
 
 logger = logging.getLogger(__name__)
 
@@ -99,12 +97,7 @@ async def handle_start(
     *,
     now: float | None = None,
 ) -> str:
-    """Полный ход на /start: сессия + запись реплик + приветствие модели.
-
-    Порядок: сначала ответ модели, затем записи — сбой LLM не оставит
-    «сиротскую» реплику ученика. Полная атомарность хода (единый коммит)
-    появится в Срезе 5 вместе с ``post_turn``.
-    """
+    """Полный ход на /start: сессия + запись реплик + приветствие модели."""
     ts = time.time() if now is None else now
     reply = await build_start_reply(client, model, user_text)
 
@@ -113,42 +106,30 @@ async def handle_start(
     return reply
 
 
-async def handle_message(
-    conn: sqlite3.Connection,
-    client: LLMClient,
-    model: str,
-    user_text: str,
-    *,
-    rag_top_k: int = DEFAULT_RAG_TOP_K,
-    dialog_tail: int = DEFAULT_DIALOG_TAIL,
-    now: float | None = None,
-) -> str:
-    """Ход на свободный вопрос: RAG-контекст → ответ с опорой на материал курса.
+def _pending_item(conn: sqlite3.Connection) -> Item | None:
+    """Задание, ответа на которое сейчас ждём (из состояния сессии)."""
+    session_id = ensure_open_session(conn, time.time())
+    state = get_session_state(conn, session_id)
+    if state.pending_item_id is None:
+        return None
+    return repos.get_item(conn, state.pending_item_id)
 
-    Если ретривер не нашёл чанка на осмысленный запрос — детерминированное
-    «нет в курсе» без вызова LLM (дёшево и предсказуемо). Реплики без значимых
-    токенов (приветствие, благодарность) идут к модели как обычный диалог.
-    """
-    ts = time.time() if now is None else now
-    session_id = ensure_open_session(conn, ts)
 
-    package = build_context(
-        conn, session_id, user_text, top_k=rag_top_k, dialog_tail=dialog_tail
+def _answer_keyboard(item: Item | None) -> InlineKeyboardMarkup | None:
+    """Кнопки вариантов — только для задания с вариантами."""
+    if item is None or not item.options:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=option,
+                    callback_data=f"{ANSWER_CALLBACK_PREFIX}:{index}",
+                )
+            ]
+            for index, option in enumerate(item.options)
+        ]
     )
-    if not package.chunks and has_searchable_content(user_text):
-        reply = NO_COURSE_ANSWER
-    else:
-        try:
-            reply = await client.chat(package.messages, model=model)
-        except LLMError:
-            reply = LLM_FAILURE_REPLY
-        except Exception:  # noqa: BLE001 — бот не должен молчать на неожиданный сбой
-            logger.exception("Неожиданный сбой при обращении к LLM")
-            reply = LLM_FAILURE_REPLY
-        reply = _truncate(reply)
-
-    _persist_turn(conn, session_id, user_text, reply, ts)
-    return reply
 
 
 def render_plan(
@@ -160,7 +141,7 @@ def render_plan(
     """Текст ``/plan``: готовые узлы маршрута с режимом прохода."""
     graph = CourseGraph.load(conn)
     if not graph.node_ids:
-        return "Граф курса пуст. Загрузи seed: python -m llm_tutor.course.seed"
+        return EMPTY_GRAPH_REPLY
 
     # Цель из анкеты учитываем, только если такой узел есть в графе
     # (seed мог поменяться между запусками).
@@ -186,8 +167,7 @@ def make_router(
     client: LLMClient,
     model: str,
     *,
-    rag_top_k: int = DEFAULT_RAG_TOP_K,
-    dialog_tail: int = DEFAULT_DIALOG_TAIL,
+    settings: Settings | None = None,
 ) -> Router:
     """Собирает роутер с внедрёнными зависимостями (conn, client, model)."""
     router = Router()
@@ -203,21 +183,32 @@ def make_router(
 
     @router.message(Command("plan"))
     async def on_plan(message: Message) -> None:
-        await message.answer(render_plan(conn))
+        await message.answer(render_plan(conn, settings=settings))
+
+    @router.message(Command("task"))
+    async def on_task(message: Message) -> None:
+        text = start_practice(conn, settings=settings)
+        await message.answer(_truncate(text), reply_markup=_answer_keyboard(_pending_item(conn)))
+
+    @router.callback_query(F.data.startswith(f"{ANSWER_CALLBACK_PREFIX}:"))
+    async def on_answer(callback: CallbackQuery) -> None:
+        # Ответ приходит из состояния сессии в БД — рестарт процесса его не теряет.
+        item = _pending_item(conn)
+        index = int((callback.data or "").split(":")[1])
+        if item is None or not 0 <= index < len(item.options):
+            await callback.message.answer(STALE_ITEM_REPLY)
+            await callback.answer()
+            return
+        reply = await handle_turn(conn, client, model, item.options[index], settings=settings)
+        await callback.message.answer(_truncate(reply))
+        await callback.answer()
 
     # Обработчик свободного текста: не трогает команды (иначе CommandStop был
     # бы перехвачен) и не лезет в незавершённые FSM-потоки (анкета, диагностика) —
     # их шаги обрабатывают свои роутеры.
     @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
-        reply = await handle_message(
-            conn,
-            client,
-            model,
-            message.text or "",
-            rag_top_k=rag_top_k,
-            dialog_tail=dialog_tail,
-        )
-        await message.answer(reply)
+        reply = await handle_turn(conn, client, model, message.text or "", settings=settings)
+        await message.answer(_truncate(reply))
 
     return router

@@ -83,6 +83,10 @@ class CourseGraph:
         """Все id концептов."""
         return list(self._concepts)
 
+    def has_node(self, node_id: str) -> bool:
+        """Есть ли такой узел в графе."""
+        return node_id in self._concepts
+
     def concept(self, node_id: str) -> Concept:
         """Концепт по id (``KeyError``, если его нет в графе)."""
         try:

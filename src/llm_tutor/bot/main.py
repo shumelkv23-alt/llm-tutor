@@ -43,13 +43,7 @@ async def main() -> None:
         dispatcher.include_router(make_survey_router(conn, settings))
         dispatcher.include_router(make_diagnostic_router(conn, settings))
         dispatcher.include_router(
-            make_router(
-                conn,
-                client,
-                settings.tutor_model,
-                rag_top_k=settings.context_rag_top_k,
-                dialog_tail=settings.context_dialog_tail,
-            )
+            make_router(conn, client, settings.tutor_model, settings=settings)
         )
         await dispatcher.start_polling(bot)
     finally:

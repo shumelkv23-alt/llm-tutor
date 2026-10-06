@@ -47,6 +47,21 @@ class Mastery:
     next_review: float | None
 
 
+@dataclass(frozen=True)
+class MasteryUpdate:
+    """Посчитанные счётчики концепта — ещё не записанные.
+
+    Разделение «посчитать» и «записать» нужно, чтобы весь ход (реплики,
+    события, модель ученика, состояние сессии) лёг одним коммитом.
+    """
+
+    concept_id: str
+    alpha: float
+    beta: float
+    last_seen: float
+    next_review: float | None
+
+
 def decay(alpha: float, beta: float, dt_days: float, lam: float) -> tuple[float, float]:
     """Стягивает счётчики к априору Beta(1,1) за ``dt_days`` дней.
 
@@ -112,6 +127,54 @@ def estimate(
     return _to_mastery(concept_id, alpha, beta, last_seen, next_review)
 
 
+def plan_update(
+    conn: sqlite3.Connection,
+    concept_id: str,
+    *,
+    correct: float,
+    weight: float = 1.0,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> MasteryUpdate:
+    """Считает новые счётчики: α += weight·correct, β += weight·(1−correct).
+
+    Перед добавлением применяется decay от ``last_seen`` до ``now`` — иначе
+    старые счётчики «капали» бы без затухания. ``correct`` — доля верного
+    (обычно 0 или 1), ``weight`` — надёжность источника свидетельства.
+    Заодно назначается ``next_review`` — момент следующего повторения.
+    В БД ничего не пишет.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+
+    alpha, beta, _, _ = _decayed_now(repos.get_mastery(conn, concept_id), s, stamp)
+    alpha += weight * correct
+    beta += weight * (1.0 - correct)
+
+    return MasteryUpdate(
+        concept_id=concept_id,
+        alpha=alpha,
+        beta=beta,
+        last_seen=stamp,
+        next_review=_next_review(alpha / (alpha + beta), stamp),
+    )
+
+
+def write_update(
+    conn: sqlite3.Connection, change: MasteryUpdate, *, commit: bool = True
+) -> None:
+    """Записывает посчитанные счётчики концепта."""
+    repos.upsert_mastery(
+        conn,
+        change.concept_id,
+        alpha=change.alpha,
+        beta=change.beta,
+        last_seen=change.last_seen,
+        next_review=change.next_review,
+        commit=commit,
+    )
+
+
 def update(
     conn: sqlite3.Connection,
     concept_id: str,
@@ -121,25 +184,51 @@ def update(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> Mastery:
-    """Добавляет свидетельство: α += weight·correct, β += weight·(1−correct).
+    """Добавляет свидетельство и сразу записывает его."""
+    change = plan_update(
+        conn, concept_id, correct=correct, weight=weight, now=now, settings=settings
+    )
+    write_update(conn, change)
+    return _to_mastery(
+        change.concept_id, change.alpha, change.beta, change.last_seen, change.next_review
+    )
 
-    Перед добавлением применяется decay от ``last_seen`` до ``now`` — иначе
-    старые счётчики «капали» бы без затухания. ``correct`` — доля верного
-    (обычно 0 или 1), ``weight`` — надёжность источника свидетельства.
-    Заодно назначается ``next_review`` — момент следующего повторения.
+
+def plan_propagation(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    concept_id: str,
+    *,
+    weight: float = 1.0,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> list[MasteryUpdate]:
+    """Считает слабый подъём прямых пререквизитов успешного узла (без записи).
+
+    Идея теории пространств знаний: решил продвинутое — вероятно, знаешь
+    базовое. Вес малый (``beta_propagate_weight``), чтобы одно случайное
+    решение не «обрушило» оценки по графу. ``next_review`` не трогаем: ученик
+    пререквизит не изучал.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
+    amount = s.beta_propagate_weight * weight
+    if amount <= 0.0:
+        return []
 
-    alpha, beta, _, _ = _decayed_now(repos.get_mastery(conn, concept_id), s, stamp)
-    alpha += weight * correct
-    beta += weight * (1.0 - correct)
-
-    next_review = _next_review(alpha / (alpha + beta), stamp)
-    repos.upsert_mastery(
-        conn, concept_id, alpha=alpha, beta=beta, last_seen=stamp, next_review=next_review
-    )
-    return _to_mastery(concept_id, alpha, beta, stamp, next_review)
+    changes: list[MasteryUpdate] = []
+    for prereq_id in graph.prerequisites(concept_id):
+        alpha, beta, _, _ = _decayed_now(repos.get_mastery(conn, prereq_id), s, stamp)
+        changes.append(
+            MasteryUpdate(
+                concept_id=prereq_id,
+                alpha=alpha + amount,
+                beta=beta,
+                last_seen=stamp,
+                next_review=None,
+            )
+        )
+    return changes
 
 
 def propagate_success(
@@ -151,21 +240,10 @@ def propagate_success(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> list[str]:
-    """Слегка поднимает прямые пререквизиты успешного узла.
-
-    Идея теории пространств знаний: решил продвинутое — вероятно, знаешь
-    базовое. Вес малый (``beta_propagate_weight``), чтобы одно случайное
-    решение не «обрушило» оценки по графу. Возвращает обновлённые концепты.
-    """
-    s = settings or get_settings()
-    stamp = time.time() if now is None else now
-    amount = s.beta_propagate_weight * weight
-    if amount <= 0.0:
-        return []
-
-    updated: list[str] = []
-    for prereq_id in graph.prerequisites(concept_id):
-        alpha, beta, _, _ = _decayed_now(repos.get_mastery(conn, prereq_id), s, stamp)
-        repos.upsert_mastery(conn, prereq_id, alpha=alpha + amount, beta=beta, last_seen=stamp)
-        updated.append(prereq_id)
-    return updated
+    """Поднимает прямые пререквизиты успешного узла и сразу записывает."""
+    changes = plan_propagation(
+        conn, graph, concept_id, weight=weight, now=now, settings=settings
+    )
+    for change in changes:
+        write_update(conn, change)
+    return [change.concept_id for change in changes]

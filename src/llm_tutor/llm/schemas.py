@@ -14,3 +14,11 @@ class ChatMessage(BaseModel):
 
     role: Role
     content: str
+
+
+class TutorReply(BaseModel):
+    """Ответ тьютора за ход: текст ученику и выбранный уровень подсказки."""
+
+    reply: str
+    # Уровень решает модель (она судит, застрял ли ученик), границы держит код.
+    hint_level: int = 0

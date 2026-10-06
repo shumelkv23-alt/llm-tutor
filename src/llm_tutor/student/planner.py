@@ -26,6 +26,17 @@ REVIEW_PERIOD_SECONDS = 7 * 86_400.0
 # Столько недавних провалов подряд трактуем как «буксовку» (wheel spinning).
 STUCK_FAILURES = 3
 
+# Человекочитаемые названия режимов прохода — для промпта и интерфейса.
+MODE_LABELS: dict[NodeMode, str] = {
+    "skip": "пропустить",
+    "verify": "проверить и идти дальше",
+    "compressed": "сжатый проход",
+    "full": "полный проход",
+    "reinforce": "усиленный проход",
+    "revisit": "вернуться к пререквизиту",
+    "review": "повторение",
+}
+
 
 def _recent_failures(
     conn: sqlite3.Connection, concept_id: str, now: float, window_days: float

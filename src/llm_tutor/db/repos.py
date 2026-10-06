@@ -82,7 +82,11 @@ def get_session_state(conn: sqlite3.Connection, session_id: int) -> SessionState
 
 
 def update_session_state(
-    conn: sqlite3.Connection, session_id: int, state: SessionState
+    conn: sqlite3.Connection,
+    session_id: int,
+    state: SessionState,
+    *,
+    commit: bool = True,
 ) -> None:
     """Сохраняет состояние сессии (перезапись JSON целиком).
 
@@ -94,7 +98,8 @@ def update_session_state(
     )
     if cur.rowcount == 0:
         raise KeyError(f"сессия {session_id} не найдена")
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 # --- messages ---
@@ -108,6 +113,7 @@ def add_message(
     *,
     ts: float | None = None,
     meta: str | None = None,
+    commit: bool = True,
 ) -> int:
     """Пишет реплику в ``messages`` и возвращает её id.
 
@@ -121,7 +127,8 @@ def add_message(
         "INSERT INTO messages (session_id, ts, role, content, meta) VALUES (?, ?, ?, ?, ?)",
         (session_id, stamp, role, content, meta),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return int(cur.lastrowid)
 
 
@@ -148,7 +155,13 @@ def get_messages(conn: sqlite3.Connection, session_id: int) -> list[Message]:
 # --- events ---
 
 
-def add_event(conn: sqlite3.Connection, event: Event, now: float | None = None) -> int:
+def add_event(
+    conn: sqlite3.Connection,
+    event: Event,
+    now: float | None = None,
+    *,
+    commit: bool = True,
+) -> int:
     """Пишет событие в журнал и возвращает его id."""
     ts = event.ts if event.ts is not None else (time.time() if now is None else now)
     cur = conn.execute(
@@ -169,7 +182,8 @@ def add_event(conn: sqlite3.Connection, event: Event, now: float | None = None) 
             event.time_spent,
         ),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
     return int(cur.lastrowid)
 
 
@@ -409,6 +423,7 @@ def upsert_mastery(
     beta: float,
     last_seen: float | None = None,
     next_review: float | None = None,
+    commit: bool = True,
 ) -> None:
     """Создаёт или обновляет Beta-счётчики концепта."""
     conn.execute(
@@ -421,7 +436,8 @@ def upsert_mastery(
         "next_review = COALESCE(excluded.next_review, mastery.next_review)",
         (concept_id, alpha, beta, last_seen, next_review),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 # --- facts (профиль/предпочтения, Срез 4.5) ---
@@ -431,6 +447,12 @@ def get_fact(conn: sqlite3.Connection, key: str) -> str | None:
     """Значение факта профиля или None."""
     row = conn.execute("SELECT value FROM facts WHERE key = ?", (key,)).fetchone()
     return row["value"] if row else None
+
+
+def get_facts(conn: sqlite3.Connection) -> dict[str, str]:
+    """Весь профиль ученика (порядок — по ключу, детерминированный)."""
+    rows = conn.execute("SELECT key, value FROM facts ORDER BY key").fetchall()
+    return {row["key"]: row["value"] for row in rows}
 
 
 def set_fact(

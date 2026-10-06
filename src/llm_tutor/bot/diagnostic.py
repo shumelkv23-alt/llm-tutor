@@ -19,6 +19,7 @@ from aiogram.types import (
 from llm_tutor.config import Settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
+from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY
 from llm_tutor.schemas import Item
 from llm_tutor.student import diagnostic
 
@@ -27,7 +28,6 @@ CALLBACK_PREFIX = "diag"
 INTRO_REPLY = "Подберу маршрут: пара коротких вопросов, это не экзамен."
 CORRECT_REPLY = "Верно ✓"
 WRONG_REPLY = "Не совсем ✗ — ничего страшного, это и нужно было выяснить."
-EMPTY_GRAPH_REPLY = "Граф курса пуст. Загрузи seed: python -m llm_tutor.course.seed"
 NO_QUESTIONS_REPLY = "Спрашивать пока нечего — по всем доступным узлам картина уже есть."
 BROKEN_STATE_REPLY = "Состояние захода потерялось — начнём заново, жми /diagnostic."
 CHOOSE_BUTTON_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"

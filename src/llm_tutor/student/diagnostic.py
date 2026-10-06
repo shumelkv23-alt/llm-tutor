@@ -114,6 +114,64 @@ def next_question(
     return None
 
 
+def plan_evidence(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    item: Item,
+    concept_id: str,
+    score: float,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> tuple[list[Event], list[beta.MasteryUpdate]]:
+    """Считает свидетельства по вердикту (события + обновления модели).
+
+    Ничего не пишет: вызывающий сам решает, коммитить сразу или вместе с
+    остальными записями хода (``core.turn.post_turn``).
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+
+    events: list[Event] = []
+    mastery: list[beta.MasteryUpdate] = []
+    for weight_concept, weight in item.concept_weights.items():
+        events.append(
+            Event(
+                source="checked",
+                result=score,
+                concept_id=weight_concept,
+                item_id=item.id,
+                weight=weight,
+                ts=stamp,
+            )
+        )
+        mastery.append(
+            beta.plan_update(
+                conn, weight_concept, correct=score, weight=weight, now=stamp, settings=s
+            )
+        )
+
+    # Успех поднимает пререквизиты измеренного узла. Если задание вдруг не
+    # описывает этот узел (seed поменялся между показом и ответом) — не трогаем
+    # чужие пререквизиты.
+    if (
+        score >= SUCCESS_SCORE
+        and concept_id in item.concept_weights
+        and graph.has_node(concept_id)
+    ):
+        mastery.extend(
+            beta.plan_propagation(
+                conn,
+                graph,
+                concept_id,
+                weight=item.concept_weights[concept_id],
+                now=stamp,
+                settings=s,
+            )
+        )
+    return events, mastery
+
+
 def record_answer(
     conn: sqlite3.Connection,
     graph: CourseGraph,
@@ -124,38 +182,21 @@ def record_answer(
     settings: Settings | None = None,
 ) -> GradeResult:
     """Проверяет ответ кодом, пишет события и обновляет модель ученика."""
-    s = settings or get_settings()
     stamp = time.time() if now is None else now
     result = autocheck.check(question.item, answer)
-
-    for concept_id, weight in question.item.concept_weights.items():
-        repos.add_event(
-            conn,
-            Event(
-                source="checked",
-                result=result.score,
-                concept_id=concept_id,
-                item_id=question.item.id,
-                weight=weight,
-                ts=stamp,
-            ),
-        )
-        beta.update(
-            conn, concept_id, correct=result.score, weight=weight, now=stamp, settings=s
-        )
-
-    # Успех поднимает пререквизиты измеренного узла. Если задание вдруг не
-    # описывает этот узел (seed поменялся между показом и ответом) — не трогаем
-    # чужие пререквизиты.
-    if result.score >= SUCCESS_SCORE and question.concept_id in question.item.concept_weights:
-        beta.propagate_success(
-            conn,
-            graph,
-            question.concept_id,
-            weight=question.item.concept_weights[question.concept_id],
-            now=stamp,
-            settings=s,
-        )
+    events, mastery = plan_evidence(
+        conn,
+        graph,
+        question.item,
+        question.concept_id,
+        result.score,
+        now=stamp,
+        settings=settings,
+    )
+    for event in events:
+        repos.add_event(conn, event, stamp)
+    for change in mastery:
+        beta.write_update(conn, change)
     return result
 
 

@@ -12,6 +12,9 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # Дефолты сборки контекста (Срез 3) — единый источник для Settings и core.context.
 DEFAULT_DIALOG_TAIL = 8
 DEFAULT_RAG_TOP_K = 4
+# Бюджет пакета контекста в токенах (Срез 5). При нехватке режется материал,
+# затем хвост диалога; правила, профиль и состояние не режутся.
+DEFAULT_CONTEXT_BUDGET_TOKENS = 8000
 
 
 class Settings(BaseSettings):
@@ -84,6 +87,7 @@ class Settings(BaseSettings):
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL
     context_rag_top_k: int = DEFAULT_RAG_TOP_K
+    context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS
 
     @field_validator("openrouter_api_key", "telegram_bot_token")
     @classmethod
