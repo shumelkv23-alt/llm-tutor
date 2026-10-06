@@ -19,11 +19,13 @@ from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.grader import autocheck
-from llm_tutor.schemas import Event, GradeResult, Item
+from llm_tutor.schemas import Event, EventSource, GradeResult, Item
 from llm_tutor.student import beta
 
 # Типы заданий, которые диагностика умеет проверять сама (без LLM).
 AUTO_CHECKABLE = ("choice", "short")
+# Типы, которые проверяет рубричный грейдер (Срез 6).
+RUBRIC_CHECKABLE = ("open", "code")
 # Ответ с таким вердиктом считается успехом (для распространения по графу).
 SUCCESS_SCORE = 0.5
 
@@ -43,13 +45,25 @@ def uncertainty_priority(
     return mastery.uncertainty * (1 + len(graph.descendants(concept_id)))
 
 
-def _checkable_items(conn: sqlite3.Connection) -> list[Item]:
-    """Активные задания банка, пригодные для автопроверки."""
-    return [
-        item
-        for item in repos.get_items(conn)
-        if item.answer_type in AUTO_CHECKABLE and item.answer is not None
-    ]
+def _available_items(
+    conn: sqlite3.Connection, *, include_rubric: bool
+) -> list[Item]:
+    """Активные задания банка, пригодные для выдачи.
+
+    ``include_rubric`` добавляет открытые и код-задания с рубрикой — их
+    проверяет грейдер, поэтому диагностика (которая считает сама) их не берёт.
+    """
+    items = []
+    for item in repos.get_items(conn):
+        if item.answer_type in AUTO_CHECKABLE and item.answer is not None:
+            items.append(item)
+        elif (
+            include_rubric
+            and item.answer_type in RUBRIC_CHECKABLE
+            and item.rubric_id is not None
+        ):
+            items.append(item)
+    return items
 
 
 def _freshly_answered_items(
@@ -81,6 +95,7 @@ def next_question(
     graph: CourseGraph,
     *,
     asked_item_ids: frozenset[int] = frozenset(),
+    include_rubric: bool = False,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> DiagnosticQuestion | None:
@@ -95,7 +110,11 @@ def next_question(
     unavailable = set(asked_item_ids) | _freshly_answered_items(
         conn, stamp, s.item_repeat_cooldown_days
     )
-    items = [item for item in _checkable_items(conn) if item.id not in unavailable]
+    items = [
+        item
+        for item in _available_items(conn, include_rubric=include_rubric)
+        if item.id not in unavailable
+    ]
     if not items:
         return None
 
@@ -121,10 +140,15 @@ def plan_evidence(
     concept_id: str,
     score: float,
     *,
+    source: EventSource = "checked",
+    weight_scale: float = 1.0,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> tuple[list[Event], list[beta.MasteryUpdate]]:
     """Считает свидетельства по вердикту (события + обновления модели).
+
+    ``weight_scale`` ограничивает вес свидетельства: вердикт модели по рубрике
+    слабее проверки кодом и не должен в одиночку «закрывать» тему.
 
     Ничего не пишет: вызывающий сам решает, коммитить сразу или вместе с
     остальными записями хода (``core.turn.post_turn``).
@@ -135,19 +159,20 @@ def plan_evidence(
     events: list[Event] = []
     mastery: list[beta.MasteryUpdate] = []
     for weight_concept, weight in item.concept_weights.items():
+        scaled = weight * weight_scale
         events.append(
             Event(
-                source="checked",
+                source=source,
                 result=score,
                 concept_id=weight_concept,
                 item_id=item.id,
-                weight=weight,
+                weight=scaled,
                 ts=stamp,
             )
         )
         mastery.append(
             beta.plan_update(
-                conn, weight_concept, correct=score, weight=weight, now=stamp, settings=s
+                conn, weight_concept, correct=score, weight=scaled, now=stamp, settings=s
             )
         )
 
@@ -164,7 +189,7 @@ def plan_evidence(
                 conn,
                 graph,
                 concept_id,
-                weight=item.concept_weights[concept_id],
+                weight=item.concept_weights[concept_id] * weight_scale,
                 now=stamp,
                 settings=s,
             )

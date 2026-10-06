@@ -17,7 +17,7 @@ from llm_tutor.config import Settings, get_settings
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.grader import autocheck
+from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import (
     EMPTY_GRAPH_REPLY,
@@ -121,8 +121,10 @@ def post_turn(
         raise
 
 
-def _answer_branch(
+async def _answer_branch(
     conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
     graph: CourseGraph,
     user_text: str,
     state: SessionState,
@@ -130,13 +132,17 @@ def _answer_branch(
     now: float,
     settings: Settings,
 ) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState]:
-    """Ученик отвечает на выданное задание: проверяет код, без LLM."""
+    """Ученик отвечает на выданное задание.
+
+    ``choice``/``short`` проверяет код, ``open``/``code`` — рубричный грейдер
+    (его вердикт идёт в журнал с ограниченным весом).
+    """
     item = (
         repos.get_item(conn, state.pending_item_id)
         if state.pending_item_id is not None
         else None
     )
-    if item is None or item.answer_type not in diagnostic.AUTO_CHECKABLE:
+    if item is None:
         return (
             STALE_ITEM_REPLY,
             [],
@@ -144,10 +150,33 @@ def _answer_branch(
             state.model_copy(update={"pending_item_id": None}),
         )
 
-    result = autocheck.check(item, _normalize_choice_answer(item, user_text))
+    if item.answer_type in diagnostic.AUTO_CHECKABLE:
+        result = autocheck.check(item, _normalize_choice_answer(item, user_text))
+    elif item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
+        result = await rubric.grade(conn, client, model, item, user_text, settings=settings)
+    else:
+        return (
+            STALE_ITEM_REPLY,
+            [],
+            [],
+            state.model_copy(update={"pending_item_id": None}),
+        )
+
     measured = state.current_node_id or next(iter(item.concept_weights), "")
     events, mastery = diagnostic.plan_evidence(
-        conn, graph, item, measured, result.score, now=now, settings=settings
+        conn,
+        graph,
+        item,
+        measured,
+        result.score,
+        source="checked" if item.answer_type in diagnostic.AUTO_CHECKABLE else "rubric",
+        weight_scale=(
+            1.0
+            if item.answer_type in diagnostic.AUTO_CHECKABLE
+            else settings.rubric_evidence_weight
+        ),
+        now=now,
+        settings=settings,
     )
     new_state = state.model_copy(
         update={
@@ -225,8 +254,8 @@ async def handle_turn(
     graph = CourseGraph.load(conn)
 
     if state.pending_item_id is not None and not _looks_like_question(user_text):
-        reply, events, mastery, new_state = _answer_branch(
-            conn, graph, user_text, state, now=stamp, settings=s
+        reply, events, mastery, new_state = await _answer_branch(
+            conn, client, model, graph, user_text, state, now=stamp, settings=s
         )
     else:
         reply, events, mastery, new_state = await _tutor_branch(
@@ -261,7 +290,10 @@ def start_practice(
 
     session_id = repos.ensure_open_session(conn, stamp)
     state = repos.get_session_state(conn, session_id)
-    question = diagnostic.next_question(conn, graph, now=stamp, settings=s)
+    # Практика берёт и задания с рубрикой: открытые ответы проверяет грейдер.
+    question = diagnostic.next_question(
+        conn, graph, include_rubric=True, now=stamp, settings=s
+    )
     if question is None:
         return NO_TASK_REPLY
 

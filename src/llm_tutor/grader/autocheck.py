@@ -22,7 +22,7 @@ class AutoCheckError(ValueError):
     """Задание не подходит для автопроверки (чужой тип или нет эталона)."""
 
 
-def _normalize(text: str) -> str:
+def normalize_answer(text: str) -> str:
     """Приводит ответ к сравнимому виду.
 
     Регистр, ``ё``→``е``, кратные пробелы, обрамляющие кавычки/бэктики и
@@ -45,11 +45,11 @@ def _as_number(text: str) -> float | None:
 
 def _option_text(item: Item, raw: str) -> str | None:
     """Разворачивает ответ на choice (индекс или текст) в текст варианта."""
-    candidate = _normalize(raw)
+    candidate = normalize_answer(raw)
     if candidate.isdigit():
         index = int(candidate)
         if 0 <= index < len(item.options):
-            return _normalize(item.options[index])
+            return normalize_answer(item.options[index])
         return None
     return candidate or None
 
@@ -64,10 +64,10 @@ def _check_choice(item: Item, answer: str) -> bool:
 
 
 def _check_short(item: Item, answer: str) -> bool:
-    expected = _normalize(item.answer or "")
+    expected = normalize_answer(item.answer or "")
     if not expected:
         raise AutoCheckError(f"У задания {item.id} пустой эталон")
-    given = _normalize(answer)
+    given = normalize_answer(answer)
     if not given:
         return False
     if given == expected:

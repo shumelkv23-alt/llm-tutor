@@ -502,6 +502,92 @@
         "DataFrame — это просто список списков Python"
       ],
       "answer": "0"
+    },
+    {
+      "id": 9,
+      "prompt": "Объясни своими словами, что делает groupby и зачем после него применяют агрегат вроде agg.",
+      "answer_type": "open",
+      "concept_weights": {
+        "groupby": 1.0,
+        "agg_functions": 0.5
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 1
+    },
+    {
+      "id": 10,
+      "prompt": "Напиши код: посчитать среднее значение столбца age отдельно по каждому городу из столбца city в таблице df.",
+      "answer_type": "code",
+      "concept_weights": {
+        "groupby": 0.7,
+        "agg_functions": 0.5
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 2
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 1,
+      "name": "Объяснение группировки"
+    },
+    {
+      "id": 2,
+      "name": "Код: агрегат по группам"
+    }
+  ],
+  "criteria": [
+    {
+      "id": 1,
+      "rubric_id": 1,
+      "criterion": "Названо разбиение строк на группы по ключу (значению столбца)",
+      "weight": 1.0,
+      "positive_example": "groupby разбивает строки на группы по значению столбца",
+      "negative_example": "groupby сортирует таблицу по столбцу"
+    },
+    {
+      "id": 2,
+      "rubric_id": 1,
+      "criterion": "Названо применение агрегатной функции к каждой группе",
+      "weight": 1.0,
+      "positive_example": "потом считаем среднее внутри каждой группы",
+      "negative_example": "groupby удаляет дубликаты строк"
+    },
+    {
+      "id": 3,
+      "rubric_id": 1,
+      "criterion": "Сказано, что результатом снова становится таблица (или Series) по группам",
+      "weight": 1.0,
+      "positive_example": "на выходе таблица, где строка — это группа",
+      "negative_example": "результат — одно число на всю таблицу"
+    },
+    {
+      "id": 4,
+      "rubric_id": 2,
+      "criterion": "В коде использован groupby",
+      "weight": 1.0,
+      "positive_example": "df.groupby('city')",
+      "negative_example": "df.sort_values('city')"
+    },
+    {
+      "id": 5,
+      "rubric_id": 2,
+      "criterion": "Агрегация — именно среднее (mean)",
+      "weight": 1.0,
+      "positive_example": ".mean()",
+      "negative_example": ".sum() или .count()"
+    },
+    {
+      "id": 6,
+      "rubric_id": 2,
+      "criterion": "Колонка age явно выбрана для агрегации",
+      "weight": 1.0,
+      "positive_example": "df.groupby('city')['age'].mean()",
+      "negative_example": "df.groupby('city').mean() без указания колонки"
     }
   ]
 }

@@ -97,6 +97,26 @@ class Item(BaseModel):
         return self
 
 
+class Rubric(BaseModel):
+    """Рубрика: набор атомарных критериев для открытых и код-ответов."""
+
+    id: int
+    name: str
+    active: bool = True
+
+
+class Criterion(BaseModel):
+    """Атомарный бинарный критерий рубрики с калибровочными примерами."""
+
+    id: int
+    rubric_id: int
+    criterion: str
+    weight: float = Field(default=1.0, ge=0.0)
+    positive_example: str | None = None
+    negative_example: str | None = None
+    active: bool = True
+
+
 class Event(BaseModel):
     """Атомарное свидетельство об ученике — запись в журнал ``events``."""
 

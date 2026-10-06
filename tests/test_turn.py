@@ -15,6 +15,7 @@ from llm_tutor.core.turn import (
 from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
+from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 from llm_tutor.llm.client import LLMError
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY, NO_COURSE_ANSWER
 from llm_tutor.schemas import SessionState
@@ -40,6 +41,29 @@ class _FakeTutor:
 class _FailingTutor:
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
         raise LLMError("сбой", retryable=False)
+
+
+class _FakeGraderClient:
+    """Подставной грейдер: возвращает заготовленный вердикт по рубрике."""
+
+    def __init__(self, verdict: RubricVerdict) -> None:
+        self.verdict = verdict
+        self.calls: list[list] = []
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        self.calls.append(list(messages))
+        return self.verdict
+
+
+def _full_verdict(conn, item_id: int) -> RubricVerdict:
+    """Вердикт «все критерии выполнены» с цитатой, которая есть в ответе."""
+    item = repos.get_item(conn, item_id)
+    return RubricVerdict(
+        criteria=[
+            CriterionVerdict(id=criterion.id, passed=True, quote="groupby")
+            for criterion in repos.get_criteria(conn, item.rubric_id)
+        ]
+    )
 
 
 def _state(conn) -> SessionState:
@@ -235,3 +259,46 @@ def test_skip_pending_clears_without_evidence(conn, settings) -> None:
 
 def test_skip_without_task_is_harmless(conn, settings) -> None:
     assert skip_pending(conn, now=1.0, settings=settings) == NOTHING_TO_SKIP_REPLY
+
+
+# --- рубричный грейдер ---
+
+
+async def test_open_answer_is_graded_with_limited_weight(conn, settings) -> None:
+    """Открытый ответ оценивает грейдер, событие идёт с ограниченным весом."""
+    load_seed(conn)
+    _set_state(conn, pending_item_id=9, current_node_id="groupby")
+    item = repos.get_item(conn, 9)
+    client = _FakeGraderClient(_full_verdict(conn, 9))
+
+    reply = await handle_turn(
+        conn, client, "m", "groupby разбивает строки по ключу", now=2.0, settings=settings
+    )
+
+    assert "Верно" in reply
+    events = repos.get_events(conn)
+    assert events
+    assert {event.source for event in events} == {"rubric"}
+    assert all(
+        event.weight == item.concept_weights[event.concept_id] * settings.rubric_evidence_weight
+        for event in events
+    )
+    assert _state(conn).pending_item_id is None
+
+
+async def test_open_answer_without_confirmed_quote_is_not_credited(conn, settings) -> None:
+    """Модель «засчитала», но цитаты в ответе нет — балл нулевой."""
+    load_seed(conn)
+    _set_state(conn, pending_item_id=9, current_node_id="groupby")
+    fake = RubricVerdict(
+        criteria=[
+            CriterionVerdict(id=criterion.id, passed=True, quote="цитата, которой нет")
+            for criterion in repos.get_criteria(conn, 1)
+        ]
+    )
+
+    reply = await handle_turn(
+        conn, _FakeGraderClient(fake), "m", "совсем не про это", now=2.0, settings=settings
+    )
+
+    assert "Не совсем" in reply

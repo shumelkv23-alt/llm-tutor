@@ -13,11 +13,13 @@ from typing import Sequence, get_args
 from llm_tutor.schemas import (
     Chunk,
     Concept,
+    Criterion,
     Edge,
     Event,
     Item,
     Message,
     Role,
+    Rubric,
     SessionState,
 )
 
@@ -280,6 +282,74 @@ def upsert_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     conn.commit()
 
 
+# --- рубрики / критерии (Срез 6) ---
+
+
+def _write_rubric(conn: sqlite3.Connection, rubric: Rubric) -> None:
+    """Upsert рубрики без коммита."""
+    conn.execute(
+        "INSERT INTO rubrics (id, name, active) VALUES (?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET name = excluded.name, active = 1",
+        (rubric.id, rubric.name, int(rubric.active)),
+    )
+
+
+def _write_criterion(conn: sqlite3.Connection, criterion: Criterion) -> None:
+    """Upsert критерия без коммита."""
+    conn.execute(
+        "INSERT INTO criteria "
+        "(id, rubric_id, criterion, weight, positive_example, negative_example, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(id) DO UPDATE SET "
+        "rubric_id = excluded.rubric_id, criterion = excluded.criterion, "
+        "weight = excluded.weight, positive_example = excluded.positive_example, "
+        "negative_example = excluded.negative_example, active = 1",
+        (
+            criterion.id,
+            criterion.rubric_id,
+            criterion.criterion,
+            criterion.weight,
+            criterion.positive_example,
+            criterion.negative_example,
+            int(criterion.active),
+        ),
+    )
+
+
+def _row_to_rubric(row: sqlite3.Row) -> Rubric:
+    return Rubric(id=row["id"], name=row["name"], active=bool(row["active"]))
+
+
+def _row_to_criterion(row: sqlite3.Row) -> Criterion:
+    return Criterion(
+        id=row["id"],
+        rubric_id=row["rubric_id"],
+        criterion=row["criterion"],
+        weight=row["weight"],
+        positive_example=row["positive_example"],
+        negative_example=row["negative_example"],
+        active=bool(row["active"]),
+    )
+
+
+def get_rubrics(conn: sqlite3.Connection) -> list[Rubric]:
+    """Активные рубрики (порядок — по id, детерминированный)."""
+    rows = conn.execute(
+        "SELECT id, name, active FROM rubrics WHERE active = 1 ORDER BY id"
+    ).fetchall()
+    return [_row_to_rubric(row) for row in rows]
+
+
+def get_criteria(conn: sqlite3.Connection, rubric_id: int) -> list[Criterion]:
+    """Активные критерии рубрики (порядок — по id, детерминированный)."""
+    rows = conn.execute(
+        "SELECT id, rubric_id, criterion, weight, positive_example, negative_example,"
+        " active FROM criteria WHERE rubric_id = ? AND active = 1 ORDER BY id",
+        (rubric_id,),
+    ).fetchall()
+    return [_row_to_criterion(row) for row in rows]
+
+
 _ITEM_COLUMNS = (
     "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id, active"
 )
@@ -321,43 +391,64 @@ def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
     return _row_to_item(row) if row else None
 
 
+def _deactivate_missing(
+    conn: sqlite3.Connection, table: str, columns: tuple[str, ...], keep: set[tuple]
+) -> None:
+    """Гасит строки таблицы, которых нет в seed (по набору колонок-ключа).
+
+    Имена таблицы и колонок — литералы кода, не данные пользователя, поэтому
+    подставляются в SQL напрямую; значения идут плейсхолдерами.
+    """
+    select = f"SELECT {', '.join(columns)} FROM {table} WHERE active = 1"
+    where = " AND ".join(f"{column} = ?" for column in columns)
+    for row in conn.execute(select).fetchall():
+        if tuple(row[column] for column in columns) not in keep:
+            conn.execute(f"UPDATE {table} SET active = 0 WHERE {where}", tuple(
+                row[column] for column in columns
+            ))
+
+
 def replace_seed(
     conn: sqlite3.Connection,
     concepts: Sequence[Concept],
     edges: Sequence[Edge],
     items: Sequence[Item],
+    rubrics: Sequence[Rubric] = (),
+    criteria: Sequence[Criterion] = (),
 ) -> None:
-    """Атомарно приводит граф и банк заданий в БД к содержимому seed.
+    """Атомарно приводит содержимое seed в БД к нему самому.
 
-    Seed — источник истины: его узлы/рёбра/задания upsert-ятся, а всё, чего
-    в нём больше нет, гасится (``active = 0``) — физически удалять нельзя,
-    на узлы ссылаются события, чанки и mastery, а на задания — события.
-    Погашенное не попадает в граф и банк, но журнал ученика остаётся целым.
+    Seed — источник истины: узлы, рёбра, задания и рубрики upsert-ятся, а всё,
+    чего в нём больше нет, гасится (``active = 0``). Физически удалять нельзя:
+    на концепты ссылаются события, чанки и mastery, на задания — события, на
+    рубрики — задания; журнал ученика не переписываем. Погашенное не попадает
+    в граф, банк и рубрики, но история остаётся целой.
 
     Рёбра удаляются по-настоящему: на них никто не ссылается.
     """
-    node_ids = {concept.id for concept in concepts}
     edge_keys = {(edge.from_id, edge.to_id, edge.type) for edge in edges}
-    item_ids = {item.id for item in items}
     try:
         for concept in concepts:
             _write_concept(conn, concept)
         for edge in edges:
             _write_edge(conn, edge)
+        for rubric in rubrics:
+            _write_rubric(conn, rubric)
+        for criterion in criteria:
+            _write_criterion(conn, criterion)
         for item in items:
             _write_item(conn, item)
+
         for row in conn.execute("SELECT from_id, to_id, type FROM edges").fetchall():
             key = (row["from_id"], row["to_id"], row["type"])
             if key not in edge_keys:
                 conn.execute(
                     "DELETE FROM edges WHERE from_id = ? AND to_id = ? AND type = ?", key
                 )
-        for row in conn.execute("SELECT id FROM concepts WHERE active = 1").fetchall():
-            if row["id"] not in node_ids:
-                conn.execute("UPDATE concepts SET active = 0 WHERE id = ?", (row["id"],))
-        for row in conn.execute("SELECT id FROM items WHERE active = 1").fetchall():
-            if row["id"] not in item_ids:
-                conn.execute("UPDATE items SET active = 0 WHERE id = ?", (row["id"],))
+        _deactivate_missing(conn, "concepts", ("id",), {(c.id,) for c in concepts})
+        _deactivate_missing(conn, "rubrics", ("id",), {(r.id,) for r in rubrics})
+        _deactivate_missing(conn, "criteria", ("id",), {(c.id,) for c in criteria})
+        _deactivate_missing(conn, "items", ("id",), {(i.id,) for i in items})
     except Exception:
         conn.rollback()
         raise

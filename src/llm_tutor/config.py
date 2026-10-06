@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # Вес самооценки (source='self') — слабое свидетельство.
     self_evidence_weight: float = 0.3
 
+    # --- Рубричный грейдер, Срез 6 ---
+    # Вердикт модели по открытому ответу — свидетельство ограниченного веса:
+    # ни одно «высокоставочное» решение (например, пропуск темы) не должно
+    # приниматься только по нему (§9.2 архитектуры).
+    rubric_evidence_weight: float = 0.5
+
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL
     context_rag_top_k: int = DEFAULT_RAG_TOP_K

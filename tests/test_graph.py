@@ -194,6 +194,35 @@ def test_load_seed_deactivates_stale_items(conn, tmp_path) -> None:
     assert 5 not in {item.id for item in repos.get_items(conn)}
 
 
+def test_load_seed_writes_rubrics_and_criteria(conn) -> None:
+    seed = load_seed(conn)
+
+    assert {rubric.id for rubric in repos.get_rubrics(conn)} == {
+        rubric.id for rubric in seed.rubrics
+    }
+    first_rubric = seed.rubrics[0]
+    expected = [c for c in seed.criteria if c.rubric_id == first_rubric.id]
+    assert len(repos.get_criteria(conn, first_rubric.id)) == len(expected)
+
+
+def test_load_seed_deactivates_stale_rubric(conn, tmp_path) -> None:
+    """Убранная из seed рубрика гаснет, а не ломает загрузку."""
+    load_seed(conn)
+    data = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    data["rubrics"] = [r for r in data["rubrics"] if r["id"] != 1]
+    data["criteria"] = [c for c in data["criteria"] if c["rubric_id"] != 1]
+    for item in data["items"]:
+        if item.get("rubric_id") == 1:
+            item["rubric_id"] = None
+    path = tmp_path / "seed.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    load_seed(conn, path)
+
+    assert 1 not in {rubric.id for rubric in repos.get_rubrics(conn)}
+    assert repos.get_criteria(conn, 1) == []
+
+
 def test_get_item_missing_returns_none(conn) -> None:
     load_seed(conn)
 

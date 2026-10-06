@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Edge, Item
+from llm_tutor.schemas import Concept, Criterion, Edge, Item, Rubric
 
 # Корень проекта (src/llm_tutor/course/seed.py → src → корень).
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -24,12 +24,14 @@ DEFAULT_SEED_PATH = _PROJECT_ROOT / "data" / "seed_topic01.json"
 
 
 class Seed(BaseModel):
-    """Содержимое seed-файла: граф курса и банк заданий."""
+    """Содержимое seed-файла: граф курса, банк заданий и рубрики."""
 
     course: str
     nodes: list[Concept]
     edges: list[Edge]
     items: list[Item] = Field(default_factory=list)
+    rubrics: list[Rubric] = Field(default_factory=list)
+    criteria: list[Criterion] = Field(default_factory=list)
 
 
 def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
@@ -46,7 +48,9 @@ def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
 def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     """Идемпотентно приводит граф в БД к seed-файлу (истина — seed)."""
     seed = load_seed_data(path)
-    repos.replace_seed(conn, seed.nodes, seed.edges, seed.items)
+    repos.replace_seed(
+        conn, seed.nodes, seed.edges, seed.items, seed.rubrics, seed.criteria
+    )
     return seed
 
 
