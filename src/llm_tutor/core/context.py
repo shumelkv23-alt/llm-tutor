@@ -26,6 +26,7 @@ from llm_tutor.llm.prompts import (
     format_course_block,
     format_mastery_block,
     format_profile_block,
+    format_route_block,
     format_state_block,
     tutor_system_prompt,
 )
@@ -126,8 +127,19 @@ def _system_prompt(
             node_name = graph.concept(state.current_node_id).name
         except KeyError:
             node_name = None
+    route_block = None
+    if state.route is not None and graph is not None:
+        route_block = format_route_block(
+            state.route,
+            names={node_id: graph.concept(node_id).name for node_id in graph.node_ids},
+        )
     blocks = [
-        tutor_system_prompt(state.hint_level, material=material),
+        tutor_system_prompt(
+            state.hint_level,
+            material=material,
+            phase=state.phase,
+            route_block=route_block,
+        ),
         profile,
         format_state_block(
             node_name=node_name,

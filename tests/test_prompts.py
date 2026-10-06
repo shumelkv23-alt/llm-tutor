@@ -1,7 +1,10 @@
 """Тесты текстов промптов (правила, а не формулировки)."""
 
+from llm_tutor.schemas import Route, RouteStep
+
 from llm_tutor.llm.prompts import (
     TUTOR_NO_MATCH_SYSTEM_PROMPT,
+    format_route_block,
     TUTOR_NO_MATERIAL_SYSTEM_PROMPT,
     TUTOR_SYSTEM_PROMPT,
     tutor_system_prompt,
@@ -42,3 +45,38 @@ def test_tutor_system_prompt_selects_base_by_material_state() -> None:
     assert TUTOR_SYSTEM_PROMPT in tutor_system_prompt(0, material="found")
     assert TUTOR_NO_MATCH_SYSTEM_PROMPT in tutor_system_prompt(0, material="no_match")
     assert TUTOR_NO_MATERIAL_SYSTEM_PROMPT in tutor_system_prompt(0, material="empty")
+
+
+# --- блок маршрута и правила ведения (Срез 10) ---
+
+
+def test_route_block_lists_progress_and_current_node() -> None:
+    route = Route(
+        goal_concept_id="goal",
+        steps=[
+            RouteStep(concept_id="a", mode="full", status="closed"),
+            RouteStep(concept_id="b", mode="full", status="current"),
+            RouteStep(concept_id="goal", mode="full", status="ahead"),
+        ],
+    )
+
+    block = format_route_block(route, names={"a": "Первый", "b": "Второй", "goal": "Цель"})
+
+    assert "закрыто 1 из 3" in block.lower()
+    assert "Второй" in block  # текущий узел назван
+    assert "Цель" in block
+
+
+def test_stuck_rule_is_in_tutor_prompt() -> None:
+    """Модель должна знать, как сообщить, что ученик застрял."""
+    text = tutor_system_prompt(0)
+
+    assert "student_stuck" in text
+
+
+def test_contract_includes_stuck_flag() -> None:
+    assert '"student_stuck"' in tutor_system_prompt(0)
+
+
+def test_phase_is_rendered_in_prompt() -> None:
+    assert "practice" in tutor_system_prompt(0, phase="practice")

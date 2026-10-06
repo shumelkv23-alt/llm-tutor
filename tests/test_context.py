@@ -6,6 +6,7 @@ from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
+from llm_tutor.student import route as route_mod
 
 
 def test_context_includes_retrieved_chunk_and_section(conn, settings) -> None:
@@ -130,6 +131,27 @@ def test_small_budget_trims_material_and_dialog(conn, settings) -> None:
     assert len(small.messages) <= len(big.messages)
     assert "groupby" in small.messages[-1].content  # вопрос ученика не режется
     assert small.messages[0].role == "system"
+
+
+def test_system_prompt_contains_route_block(conn, settings) -> None:
+    """Маршрут и фаза занятия попадают в системный промпт (§8.2)."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    graph = CourseGraph.load(conn)
+    state = SessionState(
+        current_node_id="groupby",
+        phase="practice",
+        route=route_mod.build_route(conn, graph, current_node_id="groupby", now=0.0, settings=settings),
+    )
+    repos.update_session_state(conn, session_id, state)
+
+    package = build_context(
+        conn, session_id, "groupby", state=state, graph=graph, settings=settings
+    )
+
+    system = package.messages[0].content
+    assert "Маршрут" in system
+    assert "Фаза занятия: practice" in system
 
 
 def test_state_defaults_to_session_state(conn, settings) -> None:

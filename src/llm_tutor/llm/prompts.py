@@ -8,7 +8,7 @@
 import re
 from typing import Literal, Mapping, Sequence
 
-from llm_tutor.schemas import Chunk, Criterion
+from llm_tutor.schemas import Chunk, Criterion, GuidePhase, Route
 from llm_tutor.student.hints import HINT_LEVEL_NAMES, MAX_HINT_LEVEL
 
 # Пока ответ не получен, ученик не должен получать молчание.
@@ -86,12 +86,25 @@ _TUTOR_TURN_RULES = (
     "продвигается сам — понижай.\n"
 )
 
+# Правила ведения занятия (Срез 10): бот ведёт ученика по маршруту.
+_GUIDE_RULES = (
+    "Как ведёшь занятие:\n"
+    "- Веди ученика по маршруту: объявляй, что делаем сейчас, и не перескакивай "
+    "вперёд, пока текущий узел не закрыт.\n"
+    "- Если ученик говорит, что не понял, просит подробнее или больше времени — "
+    "верни student_stuck: true: узел уйдёт в усиленный проход. Дай другое "
+    "объяснение, разобранный пример, выдержку из материала — но вперёд не иди.\n"
+    "- Решение задачи по-прежнему не выдаёшь, пока не пройдена лестница.\n"
+)
+
 # Контракт структурированного ответа: клиент парсит JSON, поэтому модель
 # должна вернуть ровно эти поля и ничего вокруг.
 _TUTOR_TURN_CONTRACT = (
     "Ответь строго JSON-объектом без текста вокруг:\n"
-    '{"reply": "<ответ ученику>", "hint_level": <число 0..%d>}\n'
-    "hint_level — уровень, на котором ты ведёшь объяснение прямо сейчас."
+    '{"reply": "<ответ ученику>", "hint_level": <число 0..%d>, '
+    '"student_stuck": <true|false>}\n'
+    "hint_level — уровень, на котором ты ведёшь объяснение прямо сейчас; "
+    "student_stuck — заметил ли ты, что ученик просит глубины."
 ) % MAX_HINT_LEVEL
 
 
@@ -102,16 +115,38 @@ _MATERIAL_BASES: dict[str, str] = {
 }
 
 
-def tutor_system_prompt(hint_level: int, *, material: MaterialState = "found") -> str:
-    """Системный промпт полного хода: правила зависят от наличия фрагментов."""
+def tutor_system_prompt(
+    hint_level: int,
+    *,
+    material: MaterialState = "found",
+    phase: GuidePhase | None = None,
+    route_block: str | None = None,
+) -> str:
+    """Системный промпт полного хода: правила, маршрут и фаза занятия."""
     base = _MATERIAL_BASES[material]
     level_name = HINT_LEVEL_NAMES.get(hint_level, "без подсказки")
-    return (
-        f"{base}\n"
-        f"{_TUTOR_TURN_RULES}\n"
-        f"Сейчас ты на уровне {hint_level} ({level_name}).\n\n"
-        f"{_TUTOR_TURN_CONTRACT}"
-    )
+    parts = [base, _TUTOR_TURN_RULES, _GUIDE_RULES]
+    if route_block:
+        parts.append(route_block)
+    if phase is not None:
+        parts.append(f"Фаза занятия: {phase}.")
+    parts.append(f"Сейчас ты на уровне {hint_level} ({level_name}).")
+    parts.append(_TUTOR_TURN_CONTRACT)
+    return "\n\n".join(parts)
+
+
+def format_route_block(route: Route, *, names: Mapping[str, str] | None = None) -> str:
+    """Блок маршрута: где ученик и куда идём (§8.2 — состояние сессии)."""
+    named = names or {}
+    goal_id = route.goal_concept_id
+    goal = named.get(goal_id or "", goal_id or "вершина темы")
+    lines = [
+        f"Маршрут: закрыто {route.closed_count} из {len(route.steps)}. Цель — {goal}."
+    ]
+    current = next((step for step in route.steps if step.status == "current"), None)
+    if current is not None:
+        lines.append(f"Сейчас: {named.get(current.concept_id, current.concept_id)}.")
+    return "\n".join(lines)
 
 
 def format_profile_block(facts: Mapping[str, str]) -> str:
