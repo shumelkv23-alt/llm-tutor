@@ -18,8 +18,15 @@ uv sync                     # установить зависимости
 # заполни OPENROUTER_API_KEY и TELEGRAM_BOT_TOKEN в .env:
 #   Windows (cmd/PowerShell): copy .env.example .env
 #   macOS/Linux (bash):       cp .env.example .env
-uv run python -m llm_tutor.bot.main   # запустить бота (после Среза 1)
+
+# загрузить материалы темы в RAG-индекс (один раз; можно URL или файл):
+uv run python -m llm_tutor.course.ingest data/raw/topic01_pandas_data_analysis.md
+
+uv run python -m llm_tutor.bot.main   # запустить бота
 ```
+
+Граф темы (`data/seed_topic01.json`) грузится в БД автоматически при старте
+бота. Команда `/plan` показывает готовые узлы маршрута с режимом прохода.
 
 ## Тесты
 
