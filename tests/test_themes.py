@@ -201,6 +201,68 @@ async def test_theme_cancel_answers_without_change(conn, settings) -> None:
     assert repos.get_session_state(conn, session_id).current_node_id == "groupby"
 
 
+async def test_theme_go_unknown_node_answers_not_hung(conn, settings) -> None:
+    """Неизвестный узел в колбэке `theme_go:` — отвечаем, а не роняем хендлер."""
+    load_seed(conn)
+    router = themes.make_themes_router(conn, settings)
+    message = FakeMessage()
+    callback = FakeCallback("theme_go:нет_такого", message)
+
+    await _named(router, "callback_query", "on_theme_go")(callback)
+
+    assert callback.answers                       # «часик» гаснет
+    assert callback.answers[0][0] == "Тема недоступна"
+    assert message.sent == []                     # перехода не было
+
+
+async def test_theme_unknown_node_answers_not_hung(conn, settings) -> None:
+    """Неизвестный узел в колбэке `theme:` — тоже отвечаем на нажатие."""
+    load_seed(conn)
+    router = themes.make_themes_router(conn, settings)
+    message = FakeMessage()
+    callback = FakeCallback("theme:нет_такого", message)
+
+    await _named(router, "callback_query", "on_theme")(callback)
+
+    assert callback.answers
+    assert callback.answers[0][0] == "Тема недоступна"
+    assert message.sent == []
+
+
+async def test_theme_go_failure_is_reported_and_answered(conn, settings, monkeypatch) -> None:
+    """Сбой перехода не молчит и не оставляет «часик» висеть."""
+    load_seed(conn)
+    monkeypatch.setattr(
+        "llm_tutor.bot.themes.switch_node",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    router = themes.make_themes_router(conn, settings)
+    message = FakeMessage()
+    callback = FakeCallback("theme_go:groupby", message)
+
+    await _named(router, "callback_query", "on_theme_go")(callback)
+
+    assert "пошло не так" in message.last_text
+    assert callback.answers
+
+
+async def test_theme_failure_is_reported_and_answered(conn, settings, monkeypatch) -> None:
+    """Сбой выбора темы не молчит и не оставляет «часик» висеть."""
+    load_seed(conn)
+    monkeypatch.setattr(
+        "llm_tutor.bot.themes.node_status",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    router = themes.make_themes_router(conn, settings)
+    message = FakeMessage()
+    callback = FakeCallback("theme:groupby", message)
+
+    await _named(router, "callback_query", "on_theme")(callback)
+
+    assert "пошло не так" in message.last_text
+    assert callback.answers
+
+
 def test_themes_keyboard_without_session_does_not_open_one(conn, settings) -> None:
     """Список тем — чтение: сессию не заводит, даже если её ещё нет."""
     load_seed(conn)

@@ -1,12 +1,15 @@
 """Тесты FSM-потоков бота: анкета и диагностика (Срез 4.5)."""
 
+import pytest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup
 
+from llm_tutor.bot import menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
+from llm_tutor.bot.survey import INTRO_TEXT
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.course.seed import load_seed
@@ -341,3 +344,75 @@ async def test_menu_action_failure_is_reported_and_answered(conn, settings, monk
 
     assert "пошло не так" in message.last_text
     assert callback.answered is True
+
+
+# --- диспетчер меню: ветки действий ---
+
+
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    [
+        ("status", "Моё обучение"),
+        ("route", "Маршрут"),
+        ("help", "Что умею"),
+    ],
+)
+async def test_menu_action_sends_expected_text(conn, settings, action, expected) -> None:
+    """status/route/help присылают свой экран и всегда отвечают на нажатие."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+    callback = FakeCallback(f"menu:{action}", message)
+
+    await _named(router, "callback_query", "on_menu_action")(callback)
+
+    assert expected in message.last_text
+    assert callback.answered is True
+
+
+async def test_menu_action_task_issues_task_with_options(conn, settings) -> None:
+    """«Задание» выдаёт задание с инлайн-вариантами и вешает его на сессию."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+    callback = FakeCallback("menu:task", message)
+
+    await _named(router, "callback_query", "on_menu_action")(callback)
+
+    assert message.sent[-1][1] is not None  # задание с вариантами
+    assert _state(conn).pending_item_id is not None
+    assert callback.answered is True
+
+
+async def test_menu_action_skip_clears_pending_item(conn, settings) -> None:
+    """«Пропустить» снимает висящее задание и отвечает на нажатие."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
+    assert _state(conn).pending_item_id is not None
+    message = FakeMessage()
+    callback = FakeCallback("menu:skip", message)
+
+    await _named(router, "callback_query", "on_menu_action")(callback)
+
+    assert _state(conn).pending_item_id is None
+    assert callback.answered is True
+
+
+# --- онбординг: /start до анкеты ---
+
+
+async def test_start_before_survey_sends_intro_with_menu_then_question(
+    conn, settings
+) -> None:
+    """Первый /start: сначала представление с меню, потом вопрос анкеты."""
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+    state = _fsm()
+
+    await _named(router, "message", "on_start")(message, state)
+
+    intro_text, intro_markup = message.sent[0]
+    assert intro_text == INTRO_TEXT
+    assert intro_markup == menu.main_menu()          # меню прикреплено к представлению
+    assert message.sent[1][0] == survey.SURVEY_QUESTIONS[0].text

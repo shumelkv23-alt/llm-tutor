@@ -4,6 +4,7 @@
 это предупреждение, а не запрет: ученик решает сам.
 """
 
+import logging
 import sqlite3
 import time
 from typing import Literal
@@ -11,14 +12,17 @@ from typing import Literal
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from llm_tutor.bot.render import PARSE_MODE, escape
+from llm_tutor.bot.render import PARSE_MODE, escape, fit
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core.turn import post_turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
+from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import beta, route as route_mod
 from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
+
+logger = logging.getLogger(__name__)
 
 NodeStatus = Literal["closed", "current", "available", "ahead"]
 
@@ -170,37 +174,60 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
     @router.callback_query(F.data.startswith("theme_go:"))
     async def on_theme_go(callback: CallbackQuery) -> None:
         node_id = (callback.data or "").split(":", 1)[1]
-        text = switch_node(conn, node_id, settings=settings)
-        await callback.message.answer(text, parse_mode=PARSE_MODE)
+        # Данные колбэка подконтрольны клиенту: неизвестный узел не должен
+        # ронять хендлер до ответа на нажатие (иначе «часик» виснет).
+        try:
+            if not CourseGraph.load(conn).has_node(node_id):
+                await callback.answer("Тема недоступна")
+                return
+            text = switch_node(conn, node_id, settings=settings)
+            await callback.message.answer(text, parse_mode=PARSE_MODE)
+        except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
+            logger.exception("Сбой перехода к теме: %s", node_id)
+            await callback.message.answer(
+                fit(escape(BOT_FAILURE_REPLY)), parse_mode=PARSE_MODE
+            )
         await callback.answer()
 
     @router.callback_query(F.data.startswith("theme:"))
     async def on_theme(callback: CallbackQuery) -> None:
         node_id = (callback.data or "").split(":", 1)[1]
-        graph = CourseGraph.load(conn)
-        # Это чтение, а не ход: сессию НЕ заводим (как в ``_pending_item``).
-        session_id = repos.get_open_session(conn)
-        state = repos.get_session_state(conn, session_id) if session_id else SessionState()
-        now = time.time()
-        status = node_status(conn, graph, node_id, state, now=now, settings=settings)
-        if status == "ahead":
-            prereqs = ", ".join(_ahead_prereq_names(graph, node_id, state))
-            text = (
-                f"«{escape(graph.concept(node_id).name)}» — не закрыты "
-                f"пререквизиты ({escape(prereqs)}). Всё равно идём?"
+        try:
+            graph = CourseGraph.load(conn)
+            # Неизвестный узел (подделка колбэка) — отвечаем и выходим.
+            if not graph.has_node(node_id):
+                await callback.answer("Тема недоступна")
+                return
+            # Это чтение, а не ход: сессию НЕ заводим (как в ``_pending_item``).
+            session_id = repos.get_open_session(conn)
+            state = (
+                repos.get_session_state(conn, session_id) if session_id else SessionState()
             )
-            keyboard = InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [
-                        InlineKeyboardButton(text="🎯 Да", callback_data=f"theme_go:{node_id}"),
-                        InlineKeyboardButton(text="↩️ Нет", callback_data="theme_cancel"),
+            now = time.time()
+            status = node_status(conn, graph, node_id, state, now=now, settings=settings)
+            if status == "ahead":
+                prereqs = ", ".join(_ahead_prereq_names(graph, node_id, state))
+                text = (
+                    f"«{escape(graph.concept(node_id).name)}» — не закрыты "
+                    f"пререквизиты ({escape(prereqs)}). Всё равно идём?"
+                )
+                keyboard = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [
+                            InlineKeyboardButton(text="🎯 Да", callback_data=f"theme_go:{node_id}"),
+                            InlineKeyboardButton(text="↩️ Нет", callback_data="theme_cancel"),
+                        ]
                     ]
-                ]
+                )
+                await callback.message.answer(text, parse_mode=PARSE_MODE, reply_markup=keyboard)
+            else:
+                text = switch_node(conn, node_id, settings=settings)
+                await callback.message.answer(text, parse_mode=PARSE_MODE)
+        except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
+            logger.exception("Сбой выбора темы: %s", node_id)
+            await callback.message.answer(
+                fit(escape(BOT_FAILURE_REPLY)), parse_mode=PARSE_MODE
             )
-            await callback.message.answer(text, parse_mode=PARSE_MODE, reply_markup=keyboard)
-        else:
-            text = switch_node(conn, node_id, settings=settings)
-            await callback.message.answer(text, parse_mode=PARSE_MODE)
         await callback.answer()
 
     @router.callback_query(F.data == "theme_cancel")
