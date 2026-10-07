@@ -143,8 +143,8 @@ async def test_state_survives_restart(tmp_path) -> None:
 # --- маршрут (/plan) ---
 
 
-def test_render_plan_shows_route_progress(conn, settings) -> None:
-    """Маршрут — это путь с прогрессом, а не список доступного."""
+def test_render_plan_draws_table_with_progress(conn, settings) -> None:
+    """Маршрут — табличка с прогрессом и текущим узлом."""
     load_seed(conn)
     repos.set_fact(conn, "goal_concept_id", "summary_tables")
     session_id = repos.ensure_open_session(conn, now=1.0)
@@ -154,11 +154,40 @@ def test_render_plan_shows_route_progress(conn, settings) -> None:
 
     text = render_plan(conn, now=0.0, settings=settings)
 
-    assert "закрыто" in text
-    assert "из" in text  # «закрыто 0 из N»
-    assert "Цель" in text
-    assert "Сейчас" in text
-    assert "Дальше" in text
+    assert "<pre>" in text
+    assert "Маршрут" in text
+    assert "Пройдено" in text
+    assert "[>]" in text            # метка текущего узла
+    assert "groupby" in text
+
+
+def test_render_plan_windows_long_route(conn, settings) -> None:
+    """Длинный маршрут показывается окном, а не целиком."""
+    from llm_tutor.bot.render import PLAN_WINDOW
+    from llm_tutor.course.graph import CourseGraph
+    from llm_tutor.student import route as route_mod
+
+    load_seed(conn)
+    repos.set_fact(conn, "goal_concept_id", "churn_eda_case")
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.update_session_state(
+        conn, session_id, SessionState(current_node_id="read_csv")
+    )
+
+    text = render_plan(conn, now=0.0, settings=settings)
+
+    graph = CourseGraph.load(conn)
+    full_route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id="churn_eda_case",
+        current_node_id="read_csv",
+        now=0.0,
+        settings=settings,
+    )
+    marks = text.count("[x]") + text.count("[>]") + text.count("[ ]")
+    assert marks < len(full_route.steps)     # показано меньше, чем весь путь
+    assert marks <= PLAN_WINDOW * 2 + 3
 
 
 def test_render_plan_reports_all_mastered(conn, settings) -> None:

@@ -176,8 +176,8 @@ async def test_full_topic01_scenario() -> None:
 
         # 5. Маршрут считается и показывает путь с прогрессом
         plan = render_plan(conn, now=3.0, settings=settings)
-        assert "Маршрут: закрыто" in plan
-        assert "Цель" in plan
+        assert "<pre>" in plan
+        assert "Маршрут" in plan
 
         # 6. Состояние сессии пережило все ходы и осталось согласованным
         state = repos.get_session_state(conn, session_id)

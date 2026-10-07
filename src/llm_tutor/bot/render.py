@@ -16,7 +16,6 @@ from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.hints import HINT_LEVEL_NAMES
-from llm_tutor.student.planner import MODE_LABELS
 
 PARSE_MODE = "HTML"
 # Лимит Telegram 4096; держим запас.
@@ -50,6 +49,34 @@ def _first_state(conn: sqlite3.Connection) -> SessionState:
     return repos.get_session_state(conn, session_id) if session_id else SessionState()
 
 
+PLAN_WINDOW = 3
+_PROGRESS_WIDTH = 15
+_STATUS_MARKS = {"closed": "[x]", "current": "[>]", "ahead": "[ ]"}
+
+
+def _progress_bar(closed: int, total: int, *, width: int = _PROGRESS_WIDTH) -> str:
+    """Полоса прогресса из моноширинных блоков."""
+    if total <= 0:
+        return "░" * width
+    filled = round(closed / total * width)
+    return "█" * filled + "░" * (width - filled)
+
+
+def _windowed(steps: list, window: int) -> list:
+    """Окно вокруг текущего шага плюс начало и цель (без дублей)."""
+    idx = next((i for i, s in enumerate(steps) if s.status == "current"), None)
+    if idx is None or len(steps) <= window * 2 + 1:
+        return steps
+    start = max(0, idx - window)
+    end = min(len(steps), idx + window + 1)
+    chosen = list(steps[start:end])
+    if start > 0 and chosen[0] is not steps[0]:
+        chosen = [steps[0]] + chosen
+    if end < len(steps):
+        chosen = chosen + [steps[-1]]
+    return chosen
+
+
 def render_plan(
     conn: sqlite3.Connection,
     *,
@@ -57,7 +84,7 @@ def render_plan(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Текст ``/plan``: маршрут к цели с прогрессом (перенос из handlers)."""
+    """Табличка маршрута: путь, прогресс и окно вокруг текущего узла."""
     graph = CourseGraph.load(conn)
     if not graph.node_ids:
         return EMPTY_GRAPH_REPLY
@@ -82,23 +109,40 @@ def render_plan(
         if route.goal_concept_id is not None
         else "вершина темы"
     )
+    total = len(route.steps)
+    shown = _windowed(route.steps, PLAN_WINDOW)
+
+    # Имена экранируем: сообщение уходит с parse_mode=HTML, а имя — динамика.
+    names = [escape(graph.concept(step.concept_id).name) for step in shown]
+    name_w = max(len(name) for name in names)
+    label_w = len("←сейчас")
+
+    cells: list[str] = []
+    for step, name in zip(shown, names):
+        if step.concept_id == route.goal_concept_id:
+            label = "цель"
+        elif step.status == "current":
+            label = "←сейчас"
+        elif step.status == "closed":
+            label = "усвоен"
+        else:
+            label = "впереди"
+        cells.append(f"  {_STATUS_MARKS[step.status]}  {name.ljust(name_w)} {label.rjust(label_w)} ")
+
+    bar = f" Пройдено  {_progress_bar(route.closed_count, total)}  {route.closed_count}/{total} "
+    inner = max(len(bar), *(len(cell) for cell in cells))
     lines = [
-        f"Маршрут: закрыто {route.closed_count} из {len(route.steps)}. Цель — {goal_name}."
+        "┌" + "─" * inner + "┐",
+        f"│{bar.ljust(inner)}│",
+        "├" + "─" * inner + "┤",
+        *(f"│{cell.ljust(inner)}│" for cell in cells),
+        "└" + "─" * inner + "┘",
     ]
-    current = next((step for step in route.steps if step.status == "current"), None)
-    if current is not None:
-        lines.append(
-            f"Сейчас: {graph.concept(current.concept_id).name} "
-            f"({MODE_LABELS[current.mode]})."
-        )
-    ahead = [step for step in route.steps if step.status == "ahead"][:5]
-    if ahead:
-        names = ", ".join(
-            f"{graph.concept(step.concept_id).name} ({MODE_LABELS[step.mode]})"
-            for step in ahead
-        )
-        lines.append(f"Дальше: {names}.")
-    return "\n".join(lines)
+    header = (
+        f"🗺 <b>Маршрут</b> — цель «{escape(goal_name)}», "
+        f"пройдено {route.closed_count}/{total}"
+    )
+    return header + "\n<pre>" + "\n".join(lines) + "</pre>"
 
 
 PHASE_LABELS: dict[str, str] = {
