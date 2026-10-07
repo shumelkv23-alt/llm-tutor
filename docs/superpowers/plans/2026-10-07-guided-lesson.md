@@ -709,7 +709,9 @@ git commit -m "Срез 16: подбор задания проверочного
 
 **Files:**
 - Modify: `src/llm_tutor/core/turn.py`
-- Test: `tests/test_turn.py`
+- Modify: `src/llm_tutor/bot/themes.py`
+- Modify: `src/llm_tutor/student/guide.py`
+- Test: `tests/test_turn.py`, `tests/test_themes.py`, `tests/test_guide.py`
 
 **Interfaces:**
 - Consumes: `diagnostic.verification_item`, `SessionState.verify_item_ids`
@@ -777,6 +779,42 @@ async def test_normal_task_is_not_marked_as_verification(conn, settings) -> None
 
     assert "Проверка" not in reply.text
     assert _state(conn).verify_item_ids == []
+```
+
+Плюс два теста в свои файлы — спека §5.2 требует чистить список выданного
+ещё при переходе на другую тему и при усиленном проходе.
+
+В `tests/test_themes.py` (там уже есть `switch_node`, `load_seed`, `repos`):
+
+```python
+def test_switching_theme_clears_verification_pass(conn, settings) -> None:
+    """Переход на другую тему снимает проход (спека §5.2)."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(
+            update={"current_node_id": "groupby", "mode": "verify", "verify_item_ids": [9]}
+        ),
+    )
+
+    switch_node(conn, "read_csv", now=2.0, settings=settings)
+
+    updated = repos.get_session_state(conn, session_id)
+    assert updated.verify_item_ids == []
+    assert updated.mode is None
+```
+
+В `tests/test_guide.py` (нужны `guide` и `SessionState` в импортах):
+
+```python
+def test_stuck_clears_verification_pass() -> None:
+    """Просьба о помощи снимает проход: помощь — не чистое свидетельство."""
+    state = SessionState(current_node_id="groupby", mode="verify", verify_item_ids=[9])
+
+    assert guide.on_student_stuck(state).verify_item_ids == []
 ```
 
 - [ ] **Step 2: Запустить тесты — убедиться, что падают**
@@ -883,16 +921,25 @@ VERIFY_NO_ITEMS_REPLY = (
     return new_state, text, question.item.options or None
 ```
 
-- [ ] **Step 4: Запустить тесты хода**
+И две чистки состояния прохода — там, где узел меняет режим:
 
-Run: `uv run pytest tests/test_turn.py -q`
+В `src/llm_tutor/bot/themes.py`, в `switch_node`, в `new_state.model_copy(update={...})`
+добавить `"verify_item_ids": [],` — переход на другую тему снимает проход.
+
+В `src/llm_tutor/student/guide.py`, в `on_student_stuck`, в
+`state.model_copy(update={...})` добавить `"verify_item_ids": [],` — помощь по
+узлу чистым свидетельством не является, проход обрывается.
+
+- [ ] **Step 4: Запустить тесты хода, тем и ведения**
+
+Run: `uv run pytest tests/test_turn.py tests/test_themes.py tests/test_guide.py -q`
 Expected: PASS.
 
 - [ ] **Step 5: Коммит**
 
 ```bash
-git add src/llm_tutor/core/turn.py tests/test_turn.py
-git commit -m "Срез 16: режим прохода — шапка шага и запрет повтора внутри прохода"
+git add src/llm_tutor/core/turn.py src/llm_tutor/bot/themes.py src/llm_tutor/student/guide.py tests/test_turn.py tests/test_themes.py tests/test_guide.py
+git commit -m "Срез 16: режим прохода — шапка шага, запрет повтора и снятие прохода"
 ```
 
 ---
@@ -977,6 +1024,20 @@ def test_start_verification_without_items_answers_honestly(conn, settings) -> No
 
     assert reply.text == VERIFY_NO_ITEMS_REPLY
     assert _state(conn).mode is None
+
+
+def test_restarting_pass_drops_pending_item_without_evidence(conn, settings) -> None:
+    """Повторное «закрой тему» начинает проход заново, свидетельств не пишет."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby")
+    verify.start_verification(conn, now=1.0, settings=settings)
+    first = _state(conn).pending_item_id
+
+    verify.start_verification(conn, now=2.0, settings=settings)
+
+    assert _state(conn).pending_item_id != first
+    assert _state(conn).verify_item_ids == [_state(conn).pending_item_id]
+    assert repos.get_events(conn) == []
 ```
 
 - [ ] **Step 2: Запустить тесты — убедиться, что падают**
@@ -1091,6 +1152,7 @@ git commit -m "Срез 16: вход в проверочный проход и �
 ### Task 16.4: Исходы прохода — закрытие узла и обрыв на провале
 
 **Files:**
+- Create: `tests/fakes.py`
 - Modify: `src/llm_tutor/core/turn.py`
 - Modify: `src/llm_tutor/student/guide.py`
 - Test: `tests/test_verify.py`
@@ -1098,21 +1160,24 @@ git commit -m "Срез 16: вход в проверочный проход и �
 **Interfaces:**
 - Consumes: `state.mode == "verify"` (16.3).
 - Produces: `guide.on_verification_failed(state) -> SessionState`;
-  `core.turn.VERIFY_FAILED_NOTE`; закрытие узла чистит `verify_item_ids`.
+  `core.turn.VERIFY_FAILED_NOTE`; закрытие узла чистит `verify_item_ids`;
+  `tests/fakes.py:GradingTutor` — общая тестовая заглушка (её же возьмёт
+  сквозной тест 18.6).
 
 - [ ] **Step 1: Написать падающие тесты**
 
-Добавить в `tests/test_verify.py` подставной клиент и тесты. Импорты —
-`handle_turn`, `VERIFY_FAILED_NOTE` из `llm_tutor.core.turn`;
-`CriterionVerdict`, `RubricVerdict` из `llm_tutor.grader.rubric`.
-
-Узел для обоих тестов — `groupby`: это **единственный** узел с более чем одним
-заданием в банке (id 4, 9, 10), поэтому серия из двух чистых ответов достижима
-только на нём. Задания 9 и 10 рубричные, отсюда грейдер в одной роли с
-тьютором.
+Сначала создать общий модуль `tests/fakes.py` — заглушка понадобится и здесь,
+и в сквозном тесте 18.6, а импортировать из соседнего тест-модуля не стоит:
+это ломается при смене `--import-mode`.
 
 ```python
-class _GradingTutor:
+"""Общие подставные объекты для тестов."""
+
+from llm_tutor.db import repos
+from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
+
+
+class GradingTutor:
     """Отвечает и как тьютор, и как грейдер: вердикт задаётся параметром."""
 
     def __init__(self, conn, *, passed: bool) -> None:
@@ -1138,14 +1203,22 @@ class _GradingTutor:
 
     async def chat(self, messages, *, model=None, temperature=None) -> str:
         return "Разбираем."
+```
 
+Дальше — тесты в `tests/test_verify.py`. Узел берём `groupby`: это
+**единственный** узел с более чем одним заданием в банке (id 4, 9, 10),
+поэтому серия из двух чистых ответов достижима только на нём; задания 9 и 10
+рубричные, отсюда грейдер в одной роли с тьютором. Импорты файла:
+`from fakes import GradingTutor`, `handle_turn` и `VERIFY_FAILED_NOTE` из
+`llm_tutor.core.turn`.
 
+```python
 async def test_pass_closes_node_after_two_clean_answers(conn, settings) -> None:
     """Проход закрывает узел обычным критерием — серией чистых ответов."""
     load_seed(conn)
     _set_state(conn, current_node_id="groupby")
     verify.start_verification(conn, now=1.0, settings=settings)
-    client = _GradingTutor(conn, passed=True)
+    client = GradingTutor(conn, passed=True)
 
     for ts in (2.0, 3.0):
         reply = await handle_turn(
@@ -1162,7 +1235,7 @@ async def test_wrong_answer_drops_the_pass(conn, settings) -> None:
     load_seed(conn)
     _set_state(conn, current_node_id="groupby")
     verify.start_verification(conn, now=1.0, settings=settings)
-    client = _GradingTutor(conn, passed=False)
+    client = GradingTutor(conn, passed=False)
 
     reply = await handle_turn(conn, client, "m", "не знаю", now=2.0, settings=settings)
 
@@ -1237,6 +1310,7 @@ git commit -m "Срез 16: исходы прохода — закрытие у�
 **Files:**
 - Modify: `src/llm_tutor/bot/menu.py`
 - Modify: `src/llm_tutor/bot/handlers.py`
+- Modify: `src/llm_tutor/bot/render.py` (запись `close` в `_HELP_LINES`)
 - Test: `tests/test_bot_flows.py`
 
 **Interfaces:**
@@ -1417,6 +1491,23 @@ async def test_model_flag_starts_verification(conn, settings) -> None:
     assert "Проверка" in reply.text
 
 
+async def test_close_flag_starts_pass_from_clean_state(conn, settings) -> None:
+    """Проход начинается с нуля, а не с подсказок тьюторского хода."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, current_node_id="groupby", hint_level=3, node_streak=1)
+    client = _FakeTutor("Держишь тему уверенно", wants_close_topic=True)
+
+    await handle_turn(
+        conn, client, "m", "давай закроем, я тут всё знаю уже", now=1.0, settings=settings
+    )
+
+    state = _state(conn)
+    assert state.mode == "verify"
+    assert state.hint_level == 0  # лестница подсказок сброшена — задумано
+    assert state.node_streak == 0  # серия считается проходом, а не прежняя
+
+
 async def test_stuck_flag_wins_over_close_flag(conn, settings) -> None:
     """«Застрял» приоритетнее: сначала разбираемся, потом проверяем."""
     load_seed(conn)
@@ -1463,18 +1554,34 @@ Expected: FAIL — `TypeError: TutorReply() got an unexpected keyword argument
     "  знает, поставь wants_close_topic = true: тему проверит отдельный проход.\n"
 ```
 
-В `src/llm_tutor/core/turn.py` — импорт и ветка в `handle_turn` рядом с
-веткой skip:
+В `src/llm_tutor/core/turn.py` — импорт `intents` на уровне модуля (он от
+`turn` не зависит) и ветка в `handle_turn` рядом с веткой skip:
 
 ```python
-from llm_tutor.core import intents, verify
+from llm_tutor.core import intents
 ```
 
 ```python
     if intent == "close_topic":
+        # Локальный импорт: turn и verify ссылаются друг на друга, а на уровне
+        # модуля это цикл — verify не найдёт TurnReply в ещё не дочитанном turn.
+        from llm_tutor.core import verify
+
         # Закрытие — отдельный проход; он сам запишет ход и состояние.
         return verify.start_verification(conn, now=stamp, settings=s)
 ```
+
+**Почему именно локальный импорт, а не верхнеуровневый.** `core/verify.py`
+импортирует из `core/turn.py` (`TurnReply`, `_issue_task`, `post_turn`), и
+`TurnReply` определён уже ПОСЛЕ блока импортов `turn.py`. Если импортировать
+`verify` в шапке `turn.py`, то при загрузке `turn` первым (а так и будет:
+`bot/handlers.py` и `tests/test_turn.py` тянут именно его) `verify` попытается
+взять из недочитанного модуля ещё не созданный `TurnReply` и упадёт
+`ImportError: cannot import name 'TurnReply' from partially initialized module`.
+Импорт внутри функции разрывает цикл: к моменту вызова оба модуля загружены.
+
+Тот же локальный импорт нужен в ветке `wants_close` (шаг ниже) — она в этой же
+функции, так что импорт в начале `handle_turn` покрывает оба случая.
 
 В `_tutor_branch` флаг возвращается пятым элементом (приоритет у «застрял»):
 
@@ -1499,6 +1606,14 @@ from llm_tutor.core import intents, verify
         if wants_close:
             # Модель заметила просьбу закрыть тему: её реплику сохраняем, а
             # занятие уходит в проверочный проход.
+            #
+            # Состояние, посчитанное `_tutor_branch` (hint_level, phase,
+            # task_hinted), СОЗНАТЕЛЬНО не переносится: проход начинается с
+            # чистого листа — закрытие должно опираться на свидетельства
+            # прохода, а не на прежнюю лестницу подсказок и серию. Потерять
+            # при этом нечего: события и владение `_tutor_branch` всегда
+            # возвращает пустыми, а всё остальное проход задаёт сам и пишет
+            # своим `post_turn`.
             closing = verify.start_verification(conn, now=stamp, settings=s)
             # TurnReply — frozen dataclass, а не pydantic-модель: копия через
             # dataclasses.replace, не model_copy.
@@ -1747,6 +1862,30 @@ async def test_removed_menu_action_answers_nothing(conn, settings) -> None:
 Тесты используют существующий `_TutorClient` (отвечает `"ок"` на любой
 структурированный запрос) — отдельная заглушка не нужна.
 
+**Тут же правятся четыре существующих теста `tests/test_bot_flows.py`.** Они
+жмут кнопки, которых после шага 3 не станет, и упадут: `message.sent == []`,
+а `message.last_text` даст `IndexError`.
+
+| Тест | Что с ним делать |
+|---|---|
+| `test_menu_action_sends_expected_text` | из параметров убрать `("status", "Моё обучение")` и `("help", "Что умею")`, добавить `("close", "Проверка")`; `("route", "Маршрут")` оставить |
+| `test_menu_action_task_issues_task_with_options` | удалить: сценарий остался командой `/task`, но кнопки `🎯 Задание` больше нет |
+| `test_menu_action_skip_clears_pending_item` | удалить: тот же сценарий уже покрыт `test_skip_command_clears_task_without_evidence` (команда `/skip` остаётся) |
+| `test_menu_action_failure_is_reported_and_answered` | перевести на `menu:close`: мокать `verify.start_verification` вместо `start_practice_reply`, ожидание то же — сообщение вместо тишины и ответ на нажатие |
+
+Новая параметризация первого теста:
+
+```python
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    [
+        ("route", "Маршрут"),
+        ("close", "Проверка"),
+    ],
+)
+async def test_menu_action_sends_expected_text(conn, settings, action, expected) -> None:
+```
+
 - [ ] **Step 2: Запустить тесты — убедиться, что падают**
 
 Run: `uv run pytest tests/test_menu.py tests/test_bot_flows.py -q -k "menu"`
@@ -1802,7 +1941,14 @@ ACTION_LABELS: dict[Action, str] = {
 ```python
     @router.message(Command("resume"))
     async def on_resume(message: Message) -> None:
-        reply = await resume_reply(conn, client, model, settings=settings)
+        try:
+            reply = await resume_reply(conn, client, model, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой продолжения занятия")
+            await message.answer(
+                render.fit(render.escape(BOT_FAILURE_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
         await message.answer(
             render.fit(render.escape(reply.text)),
             reply_markup=_options_keyboard(reply.options),
@@ -1834,6 +1980,25 @@ ACTION_LABELS: dict[Action, str] = {
 from llm_tutor.core.turn import resume_reply
 ```
 
+**Тут же правится `_HELP_LINES` в `src/llm_tutor/bot/render.py`.** `render_help`
+идёт по `menu.ACTION_LABELS` и берёт пояснение из `_HELP_LINES` — без записи
+для `resume` он падает `KeyError`, а существующий тест
+`test_render_help_lists_menu_actions` (`tests/test_render.py`) вызывает
+`render_help()` и покраснеет уже на шаге 4 задачи 17.3, где гоняется весь
+набор. Заменить словарь целиком:
+
+```python
+# Пояснение к каждому действию для справки (синхронно с menu.ACTION_LABELS).
+_HELP_LINES: dict[str, str] = {
+    "route": "путь к цели с прогрессом; тут же правится, если что-то знаешь",
+    "themes": "выбрать тему: вернуться назад или забежать вперёд",
+    "close": "проверить тему и закрыть её, если знания подтвердятся",
+    "resume": "продолжить занятие с того места, где остановился",
+}
+```
+
+`render.py` попадает и в `git add` шага 5.
+
 - [ ] **Step 4: Запустить тесты меню, хендлеров и потоков**
 
 Run: `uv run pytest tests/test_menu.py tests/test_handlers.py tests/test_bot_flows.py -q`
@@ -1842,7 +2007,7 @@ Expected: PASS.
 - [ ] **Step 5: Коммит**
 
 ```bash
-git add src/llm_tutor/bot/menu.py src/llm_tutor/bot/handlers.py tests/test_menu.py tests/test_bot_flows.py
+git add src/llm_tutor/bot/menu.py src/llm_tutor/bot/handlers.py src/llm_tutor/bot/render.py tests/test_menu.py tests/test_bot_flows.py
 git commit -m "Срез 17: меню из четырёх кнопок и слэш-команды"
 ```
 
@@ -1974,10 +2139,10 @@ git commit -m "Срез 17: инлайн-кнопка «Продолжить о�
 - Test: `tests/test_render.py`
 
 **Interfaces:**
-- Consumes: `menu.ACTION_LABELS` (17.2).
-- Produces: `render._HELP_LINES` ровно на четыре действия; `render_help()`
-  упоминает текстовые выходы и команды; `render_status()` не отправляет к
-  убранным кнопкам.
+- Consumes: `menu.ACTION_LABELS` (17.2). `_HELP_LINES` под четыре действия
+  уже приведён в 17.2 — здесь он только дополняется текстовыми подсказками.
+- Produces: `render_help()` упоминает текстовые выходы и команды;
+  `render_status()` не отправляет к убранным кнопкам.
 
 - [ ] **Step 1: Написать падающие тесты**
 
@@ -2020,17 +2185,10 @@ Expected: FAIL — справка всё ещё содержит «⏭ Проп�
 
 - [ ] **Step 3: Переписать справку и подсказки дашборда**
 
-В `src/llm_tutor/bot/render.py` заменить `_HELP_LINES` и `render_help`:
+В `src/llm_tutor/bot/render.py` дополнить `render_help` текстовыми
+подсказками (`_HELP_LINES` уже приведён к четырём действиям в 17.2):
 
 ```python
-# Пояснение к каждому действию для справки (синхронно с menu.ACTION_LABELS).
-_HELP_LINES: dict[str, str] = {
-    "route": "путь к цели с прогрессом; тут же правится, если что-то знаешь",
-    "themes": "выбрать тему: вернуться назад или забежать вперёд",
-    "close": "проверить тему и закрыть её, если знания подтвердятся",
-    "resume": "продолжить занятие с того места, где остановился",
-}
-
 # Выходы работают и текстом, а не только кнопками: см. core/intents.py.
 _TEXT_HINTS = (
     "Просто напиши, если что-то не так:\n"
@@ -2089,7 +2247,8 @@ git commit -m "Срез 17: справка и дашборд под новое �
 - Test: `tests/test_survey.py`
 
 **Interfaces:**
-- Consumes: `repos.add_event`, `beta.update`.
+- Consumes: `repos.add_event`, `beta.plan_update`, `beta.write_update`
+  (**не** `beta.update` — тот всегда коммитит сам и не принимает `commit`).
 - Produces: `self_report.apply(conn, concept_id, *, correct: bool, now: float,
   settings: Settings, commit: bool = True) -> None`.
 
@@ -2150,22 +2309,21 @@ def apply(
     settings: Settings,
     commit: bool = True,
 ) -> None:
-    """Пишет слабое свидетельство самооценки: событие + обновление Beta."""
+    """Пишет слабое свидетельство самооценки: событие + обновление Beta.
+
+    ``beta.update`` не годится: он всегда коммитит сам и не принимает
+    ``commit``, а нам нужна возможность писать в общей транзакции хода.
+    """
     weight = settings.self_evidence_weight
     repos.add_event(
         conn,
         Event(source="self", result=correct, concept_id=concept_id, weight=weight, ts=now),
         commit=commit,
     )
-    beta.update(
-        conn,
-        concept_id,
-        correct=correct,
-        weight=weight,
-        now=now,
-        settings=settings,
-        commit=commit,
+    change = beta.plan_update(
+        conn, concept_id, correct=correct, weight=weight, now=now, settings=settings
     )
+    beta.write_update(conn, change, commit=commit)
 ```
 
 В `src/llm_tutor/student/survey.py` заменить тело `_apply_prior` на
@@ -2222,6 +2380,23 @@ def test_intro_explains_what_happens() -> None:
     assert "перестрою" in INTRO_TEXT
 ```
 
+И обновить проверку текстов в `tests/test_survey.py`: она держится за
+формулировки, которых в новом представлении нет, и за `SURVEY_DONE_REPLY` —
+а его удалит задача 18.5. Сейчас там:
+
+```python
+    assert "учиться" in bot_survey.INTRO_TEXT.lower()
+    assert "меню" in bot_survey.INTRO_TEXT.lower()
+    assert "маршрут" in bot_survey.SURVEY_DONE_REPLY.lower()
+```
+
+Заменить на проверку нового текста (одна строка, в том же тесте):
+
+```python
+    assert "спрошу пару вопросов" in bot_survey.INTRO_TEXT
+    assert "соберу маршрут" in bot_survey.INTRO_TEXT
+```
+
 - [ ] **Step 2: Запустить тест — убедиться, что падает**
 
 Run: `uv run pytest tests/test_bot_flows.py::test_intro_explains_what_happens -q`
@@ -2243,16 +2418,16 @@ INTRO_TEXT = (
 )
 ```
 
-- [ ] **Step 4: Запустить тесты потоков**
+- [ ] **Step 4: Запустить тесты потоков и анкеты**
 
-Run: `uv run pytest tests/test_bot_flows.py -q`
-Expected: PASS. Если тест, проверяющий прежний текст представления, сломался —
-обновить его ожидания под новый текст.
+Run: `uv run pytest tests/test_bot_flows.py tests/test_survey.py -q`
+Expected: PASS. На шаге 3 правится только ветка первого `/start` — финал
+анкеты ещё прежний (`SURVEY_DONE_REPLY`), его меняет 18.5.
 
 - [ ] **Step 5: Коммит**
 
 ```bash
-git add src/llm_tutor/bot/survey.py tests/test_bot_flows.py
+git add src/llm_tutor/bot/survey.py tests/test_bot_flows.py tests/test_survey.py
 git commit -m "Срез 18: представление объясняет, что будет происходить"
 ```
 
@@ -2445,7 +2620,7 @@ git commit -m "Срез 18: экран согласования маршрута
 
 **Files:**
 - Create: `src/llm_tutor/bot/onboarding.py`
-- Create: `tests/bot_fakes.py`
+- Modify: `tests/fakes.py` (заглушки бота добавляются к `GradingTutor` из 16.4)
 - Modify: `src/llm_tutor/bot/survey.py`
 - Modify: `src/llm_tutor/bot/main.py`
 - Modify: `tests/test_bot_flows.py`
@@ -2462,17 +2637,20 @@ git commit -m "Срез 18: экран согласования маршрута
 
 - [ ] **Step 1: Вынести тестовые заглушки в общий модуль**
 
-Создать `tests/bot_fakes.py`, перенеся туда `FakeMessage`, `FakeCallback`,
-`_fsm`, `_named` **как есть** из `tests/test_bot_flows.py` (определения не
-менять — только перенести). В `tests/test_bot_flows.py` удалить их
-определения и добавить импорт:
+Дописать в существующий `tests/fakes.py` (создан в 16.4) `FakeMessage`,
+`FakeCallback`, `_fsm`, `_named` — перенеся их **как есть** из
+`tests/test_bot_flows.py` (определения не менять, только перенести; их
+импорты `aiogram.fsm.context`, `aiogram.fsm.storage.*`,
+`aiogram.types.InlineKeyboardMarkup` переезжают вместе с ними). В
+`tests/test_bot_flows.py` удалить определения и добавить импорт:
 
 ```python
-from bot_fakes import FakeCallback, FakeMessage, _fsm, _named
+from fakes import FakeCallback, FakeMessage, _fsm, _named
 ```
 
 Импорт работает через `rootdir`-вставку pytest: файлы тестов лежат в `tests/`
-без `__init__.py`, поэтому модуль импортируется по имени файла.
+без `__init__.py`, поэтому модуль импортируется по имени файла (проверено на
+песочнице с той же раскладкой).
 
 Проверка, что перенос ничего не сломал:
 
@@ -2491,7 +2669,7 @@ from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.student import beta
 
-from bot_fakes import FakeCallback, FakeMessage, _fsm, _named
+from fakes import FakeCallback, FakeMessage, _fsm, _named
 
 
 def _state(conn):
@@ -2809,8 +2987,25 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
         return
 ```
 
-Константа `SURVEY_DONE_REPLY` после этого не используется — удалить её вместе
-с тестом, который её проверял (если такой есть).
+Константа `SURVEY_DONE_REPLY` после этого не используется — удалить её.
+Ссылок на неё в репозитории ровно три: определение, этот финал анкеты и тест
+из `tests/test_survey.py`, который снят в 18.2; других не остаётся.
+
+**И правится тест финала анкеты в `tests/test_bot_flows.py`.** Сейчас там
+проверяется, что FSM-поток закрыт:
+
+```python
+    assert await state.get_state() is None  # поток закрыт
+```
+
+После этой задачи финал анкеты не закрывает поток, а открывает экран
+согласования. Заменить на:
+
+```python
+    assert await state.get_state() == OnboardingFlow.route_review.state
+```
+
+и добавить в импорты файла `from llm_tutor.bot.onboarding import OnboardingFlow`.
 
 В `src/llm_tutor/bot/main.py` подключить роутер (после диагностики, до
 основного):
@@ -2823,15 +3018,15 @@ from llm_tutor.bot.onboarding import make_onboarding_router
         dispatcher.include_router(make_onboarding_router(conn, settings))
 ```
 
-- [ ] **Step 5: Запустить тесты онбординга и потоков**
+- [ ] **Step 5: Запустить тесты онбординга, потоков и анкеты**
 
-Run: `uv run pytest tests/test_onboarding.py tests/test_bot_flows.py -q`
+Run: `uv run pytest tests/test_onboarding.py tests/test_bot_flows.py tests/test_survey.py -q`
 Expected: PASS.
 
 - [ ] **Step 6: Коммит**
 
 ```bash
-git add src/llm_tutor/bot/onboarding.py src/llm_tutor/bot/survey.py src/llm_tutor/bot/main.py tests/bot_fakes.py tests/test_bot_flows.py tests/test_onboarding.py
+git add src/llm_tutor/bot/onboarding.py src/llm_tutor/bot/survey.py src/llm_tutor/bot/main.py tests/fakes.py tests/test_bot_flows.py tests/test_onboarding.py
 git commit -m "Срез 18: согласование маршрута на входе в курс"
 ```
 
@@ -2875,7 +3070,7 @@ async def test_new_student_walks_the_whole_path(conn, settings) -> None:
     repos.update_session_state(
         conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
     )
-    client = _GradingTutor(conn, passed=True)
+    client = GradingTutor(conn, passed=True)
 
     reply = await handle_turn(conn, client, "m", "закрой тему", now=2.0, settings=settings)
 
@@ -2891,17 +3086,14 @@ async def test_new_student_walks_the_whole_path(conn, settings) -> None:
     assert _is_closed(conn, "groupby")
 ```
 
-Заглушку `_GradingTutor` не дублируем — импортируем из соседнего тест-модуля
-(pytest делает каталог `tests/` импортируемым, оба файла лежат в нём):
+Заглушку не дублируем — берём общую из `tests/fakes.py`:
 
 ```python
-from test_verify import _GradingTutor
+from fakes import FakeCallback, FakeMessage, GradingTutor, _named
 ```
 
 Остальные недостающие импорты: `make_onboarding_router` из
-`llm_tutor.bot.onboarding`; `FakeCallback`, `FakeMessage`, `_named` из
-`tests/bot_fakes.py` (появляется в 18.5); `handle_turn` из
-`llm_tutor.core.turn`. Хелпер:
+`llm_tutor.bot.onboarding`; `handle_turn` из `llm_tutor.core.turn`. Хелпер:
 
 ```python
 def _is_closed(conn, node_id: str) -> bool:
