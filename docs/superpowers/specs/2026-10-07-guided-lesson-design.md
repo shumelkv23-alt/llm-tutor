@@ -107,7 +107,7 @@
 ```
 текст ученика
   ↓
-bot/intents.detect(text)          ← до ветвления
+core/intents.detect(text)         ← до ветвления
   ├── "close_topic" → проверочный проход (§5)
   ├── "skip"        → снять задание (skip_pending)
   ├── "stuck"       → усиленный проход (stuck_reply)
@@ -136,7 +136,8 @@ bot/intents.detect(text)          ← до ветвления
 ### 4.4 Таблица фраз
 
 Фразы хранятся в нормализованном виде; список — единый источник истины в
-`bot/intents.py`.
+`core/intents.py` (модуль живёт в ядре, а не в `bot/`: развилку делает
+`core/turn.handle_turn`, а зависимости в проекте идут только `bot → core`).
 
 | Намерение | Фразы |
 |---|---|
@@ -219,23 +220,23 @@ wants_close_topic: bool = False
 
 ### 5.3 Сообщения
 
-Первый шаг прохода (текст формирует код, имя узла экранируется):
+Тексты прохода — обычный «сырой» текст, как у остальных ходов: хендлер
+экранирует и обрезает его (`render.fit(render.escape(...))`). Собственной
+HTML-разметки проход не несёт — визуальный вес даёт эмодзи.
 
-```
-🔎 <b>Проверяю тему</b> «groupby»
-
-Объясни своими словами: что делает groupby и когда он нужен?
-```
-
-Дальше — обычная выдача задания с шапкой прохода. Номер шага без общего
+Каждый шаг прохода — выдача задания с шапкой. Номер шага без общего
 количества: после неудачного ответа серия обнуляется и шагов может стать
 больше двух, поэтому «шаг 2 из 2» было бы неправдой.
 
 ```
-🔎 Проверка «groupby» — шаг 2
+🔎 Проверка «groupby» — шаг 1
 
+Объясни своими словами:
 <задание>
 ```
+
+Строка «Объясни своими словами:» ставится, когда задание проверяется рубрикой
+(`open`/`code`); для заданий с автопроверкой её нет.
 
 Успех:
 
@@ -392,10 +393,12 @@ wants_close_topic: bool = False
 
 **Новое:**
 
-- `bot/intents.py` — нормализация, таблица фраз, `detect(text) -> Intent | None`,
+- `core/intents.py` — нормализация, таблица фраз, `detect(text) -> Intent | None`,
   константа `INTENT_MAX_WORDS`.
-- `core/verify.py` — проверочный проход: вход `start_verification`, выбор
-  задания в порядке §5.2, тексты шагов и исходов.
+- `core/verify.py` — проверочный проход: вход `start_verification`, тексты
+  шагов и исходов. Подбор задания живёт рядом с остальным подбором —
+  `student/diagnostic.verification_item` (§5.2), чтобы фильтры банка остались
+  в одном модуле.
 - `student/self_report.py` — построитель слабого свидетельства самооценки.
 - `tests/test_intents.py`, `tests/test_verify.py`, `tests/test_onboarding.py`.
 
@@ -412,6 +415,8 @@ wants_close_topic: bool = False
   `bot/survey.py` и `bot/handlers.on_start`).
 - `bot/render.py` — `render_route_screen` (табличка + клавиатура согласования),
   обновлённый `render_help` под четыре действия.
+- `student/diagnostic.py` — `verification_item` (§5.2); `core/turn._issue_task`
+  выбирает задание прохода им, а не `question_for_node`.
 - `llm/schemas.py` — `TutorReply.wants_close_topic`.
 - `llm/prompts.py` — правило про `wants_close_topic`.
 - `schemas.py` — `SessionState.verify_item_ids: list[int] = []`.
