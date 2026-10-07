@@ -4,7 +4,7 @@ from llm_tutor.bot import themes
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
-from llm_tutor.schemas import SessionState
+from llm_tutor.schemas import Route, RouteStep, SessionState
 
 
 def test_node_status_marks_current(conn, settings) -> None:
@@ -37,6 +37,33 @@ def test_themes_keyboard_has_button_per_node(conn, settings) -> None:
     callbacks = [b.callback_data for row in kb.inline_keyboard for b in row]
     assert len(callbacks) == len(graph.node_ids)
     assert all(cb.startswith("theme:") for cb in callbacks)
+
+
+def test_node_status_reads_closure_from_route_snapshot(conn, settings) -> None:
+    """Узел, закрытый серией в снимке маршрута, — closed и без мастерства."""
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+    node = next(n for n in graph.topo_order() if graph.hard_prerequisites(n))
+    state = SessionState(
+        route=Route(steps=[RouteStep(concept_id=node, mode="full", status="closed")])
+    )
+
+    assert themes.node_status(conn, graph, node, state, now=0.0, settings=settings) == "closed"
+
+
+def test_node_status_prereq_closed_by_route_opens_dependent(conn, settings) -> None:
+    """Жёсткий пререквизит, закрытый в снимке, делает зависимый узел available."""
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+    node = next(n for n in graph.topo_order() if graph.hard_prerequisites(n))
+    closed = [
+        RouteStep(concept_id=p, mode="full", status="closed")
+        for p in graph.hard_prerequisites(node)
+    ]
+    state = SessionState(route=Route(steps=closed))
+
+    status = themes.node_status(conn, graph, node, state, now=0.0, settings=settings)
+    assert status == "available"
 
 
 async def test_switch_node_changes_current_and_clears_pending(conn, settings) -> None:

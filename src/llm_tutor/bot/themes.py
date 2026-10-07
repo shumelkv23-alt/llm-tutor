@@ -36,9 +36,27 @@ THEMES_PROMPT = (
 )
 
 
+def _closed_from_route(state: SessionState) -> set[str]:
+    """Узлы, закрытые в снимке маршрута сессии — запись тьютора о закрытии.
+
+    Ученик закрывает узел серией чистых ответов ИЛИ уверенным владением;
+    снимок маршрута хранит оба случая, поэтому он — источник правды.
+    """
+    if state.route is None:
+        return set()
+    return {step.concept_id for step in state.route.steps if step.status == "closed"}
+
+
 def _is_closed(
-    conn: sqlite3.Connection, node_id: str, *, now: float | None, settings: Settings
+    conn: sqlite3.Connection,
+    node_id: str,
+    state: SessionState,
+    *,
+    now: float | None,
+    settings: Settings,
 ) -> bool:
+    if node_id in _closed_from_route(state):
+        return True
     mastery = beta.estimate(conn, node_id, now=now, settings=settings)
     return (
         mastery.mean >= settings.mastery_skip_threshold
@@ -58,10 +76,12 @@ def node_status(
     """Статус узла для списка тем."""
     if node_id == state.current_node_id:
         return "current"
-    if _is_closed(conn, node_id, now=now, settings=settings):
+    if _is_closed(conn, node_id, state, now=now, settings=settings):
         return "closed"
     prereqs = graph.hard_prerequisites(node_id)
-    if all(_is_closed(conn, prereq, now=now, settings=settings) for prereq in prereqs):
+    if all(
+        _is_closed(conn, prereq, state, now=now, settings=settings) for prereq in prereqs
+    ):
         return "available"
     return "ahead"
 
@@ -138,11 +158,13 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
     """Роутер выбора темы: узел сразу либо с подтверждением для «вперёд»."""
     router = Router()
 
-    def _ahead_prereq_names(graph: CourseGraph, node_id: str) -> list[str]:
+    def _ahead_prereq_names(
+        graph: CourseGraph, node_id: str, state: SessionState
+    ) -> list[str]:
         return [
             graph.concept(p).name
             for p in graph.hard_prerequisites(node_id)
-            if not _is_closed(conn, p, now=time.time(), settings=settings)
+            if not _is_closed(conn, p, state, now=time.time(), settings=settings)
         ]
 
     @router.callback_query(F.data.startswith("theme_go:"))
@@ -162,7 +184,7 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
         now = time.time()
         status = node_status(conn, graph, node_id, state, now=now, settings=settings)
         if status == "ahead":
-            prereqs = ", ".join(_ahead_prereq_names(graph, node_id))
+            prereqs = ", ".join(_ahead_prereq_names(graph, node_id, state))
             text = (
                 f"«{escape(graph.concept(node_id).name)}» — не закрыты "
                 f"пререквизиты ({escape(prereqs)}). Всё равно идём?"
