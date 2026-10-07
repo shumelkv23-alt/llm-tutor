@@ -23,7 +23,7 @@ from aiogram.types import (
     Message,
 )
 
-from llm_tutor.bot import menu, render
+from llm_tutor.bot import menu, render, themes
 from llm_tutor.bot.survey import INTRO_TEXT, ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import (
@@ -261,6 +261,12 @@ def make_router(
             elif action == "route":
                 text = render.render_plan(conn, settings=settings)
                 await callback.message.answer(text, parse_mode=render.PARSE_MODE)
+            elif action == "themes":
+                await callback.message.answer(
+                    themes.THEMES_PROMPT,
+                    parse_mode=render.PARSE_MODE,
+                    reply_markup=themes.themes_keyboard(conn, settings=settings),
+                )
             elif action == "help":
                 await callback.message.answer(
                     render.render_help(), parse_mode=render.PARSE_MODE

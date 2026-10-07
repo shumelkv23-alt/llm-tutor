@@ -14,7 +14,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-Action = Literal["status", "route", "task", "stuck", "skip", "help"]
+Action = Literal["status", "route", "themes", "task", "stuck", "skip", "help"]
 
 LABEL_MENU = "☰ Меню"
 MENU_TITLE = "Что сделать?"
@@ -23,6 +23,7 @@ MENU_TITLE = "Что сделать?"
 ACTION_LABELS: dict[Action, str] = {
     "status": "📚 Моё обучение",
     "route": "🗺 Маршрут",
+    "themes": "🎚 Темы",
     "task": "🎯 Задание",
     "stuck": "❓ Не понимаю",
     "skip": "⏭ Пропустить",

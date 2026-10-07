@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher
 from llm_tutor.bot.diagnostic import make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import make_survey_router
+from llm_tutor.bot.themes import make_themes_router
 from llm_tutor.config import get_settings
 from llm_tutor.course.seed import items_without_rubric, load_seed, nodes_without_items
 from llm_tutor.db.connection import get_conn, migrate
@@ -48,6 +49,7 @@ async def main() -> None:
         # попадать в тьютор-путь.
         dispatcher.include_router(make_survey_router(conn, settings))
         dispatcher.include_router(make_diagnostic_router(conn, settings))
+        dispatcher.include_router(make_themes_router(conn, settings))
         dispatcher.include_router(
             make_router(conn, client, settings.tutor_model, settings=settings)
         )
