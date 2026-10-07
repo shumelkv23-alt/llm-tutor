@@ -249,27 +249,38 @@ def make_router(
     @router.callback_query(F.data.startswith("menu:"))
     async def on_menu_action(callback: CallbackQuery) -> None:
         action = (callback.data or "").split(":", 1)[1]
-        if action == "status":
-            text = render.render_status(conn, settings=settings)
-            await callback.message.answer(text, parse_mode=render.PARSE_MODE)
-        elif action == "route":
-            text = render.render_plan(conn, settings=settings)
-            await callback.message.answer(text, parse_mode=render.PARSE_MODE)
-        elif action == "help":
-            await callback.message.answer(render.render_help(), parse_mode=render.PARSE_MODE)
-        elif action == "task":
-            reply = start_practice_reply(conn, settings=settings)
+        # Любой сбой действия — сообщение вместо тишины; callback.answer()
+        # вызывается всегда (ниже), иначе у ученика зависает «часик».
+        try:
+            if action == "status":
+                text = render.render_status(conn, settings=settings)
+                await callback.message.answer(text, parse_mode=render.PARSE_MODE)
+            elif action == "route":
+                text = render.render_plan(conn, settings=settings)
+                await callback.message.answer(text, parse_mode=render.PARSE_MODE)
+            elif action == "help":
+                await callback.message.answer(
+                    render.render_help(), parse_mode=render.PARSE_MODE
+                )
+            elif action == "task":
+                reply = start_practice_reply(conn, settings=settings)
+                await callback.message.answer(
+                    render.fit(render.escape(reply.text)),
+                    parse_mode=render.PARSE_MODE,
+                    reply_markup=_options_keyboard(reply.options),
+                )
+            elif action == "skip":
+                text = skip_pending(conn, settings=settings)
+                await callback.message.answer(
+                    render.fit(render.escape(text)),
+                    parse_mode=render.PARSE_MODE,
+                    reply_markup=menu.main_menu(),
+                )
+        except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
+            logger.exception("Сбой действия меню: %s", action)
             await callback.message.answer(
-                render.fit(render.escape(reply.text)),
+                render.fit(render.escape(BOT_FAILURE_REPLY)),
                 parse_mode=render.PARSE_MODE,
-                reply_markup=_options_keyboard(reply.options),
-            )
-        elif action == "skip":
-            text = skip_pending(conn, settings=settings)
-            await callback.message.answer(
-                render.fit(render.escape(text)),
-                parse_mode=render.PARSE_MODE,
-                reply_markup=menu.main_menu(),
             )
         await callback.answer()
 

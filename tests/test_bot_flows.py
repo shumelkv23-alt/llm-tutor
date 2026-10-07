@@ -324,3 +324,20 @@ async def test_skip_command_clears_task_without_evidence(conn, settings) -> None
 
     assert _state(conn).pending_item_id is None
     assert repos.get_events(conn) == []
+
+
+async def test_menu_action_failure_is_reported_and_answered(conn, settings, monkeypatch) -> None:
+    """Сбой действия меню не молчит и не оставляет «часик» висеть."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    monkeypatch.setattr(
+        "llm_tutor.bot.handlers.start_practice_reply",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    message = FakeMessage()
+    callback = FakeCallback("menu:task", message)
+
+    await _named(router, "callback_query", "on_menu_action")(callback)
+
+    assert "пошло не так" in message.last_text
+    assert callback.answered is True
