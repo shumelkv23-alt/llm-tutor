@@ -14,7 +14,7 @@ from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMError
 from llm_tutor.llm.schemas import ChatMessage
-from llm_tutor.schemas import SessionState
+from llm_tutor.schemas import Concept, SessionState
 
 
 class _FakeClient:
@@ -159,6 +159,19 @@ def test_render_plan_draws_table_with_progress(conn, settings) -> None:
     assert "Пройдено" in text
     assert "[>]" in text            # метка текущего узла
     assert "groupby" in text
+
+
+def test_render_plan_escapes_concept_names(conn, settings) -> None:
+    """Имя узла с HTML-спецсимволом экранируется — иначе сломается parse_mode=HTML."""
+    load_seed(conn)
+    repos.upsert_concept(conn, Concept(id="x_amp", name="A & B"))
+    repos.set_fact(conn, "goal_concept_id", "x_amp")
+    repos.ensure_open_session(conn, now=1.0)
+
+    text = render_plan(conn, now=0.0, settings=settings)
+
+    assert "A &amp; B" in text   # экранированная форма доходит до ячейки/шапки
+    assert "A & B" not in text   # сырой амперсанд в HTML не просачивается
 
 
 def test_render_plan_windows_long_route(conn, settings) -> None:
