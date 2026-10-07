@@ -334,11 +334,10 @@ git commit -m "Срез 11: слой представления и HTML-офор
 
 **Interfaces:**
 - Produces:
-  - константы-метки `LABEL_STATUS`, `LABEL_ROUTE`, `LABEL_THEMES`,
-    `LABEL_TASK`, `LABEL_STUCK`, `LABEL_SKIP`, `LABEL_HELP`;
-  - `MENU_LABELS: tuple[str, ...]`;
-  - `MENU_ACTIONS: dict[str, Action]`;
-  - `main_menu() -> ReplyKeyboardMarkup`.
+  - `Action` (`Literal`), `LABEL_MENU: str`, `MENU_TITLE: str`;
+  - `ACTION_LABELS: dict[Action, str]` — действие → подпись кнопки в списке;
+  - `main_menu() -> ReplyKeyboardMarkup` (одна кнопка);
+  - `actions_keyboard() -> InlineKeyboardMarkup` (callback `menu:<action>`).
 
 - [ ] **Step 1: Написать падающий тест**
 
@@ -350,25 +349,24 @@ git commit -m "Срез 11: слой представления и HTML-офор
 from llm_tutor.bot import menu
 
 
-def test_menu_labels_are_unique() -> None:
-    assert len(set(menu.MENU_LABELS)) == len(menu.MENU_LABELS)
-
-
-def test_action_map_covers_every_label() -> None:
-    """Каждой метке соответствует ровно одно действие."""
-    assert set(menu.MENU_ACTIONS) == set(menu.MENU_LABELS)
-
-
-def test_main_menu_has_all_labels() -> None:
+def test_main_menu_has_single_button() -> None:
+    """Постоянная клавиатура — ровно одна кнопка меню."""
     kb = menu.main_menu()
     texts = [button.text for row in kb.keyboard for button in row]
-    assert set(texts) == set(menu.MENU_LABELS)
+    assert texts == [menu.LABEL_MENU]
 
 
 def test_main_menu_is_persistent_and_resized() -> None:
     kb = menu.main_menu()
     assert kb.is_persistent is True
     assert kb.resize_keyboard is True
+
+
+def test_actions_keyboard_lists_every_action() -> None:
+    """Инлайн-список содержит по кнопке на каждое действие."""
+    kb = menu.actions_keyboard()
+    callbacks = [button.callback_data for row in kb.inline_keyboard for button in row]
+    assert callbacks == [f"menu:{action}" for action in menu.ACTION_LABELS]
 ```
 
 - [ ] **Step 2: Запустить тест — убедиться, что падает**
@@ -379,57 +377,54 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'llm_tutor.bot.menu'`.
 - [ ] **Step 3: Создать `bot/menu.py`**
 
 ```python
-"""Постоянное меню бота: reply-клавиатура и карта действий.
+"""Меню бота: постоянная кнопка и всплывающий список действий.
 
-Метки — единый источник истины: клавиатура строится из них, и по ним же
-перехватывается нажатие (reply-кнопка отправляет свой текст сообщением).
-Эмодзи-префикс отделяет нажатие от свободного вопроса ученика.
+Reply-клавиатура несёт ровно одну кнопку «☰ Меню». По нажатию бот присылает
+инлайн-список действий (callback `menu:<action>`) — функционал виден, но
+переписку не загораживают семь кнопок.
 """
 
 from typing import Literal
 
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 
 Action = Literal["status", "route", "task", "skip", "help"]
 
-LABEL_STATUS = "📚 Моё обучение"
-LABEL_ROUTE = "🗺 Маршрут"
-LABEL_TASK = "🎯 Задание"
-LABEL_SKIP = "⏭ Пропустить"
-LABEL_HELP = "ℹ️ Что умею"
+LABEL_MENU = "☰ Меню"
+MENU_TITLE = "Что сделать?"
 
-MENU_LABELS: tuple[str, ...] = (
-    LABEL_STATUS,
-    LABEL_ROUTE,
-    LABEL_TASK,
-    LABEL_SKIP,
-    LABEL_HELP,
-)
-
-MENU_ACTIONS: dict[str, Action] = {
-    LABEL_STATUS: "status",
-    LABEL_ROUTE: "route",
-    LABEL_TASK: "task",
-    LABEL_SKIP: "skip",
-    LABEL_HELP: "help",
+# Действие → подпись кнопки в инлайн-списке (порядок задаёт порядок кнопок).
+ACTION_LABELS: dict[Action, str] = {
+    "status": "📚 Моё обучение",
+    "route": "🗺 Маршрут",
+    "task": "🎯 Задание",
+    "skip": "⏭ Пропустить",
+    "help": "ℹ️ Что умею",
 }
 
 
 def main_menu() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура меню (не сворачивается).
-
-    `🎚 Темы` и `❓ Не понимаю` добавляются в 14.1/14.2 вместе со своими
-    действиями: в срезе 12 кнопок без обработчика не бывает.
-    """
+    """Постоянная клавиатура: одна кнопка меню (не сворачивается)."""
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=LABEL_STATUS), KeyboardButton(text=LABEL_ROUTE)],
-            [KeyboardButton(text=LABEL_TASK), KeyboardButton(text=LABEL_SKIP)],
-            [KeyboardButton(text=LABEL_HELP)],
-        ],
+        keyboard=[[KeyboardButton(text=LABEL_MENU)]],
         resize_keyboard=True,
         is_persistent=True,
     )
+
+
+def actions_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-список действий меню (по 2 в ряду)."""
+    buttons = [
+        InlineKeyboardButton(text=label, callback_data=f"menu:{action}")
+        for action, label in ACTION_LABELS.items()
+    ]
+    rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 ```
 
 - [ ] **Step 4: Запустить тесты**
@@ -487,9 +482,9 @@ def test_render_status_shows_current_node_and_phase(conn, settings) -> None:
     assert "подсказк" in text.lower()
 
 
-def test_render_help_lists_menu_labels() -> None:
+def test_render_help_lists_menu_actions() -> None:
     text = render_help()
-    for label in menu.MENU_LABELS:
+    for label in menu.ACTION_LABELS.values():
         assert label in text
 ```
 
@@ -559,20 +554,22 @@ def render_status(
     return "\n".join(lines)
 
 
-def render_help() -> str:
-    """Справка по кнопкам меню.
+# Пояснение к каждому действию для справки (синхронно с menu.ACTION_LABELS).
+_HELP_LINES: dict[str, str] = {
+    "status": "где ты сейчас и как идёт маршрут",
+    "route": "путь к цели с прогрессом",
+    "task": "взять задание по текущей теме",
+    "skip": "пропустить текущее задание",
+    "help": "эта справка",
+}
 
-    Список синхронен с `menu.MENU_LABELS` текущего среза: на срезе 12 это
-    пять кнопок; строки про `❓ Не понимаю` и `🎚 Темы` добавляют 14.1/14.2.
-    """
-    return (
-        "ℹ️ <b>Что умею</b>\n"
-        f"{menu.LABEL_STATUS} — где ты сейчас и как идёт маршрут\n"
-        f"{menu.LABEL_ROUTE} — путь к цели с прогрессом\n"
-        f"{menu.LABEL_TASK} — взять задание по текущей теме\n"
-        f"{menu.LABEL_SKIP} — пропустить текущее задание\n"
-        f"{menu.LABEL_HELP} — эта справка"
-    )
+
+def render_help() -> str:
+    """Справка по действиям меню (синхронна с ``menu.ACTION_LABELS``)."""
+    lines = ["ℹ️ <b>Что умею</b>"]
+    for action, label in menu.ACTION_LABELS.items():
+        lines.append(f"{label} — {_HELP_LINES[action]}")
+    return "\n".join(lines)
 ```
 
 Добавить в импорты `render.py` модуль меню: `from llm_tutor.bot import menu`.
@@ -598,80 +595,92 @@ git commit -m "Срез 12: дашборд «Моё обучение» и спр
 - Test: `tests/test_handlers.py`
 
 **Interfaces:**
-- Consumes: `menu.MENU_LABELS`, `menu.MENU_ACTIONS`, `menu.main_menu`,
-  `render.render_status`, `render.render_help`, `render.render_plan`,
-  `core.turn.start_practice_reply`, `core.turn.skip_pending`.
+- Consumes: `menu.LABEL_MENU`, `menu.MENU_TITLE`, `menu.main_menu`,
+  `menu.actions_keyboard`, `render.render_status`, `render.render_help`,
+  `render.render_plan`, `core.turn.start_practice_reply`, `core.turn.skip_pending`.
 
 - [ ] **Step 1: Написать падающий тест**
 
 Добавить в `tests/test_handlers.py`:
 
 ```python
-def test_menu_handler_is_registered(conn) -> None:
-    """Хендлер меню реально подключён к роутеру (а не потерялся)."""
+def test_menu_handlers_are_registered(conn) -> None:
+    """Кнопка меню и разбор действий реально подключены к роутеру."""
     router = make_router(conn, _FakeClient(), "m")
     names = [h.callback.__name__ for h in router.message.handlers]
     assert "on_menu" in names
+    callbacks = [h.callback.__name__ for h in router.callback_query.handlers]
+    assert "on_menu_action" in callbacks
 ```
-
-> Полнота карты «метка → действие» проверяется в
-> `tests/test_menu.py::test_action_map_covers_every_label`.
 
 - [ ] **Step 2: Запустить тест — убедиться, что падает**
 
-Run: `uv run pytest tests/test_handlers.py::test_menu_handler_is_registered -v`
-Expected: FAIL — хендлера `on_menu` в роутере пока нет.
+Run: `uv run pytest tests/test_handlers.py::test_menu_handlers_are_registered -v`
+Expected: FAIL — хендлеров `on_menu`/`on_menu_action` пока нет.
 
-- [ ] **Step 3: Добавить меню-хендлер и прикрепить клавиатуру**
+- [ ] **Step 3: Кнопка меню открывает список действий**
 
 В `bot/handlers.py` импортировать `from llm_tutor.bot import menu, render`
 и в `make_router` **до** хендлера свободного текста (`on_text`) добавить:
 
 ```python
-    @router.message(StateFilter(None), F.text.in_(frozenset(menu.MENU_LABELS)))
+    @router.message(StateFilter(None), F.text == menu.LABEL_MENU)
     async def on_menu(message: Message) -> None:
-        action = menu.MENU_ACTIONS.get(message.text or "")
+        await message.answer(
+            menu.MENU_TITLE,
+            reply_markup=menu.actions_keyboard(),
+        )
+```
+
+- [ ] **Step 4: Разбор действий из инлайн-списка**
+
+Там же добавить обработчик колбэков `menu:<action>`:
+
+```python
+    @router.callback_query(F.data.startswith("menu:"))
+    async def on_menu_action(callback: CallbackQuery) -> None:
+        action = (callback.data or "").split(":", 1)[1]
         if action == "status":
             text = render.render_status(conn, settings=settings)
-            await message.answer(text, parse_mode=render.PARSE_MODE)
+            await callback.message.answer(text, parse_mode=render.PARSE_MODE)
         elif action == "route":
             text = render.render_plan(conn, settings=settings)
-            await message.answer(text, parse_mode=render.PARSE_MODE)
+            await callback.message.answer(text, parse_mode=render.PARSE_MODE)
         elif action == "help":
-            await message.answer(render.render_help(), parse_mode=render.PARSE_MODE)
+            await callback.message.answer(render.render_help(), parse_mode=render.PARSE_MODE)
         elif action == "task":
             reply = start_practice_reply(conn, settings=settings)
-            await message.answer(
+            await callback.message.answer(
                 render.fit(render.escape(reply.text)),
                 parse_mode=render.PARSE_MODE,
                 reply_markup=_options_keyboard(reply.options),
             )
         elif action == "skip":
             text = skip_pending(conn, settings=settings)
-            await message.answer(
+            await callback.message.answer(
                 render.fit(render.escape(text)),
                 parse_mode=render.PARSE_MODE,
                 reply_markup=menu.main_menu(),
             )
+        await callback.answer()
 ```
 
-> Ветки `task`/`answer` шлют инлайн-кнопки вариантов — постоянное меню на них
-> не помещается (одно поле `reply_markup`), но оно и так висит (persistent).
-> К остальным текстовым ответам меню прикрепляется явно.
+- в `on_start` (ветка «анкета заполнена») и в `on_text` прикрепить кнопку
+  меню к обычным ответам: добавить `reply_markup=menu.main_menu()`.
 
-- в `on_start` (ветка «анкета заполнена») и в `on_text` прикрепить клавиатуру
-  к обычным ответам: добавить `reply_markup=menu.main_menu()`.
+> Ветки с инлайн-кнопками вариантов (`task`) постоянную клавиатуру не несут
+> (одно поле `reply_markup`), но она и так висит (persistent).
 
-- [ ] **Step 4: Запустить тесты**
+- [ ] **Step 5: Запустить тесты**
 
 Run: `uv run pytest tests/test_handlers.py tests/test_menu.py -q`
 Expected: PASS.
 
-- [ ] **Step 5: Коммит**
+- [ ] **Step 6: Коммит**
 
 ```bash
 git add src/llm_tutor/bot/handlers.py tests/test_handlers.py
-git commit -m "Срез 12: меню-хендлер — статус, маршрут, задание, справка"
+git commit -m "Срез 12: меню — кнопка и инлайн-список действий"
 ```
 
 ---
@@ -718,7 +727,8 @@ INTRO_TEXT = (
     "  1 · короткая анкета — что ты уже знаешь\n"
     "  2 · соберу маршрут под твою цель\n"
     "  3 · ведём по шагам: объясняю → даю задачу → проверяю\n\n"
-    "Меню — на кнопках внизу. Застрял — жми ❓ Не понимаю.\n\n"
+    "Меню — кнопка «☰» внизу: внутри весь функционал,\n"
+    "там же «❓ Не понимаю».\n\n"
     "Начнём 👇"
 )
 
@@ -1100,42 +1110,46 @@ async def stuck_reply(
     return TurnReply(text=reply)
 ```
 
-- [ ] **Step 4: Добавить кнопку и подключить `stuck_reply`**
+- [ ] **Step 4: Добавить действие и подключить `stuck_reply`**
 
-В `bot/menu.py` добавить метку, действие и кнопку:
+В `bot/menu.py` расширить `Action` и `ACTION_LABELS` (порядок задаёт порядок
+кнопок в списке):
 
 ```python
-LABEL_STUCK = "❓ Не понимаю"      # рядом с прочими метками
-
 Action = Literal["status", "route", "task", "stuck", "skip", "help"]
-MENU_LABELS = (..., LABEL_STUCK, ...)
-MENU_ACTIONS = {..., LABEL_STUCK: "stuck", ...}
+
+ACTION_LABELS: dict[Action, str] = {
+    "status": "📚 Моё обучение",
+    "route": "🗺 Маршрут",
+    "task": "🎯 Задание",
+    "stuck": "❓ Не понимаю",
+    "skip": "⏭ Пропустить",
+    "help": "ℹ️ Что умею",
+}
 ```
 
-В `main_menu()` второй ряд становится `[TASK, STUCK, SKIP]`:
+В `bot/render.py` добавить пояснение в `_HELP_LINES`:
 
 ```python
-            [KeyboardButton(text=LABEL_TASK), KeyboardButton(text=LABEL_STUCK),
-             KeyboardButton(text=LABEL_SKIP)],
+    "stuck": "не понял — объясню подробнее",
 ```
+
+(`render_help` строится из `ACTION_LABELS` и `_HELP_LINES`, поэтому отдельная
+строка кода не нужна — достаточно дописать словарь.)
 
 В `bot/handlers.py`:
 - импортировать `stuck_reply` из `llm_tutor.core.turn`;
-- в меню-хендлере добавить ветку:
+- в обработчике `on_menu_action` добавить ветку:
 
 ```python
         elif action == "stuck":
             reply = await stuck_reply(conn, client, model, settings=settings)
-            await message.answer(
+            await callback.message.answer(
                 render.fit(render.escape(reply.text)),
                 parse_mode=render.PARSE_MODE,
                 reply_markup=menu.main_menu(),
             )
 ```
-
-Добавить в `render.render_help` строку про `menu.LABEL_STUCK`
-(`— не понял: объясню подробнее`) — иначе справка разойдётся с меню, и
-`test_render_help_lists_menu_labels` упадёт.
 
 - [ ] **Step 5: Запустить тесты**
 
@@ -1427,33 +1441,42 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
     return router
 ```
 
-- [ ] **Step 4: Добавить кнопку «Темы», подключить роутер и обработчик**
+- [ ] **Step 4: Добавить действие «Темы», подключить роутер и обработчик**
 
-В `bot/menu.py` добавить метку, действие и кнопку:
+В `bot/menu.py` расширить `Action` и `ACTION_LABELS`:
 
 ```python
-LABEL_THEMES = "🎚 Темы"
 Action = Literal["status", "route", "themes", "task", "stuck", "skip", "help"]
-MENU_LABELS = (..., LABEL_THEMES, ...)
-MENU_ACTIONS = {..., LABEL_THEMES: "themes", ...}
-```
-первый ряд `main_menu()` становится `[STATUS, ROUTE, THEMES]`.
 
-В `bot/handlers.py` в ветке `action == "themes"` меню-хендлера:
+ACTION_LABELS: dict[Action, str] = {
+    "status": "📚 Моё обучение",
+    "route": "🗺 Маршрут",
+    "themes": "🎚 Темы",
+    "task": "🎯 Задание",
+    "stuck": "❓ Не понимаю",
+    "skip": "⏭ Пропустить",
+    "help": "ℹ️ Что умею",
+}
+```
+
+В `bot/render.py` добавить пояснение в `_HELP_LINES`:
+
+```python
+    "themes": "выбрать тему: вернуться или забежать вперёд",
+```
+
+В `bot/handlers.py` в `on_menu_action` добавить ветку:
 
 ```python
         elif action == "themes":
-            await message.answer(
+            await callback.message.answer(
                 themes.THEMES_PROMPT,
                 parse_mode=render.PARSE_MODE,
                 reply_markup=themes.themes_keyboard(conn, settings=settings),
             )
 ```
 
-Добавить импорт `from llm_tutor.bot import themes`. Добавить в
-`render.render_help` строку про `menu.LABEL_THEMES`
-(`— выбрать тему: вернуться или забежать вперёд`), чтобы справка осталась
-синхронной с меню.
+Добавить импорт `from llm_tutor.bot import themes`.
 
 В `bot/main.py` подключить роутер (до основного, порядок не критичен — префикс
 `theme:` уникален):
@@ -1511,9 +1534,9 @@ git commit -m "Срез 14: сквозная проверка UX-общения"
 ## Self-Review
 
 **1. Покрытие спеки:**
-- §3 меню (7 кнопок) → 12.1/12.3 (первые 5: статус, маршрут, задание, пропуск,
-  справка) + 14.1 (❓ Не понимаю) + 14.2 (🎚 Темы). Кнопок без обработчика нет
-  ни на одном срезе. ✅
+- §3 меню (одна кнопка «☰ Меню» → инлайн-список действий) → 12.1/12.3
+  (первые 5: статус, маршрут, задание, пропуск, справка) + 14.1 (❓ Не понимаю)
+  + 14.2 (🎚 Темы). Кнопок без обработчика нет ни на одном срезе. ✅
 - §3.1 «уровень подсказки» в статусе → 12.2. ✅
 - §4 действия → 12.2 (status/help), 12.3 (task/skip), 14.1 (stuck), 14.2 (themes). ✅
 - §5 лаконичность + HTML → 11.1, 11.2. ✅
@@ -1528,8 +1551,8 @@ git commit -m "Срез 14: сквозная проверка UX-общения"
 
 **2. Плейсхолдеры:** не найдено.
 
-**3. Согласованность типов:** `render.escape`/`render.PARSE_MODE`
-используются одинаково во всех задачах; `menu.MENU_LABELS`/`MENU_ACTIONS` —
+**3. Согласованность типов:** `render.escape`/`render.PARSE_MODE`/`render.fit`
+используются одинаково во всех задачах; `menu.LABEL_MENU`/`ACTION_LABELS` —
 один источник; `NodeStatus` и `STATUS_ICONS` согласованы; `switch_node`
 возвращает HTML-безопасный текст (имя экранировано) — отправляется с
 `parse_mode`.
@@ -1556,3 +1579,8 @@ git commit -m "Срез 14: сквозная проверка UX-общения"
 - L1/L2 — неиспользуемые импорты (после переноса `render_plan`; `menu` в
   `themes.py`) убираются в соответствующих задачах.
 - L3 — формулировка про `parse_mode` смягчена (анкета/диагностика без разметки).
+
+**Изменение дизайна меню (по запросу после ревью):** постоянная клавиатура
+несёт одну кнопку «☰ Меню»; нажатие открывает инлайн-список действий
+(callback `menu:<action>`), а не семь кнопок внизу. Спека §3 обновлена;
+задачи 12.1/12.3 и 14.1/14.2 переписаны под это.
