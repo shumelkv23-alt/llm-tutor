@@ -80,3 +80,15 @@ def test_contract_includes_stuck_flag() -> None:
 
 def test_phase_is_rendered_in_prompt() -> None:
     assert "practice" in tutor_system_prompt(0, phase="practice")
+
+
+# --- правила лаконичности (Срез 11) ---
+
+
+def test_tutor_prompt_demands_brevity_for_all_material_states() -> None:
+    """Правила лаконичности действуют независимо от наличия материала курса."""
+    for material in ("found", "no_match", "empty"):
+        prompt = tutor_system_prompt(0, material=material)
+        assert "2–4 предложения" in prompt
+        assert "без вступлений" in prompt.lower()
+        assert "Одна мысль за сообщение" in prompt
