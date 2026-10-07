@@ -23,6 +23,7 @@ from aiogram.types import (
     Message,
 )
 
+from llm_tutor.bot import render
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import (
@@ -32,7 +33,6 @@ from llm_tutor.core.turn import (
     skip_pending,
     start_practice_reply,
 )
-from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.db.repos import (
     add_message,
@@ -46,14 +46,10 @@ from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import (
     BOT_FAILURE_REPLY,
     BUSY_REPLY,
-    EMPTY_GRAPH_REPLY,
     LLM_FAILURE_REPLY,
 )
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.schemas import Item
-from llm_tutor.schemas import SessionState
-from llm_tutor.student import route as route_mod
-from llm_tutor.student.planner import MODE_LABELS
 from llm_tutor.student.survey import is_completed as survey_completed
 
 START_SYSTEM_PROMPT = (
@@ -167,64 +163,6 @@ def _options_keyboard(options: list[str] | None) -> InlineKeyboardMarkup | None:
     )
 
 
-def _first_state(conn: sqlite3.Connection) -> SessionState:
-    """Состояние открытой сессии (или пустое, если сессии ещё нет)."""
-    session_id = get_open_session(conn)
-    return repos.get_session_state(conn, session_id) if session_id else SessionState()
-
-
-def render_plan(
-    conn: sqlite3.Connection,
-    *,
-    state: SessionState | None = None,
-    now: float | None = None,
-    settings: Settings | None = None,
-) -> str:
-    """Текст ``/plan``: маршрут к цели с прогрессом."""
-    graph = CourseGraph.load(conn)
-    if not graph.node_ids:
-        return EMPTY_GRAPH_REPLY
-
-    session_state = state or _first_state(conn)
-    route = route_mod.build_route(
-        conn,
-        graph,
-        goal_concept_id=route_mod.goal_for(conn, graph),
-        current_node_id=session_state.current_node_id,
-        previous=session_state.route,  # закрытия берём из снимка сессии
-        now=now,
-        settings=settings,
-    )
-    if not route.steps:
-        return EMPTY_GRAPH_REPLY
-    if route.closed_count == len(route.steps):
-        # Пустой маршрут = всё доступное освоено, а не «нет пререквизитов».
-        return "Всё доступное уже освоено — можно двигаться дальше или взять цель посложнее."
-
-    goal_name = (
-        graph.concept(route.goal_concept_id).name
-        if route.goal_concept_id is not None
-        else "вершина темы"
-    )
-    lines = [
-        f"Маршрут: закрыто {route.closed_count} из {len(route.steps)}. Цель — {goal_name}."
-    ]
-    current = next((step for step in route.steps if step.status == "current"), None)
-    if current is not None:
-        lines.append(
-            f"Сейчас: {graph.concept(current.concept_id).name} "
-            f"({MODE_LABELS[current.mode]})."
-        )
-    ahead = [step for step in route.steps if step.status == "ahead"][:5]
-    if ahead:
-        names = ", ".join(
-            f"{graph.concept(step.concept_id).name} ({MODE_LABELS[step.mode]})"
-            for step in ahead
-        )
-        lines.append(f"Дальше: {names}.")
-    return "\n".join(lines)
-
-
 def make_router(
     conn: sqlite3.Connection,
     client: LLMClient,
@@ -242,34 +180,45 @@ def make_router(
             await ask_survey(message, state)
             return
         reply = await handle_start(conn, client, model, START_GREETING)
-        await message.answer(reply)
+        await message.answer(
+            render.fit(render.escape(reply)), parse_mode=render.PARSE_MODE
+        )
 
     @router.message(Command("plan"))
     async def on_plan(message: Message) -> None:
         try:
-            text = render_plan(conn, settings=settings)
+            text = render.render_plan(conn, settings=settings)
         except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
             logger.exception("Сбой построения маршрута")
             text = BOT_FAILURE_REPLY
-        await message.answer(_truncate(text))
+        await message.answer(text, parse_mode=render.PARSE_MODE)
 
     @router.message(Command("task"))
     async def on_task(message: Message, state: FSMContext) -> None:
         # Посреди анкеты или подбора маршрута задание не выдаём: иначе в
         # состоянии повиснет pending_item_id, конфликтующий с FSM-потоком.
         if await state.get_state() is not None:
-            await message.answer(BUSY_REPLY)
+            await message.answer(
+                render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
+            )
             return
         try:
             reply = start_practice_reply(conn, settings=settings)
         except Exception:  # noqa: BLE001 — лучше сообщение, чем тишина
             logger.exception("Сбой выдачи задания")
             reply = TurnReply(text=BOT_FAILURE_REPLY)
-        await message.answer(_truncate(reply.text), reply_markup=_options_keyboard(reply.options))
+        await message.answer(
+            render.fit(render.escape(reply.text)),
+            reply_markup=_options_keyboard(reply.options),
+            parse_mode=render.PARSE_MODE,
+        )
 
     @router.message(Command("skip"))
     async def on_skip(message: Message) -> None:
-        await message.answer(_truncate(skip_pending(conn, settings=settings)))
+        await message.answer(
+            render.fit(render.escape(skip_pending(conn, settings=settings))),
+            parse_mode=render.PARSE_MODE,
+        )
 
     @router.callback_query(F.data.startswith(f"{ANSWER_CALLBACK_PREFIX}:"))
     async def on_answer(callback: CallbackQuery) -> None:
@@ -277,14 +226,19 @@ def make_router(
         item = _pending_item(conn)
         index = int((callback.data or "").split(":")[1])
         if item is None or not 0 <= index < len(item.options):
-            await callback.message.answer(STALE_ITEM_REPLY)
+            await callback.message.answer(
+                render.fit(render.escape(STALE_ITEM_REPLY)),
+                parse_mode=render.PARSE_MODE,
+            )
             await callback.answer()
             return
         reply = await _run_turn(
             conn, client, model, item.options[index], settings=settings
         )
         await callback.message.answer(
-            _truncate(reply.text), reply_markup=_options_keyboard(reply.options)
+            render.fit(render.escape(reply.text)),
+            reply_markup=_options_keyboard(reply.options),
+            parse_mode=render.PARSE_MODE,
         )
         await callback.answer()
 
@@ -295,7 +249,9 @@ def make_router(
     async def on_text(message: Message) -> None:
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await message.answer(
-            _truncate(reply.text), reply_markup=_options_keyboard(reply.options)
+            render.fit(render.escape(reply.text)),
+            reply_markup=_options_keyboard(reply.options),
+            parse_mode=render.PARSE_MODE,
         )
 
     return router

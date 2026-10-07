@@ -12,7 +12,7 @@ import httpx
 import pytest
 import respx
 
-from llm_tutor.bot.handlers import render_plan
+from llm_tutor.bot.render import render_plan
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import handle_turn
 from llm_tutor.course.ingest import ingest_text

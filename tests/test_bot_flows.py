@@ -21,7 +21,7 @@ class FakeMessage:
         self.text = text
         self.sent: list[tuple[str, InlineKeyboardMarkup | None]] = []
 
-    async def answer(self, text: str, reply_markup=None) -> None:
+    async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
         self.sent.append((text, reply_markup))
 
     @property

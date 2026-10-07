@@ -7,8 +7,8 @@ from llm_tutor.bot.handlers import (
     build_start_reply,
     handle_start,
     make_router,
-    render_plan,
 )
+from llm_tutor.bot.render import render_plan
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
