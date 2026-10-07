@@ -8,12 +8,14 @@
 import html
 import sqlite3
 
+from llm_tutor.bot import menu
 from llm_tutor.config import Settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import route as route_mod
+from llm_tutor.student.hints import HINT_LEVEL_NAMES
 from llm_tutor.student.planner import MODE_LABELS
 
 PARSE_MODE = "HTML"
@@ -96,4 +98,75 @@ def render_plan(
             for step in ahead
         )
         lines.append(f"Дальше: {names}.")
+    return "\n".join(lines)
+
+
+PHASE_LABELS: dict[str, str] = {
+    "explain": "объяснение",
+    "practice": "практика",
+    "check": "проверка",
+}
+
+
+def render_status(
+    conn: sqlite3.Connection,
+    *,
+    state: SessionState | None = None,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Дашборд ученика: где он, что делает и как идёт маршрут."""
+    graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return EMPTY_GRAPH_REPLY
+
+    session_state = state or _first_state(conn)
+    lines = ["📚 <b>Моё обучение</b>"]
+
+    node_id = session_state.current_node_id
+    if node_id is not None and graph.has_node(node_id):
+        lines.append(f"Сейчас: <b>{escape(graph.concept(node_id).name)}</b>")
+    else:
+        lines.append("Сейчас: тема ещё не выбрана — жми 🗺 Маршрут.")
+    lines.append(f"Фаза: {PHASE_LABELS.get(session_state.phase, session_state.phase)}")
+    level = session_state.hint_level
+    lines.append(
+        f"Уровень подсказки: {level} "
+        f"({HINT_LEVEL_NAMES.get(level, 'без подсказки')})"
+    )
+
+    route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=session_state.current_node_id,
+        previous=session_state.route,
+        now=now,
+        settings=settings,
+    )
+    if route.steps:
+        lines.append(f"Маршрут: пройдено {route.closed_count} из {len(route.steps)}")
+
+    if session_state.pending_item_id is not None:
+        lines.append("Ждёт ответа задание — ответь или жми ⏭ Пропустить.")
+    else:
+        lines.append("Задания нет — жми 🎯 Задание.")
+    return "\n".join(lines)
+
+
+# Пояснение к каждому действию для справки (синхронно с menu.ACTION_LABELS).
+_HELP_LINES: dict[str, str] = {
+    "status": "где ты сейчас и как идёт маршрут",
+    "route": "путь к цели с прогрессом",
+    "task": "взять задание по текущей теме",
+    "skip": "пропустить текущее задание",
+    "help": "эта справка",
+}
+
+
+def render_help() -> str:
+    """Справка по действиям меню (синхронна с ``menu.ACTION_LABELS``)."""
+    lines = ["ℹ️ <b>Что умею</b>"]
+    for action, label in menu.ACTION_LABELS.items():
+        lines.append(f"{label} — {_HELP_LINES[action]}")
     return "\n".join(lines)
