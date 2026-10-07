@@ -185,3 +185,12 @@ def test_make_router_registers_start_handler(conn) -> None:
     router = make_router(conn, _FakeClient(), "m")
     assert isinstance(router, Router)
     assert router.message.handlers
+
+
+def test_menu_handlers_are_registered(conn) -> None:
+    """Кнопка меню и разбор действий реально подключены к роутеру."""
+    router = make_router(conn, _FakeClient(), "m")
+    names = [h.callback.__name__ for h in router.message.handlers]
+    assert "on_menu" in names
+    callbacks = [h.callback.__name__ for h in router.callback_query.handlers]
+    assert "on_menu_action" in callbacks

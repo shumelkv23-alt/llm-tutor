@@ -23,7 +23,7 @@ from aiogram.types import (
     Message,
 )
 
-from llm_tutor.bot import render
+from llm_tutor.bot import menu, render
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import (
@@ -181,7 +181,9 @@ def make_router(
             return
         reply = await handle_start(conn, client, model, START_GREETING)
         await message.answer(
-            render.fit(render.escape(reply)), parse_mode=render.PARSE_MODE
+            render.fit(render.escape(reply)),
+            reply_markup=menu.main_menu(),
+            parse_mode=render.PARSE_MODE,
         )
 
     @router.message(Command("plan"))
@@ -242,6 +244,44 @@ def make_router(
         )
         await callback.answer()
 
+    # Разбор действий из инлайн-списка меню. Регистрируется ПОСЛЕ on_answer:
+    # тесты выбирают хендлер ответа по индексу callback_query[0].
+    @router.callback_query(F.data.startswith("menu:"))
+    async def on_menu_action(callback: CallbackQuery) -> None:
+        action = (callback.data or "").split(":", 1)[1]
+        if action == "status":
+            text = render.render_status(conn, settings=settings)
+            await callback.message.answer(text, parse_mode=render.PARSE_MODE)
+        elif action == "route":
+            text = render.render_plan(conn, settings=settings)
+            await callback.message.answer(text, parse_mode=render.PARSE_MODE)
+        elif action == "help":
+            await callback.message.answer(render.render_help(), parse_mode=render.PARSE_MODE)
+        elif action == "task":
+            reply = start_practice_reply(conn, settings=settings)
+            await callback.message.answer(
+                render.fit(render.escape(reply.text)),
+                parse_mode=render.PARSE_MODE,
+                reply_markup=_options_keyboard(reply.options),
+            )
+        elif action == "skip":
+            text = skip_pending(conn, settings=settings)
+            await callback.message.answer(
+                render.fit(render.escape(text)),
+                parse_mode=render.PARSE_MODE,
+                reply_markup=menu.main_menu(),
+            )
+        await callback.answer()
+
+    # Кнопка меню открывает инлайн-список действий. Регистрируется ДО on_text,
+    # иначе текст кнопки ушёл бы в тьюторский ход.
+    @router.message(StateFilter(None), F.text == menu.LABEL_MENU)
+    async def on_menu(message: Message) -> None:
+        await message.answer(
+            menu.MENU_TITLE,
+            reply_markup=menu.actions_keyboard(),
+        )
+
     # Обработчик свободного текста: не трогает команды (иначе CommandStop был
     # бы перехвачен) и не лезет в незавершённые FSM-потоки (анкета, диагностика) —
     # их шаги обрабатывают свои роутеры.
@@ -250,7 +290,8 @@ def make_router(
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options),
+            # Варианты ответа (инлайн) в приоритете; иначе — постоянная кнопка меню.
+            reply_markup=_options_keyboard(reply.options) or menu.main_menu(),
             parse_mode=render.PARSE_MODE,
         )
 
