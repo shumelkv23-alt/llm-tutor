@@ -23,9 +23,20 @@ SQLite.
   (`asyncio_mode = "auto"`). Запуск: `uv run pytest -q`.
 - Стиль: black/isort/ruff; type hints на всех сигнатурах; докстринги и
   комментарии на русском.
-- **Все** сообщения бота уходят с `parse_mode="HTML"`; любой динамический
-  текст (ответ модели, имена узлов, тексты заданий) проходит через
-  `render.escape`.
+- **Конвенция вывода (важно, не путать):**
+  - функции `core.turn.*`, возвращающие **сырой** текст (ответ модели, текст
+    задания) — экранируются и обрезаются в хендлере:
+    `render.fit(render.escape(reply.text))`;
+  - функции `bot.render.*` и `themes.switch_node` возвращают **готовый
+    HTML** (динамические вставки экранированы внутри) — шлются как есть с
+    `parse_mode=render.PARSE_MODE`, **без** повторного `escape`.
+- Тексты с разметкой (наши `render.*` и ответы модели) идут с
+  `parse_mode="HTML"`. Тексты анкеты/диагностики разметки не содержат и
+  `parse_mode` могут не задавать — это не нарушение.
+- Импорт на каждом срезе должен быть самодостаточным: модуль создаётся
+  **раньше**, чем на него появляется ссылка. `bot/render.py` (Срез 11) не
+  импортирует `bot/menu.py` (появится в 12.1); `stuck_reply` импортируется
+  только в 14.1.
 - Метки меню — единый источник истины в `bot/menu.py`.
 - Схема БД не меняется: состояние живёт в JSON-поле `sessions.state`.
 - Коммиты по-русски в стиле проекта: `Срез N: …`.
@@ -124,7 +135,7 @@ git commit -m "Срез 11: правила лаконичности в пром�
 ```python
 """Тесты слоя представления бота."""
 
-from llm_tutor.bot.render import PARSE_MODE, escape
+from llm_tutor.bot.render import MAX_MESSAGE, PARSE_MODE, escape, fit
 
 
 def test_escape_neutralizes_model_markup() -> None:
@@ -134,6 +145,18 @@ def test_escape_neutralizes_model_markup() -> None:
 
 def test_parse_mode_is_html() -> None:
     assert PARSE_MODE == "HTML"
+
+
+def test_fit_keeps_short_text_intact() -> None:
+    assert fit("коротко") == "коротко"
+
+
+def test_fit_does_not_break_html_entity() -> None:
+    """Обрезка не рвёт сущность вида &amp; — иначе Telegram отвергнет HTML."""
+    out = fit(escape("&" * 5000))  # после escape строка в разы длиннее лимита
+    body = out.rstrip("…")
+    assert len(out) <= MAX_MESSAGE + 1          # + многоточие
+    assert body.count("&") == body.count(";")   # ни одной обрубленной сущности
 ```
 
 - [ ] **Step 2: Запустить тест — убедиться, что падает**
@@ -155,22 +178,39 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'llm_tutor.bot.render'`
 
 import html
 import sqlite3
-import time
 
-from llm_tutor.bot import menu
-from llm_tutor.config import Settings, get_settings
+from llm_tutor.config import Settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import route as route_mod
+from llm_tutor.student.planner import MODE_LABELS
 
 PARSE_MODE = "HTML"
+# Лимит Telegram 4096; держим запас.
+MAX_MESSAGE = 4000
 
 
 def escape(text: str) -> str:
     """Экранирует динамический текст для ``parse_mode=HTML``."""
     return html.escape(text, quote=False)
+
+
+def fit(text: str) -> str:
+    """Обрезает уже экранированный текст до лимита, не разрывая сущность.
+
+    Экранировать нужно ДО обрезки: сущности длиннее исходных символов, и
+    обрезка по «сырому» тексту пробила бы лимит Telegram. Но и резать по
+    экранированному нельзя вслепую — можно оборвать ``&amp;`` на половине.
+    """
+    if len(text) <= MAX_MESSAGE:
+        return text
+    cut = text[:MAX_MESSAGE]
+    amp = cut.rfind("&")
+    if amp != -1 and ";" not in cut[amp:]:
+        cut = cut[:amp]
+    return cut + "…"
 
 
 def _first_state(conn: sqlite3.Connection) -> SessionState:
@@ -230,11 +270,9 @@ def render_plan(
     return "\n".join(lines)
 ```
 
-> `MODE_LABELS` импортировать так же, как в handlers:
-> `from llm_tutor.student.planner import MODE_LABELS`. Импорт `menu` и
-> `time` при этом срезе ещё не нужен — их добавляют задачи 12.x; допустимо
-> добавить только используемые сейчас (`MODE_LABELS`), а `menu`/`time`
-> подключить позже.
+> Импорты в этом сниппете уже полные и самодостаточные: `menu` и `time`
+> здесь не нужны и не импортируются (`menu.py` появится только в 12.1);
+> `MODE_LABELS` подключён явно.
 
 В `bot/handlers.py`:
 - удалить функции `_first_state` и `render_plan` (перенесены);
@@ -251,8 +289,9 @@ from llm_tutor.bot.render import render_plan
 ```
 
 В `bot/handlers.py` все отправки текста модели/кода перевести на
-`render.escape` + `parse_mode=render.PARSE_MODE`, а ответы, которые формируем
-мы сами (пока — только `render_plan`), слать как есть. Например `on_plan`:
+`render.fit(render.escape(...))` + `parse_mode=render.PARSE_MODE`
+(**escape ДО fit** — см. конвенцию в Global Constraints), а наш HTML
+(пока — только `render_plan`) слать как есть. Например `on_plan`:
 
 ```python
     @router.message(Command("plan"))
@@ -262,12 +301,16 @@ from llm_tutor.bot.render import render_plan
         except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
             logger.exception("Сбой построения маршрута")
             text = BOT_FAILURE_REPLY
-        await message.answer(_truncate(text), parse_mode=render.PARSE_MODE)
+        await message.answer(text, parse_mode=render.PARSE_MODE)
 ```
 
 Аналогично метки-текстовые ответы (`on_text`, `on_answer`, `on_task`,
-`on_skip`, `on_start`) шлют `render.escape(_truncate(reply.text))` и
+`on_skip`, `on_start`) шлют `render.fit(render.escape(reply.text))` и
 `parse_mode=render.PARSE_MODE`.
+
+Убрать из `bot/handlers.py` импорты, ставшие неиспользуемыми после переноса
+`render_plan` (`EMPTY_GRAPH_REPLY`, `MODE_LABELS`, `route_mod` и прочие, что
+больше не упоминаются). Не трогать то, что ещё используется.
 
 - [ ] **Step 5: Запустить тесты**
 
@@ -347,22 +390,18 @@ from typing import Literal
 
 from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
 
-Action = Literal["status", "route", "themes", "task", "stuck", "skip", "help"]
+Action = Literal["status", "route", "task", "skip", "help"]
 
 LABEL_STATUS = "📚 Моё обучение"
 LABEL_ROUTE = "🗺 Маршрут"
-LABEL_THEMES = "🎚 Темы"
 LABEL_TASK = "🎯 Задание"
-LABEL_STUCK = "❓ Не понимаю"
 LABEL_SKIP = "⏭ Пропустить"
 LABEL_HELP = "ℹ️ Что умею"
 
 MENU_LABELS: tuple[str, ...] = (
     LABEL_STATUS,
     LABEL_ROUTE,
-    LABEL_THEMES,
     LABEL_TASK,
-    LABEL_STUCK,
     LABEL_SKIP,
     LABEL_HELP,
 )
@@ -370,28 +409,22 @@ MENU_LABELS: tuple[str, ...] = (
 MENU_ACTIONS: dict[str, Action] = {
     LABEL_STATUS: "status",
     LABEL_ROUTE: "route",
-    LABEL_THEMES: "themes",
     LABEL_TASK: "task",
-    LABEL_STUCK: "stuck",
     LABEL_SKIP: "skip",
     LABEL_HELP: "help",
 }
 
 
 def main_menu() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура меню (не сворачивается)."""
+    """Постоянная клавиатура меню (не сворачивается).
+
+    `🎚 Темы` и `❓ Не понимаю` добавляются в 14.1/14.2 вместе со своими
+    действиями: в срезе 12 кнопок без обработчика не бывает.
+    """
     return ReplyKeyboardMarkup(
         keyboard=[
-            [
-                KeyboardButton(text=LABEL_STATUS),
-                KeyboardButton(text=LABEL_ROUTE),
-                KeyboardButton(text=LABEL_THEMES),
-            ],
-            [
-                KeyboardButton(text=LABEL_TASK),
-                KeyboardButton(text=LABEL_STUCK),
-                KeyboardButton(text=LABEL_SKIP),
-            ],
+            [KeyboardButton(text=LABEL_STATUS), KeyboardButton(text=LABEL_ROUTE)],
+            [KeyboardButton(text=LABEL_TASK), KeyboardButton(text=LABEL_SKIP)],
             [KeyboardButton(text=LABEL_HELP)],
         ],
         resize_keyboard=True,
@@ -467,6 +500,9 @@ Expected: FAIL — `ImportError: cannot import name 'render_status'`.
 
 - [ ] **Step 3: Реализовать `render_status` и `render_help`**
 
+Добавить в импорты `src/llm_tutor/bot/render.py`:
+`from llm_tutor.student.hints import HINT_LEVEL_NAMES`.
+
 Добавить в `src/llm_tutor/bot/render.py`:
 
 ```python
@@ -498,6 +534,11 @@ def render_status(
     else:
         lines.append("Сейчас: тема ещё не выбрана — жми 🗺 Маршрут.")
     lines.append(f"Фаза: {PHASE_LABELS.get(session_state.phase, session_state.phase)}")
+    level = session_state.hint_level
+    lines.append(
+        f"Уровень подсказки: {level} "
+        f"({HINT_LEVEL_NAMES.get(level, 'без подсказки')})"
+    )
 
     route = route_mod.build_route(
         conn,
@@ -519,14 +560,16 @@ def render_status(
 
 
 def render_help() -> str:
-    """Справка по кнопкам меню."""
+    """Справка по кнопкам меню.
+
+    Список синхронен с `menu.MENU_LABELS` текущего среза: на срезе 12 это
+    пять кнопок; строки про `❓ Не понимаю` и `🎚 Темы` добавляют 14.1/14.2.
+    """
     return (
         "ℹ️ <b>Что умею</b>\n"
         f"{menu.LABEL_STATUS} — где ты сейчас и как идёт маршрут\n"
         f"{menu.LABEL_ROUTE} — путь к цели с прогрессом\n"
-        f"{menu.LABEL_THEMES} — выбрать любую тему: вернуться или забежать вперёд\n"
         f"{menu.LABEL_TASK} — взять задание по текущей теме\n"
-        f"{menu.LABEL_STUCK} — не понял: объясню подробнее\n"
         f"{menu.LABEL_SKIP} — пропустить текущее задание\n"
         f"{menu.LABEL_HELP} — эта справка"
     )
@@ -557,43 +600,32 @@ git commit -m "Срез 12: дашборд «Моё обучение» и спр
 **Interfaces:**
 - Consumes: `menu.MENU_LABELS`, `menu.MENU_ACTIONS`, `menu.main_menu`,
   `render.render_status`, `render.render_help`, `render.render_plan`,
-  `core.turn.start_practice_reply`, `core.turn.skip_pending`,
-  `core.turn.stuck_reply` (появится в 14.1 — до неё ветка `stuck` шлёт заглушку
-  `STUCK_UNAVAILABLE_REPLY`).
+  `core.turn.start_practice_reply`, `core.turn.skip_pending`.
 
 - [ ] **Step 1: Написать падающий тест**
 
 Добавить в `tests/test_handlers.py`:
 
 ```python
-def test_router_has_menu_handler(conn) -> None:
-    """Меню подключено к роутеру."""
+def test_menu_handler_is_registered(conn) -> None:
+    """Хендлер меню реально подключён к роутеру (а не потерялся)."""
     router = make_router(conn, _FakeClient(), "m")
-    assert router.message.handlers
+    names = [h.callback.__name__ for h in router.message.handlers]
+    assert "on_menu" in names
 ```
 
-> Проверка полноты карты действий уже сделана в `tests/test_menu.py`
-> (`test_action_map_covers_every_label`). Здесь фиксируем, что роутер
-> собирается с новым хендлером.
+> Полнота карты «метка → действие» проверяется в
+> `tests/test_menu.py::test_action_map_covers_every_label`.
 
-- [ ] **Step 2: Запустить тест — убедиться, что проходит (дым)**
+- [ ] **Step 2: Запустить тест — убедиться, что падает**
 
-Run: `uv run pytest tests/test_handlers.py::test_router_has_menu_handler -v`
-Expected: PASS (роутер и так собирается) — этот тест фиксирует регресс.
+Run: `uv run pytest tests/test_handlers.py::test_menu_handler_is_registered -v`
+Expected: FAIL — хендлера `on_menu` в роутере пока нет.
 
 - [ ] **Step 3: Добавить меню-хендлер и прикрепить клавиатуру**
 
-В `bot/handlers.py`:
-- импортировать `from llm_tutor.bot import menu, render` и
-  `from llm_tutor.core.turn import ... stuck_reply` (в 14.1) — пока ветку
-  `stuck` закрыть константой-заглушкой в файле:
-
-```python
-# «Не понимаю» до Среза 14 шлёт заглушку — кнопка есть, действие придёт позже.
-STUCK_UNAVAILABLE_REPLY = "Скажи, что именно непонятно — объясню подробнее."
-```
-
-- в `make_router` **до** хендлера свободного текста (`on_text`) добавить:
+В `bot/handlers.py` импортировать `from llm_tutor.bot import menu, render`
+и в `make_router` **до** хендлера свободного текста (`on_text`) добавить:
 
 ```python
     @router.message(StateFilter(None), F.text.in_(frozenset(menu.MENU_LABELS)))
@@ -604,34 +636,28 @@ STUCK_UNAVAILABLE_REPLY = "Скажи, что именно непонятно �
             await message.answer(text, parse_mode=render.PARSE_MODE)
         elif action == "route":
             text = render.render_plan(conn, settings=settings)
-            await message.answer(_truncate(text), parse_mode=render.PARSE_MODE)
+            await message.answer(text, parse_mode=render.PARSE_MODE)
         elif action == "help":
             await message.answer(render.render_help(), parse_mode=render.PARSE_MODE)
         elif action == "task":
             reply = start_practice_reply(conn, settings=settings)
             await message.answer(
-                render.escape(_truncate(reply.text)),
+                render.fit(render.escape(reply.text)),
                 parse_mode=render.PARSE_MODE,
                 reply_markup=_options_keyboard(reply.options),
             )
         elif action == "skip":
             text = skip_pending(conn, settings=settings)
             await message.answer(
-                render.escape(_truncate(text)),
+                render.fit(render.escape(text)),
                 parse_mode=render.PARSE_MODE,
                 reply_markup=menu.main_menu(),
             )
-        elif action == "stuck":
-            await message.answer(
-                STUCK_UNAVAILABLE_REPLY,
-                parse_mode=render.PARSE_MODE,
-            )
-        elif action == "themes":
-            await message.answer(
-                "Выбор темы появится в следующем срезе.",
-                parse_mode=render.PARSE_MODE,
-            )
 ```
+
+> Ветки `task`/`answer` шлют инлайн-кнопки вариантов — постоянное меню на них
+> не помещается (одно поле `reply_markup`), но оно и так висит (persistent).
+> К остальным текстовым ответам меню прикрепляется явно.
 
 - в `on_start` (ветка «анкета заполнена») и в `on_text` прикрепить клавиатуру
   к обычным ответам: добавить `reply_markup=menu.main_menu()`.
@@ -796,12 +822,15 @@ def test_render_plan_draws_table_with_progress(conn, settings) -> None:
     assert "groupby" in text
 ```
 
-Добавить тест окна (импорт `PLAN_WINDOW` из `llm_tutor.bot.render`):
+Добавить тест окна (импорт `PLAN_WINDOW` из `llm_tutor.bot.render`, а также
+`CourseGraph` и `route_mod`):
 
 ```python
 def test_render_plan_windows_long_route(conn, settings) -> None:
     """Длинный маршрут показывается окном, а не целиком."""
     from llm_tutor.bot.render import PLAN_WINDOW
+    from llm_tutor.course.graph import CourseGraph
+    from llm_tutor.student import route as route_mod
 
     load_seed(conn)
     repos.set_fact(conn, "goal_concept_id", "churn_eda_case")
@@ -812,7 +841,17 @@ def test_render_plan_windows_long_route(conn, settings) -> None:
 
     text = render_plan(conn, now=0.0, settings=settings)
 
+    graph = CourseGraph.load(conn)
+    full_route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id="churn_eda_case",
+        current_node_id="read_csv",
+        now=0.0,
+        settings=settings,
+    )
     marks = text.count("[x]") + text.count("[>]") + text.count("[ ]")
+    assert marks < len(full_route.steps)     # показано меньше, чем весь путь
     assert marks <= PLAN_WINDOW * 2 + 3
 ```
 
@@ -1061,23 +1100,42 @@ async def stuck_reply(
     return TurnReply(text=reply)
 ```
 
-- [ ] **Step 4: Подключить `stuck_reply` к кнопке**
+- [ ] **Step 4: Добавить кнопку и подключить `stuck_reply`**
 
-В `bot/handlers.py` в ветке `action == "stuck"` меню-хендлера заменить
-заглушку на реальный вызов:
+В `bot/menu.py` добавить метку, действие и кнопку:
+
+```python
+LABEL_STUCK = "❓ Не понимаю"      # рядом с прочими метками
+
+Action = Literal["status", "route", "task", "stuck", "skip", "help"]
+MENU_LABELS = (..., LABEL_STUCK, ...)
+MENU_ACTIONS = {..., LABEL_STUCK: "stuck", ...}
+```
+
+В `main_menu()` второй ряд становится `[TASK, STUCK, SKIP]`:
+
+```python
+            [KeyboardButton(text=LABEL_TASK), KeyboardButton(text=LABEL_STUCK),
+             KeyboardButton(text=LABEL_SKIP)],
+```
+
+В `bot/handlers.py`:
+- импортировать `stuck_reply` из `llm_tutor.core.turn`;
+- в меню-хендлере добавить ветку:
 
 ```python
         elif action == "stuck":
             reply = await stuck_reply(conn, client, model, settings=settings)
             await message.answer(
-                render.escape(_truncate(reply.text)),
+                render.fit(render.escape(reply.text)),
                 parse_mode=render.PARSE_MODE,
                 reply_markup=menu.main_menu(),
             )
 ```
 
-Импортировать `stuck_reply` из `llm_tutor.core.turn`; константу-заглушку
-`STUCK_UNAVAILABLE_REPLY` удалить (она была нужна только в 12.3).
+Добавить в `render.render_help` строку про `menu.LABEL_STUCK`
+(`— не понял: объясню подробнее`) — иначе справка разойдётся с меню, и
+`test_render_help_lists_menu_labels` упадёт.
 
 - [ ] **Step 5: Запустить тесты**
 
@@ -1195,7 +1253,6 @@ from typing import Literal
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
-from llm_tutor.bot import menu
 from llm_tutor.bot.render import PARSE_MODE, escape
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core.turn import post_turn
@@ -1261,8 +1318,10 @@ def themes_keyboard(
     """Инлайн-список всех узлов темы со статусами (по 2 в ряду)."""
     s = settings or get_settings()
     graph = CourseGraph.load(conn)
-    session_state = state or repos.get_session_state(
-        conn, repos.ensure_open_session(conn, now)
+    # Это чтение, а не ход: сессию НЕ заводим (как в ``_pending_item``).
+    session_id = repos.get_open_session(conn)
+    session_state = state or (
+        repos.get_session_state(conn, session_id) if session_id else SessionState()
     )
     buttons: list[InlineKeyboardButton] = []
     for node_id in graph.topo_order():
@@ -1368,7 +1427,17 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
     return router
 ```
 
-- [ ] **Step 4: Подключить роутер и кнопку**
+- [ ] **Step 4: Добавить кнопку «Темы», подключить роутер и обработчик**
+
+В `bot/menu.py` добавить метку, действие и кнопку:
+
+```python
+LABEL_THEMES = "🎚 Темы"
+Action = Literal["status", "route", "themes", "task", "stuck", "skip", "help"]
+MENU_LABELS = (..., LABEL_THEMES, ...)
+MENU_ACTIONS = {..., LABEL_THEMES: "themes", ...}
+```
+первый ряд `main_menu()` становится `[STATUS, ROUTE, THEMES]`.
 
 В `bot/handlers.py` в ветке `action == "themes"` меню-хендлера:
 
@@ -1381,7 +1450,10 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
             )
 ```
 
-Добавить импорт `from llm_tutor.bot import themes`.
+Добавить импорт `from llm_tutor.bot import themes`. Добавить в
+`render.render_help` строку про `menu.LABEL_THEMES`
+(`— выбрать тему: вернуться или забежать вперёд`), чтобы справка осталась
+синхронной с меню.
 
 В `bot/main.py` подключить роутер (до основного, порядок не критичен — префикс
 `theme:` уникален):
@@ -1439,16 +1511,19 @@ git commit -m "Срез 14: сквозная проверка UX-общения"
 ## Self-Review
 
 **1. Покрытие спеки:**
-- §3 меню 7 кнопок → Task 12.1, 12.3. ✅
-- §4 действия → 12.2 (status/help), 12.3 (таск/скип), 14.1 (stuck), 14.2 (themes). ✅
+- §3 меню (7 кнопок) → 12.1/12.3 (первые 5: статус, маршрут, задание, пропуск,
+  справка) + 14.1 (❓ Не понимаю) + 14.2 (🎚 Темы). Кнопок без обработчика нет
+  ни на одном срезе. ✅
+- §3.1 «уровень подсказки» в статусе → 12.2. ✅
+- §4 действия → 12.2 (status/help), 12.3 (task/skip), 14.1 (stuck), 14.2 (themes). ✅
 - §5 лаконичность + HTML → 11.1, 11.2. ✅
 - §6 табличка → 13.1. ✅
 - §7 «Не понимаю» → 14.1. ✅
 - §8 «Темы» → 14.2. ✅
 - §9 онбординг → 12.4. ✅
 - §3.4 FSM-меню → отклонение зафиксировано в 12.4 (Telegram-ограничение). ⚠️
-- §8 «+объяснение» при переходе → реализовано как подтверждение без
-  LLM-разбора (разбор придёт следующим ходом). Отклонение — см. ниже.
+- §8 «+объяснение» при переходе → подтверждение без LLM-разбора (разбор придёт
+  следующим ходом). Отклонение — см. ниже.
 - §11 тесты → покрыты по задачам + Task 15. ✅
 
 **2. Плейсхолдеры:** не найдено.
@@ -1465,3 +1540,19 @@ git commit -m "Срез 14: сквозная проверка UX-общения"
    нажатие ловит существующий хинт анкеты.
 2. §8 (объяснение нового узла сразу при переходе) — переход даёт
    подтверждение без LLM-разбора; тьютор объяснит следующим ходом.
+
+**Правки по адверсариальному ревью (отдельный агент, 2026-10-07):**
+- C1/C3/H1 — импорты сниппетов сделаны самодостаточными: `bot/render.py`
+  (Срез 11) больше не импортирует `menu`/`time`; `stuck_reply` не
+  импортируется до 14.1; `MODE_LABELS` подключён явно в 11.2.
+- C2 — в `render_status` добавлена строка уровня подсказки (по §3.1).
+- H2 — порядок `escape` → `fit`; добавлен `render.fit`, не рвущий HTML-сущности.
+- H3 — конвенция «сырой текст vs готовый HTML» вынесена в Global Constraints.
+- M1 — тест 12.3 стал настоящим падающим (`on_menu` зарегистрирован).
+- M2 — срез 12 несёт только работающие кнопки; «Темы»/«Не понимаю» — в 14.x.
+- M3 — `themes_keyboard` не заводит сессию на чтении (`get_open_session`).
+- M4 — тест окна сравнивает показ с полной длиной маршрута, а не с границей.
+- M5 — меню прикрепляется единообразно ко всем текстовым ответам.
+- L1/L2 — неиспользуемые импорты (после переноса `render_plan`; `menu` в
+  `themes.py`) убираются в соответствующих задачах.
+- L3 — формулировка про `parse_mode` смягчена (анкета/диагностика без разметки).
