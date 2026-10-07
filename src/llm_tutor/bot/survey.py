@@ -14,14 +14,27 @@ from aiogram.types import (
     Message,
 )
 
+from llm_tutor.bot import menu
 from llm_tutor.config import Settings
 from llm_tutor.student import survey
 
 CALLBACK_PREFIX = "survey"
 
+INTRO_TEXT = (
+    "👋 Привет! Я — твой тьютор по теме 1 курса mlcourse.ai: «Pandas / EDA».\n\n"
+    "Как мы будем учиться:\n"
+    "  1 · короткая анкета — что ты уже знаешь\n"
+    "  2 · соберу маршрут под твою цель\n"
+    "  3 · ведём по шагам: объясняю → даю задачу → проверяю\n\n"
+    "Меню — кнопка «☰» внизу: внутри весь функционал,\n"
+    "там же «❓ Не понимаю».\n\n"
+    "Начнём 👇"
+)
+
 SURVEY_DONE_REPLY = (
-    "Спасибо! Профиль заполнен.\n"
-    "Могу подобрать маршрут — жми /diagnostic (это не экзамен, а пара коротких вопросов)."
+    "✅ Профиль заполнен. Можно посмотреть маршрут (🗺)\n"
+    "или сразу взять первое задание (🎯).\n"
+    "Я рядом — жми ❓, если что-то непонятно."
 )
 BUTTON_HINT_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"
 
@@ -76,7 +89,7 @@ def make_survey_router(conn, settings: Settings) -> Router:
 
         survey.apply_answers(conn, answers, settings=settings)
         await state.clear()
-        await callback.message.answer(SURVEY_DONE_REPLY)
+        await callback.message.answer(SURVEY_DONE_REPLY, reply_markup=menu.main_menu())
         await callback.answer()
 
     @router.message(SurveyFlow.question, F.text, ~F.text.startswith("/"))

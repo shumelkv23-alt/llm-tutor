@@ -24,7 +24,7 @@ from aiogram.types import (
 )
 
 from llm_tutor.bot import menu, render
-from llm_tutor.bot.survey import ask as ask_survey
+from llm_tutor.bot.survey import INTRO_TEXT, ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import (
     STALE_ITEM_REPLY,
@@ -175,8 +175,10 @@ def make_router(
 
     @router.message(CommandStart())
     async def on_start(message: Message, state: FSMContext) -> None:
-        # Пока профиль не заполнен — сначала короткая анкета (Срез 4.7).
+        # Пока профиль не заполнен — сначала представление с меню, потом
+        # короткая анкета (Срез 4.7, 12.4).
         if not survey_completed(conn):
+            await message.answer(INTRO_TEXT, reply_markup=menu.main_menu())
             await ask_survey(message, state)
             return
         reply = await handle_start(conn, client, model, START_GREETING)

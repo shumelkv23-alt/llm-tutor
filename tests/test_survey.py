@@ -108,3 +108,12 @@ def test_is_completed_reflects_experience_fact(conn, settings) -> None:
     survey.apply_answers(conn, {EXPERIENCE: 2}, now=0.0, settings=settings)
 
     assert survey.is_completed(conn) is True
+
+
+def test_onboarding_texts_exist() -> None:
+    """Вход в курс объясняет, как учиться, и указывает на меню."""
+    from llm_tutor.bot import survey as bot_survey
+
+    assert "учиться" in bot_survey.INTRO_TEXT.lower()
+    assert "меню" in bot_survey.INTRO_TEXT.lower()
+    assert "маршрут" in bot_survey.SURVEY_DONE_REPLY.lower()
