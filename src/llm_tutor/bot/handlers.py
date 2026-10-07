@@ -32,6 +32,7 @@ from llm_tutor.core.turn import (
     handle_turn,
     skip_pending,
     start_practice_reply,
+    stuck_reply,
 )
 from llm_tutor.db import repos
 from llm_tutor.db.repos import (
@@ -270,6 +271,13 @@ def make_router(
                     render.fit(render.escape(reply.text)),
                     parse_mode=render.PARSE_MODE,
                     reply_markup=_options_keyboard(reply.options),
+                )
+            elif action == "stuck":
+                reply = await stuck_reply(conn, client, model, settings=settings)
+                await callback.message.answer(
+                    render.fit(render.escape(reply.text)),
+                    parse_mode=render.PARSE_MODE,
+                    reply_markup=menu.main_menu(),
                 )
             elif action == "skip":
                 text = skip_pending(conn, settings=settings)

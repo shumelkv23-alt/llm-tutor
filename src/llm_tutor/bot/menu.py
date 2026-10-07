@@ -2,7 +2,7 @@
 
 Reply-клавиатура несёт ровно одну кнопку «☰ Меню». По нажатию бот присылает
 инлайн-список действий (callback `menu:<action>`) — функционал виден, но
-переписку не загораживают семь кнопок.
+чтобы не загораживать переписку кнопками.
 """
 
 from typing import Literal
@@ -14,7 +14,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-Action = Literal["status", "route", "task", "skip", "help"]
+Action = Literal["status", "route", "task", "stuck", "skip", "help"]
 
 LABEL_MENU = "☰ Меню"
 MENU_TITLE = "Что сделать?"
@@ -24,6 +24,7 @@ ACTION_LABELS: dict[Action, str] = {
     "status": "📚 Моё обучение",
     "route": "🗺 Маршрут",
     "task": "🎯 Задание",
+    "stuck": "❓ Не понимаю",
     "skip": "⏭ Пропустить",
     "help": "ℹ️ Что умею",
 }

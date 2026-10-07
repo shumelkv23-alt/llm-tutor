@@ -372,6 +372,26 @@ async def test_stuck_keeps_student_on_the_same_node(conn, settings) -> None:
     assert state.current_node_id == "groupby"  # узел не сменился
 
 
+async def test_stuck_reply_forces_reinforce_with_pending_task(conn, settings) -> None:
+    """«Не понимаю» не съедает задание и включает усиленный проход."""
+    from llm_tutor.core.turn import stuck_reply
+
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    item = repos.get_item(conn, 6)
+    _set_state(conn, pending_item_id=item.id, current_node_id="python_basics", node_streak=1)
+    client = _FakeTutor("объясняю подробнее")  # student_stuck по умолчанию False
+
+    await stuck_reply(conn, client, "m", now=1.0, settings=settings)
+
+    state = _state(conn)
+    assert state.mode == "reinforce"
+    assert state.node_streak == 0
+    assert state.current_node_id == "python_basics"
+    assert state.pending_item_id == item.id  # задание не потеряно
+    assert state.task_hinted is True         # помощь оказана
+
+
 def test_task_reply_carries_options_for_choice_task(conn, settings) -> None:
     """Задание с вариантами возвращается с подписями для кнопок."""
     load_seed(conn)

@@ -36,6 +36,8 @@ PRACTICE_KICKOFF_TEXT = "Давай задание по текущей теме.
 PENDING_ITEM_NOTE = (
     "Задание всё ещё ждёт ответа — ответь вариантом или пришли /skip."
 )
+# Повод тьюторского хода при нажатии «Не понимаю».
+STUCK_KICKOFF_TEXT = "Не понял, давай подробнее по текущей теме."
 SKIP_KICKOFF_TEXT = "Пропустить задание."
 SKIP_REPLY = (
     "Пропустил — свидетельство не записано, вернёмся к этому узлу позже. "
@@ -243,6 +245,7 @@ async def _tutor_branch(
     *,
     now: float,
     settings: Settings,
+    force_stuck: bool = False,
 ) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState]:
     """Тьюторский путь: контекст → модель → новый уровень подсказки."""
     package = build_context(
@@ -273,8 +276,9 @@ async def _tutor_branch(
         # Пока задание висело, ученик получил помощь: ответ уже не «без подсказок»,
         # даже если модель на этом ходу опустила уровень до нуля.
         new_state = new_state.model_copy(update={"task_hinted": True})
-    if answer.student_stuck:
-        # Ученик просит глубины: узел в усиленный проход, вперёд не идём.
+    if answer.student_stuck or force_stuck:
+        # Ученик просит глубины (или нажал «Не понимаю»): узел в усиленный
+        # проход, вперёд не идём.
         stuck_state = guide.on_student_stuck(new_state).model_copy(
             update={"task_hinted": True}
         )
@@ -514,6 +518,51 @@ def start_practice_reply(
         now=stamp,
     )
     return TurnReply(text=text, options=options)
+
+
+async def stuck_reply(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> TurnReply:
+    """Ученик нажал «Не понимаю»: углубляем текущий узел.
+
+    Идёт тьюторским путём независимо от ``pending_item_id`` — иначе висящее
+    задание приняло бы реплику за ответ.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    graph = CourseGraph.load(conn)
+
+    reply, events, mastery, new_state = await _tutor_branch(
+        conn,
+        client,
+        model,
+        session_id,
+        STUCK_KICKOFF_TEXT,
+        state,
+        graph,
+        now=stamp,
+        settings=s,
+        force_stuck=True,
+    )
+    fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
+    post_turn(
+        conn,
+        session_id,
+        user_text=STUCK_KICKOFF_TEXT,
+        assistant_text=reply,
+        state=new_state.model_copy(update={"route": fresh_route}),
+        events=events,
+        mastery=mastery,
+        now=stamp,
+    )
+    return TurnReply(text=reply)
 
 
 def skip_pending(
