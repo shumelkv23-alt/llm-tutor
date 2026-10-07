@@ -312,9 +312,18 @@ from llm_tutor.bot.render import render_plan
 `render_plan` (`EMPTY_GRAPH_REPLY`, `MODE_LABELS`, `route_mod` и прочие, что
 больше не упоминаются). Не трогать то, что ещё используется.
 
+Также обновить тестовые хелперы под `parse_mode`:
+- в `tests/test_bot_flows.py` расширить фейк —
+  `async def answer(self, text: str, reply_markup=None, **kwargs) -> None`
+  (иначе `parse_mode=...` в хендлерах роняет 8 тестов этого файла с
+  `TypeError: unexpected keyword argument 'parse_mode'`);
+- в `tests/test_e2e_topic01.py` заменить
+  `from llm_tutor.bot.handlers import render_plan` на
+  `from llm_tutor.bot.render import render_plan`.
+
 - [ ] **Step 5: Запустить тесты**
 
-Run: `uv run pytest tests/test_render.py tests/test_handlers.py tests/test_turn.py -q`
+Run: `uv run pytest tests/test_render.py tests/test_handlers.py tests/test_turn.py tests/test_bot_flows.py tests/test_e2e_topic01.py -q`
 Expected: PASS.
 
 - [ ] **Step 6: Коммит**
@@ -671,6 +680,12 @@ Expected: FAIL — хендлеров `on_menu`/`on_menu_action` пока нет
 > Ветки с инлайн-кнопками вариантов (`task`) постоянную клавиатуру не несут
 > (одно поле `reply_markup`), но она и так висит (persistent).
 
+> **Порядок регистрации.** `on_menu_action` (callback) регистрируй **после**
+> `on_answer`, а `on_menu` (message) — перед `on_text`: `tests/test_bot_flows.py`
+> берёт callback-хендлер по индексу `callback_query[0]` (это `on_answer`) —
+> сдвинешь порядок, упадут `test_button_answer_goes_through_turn` и
+> `test_answer_without_pending_item_is_reported`.
+
 - [ ] **Step 5: Запустить тесты**
 
 Run: `uv run pytest tests/test_handlers.py tests/test_menu.py -q`
@@ -755,7 +770,7 @@ SURVEY_DONE_REPLY = (
             return
         reply = await handle_start(conn, client, model, START_GREETING)
         await message.answer(
-            render.escape(_truncate(reply)),
+            render.fit(render.escape(reply)),
             parse_mode=render.PARSE_MODE,
             reply_markup=menu.main_menu(),
         )
@@ -867,6 +882,10 @@ def test_render_plan_windows_long_route(conn, settings) -> None:
 
 Тесты `test_render_plan_reports_all_mastered` и
 `test_render_plan_empty_graph_hints_seed` оставить без изменений.
+
+В `tests/test_e2e_topic01.py` обновить ассерты маршрута под новый формат
+(импорт уже поправлен в 11.2): вместо `"Маршрут: закрыто"` / `"Цель"` —
+`assert "<pre>" in plan` и `assert "Маршрут" in plan`.
 
 - [ ] **Step 2: Запустить тесты — убедиться, что падают**
 
@@ -1412,8 +1431,11 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
     async def on_theme(callback: CallbackQuery) -> None:
         node_id = (callback.data or "").split(":", 1)[1]
         graph = CourseGraph.load(conn)
-        state = repos.get_session_state(conn, repos.ensure_open_session(conn, time.time()))
-        status = node_status(conn, graph, node_id, state, now=time.time(), settings=settings)
+        # Это чтение, а не ход: сессию НЕ заводим (как в ``_pending_item``).
+        session_id = repos.get_open_session(conn)
+        state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+        now = time.time()
+        status = node_status(conn, graph, node_id, state, now=now, settings=settings)
         if status == "ahead":
             prereqs = ", ".join(_ahead_prereq_names(graph, node_id))
             text = (
@@ -1584,3 +1606,15 @@ git commit -m "Срез 14: сквозная проверка UX-общения"
 несёт одну кнопку «☰ Меню»; нажатие открывает инлайн-список действий
 (callback `menu:<action>`), а не семь кнопок внизу. Спека §3 обновлена;
 задачи 12.1/12.3 и 14.1/14.2 переписаны под это.
+
+**Второй прогон ревью (2026-10-07):**
+- C1 — в 11.2 добавлено расширение `FakeMessage.answer(text, reply_markup=None, **kwargs)`
+  в `tests/test_bot_flows.py` (иначе `parse_mode` роняет 8 тестов файла).
+- H1 — в 11.2 поправлен импорт `render_plan` в `tests/test_e2e_topic01.py`;
+  в 13.1 — его ассерты под новый формат шапки.
+- H2 — в 12.4 `render.escape(_truncate(reply))` → `render.fit(render.escape(reply))`.
+- M1 — в 12.3 зафиксирован порядок регистрации (`on_menu_action` после
+  `on_answer`) — иначе сдвиг индекса ломает `tests/test_bot_flows.py`.
+- M2 — спека синхронизирована: §3.4 (меню не скрывается), §8 (по 2 в ряд),
+  §10 (состав `menu.py`), §11 (тесты меню), §14 (риск).
+- L3 — `on_theme` больше не заводит сессию на показе предупреждения.
