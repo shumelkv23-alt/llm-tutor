@@ -87,9 +87,22 @@ pytest (`asyncio_mode=auto`).
    одноуровневом меню; двухуровневое меню — срез 27.
 9. Команды `/task`, `/resume` до анкеты модуля не блокируются (как сейчас в
    модуле 1). Анкета запускается на свободном тексте и сразу после хода,
-   который перевёл ученика в новый модуль.
+   который перевёл ученика в новый модуль. Если при этом висит задание
+   (ученик успел взять его командой), текст сначала идёт ответом на него, а
+   анкета — после хода: иначе ответ терялся бы (ревью плана, M1).
 10. Проверка «номер в имени файла» — только для имён вида
     `seed_topicNN*.json` (тесты пишут копии seed как `seed.json`).
+11. **Без внешнего ключа** `concepts.topic_id → topics` (§3.2): SQLite не даёт
+    `ALTER TABLE … ADD COLUMN … REFERENCES` с ненулевым значением по
+    умолчанию. Колонки — `INTEGER NOT NULL DEFAULT 1`, ссылки проверяет
+    валидатор курса.
+12. **Переоткрытая тема прошлого модуля входит в участок** текущего модуля и без
+    ребра к нему (§4.2: провал задания, где тема стоит вторичным весом).
+    Признак — `closed_at` у шага, который уже не закрыт: время последнего
+    закрытия остаётся меткой «была закрыта, открылась снова» (ревью плана, H1).
+13. **`_close_node_if_ready` достраивает снимок** перед решением о модуле: у
+    ученика со снимком до среза 25 в нём только темы topic01, и закрытие
+    последней из них иначе объявило бы «курс пройден» (ревью плана, M2).
 
 ## Review Focus
 
@@ -110,6 +123,14 @@ pytest (`asyncio_mode=auto`).
    падает (задачи 8, 9).
 
 ---
+
+## Подготовка
+
+- [ ] Ветка: `git switch -c course-modules` (работа не идёт в `master`).
+- [ ] Журнал: создать `.superpowers/sdd/2026-10-08-course-modules/progress.md` с
+  разделом `## Setup` (база — хеш `git rev-parse HEAD`, 591 тест на старте).
+- [ ] `.gitignore`: добавить строку `data/raw/` в раздел «Данные» — материалы
+  курса не коммитятся (коммит `Срез 24: data/raw в .gitignore`).
 
 ## Срез 24 — данные и граф
 
@@ -1063,7 +1084,17 @@ def test_items_lean_only_on_earlier_modules(conn) -> None:
 ```
 
 В `tests/test_graph.py` — тест `test_seed_cli_loads_into_db` проверяет «концептов»;
-текст вывода сохраняет это слово, правка не нужна.
+текст вывода сохраняет это слово, правка не нужна. Хелпер `_write_trimmed_seed`
+убирает узлы из `nodes`, но не из анкеты — новое правило «анкета ссылается на
+чужие темы» уронило бы `test_load_seed_prunes_stale_concepts` и
+`test_load_seed_deactivates_concept_with_events`. В хелпер перед записью файла
+добавить:
+
+```python
+    # Анкета модуля накрывает ровно его темы (срез 24): убранная тема уходит и из блока.
+    for block in data["topic"]["survey"]["blocks"]:
+        block["concepts"] = [c for c in block["concepts"] if c not in drop_nodes]
+```
 
 - [ ] **Step 5: Run tests to verify they fail**
 
@@ -1352,7 +1383,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--seed",
         default=None,
-        help="один seed-файл модуля (отладка); по умолчанию — все модули из data/",
+        help=(
+            "один seed-файл модуля — только для отладки на отдельной БД: "
+            "остальные модули в ней гаснут; по умолчанию — все модули из data/"
+        ),
     )
     parser.add_argument(
         "--db",
@@ -1412,7 +1446,7 @@ Expected: всё зелёное. Если старый тест полагалс
 - [ ] **Step 8: Commit**
 
 ```bash
-git add data/seed_topic01.json tests/fixtures/seed_topic02_mini.json tests/course_fixtures.py tests/test_course.py tests/test_course_data.py src/llm_tutor/course/seed.py src/llm_tutor/bot/main.py docs/superpowers/specs/2026-10-08-course-modules-design.md
+git add data/seed_topic01.json tests/fixtures/seed_topic02_mini.json tests/course_fixtures.py tests/test_course.py tests/test_course_data.py tests/test_graph.py src/llm_tutor/course/seed.py src/llm_tutor/bot/main.py docs/superpowers/specs/2026-10-08-course-modules-design.md
 git commit -m "Срез 24: курс из модулей — раздел topic в seed и загрузка одним проходом"
 ```
 
@@ -1603,7 +1637,9 @@ class RouteStep(BaseModel):
     concept_id: str
     mode: NodeMode
     status: RouteStepStatus
-    # Когда тема закрыта (unix time): провалы ПОСЛЕ закрытия открывают её снова.
+    # Когда тема закрыта последний раз (unix time). Провалы ПОСЛЕ закрытия
+    # открывают её снова, а у открывшейся время остаётся меткой «была закрыта»:
+    # по ней тема прошлого модуля попадает в рабочий участок текущего.
     closed_at: float | None = None
 
 
@@ -1655,8 +1691,10 @@ def working_section(
 ) -> list[str]:
     """Рабочий участок модуля (§4.1 спеки модулей), в порядке маршрута.
 
-    Темы модуля плюс их незакрытые предки из прошлых модулей: забытое в
-    прошлом модуле, на что опирается текущий, проходится здесь же.
+    Темы модуля плюс незакрытые темы прошлых модулей двух видов: предки тем
+    модуля (на них он опирается) и темы, открывшиеся снова после закрытия
+    (``closed_at`` у незакрытого шага — провал по заданию со вторичным весом
+    или просроченное повторение, §4.2): забытое проходится здесь же.
     """
     if topic_id is None:
         return []
@@ -1670,9 +1708,9 @@ def working_section(
         for step in known
         if step.concept_id in own
         or (
-            step.concept_id in ancestors
-            and step.status != "closed"
+            step.status != "closed"
             and graph.topic_of(step.concept_id) < topic_id
+            and (step.concept_id in ancestors or step.closed_at is not None)
         )
     ]
 
@@ -1928,6 +1966,39 @@ def test_reopened_ancestor_joins_next_module_section(conn, settings) -> None:
     assert route_mod.working_section(graph, fresh, 2) == ["a", "x"]
 
 
+def test_reopened_theme_without_edge_joins_current_section(conn, settings) -> None:
+    """Провалы по заданию модуля 2 со вторичным весом на «a» — без ребра a → x."""
+    graph = _course({"a": 1, "x": 2}, [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    previous = Route(
+        steps=[
+            RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0),
+            RouteStep(concept_id="x", mode="full", status="current"),
+        ],
+        topic_id=2,
+        completed_topics=[1],
+    )
+    for ts in (11.0, 12.0):
+        repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=ts))
+
+    fresh = route_mod.build_route(
+        conn, graph, current_node_id="x", previous=previous, now=13.0, settings=settings
+    )
+
+    assert _closed_at(fresh, "a") == 10.0  # метка «была закрыта» осталась
+    assert route_mod.working_section(graph, fresh, 2) == ["a", "x"]
+    assert fresh.topic_id == 2
+
+
+def test_never_closed_theme_of_earlier_module_stays_out(conn, settings) -> None:
+    """Прыжок вперёд: незакрытое прошлого модуля без ребра и без метки — не в участке."""
+    graph = _course({"a": 1, "x": 2}, [])
+
+    fresh = route_mod.build_route(conn, graph, current_node_id="x", now=0.0, settings=settings)
+
+    assert route_mod.working_section(graph, fresh, 2) == ["x"]
+
+
 def test_course_growth_is_not_reported_as_route_change(conn, settings) -> None:
     """Снимок topic01 + новые модули в графе — ученику сообщать не о чем."""
     graph = _course({"a": 1, "b": 1, "x": 2, "y": 2}, [("a", "b")])
@@ -1988,13 +2059,14 @@ def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> 
             status = "claimed"
         else:
             status = "ahead"
+        # Открывшаяся снова тема хранит время прошлого закрытия — метку для
+        # рабочего участка; никогда не закрытая — без метки.
+        if status == "closed" or was_closed:
+            mark = closed_at
+        else:
+            mark = old.closed_at if old is not None else None
         steps.append(
-            RouteStep(
-                concept_id=concept_id,
-                mode=mode,
-                status=status,
-                closed_at=closed_at if status == "closed" else None,
-            )
+            RouteStep(concept_id=concept_id, mode=mode, status=status, closed_at=mark)
         )
 ```
 
@@ -2059,7 +2131,8 @@ git commit -m "Срез 25: закрытое открывается провал
   новый текст `ROUTE_DONE_REPLY`; `_close_node_if_ready` отмечает
   `completed_topics`, ставит `route.topic_id` следующего модуля; после хода,
   закрывшего модуль без следующей темы, задание не выдаётся.
-  `course_fixtures.finish_all_but(conn, last, *, topic_id, completed=()) -> Item`.
+  `course_fixtures.finish_all_but(conn, last, *, topic_id, completed=()) -> Item`,
+  `course_fixtures.enter_module(conn, topic_id, *, completed=()) -> None`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2103,6 +2176,25 @@ def finish_all_but(conn, last: str, *, topic_id: int, completed: tuple[int, ...]
         ),
     )
     return item
+
+
+def enter_module(conn, topic_id: int, *, completed: tuple[int, ...] = ()) -> None:
+    """Модули до ``topic_id`` закрыты целиком; ученик на входе в ``topic_id``."""
+    graph = CourseGraph.load(conn)
+    steps = [
+        RouteStep(concept_id=node, mode="full", status="closed", closed_at=0.5)
+        if graph.topic_of(node) < topic_id
+        else RouteStep(concept_id=node, mode="full", status="ahead")
+        for node in graph.topo_order()
+    ]
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.update_session_state(
+        conn,
+        session_id,
+        SessionState(
+            route=Route(steps=steps, topic_id=topic_id, completed_topics=list(completed))
+        ),
+    )
 ```
 
 `tests/test_modules_turn.py`:
@@ -2173,7 +2265,33 @@ async def test_last_topic_of_course_says_course_done_once(conn, settings) -> Non
     state = _state(conn)
     assert state.current_node_id is None and state.pending_item_id is None
     assert state.route.topic_id is None
+
+
+async def test_legacy_snapshot_does_not_end_course_early(conn, settings) -> None:
+    """Снимок до среза 25 (только темы topic01): конец модуля 1 — не конец курса."""
+    load_two_modules(conn)
+    _module_two_survey_done(conn)
+    item = finish_all_but(conn, "churn_eda_case", topic_id=1)
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id)
+    legacy = Route(
+        steps=[
+            s.model_copy(update={"closed_at": None})
+            for s in state.route.steps
+            if not s.concept_id.startswith("mini_")
+        ]
+    )
+    repos.update_session_state(conn, session_id, state.model_copy(update={"route": legacy}))
+
+    reply = await handle_turn(
+        conn, GradingTutor(conn, passed=True), "m", correct_answer(item), now=2.0, settings=settings
+    )
+
+    assert "курс пройден" not in reply.text
+    assert "Дальше — модуль 2" in reply.text
 ```
+
+(импорт `from llm_tutor.schemas import Route` в `tests/test_modules_turn.py`).
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -2207,7 +2325,17 @@ def _topic_title(conn: sqlite3.Connection, topic_id: int) -> str:
 `_close_node_if_ready` — всё после `closed_name = graph.concept(node_id).name`:
 
 ```python
-    route = state.route or route_mod.build_route(conn, graph, now=now, settings=settings)
+    # Снимок достраивается до всего курса: у снимка до среза 25 в нём только
+    # темы topic01, и закрытие последней объявило бы «курс пройден».
+    route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=node_id,
+        previous=state.route,
+        now=now,
+        settings=settings,
+    )
     topic = route.topic_id if route.topic_id is not None else route_mod.choose_topic(graph, route)
     route = route.model_copy(
         update={
@@ -2317,7 +2445,7 @@ git commit -m "Срез 25: переход между модулями — «�
 
 **Interfaces:**
 - Consumes: `section_route`, `working_section`, `upcoming(section=)` (задача 6).
-- Produces: `/plan` — шапка «🗺 Маршрут · модуль N/M «название» — пройдено X из Y» и
+- Produces: `/plan` — шапка «🗺 Маршрут · Модуль N/M · название — пройдено X из Y» и
   только темы участка; курс пройден — «🎓 Курс пройден — все модули закрыты.»;
   `/status` — строка «Модуль: …» и прогресс по участку.
 
@@ -2331,7 +2459,7 @@ def test_render_plan_shows_only_current_module(conn, settings) -> None:
 
     text = render_plan(conn, now=0.0, settings=settings)
 
-    assert "модуль 1/2" in text
+    assert "Модуль 1/2 · Первичный анализ данных с Pandas" in text
     assert "Гистограмма" not in text  # тема модуля 2 не в участке модуля 1
 
 
@@ -2373,12 +2501,12 @@ Expected: FAIL — в плане нет «модуль 1/2», темы моду�
 
 ```python
 def _module_label(conn: sqlite3.Connection, topic_id: int) -> str:
-    """«N/M «название»» — готовый HTML (без модуля в БД — просто номер)."""
+    """«N/M · название» — готовый HTML (без модуля в БД — просто номер)."""
     topics = repos.get_topics(conn)
     topic = next((t for t in topics if t.number == topic_id), None)
     if topic is None:
         return str(topic_id)
-    return f"{topic_id}/{len(topics)} «{escape(topic.title)}»"
+    return f"{topic_id}/{len(topics)} · {escape(topic.title)}"
 ```
 
 `render_plan` — после построения `route` и проверки `if not route.steps`:
@@ -2388,7 +2516,7 @@ def _module_label(conn: sqlite3.Connection, topic_id: int) -> str:
         return "🎓 Курс пройден — все модули закрыты."
     section = route_mod.section_route(graph, route)
     header = (
-        f"🗺 <b>Маршрут</b> · модуль {_module_label(conn, route.topic_id)} — "
+        f"🗺 <b>Маршрут</b> · Модуль {_module_label(conn, route.topic_id)} — "
         f"пройдено {section.closed_count} из {len(section.steps)}"
     )
     return f"{header}\n{render_steps(graph, section.steps)}"
@@ -2448,7 +2576,8 @@ import time
 from llm_tutor.config import Settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db.connection import get_conn, migrate
-from llm_tutor.schemas import Concept, Edge
+from llm_tutor.db import repos
+from llm_tutor.schemas import Concept, Edge, Event, Route, RouteStep, SessionState
 from llm_tutor.student import route
 
 settings = Settings(_env_file=None, openrouter_api_key="k", telegram_bot_token="t")
@@ -2458,14 +2587,33 @@ edges += [Edge(from_id=f"m{t}_19", to_id=f"m{t + 1}_0", hard=False) for t in ran
 graph = CourseGraph(nodes, edges)
 conn = get_conn(":memory:")
 migrate(conn)
+# Нагрузка как у ученика в середине курса: журнал событий и владение по каждой теме.
+repos.replace_seed(conn, nodes, edges, [])
+for index, node in enumerate(nodes):
+    for k in range(15):
+        repos.add_event(
+            conn, Event(source="autotest", result=float(k % 3 != 0), concept_id=node.id, ts=k)
+        )
+    repos.upsert_mastery(conn, node.id, alpha=6.0, beta=2.0, last_seen=10.0)
+# Первые 5 модулей закрыты — снимок как после полкурса.
+closed = Route(
+    steps=[
+        RouteStep(concept_id=n.id, mode="full", status="closed", closed_at=5.0)
+        for n in nodes
+        if n.topic_id <= 5
+    ],
+    topic_id=6,
+    completed_topics=[1, 2, 3, 4, 5],
+)
+state = SessionState(route=closed)
 start = time.perf_counter()
-snapshot = route.build_route(conn, graph, now=0.0, settings=settings)
-route.next_node_id(conn, graph, snapshot, now=0.0, settings=settings)
-print(f"build_route + next_node_id: {time.perf_counter() - start:.3f} s")
+fresh, _ = route.refresh(conn, state, graph, now=20.0, settings=settings)
+route.next_node_id(conn, graph, fresh, now=20.0, settings=settings)
+print(f"refresh + next_node_id: {time.perf_counter() - start:.3f} s")
 ```
 
 Run: `uv run python <scratch>/measure_route.py`
-Expected: меньше 0.5 с. Результат — в журнал. Больше 0.5 с — находка HIGH в
+Expected: меньше 0.5 с (ход зовёт `refresh` до трёх раз). Результат — в журнал. Больше 0.5 с — находка HIGH в
 триаж аудита (кандидат на фикс: `mode_for_node` считает владение мягких
 пререквизитов заново для каждой темы — кешировать `beta.estimate` в рамках
 одного `build_route`).
@@ -2915,24 +3063,17 @@ async def test_next_module_without_survey_waits_for_it(conn, settings) -> None:
 ```
 
 В `tests/test_bot_flows.py` (импорты `from course_fixtures import T1, T2,
-correct_answer, finish_all_but, load_two_modules`, `from llm_tutor.bot import start`,
+correct_answer, enter_module, finish_all_but, load_two_modules`,
+`from fakes import GradingTutor`, `from llm_tutor.bot import start`,
 `from llm_tutor.bot.survey import SurveyFlow`):
 
 ```python
-def _bound_message(state_data: dict, sent: tuple) -> FakeMessage:
-    """Сообщение анкеты, отправленное ботом: тот же id, та же клавиатура."""
-    message = FakeMessage(sent[0])
-    message.message_id = state_data["message_id"]
-    message.reply_markup = sent[1]
-    return message
-
-
 def test_pending_survey_topic(conn, settings) -> None:
     load_two_modules(conn)
     assert start.pending_survey_topic(conn).number == 1  # новый ученик
 
     survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
-    finish_all_but(conn, "churn_eda_case", topic_id=2, completed=(1,))
+    enter_module(conn, 2, completed=(1,))
     assert start.pending_survey_topic(conn).number == 2
 
     survey.apply_answers(conn, T2, {"t02_basics": 1, "t02_relations": 1}, settings=settings)
@@ -2958,12 +3099,9 @@ async def test_finishing_module_one_opens_module_two_survey(conn, settings) -> N
 async def test_module_two_survey_keeps_module_one_and_starts_lesson(conn, settings) -> None:
     load_two_modules(conn)
     survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
-    finish_all_but(conn, "churn_eda_case", topic_id=2, completed=(1,))
+    enter_module(conn, 2, completed=(1,))
     session_id = repos.get_open_session(conn)
     lesson = repos.get_session_state(conn, session_id)
-    repos.update_session_state(
-        conn, session_id, lesson.model_copy(update={"current_node_id": None, "pending_item_id": None})
-    )
     closed_before = sum(1 for s in lesson.route.steps if s.status == "closed")
     survey_router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
     state = _fsm()
@@ -2978,19 +3116,15 @@ async def test_module_two_survey_keeps_module_one_and_starts_lesson(conn, settin
     after = repos.get_session_state(conn, session_id)
     statuses = {s.concept_id: s.status for s in after.route.steps}
     assert statuses["mini_box"] == statuses["mini_corr"] == "claimed"
-    assert sum(1 for s in after.route.steps if s.status == "closed") >= closed_before - 1
+    assert sum(1 for s in after.route.steps if s.status == "closed") == closed_before
     assert after.current_node_id == "mini_plots"
 
 
 async def test_all_confident_module_starts_with_check(conn, settings) -> None:
     load_two_modules(conn)
     survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
-    finish_all_but(conn, "churn_eda_case", topic_id=2, completed=(1,))
+    enter_module(conn, 2, completed=(1,))
     session_id = repos.get_open_session(conn)
-    lesson = repos.get_session_state(conn, session_id)
-    repos.update_session_state(
-        conn, session_id, lesson.model_copy(update={"current_node_id": None, "pending_item_id": None})
-    )
     router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
     state = _fsm()
     intro = await start_survey(FakeMessage(), state, repos.get_topic(conn, 2))
@@ -3284,13 +3418,44 @@ async def start_survey(
             )
 ```
 
-`bot/handlers.py` — удалить `_survey_pending` из задачи 11; в `on_start`/`on_text`:
+`bot/handlers.py` — удалить `_survey_pending` из задачи 11; в `on_start`:
 
 ```python
         topic = start.pending_survey_topic(conn)
         if topic is not None:
             await start_survey(message, state, topic)
             return
+```
+
+в `on_text` — то же, но не поверх висящего задания (отступление 9):
+
+```python
+        # Висит задание (взято командой до анкеты) — текст это ответ на него:
+        # анкету предложит `_offer_survey` после хода, ответ не теряется.
+        topic = start.pending_survey_topic(conn)
+        if topic is not None and _pending_item(conn) is None:
+            await start_survey(message, state, topic)
+            return
+```
+
+Тест в `tests/test_bot_flows.py`:
+
+```python
+async def test_answer_to_task_taken_before_module_survey_is_kept(conn, settings) -> None:
+    """/task до анкеты модуля 2, потом ответ текстом: ответ засчитан, анкета — следом."""
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    enter_module(conn, 2, completed=(1,))
+    router = make_router(conn, GradingTutor(conn, passed=True), "m", settings=settings)
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    state = _fsm()
+    message = FakeMessage(correct_answer(item))
+
+    await _named(router, "message", "on_text")(message, state)
+
+    assert repos.item_was_answered(conn, item.id)
+    assert message.sent[-1][0].startswith("📘 Модуль 2")
 ```
 
 Хелпер внутри `make_router` и вызовы после `_send_reply` в `on_text` и `on_answer`:
@@ -3436,8 +3601,10 @@ git commit -m "Срез 26: прыжок в модуль из меню — че�
 - [ ] **Step 1: Write the failing tests** — в `tests/test_themes.py`; существующие
   тесты поправить: `themes_keyboard(conn, state=…)` → `themes_keyboard(conn, 1, state=…)`,
   в `test_themes_keyboard_has_button_per_node` считать только `theme:`-кнопки;
-  `test_themes_keyboard_without_session_does_not_open_one` дополнить вызовом
-  `themes.topics_keyboard(conn, now=0.0, settings=settings)`. В
+  в `test_themes_keyboard_without_session_does_not_open_one` (строка ~303) вызов
+  `themes.themes_keyboard(conn, now=0.0, settings=settings)` заменить на
+  `themes.themes_keyboard(conn, 1, now=0.0, settings=settings)` и добавить второй вызов
+  `themes.topics_keyboard(conn, now=0.0, settings=settings)` (оба — без новой сессии). В
   `tests/test_bot_flows.py::test_themes_command_reports_failure_instead_of_silence`
   патчить `"llm_tutor.bot.handlers.themes.topics_keyboard"`. Новые:
 
@@ -3685,7 +3852,12 @@ Expected: FAIL.
 
 - [ ] **Step 3: Implement**
 
-`prompts.py` — из трёх баз убрать первую строку «Ты — тьютор … тема 1 «Pandas / EDA».»:
+`prompts.py` — из трёх баз убрать первую строку «Ты — тьютор … тема 1 «Pandas / EDA».»
+(её заменяет `course_line`), а из правил — примеры, верные только для pandas: в
+правиле 3 базы `TUTOR_SYSTEM_PROMPT` пример «(например, «в разделе Grouping»)» →
+«по его заголовку», в правиле 5 `TUTOR_NO_MATCH_SYSTEM_PROMPT` список
+«(groupby, DataFrame, crosstab, loc/iloc)» → «(названия функций, методов и
+терминов)». Остальной текст правил — без изменений. Итог:
 
 ```python
 TUTOR_SYSTEM_PROMPT = (
@@ -4256,8 +4428,23 @@ ACF/PACF; признаки из ряда (лаги, дата, target encoding) �
 
 ### Task 28: Финал — рабочая БД, ручная проверка, CLAUDE.md
 
-- [ ] **Step 1: Бэкап рабочей БД:**
-  `cp data/llm_tutor.sqlite3 data/llm_tutor.sqlite3.backup-$(date +%Y%m%d-%H%M%S)`
+- [ ] **Step 1: Бэкап рабочей БД** через backup API SQLite (простая копия файла
+  в режиме WAL может не захватить данные из `-wal`). Инструментом Write
+  сохранить в scratch-каталог `backup_db.py`:
+
+```python
+"""Бэкап рабочей БД перед миграцией 004 (задача 28)."""
+
+import sqlite3
+import sys
+
+source, target = sys.argv[1], sys.argv[2]
+with sqlite3.connect(source) as src, sqlite3.connect(target) as dst:
+    src.backup(dst)
+print(f"Бэкап: {target}")
+```
+
+  Run: `uv run python <scratch>/backup_db.py data/llm_tutor.sqlite3 data/llm_tutor.sqlite3.backup-$(date +%Y%m%d-%H%M%S)`
   (существующие бэкапы не трогать).
 - [ ] **Step 2: Курс в рабочую БД:** `uv run python -m llm_tutor.course.seed` →
   «Загружено: 10 модулей, …» без ошибок.
