@@ -26,6 +26,7 @@ from aiogram.types import (
 from llm_tutor.bot import menu, render, themes
 from llm_tutor.bot.survey import INTRO_TEXT, ask as ask_survey
 from llm_tutor.config import Settings
+from llm_tutor.core import verify
 from llm_tutor.core.turn import (
     STALE_ITEM_REPLY,
     TurnReply,
@@ -221,6 +222,22 @@ def make_router(
             parse_mode=render.PARSE_MODE,
         )
 
+    @router.message(Command("close"))
+    async def on_close(message: Message) -> None:
+        try:
+            reply = verify.start_verification(conn, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой проверочного прохода")
+            await message.answer(
+                render.fit(render.escape(BOT_FAILURE_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
+        await message.answer(
+            render.fit(render.escape(reply.text)),
+            reply_markup=_options_keyboard(reply.options),
+            parse_mode=render.PARSE_MODE,
+        )
+
     @router.message(Command("skip"))
     async def on_skip(message: Message) -> None:
         await message.answer(
@@ -276,6 +293,13 @@ def make_router(
                     themes.THEMES_PROMPT,
                     parse_mode=render.PARSE_MODE,
                     reply_markup=themes.themes_keyboard(conn, settings=settings),
+                )
+            elif action == "close":
+                reply = verify.start_verification(conn, settings=settings)
+                await callback.message.answer(
+                    render.fit(render.escape(reply.text)),
+                    parse_mode=render.PARSE_MODE,
+                    reply_markup=_options_keyboard(reply.options),
                 )
             elif action == "help":
                 await callback.message.answer(

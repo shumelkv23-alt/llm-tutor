@@ -445,3 +445,20 @@ async def test_answer_callback_disables_intents(conn, settings, monkeypatch) -> 
     await on_answer(FakeCallback("answer:0", FakeMessage()))
 
     assert seen.get("allow_intents") is False
+
+
+async def test_menu_close_starts_verification(conn, settings) -> None:
+    """Нажатие «Закрыть тему» запускает проверочный проход."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
+    )
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    on_menu_action = _named(router, "callback_query", "on_menu_action")
+    message = FakeMessage()
+
+    await on_menu_action(FakeCallback("menu:close", message))
+
+    assert "Проверка" in message.last_text
