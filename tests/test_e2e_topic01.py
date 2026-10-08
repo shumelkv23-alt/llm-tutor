@@ -15,7 +15,7 @@ import respx
 from fakes import FakeCallback, FakeMessage, GradingTutor, _fsm, _named
 
 from llm_tutor.bot.render import render_plan
-from llm_tutor.bot.survey import GO_DATA, start_survey
+from llm_tutor.bot.survey import CLAIMED_NOTE, GO_DATA, start_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import handle_turn
@@ -255,3 +255,33 @@ def _is_closed(conn, node_id: str) -> bool:
     return any(
         step.concept_id == node_id and step.status == "closed" for step in state.route.steps
     )
+
+
+async def test_confident_student_skips_known_blocks(conn, settings) -> None:
+    """/start → «Уверенно работаю с pandas» → два ответа → урок не с азов."""
+    load_seed(conn)
+    router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    state = _fsm()
+    message = await start_survey(FakeMessage(), state)
+    click = _named(router, "callback_query", "on_survey_click")
+
+    def data_of(label: str) -> str:
+        return next(
+            button.callback_data
+            for row in message.reply_markup.inline_keyboard
+            for button in row
+            if button.text == label
+        )
+
+    await click(FakeCallback(GO_DATA, message), state)
+    await click(FakeCallback(data_of(survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT]), message), state)
+    await click(FakeCallback(data_of(survey.SELF_LEVELS[1]), message), state)
+    await click(FakeCallback(data_of(survey.SELF_LEVELS[0]), message), state)
+
+    assert message.text.startswith("✅ Понял тебя")
+    steps = next(text for text, _ in message.sent if text.startswith("📋"))
+    assert CLAIMED_NOTE in message.text  # сводка обещает проверить знакомое
+    assert "Начинаем с «" in steps  # урок, а не проверка: незаявленное есть
+    current = _state(conn).current_node_id
+    assert current not in survey.claimed_concepts(conn)
+    assert _state(conn).pending_item_id is not None  # урок начался с задания
