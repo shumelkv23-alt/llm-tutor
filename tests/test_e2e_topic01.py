@@ -15,6 +15,8 @@ import respx
 from fakes import FakeCallback, FakeMessage, GradingTutor, _fsm, _named
 
 from llm_tutor.bot.render import render_plan
+from llm_tutor.bot.survey import ask as ask_survey
+from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import handle_turn
 from llm_tutor.course.ingest import ingest_text
@@ -23,6 +25,7 @@ from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
+from llm_tutor.schemas import SessionState
 from llm_tutor.student import beta, survey
 
 OPENROUTER = "https://openrouter.ai/api/v1/chat/completions"
@@ -199,6 +202,41 @@ async def test_full_topic01_scenario() -> None:
     finally:
         await client.aclose()
         conn.close()
+
+
+def _state(conn) -> SessionState:
+    """Состояние открытой сессии."""
+    return repos.get_session_state(conn, repos.get_open_session(conn))
+
+
+async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> None:
+    """«▶️ Старт» → анкета → список шагов → объяснение → пара тестов → узел закрыт."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    state = _fsm()
+    await ask_survey(FakeMessage(), state)
+    on_answer = _named(router, "callback_query", "on_answer")
+    message = FakeMessage()
+    for _ in range(len(survey.SURVEY_QUESTIONS)):
+        await on_answer(FakeCallback("survey:0", message), state)
+
+    steps = next(text for text, _ in message.sent if "Ближайшие 5 шагов" in text)
+    assert "1. " in steps
+    assert message.sent[-1][0]  # урок начался: первое задание
+    assert not _is_closed(conn, "python_basics")  # до ответов узел не закрыт
+
+    # Отвечаем верно на первый тест узла, за ним на второй — и узел закрывается.
+    client = GradingTutor(conn, passed=True)
+    for now in (2.0, 3.0):
+        item = repos.get_item(conn, _state(conn).pending_item_id)
+        assert item is not None
+        assert "python_basics" in item.concept_weights
+        answer = item.options[int(item.answer)] if item.options else str(item.answer)
+        await handle_turn(conn, client, "m", answer, now=now, settings=settings)
+
+    assert _is_closed(conn, "python_basics")
+    assert _state(conn).current_node_id != "python_basics"  # урок пошёл дальше
 
 
 def _is_closed(conn, node_id: str) -> bool:
