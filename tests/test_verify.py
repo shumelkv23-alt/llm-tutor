@@ -60,7 +60,9 @@ def test_start_verification_without_items_answers_honestly(conn, settings) -> No
     # Банк среза 20 покрывает все узлы: пустой узел делаем руками — случай
     # остаётся страховкой на случай правки seed.
     conn.execute(
-        "UPDATE items SET active = 0 WHERE concept_weights LIKE '%visualization_basics%'"
+        # GLOB, а не LIKE: в LIKE «_» — подстановочный знак, и шаблон погасил бы
+        # ещё и чужие задания с похожим id узла.
+        "UPDATE items SET active = 0 WHERE concept_weights GLOB '*visualization_basics*'"
     )
     conn.commit()
     _set_state(conn, current_node_id="visualization_basics")

@@ -278,17 +278,18 @@ def test_nodes_without_items_reports_gate_nodes() -> None:
     seed = load_seed_data(DEFAULT_SEED_PATH)
     assert nodes_without_items(seed) == []
 
-    trimmed = seed.model_copy(
-        update={
-            "items": [
-                item
-                for item in seed.items
-                if "numpy_basics" not in item.concept_weights
-            ]
-        }
-    )
+    def _without_items_for(node_id: str) -> object:
+        return seed.model_copy(
+            update={
+                "items": [
+                    item for item in seed.items if node_id not in item.concept_weights
+                ]
+            }
+        )
 
-    assert nodes_without_items(trimmed) == ["numpy_basics"]
+    # Лист без зависимых не блокирует маршрут, поэтому в отчёт не попадает.
+    assert nodes_without_items(_without_items_for("churn_eda_case")) == []
+    assert nodes_without_items(_without_items_for("numpy_basics")) == ["numpy_basics"]
 
 
 def test_seed_rejects_unknown_rubric_reference(tmp_path) -> None:

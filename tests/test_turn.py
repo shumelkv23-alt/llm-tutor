@@ -432,7 +432,9 @@ async def test_node_without_items_says_so_honestly(conn, settings) -> None:
     # Банк среза 20 покрывает все узлы: пустой узел делаем руками — случай
     # остаётся страховкой на случай правки seed.
     conn.execute(
-        "UPDATE items SET active = 0 WHERE concept_weights LIKE '%describe_stats%'"
+        # GLOB, а не LIKE: в LIKE «_» — подстановочный знак, и шаблон погасил бы
+        # ещё и чужие задания с похожим id узла.
+        "UPDATE items SET active = 0 WHERE concept_weights GLOB '*describe_stats*'"
     )
     conn.commit()
     _set_state(conn, current_node_id="describe_stats", phase="practice")

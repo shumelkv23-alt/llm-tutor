@@ -576,21 +576,31 @@
     },
     {
       "id": 16,
-      "prompt": "Каким аргументом pd.read_csv задают разделитель полей? (имя аргумента)",
-      "answer_type": "short",
+      "prompt": "Как прочитать CSV-файл, в котором поля разделены точкой с запятой?",
+      "answer_type": "choice",
       "concept_weights": {"read_csv": 1.0},
       "difficulty": 0.3,
-      "options": [],
-      "answer": "sep"
+      "options": [
+        "pd.read_csv('file.csv', sep=';')",
+        "pd.read_csv('file.csv')",
+        "pd.read_csv('file.csv', header=';')",
+        "pd.read_csv('file.csv', index_col=';')"
+      ],
+      "answer": "0"
     },
     {
       "id": 17,
-      "prompt": "Какой индексатор pandas выбирает строки по номеру позиции: loc или iloc?",
-      "answer_type": "short",
+      "prompt": "Что вернёт df.loc['a':'c'], если индекс состоит из меток 'a', 'b', 'c'?",
+      "answer_type": "choice",
       "concept_weights": {"indexing_loc_iloc": 1.0},
       "difficulty": 0.5,
-      "options": [],
-      "answer": "iloc"
+      "options": [
+        "Строки с метками 'a', 'b' и 'c' — обе границы включены",
+        "Строки с метками 'a' и 'b' — правая граница не включена",
+        "Столбцы 'a', 'b' и 'c'",
+        "Ошибку: срез по меткам невозможен"
+      ],
+      "answer": "0"
     },
     {
       "id": 18,
@@ -636,7 +646,7 @@
     },
     {
       "id": 21,
-      "prompt": "Какой метод DataFrame показывает типы столбцов и число непустых значений? (имя метода)",
+      "prompt": "Какой метод DataFrame показывает типы столбцов и число непустых значений? Напиши только имя метода — без точек и скобок.",
       "answer_type": "short",
       "concept_weights": {"df_inspect": 1.0},
       "difficulty": 0.35,
@@ -673,7 +683,7 @@
     },
     {
       "id": 24,
-      "prompt": "Каким методом столбцу pandas меняют тип данных? (имя метода)",
+      "prompt": "Каким методом столбцу pandas меняют тип данных? Напиши только имя метода — без точек и скобок.",
       "answer_type": "short",
       "concept_weights": {"dtype_conversion": 1.0},
       "difficulty": 0.45,
@@ -738,12 +748,17 @@
     },
     {
       "id": 29,
-      "prompt": "Какой аргумент sort_values включает сортировку по убыванию? (имя аргумента)",
-      "answer_type": "short",
+      "prompt": "Как отсортировать таблицу по убыванию значений столбца age?",
+      "answer_type": "choice",
       "concept_weights": {"sorting": 1.0},
       "difficulty": 0.4,
-      "options": [],
-      "answer": "ascending"
+      "options": [
+        "df.sort_values('age', ascending=False)",
+        "df.sort_values('age')",
+        "df.sort_index('age', ascending=False)",
+        "df.sort_values('age', by='desc')"
+      ],
+      "answer": "0"
     },
     {
       "id": 30,
@@ -789,21 +804,21 @@
     },
     {
       "id": 33,
-      "prompt": "Чем df.groupby('city')['age'].mean() отличается от df.groupby('city').mean()?",
+      "prompt": "В df есть столбцы city (строки), age и salary (числа). Что вернёт df.groupby('city').mean()?",
       "answer_type": "choice",
       "concept_weights": {"agg_functions": 1.0},
       "difficulty": 0.55,
       "options": [
-        "Считает среднее по всем числовым столбцам",
-        "Считает среднее только по столбцу age",
-        "Ничего не меняет",
-        "Падает с ошибкой"
+        "Средние и по age, и по salary — по каждому городу",
+        "Средний age по каждому городу",
+        "Число строк по каждому городу",
+        "Упадёт: столбец city не числовой"
       ],
-      "answer": "1"
+      "answer": "0"
     },
     {
       "id": 34,
-      "prompt": "Какая функция pandas строит таблицу частот двух категориальных столбцов? (имя функции)",
+      "prompt": "Какая функция pandas строит таблицу частот двух категориальных столбцов? Напиши только имя функции — без pd. и скобок.",
       "answer_type": "short",
       "concept_weights": {"summary_tables": 1.0},
       "difficulty": 0.65,
@@ -854,7 +869,7 @@
     },
     {
       "id": 38,
-      "prompt": "Какая библиотека строит графики и обычно используется вместе с pandas? (одно слово)",
+      "prompt": "Какая библиотека строит графики и обычно используется вместе с pandas? Напиши только имя библиотеки — без точек.",
       "answer_type": "short",
       "concept_weights": {"visualization_basics": 1.0},
       "difficulty": 0.5,

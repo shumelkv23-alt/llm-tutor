@@ -26,12 +26,14 @@ def test_every_node_has_two_auto_checked_items(conn, settings) -> None:
 
 
 def test_choice_items_have_answer_among_options(conn, settings) -> None:
+    """Варианты однозначны: верный есть, он один и не дублируется."""
     load_seed(conn)
 
     for item in repos.get_items(conn):
         if item.answer_type == "choice":
             assert len(item.options) >= 3, item.id
-            assert item.options[int(item.answer)] in item.options
+            assert len(set(item.options)) == len(item.options), item.id
+            assert item.options[int(item.answer)], item.id
 
 
 def test_short_items_have_reference_answer(conn, settings) -> None:
