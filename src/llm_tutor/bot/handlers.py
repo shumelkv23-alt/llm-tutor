@@ -138,10 +138,13 @@ async def _run_turn(
     user_text: str,
     *,
     settings: Settings | None,
+    allow_intents: bool = True,
 ) -> TurnReply:
     """Ход с подстраховкой: неожиданный сбой не оставит ученика без ответа."""
     try:
-        return await handle_turn(conn, client, model, user_text, settings=settings)
+        return await handle_turn(
+            conn, client, model, user_text, settings=settings, allow_intents=allow_intents
+        )
     except Exception:  # noqa: BLE001 — бот не должен молчать
         logger.exception("Неожиданный сбой хода")
         return TurnReply(text=LLM_FAILURE_REPLY)
@@ -237,8 +240,15 @@ def make_router(
             )
             await callback.answer()
             return
+        # Подпись варианта — это ответ, а не реплика ученика: намерение из неё
+        # не ловим, иначе вариант «Пропустить» ушёл бы в /skip.
         reply = await _run_turn(
-            conn, client, model, item.options[index], settings=settings
+            conn,
+            client,
+            model,
+            item.options[index],
+            settings=settings,
+            allow_intents=False,
         )
         await callback.message.answer(
             render.fit(render.escape(reply.text)),

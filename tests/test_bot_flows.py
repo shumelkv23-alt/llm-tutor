@@ -6,12 +6,13 @@ from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardMarkup
 
-from llm_tutor.bot import menu
+from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import INTRO_TEXT
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
+from llm_tutor.core.turn import TurnReply
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.student import beta, survey
@@ -416,3 +417,31 @@ async def test_start_before_survey_sends_intro_with_menu_then_question(
     assert intro_text == INTRO_TEXT
     assert intro_markup == menu.main_menu()          # меню прикреплено к представлению
     assert message.sent[1][0] == survey.SURVEY_QUESTIONS[0].text
+
+
+# --- намерение из текста (Срез 15) ---
+
+
+async def test_answer_callback_disables_intents(conn, settings, monkeypatch) -> None:
+    """Нажатие варианта ответа не трактуется как намерение (Срез 15)."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(update={"pending_item_id": 1, "current_node_id": "pandas_intro"}),
+    )
+    seen: dict = {}
+
+    async def spy(*args, **kwargs):
+        seen.update(kwargs)
+        return TurnReply(text="ок")
+
+    monkeypatch.setattr(handlers, "handle_turn", spy)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    on_answer = _named(router, "callback_query", "on_answer")
+
+    await on_answer(FakeCallback("answer:0", FakeMessage()))
+
+    assert seen.get("allow_intents") is False
