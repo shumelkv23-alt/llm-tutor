@@ -528,6 +528,408 @@
       "options": [],
       "answer": null,
       "rubric_id": 2
+    },
+    {
+      "id": 11,
+      "prompt": "Каким ключевым словом в Python объявляется функция? (одно слово)",
+      "answer_type": "short",
+      "concept_weights": {"python_basics": 1.0},
+      "difficulty": 0.25,
+      "options": [],
+      "answer": "def"
+    },
+    {
+      "id": 12,
+      "prompt": "Что вернёт np.arange(3)?",
+      "answer_type": "choice",
+      "concept_weights": {"numpy_basics": 1.0},
+      "difficulty": 0.35,
+      "options": ["array([1, 2, 3])", "array([0, 1, 2])", "array([3])", "3"],
+      "answer": "1"
+    },
+    {
+      "id": 13,
+      "prompt": "Какая библиотека даёт структуры Series и DataFrame?",
+      "answer_type": "choice",
+      "concept_weights": {"pandas_intro": 1.0},
+      "difficulty": 0.25,
+      "options": ["numpy", "matplotlib", "pandas", "scikit-learn"],
+      "answer": "2"
+    },
+    {
+      "id": 14,
+      "prompt": "Как у Series получить её значения без индекса?",
+      "answer_type": "choice",
+      "concept_weights": {"pandas_series": 1.0},
+      "difficulty": 0.3,
+      "options": [".index", ".values", ".columns", ".shape"],
+      "answer": "1"
+    },
+    {
+      "id": 15,
+      "prompt": "Что вернёт df.shape для таблицы с 5 строками и 3 столбцами?",
+      "answer_type": "choice",
+      "concept_weights": {"pandas_dataframe": 1.0},
+      "difficulty": 0.3,
+      "options": ["(3, 5)", "5", "(5, 3)", "8"],
+      "answer": "2"
+    },
+    {
+      "id": 16,
+      "prompt": "Каким аргументом pd.read_csv задают разделитель полей? (имя аргумента)",
+      "answer_type": "short",
+      "concept_weights": {"read_csv": 1.0},
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "sep"
+    },
+    {
+      "id": 17,
+      "prompt": "Какой индексатор pandas выбирает строки по номеру позиции: loc или iloc?",
+      "answer_type": "short",
+      "concept_weights": {"indexing_loc_iloc": 1.0},
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "iloc"
+    },
+    {
+      "id": 18,
+      "prompt": "Что вернёт df.groupby('city')['age'].mean()?",
+      "answer_type": "choice",
+      "concept_weights": {"groupby": 1.0},
+      "difficulty": 0.6,
+      "options": [
+        "Средний age по всей таблице",
+        "Число строк по каждому городу",
+        "Отсортированный по городу df",
+        "Средний age по каждому городу"
+      ],
+      "answer": "3"
+    },
+    {
+      "id": 19,
+      "prompt": "В каком порядке value_counts() возвращает значения по умолчанию?",
+      "answer_type": "choice",
+      "concept_weights": {"value_counts": 1.0},
+      "difficulty": 0.4,
+      "options": [
+        "По алфавиту",
+        "По убыванию частоты",
+        "По возрастанию частоты",
+        "В порядке появления в данных"
+      ],
+      "answer": "1"
+    },
+    {
+      "id": 20,
+      "prompt": "Что показывает df.head(3)?",
+      "answer_type": "choice",
+      "concept_weights": {"df_inspect": 1.0},
+      "difficulty": 0.35,
+      "options": [
+        "Первые три строки",
+        "Три последние строки",
+        "Три случайные строки",
+        "Три столбца"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 21,
+      "prompt": "Какой метод DataFrame показывает типы столбцов и число непустых значений? (имя метода)",
+      "answer_type": "short",
+      "concept_weights": {"df_inspect": 1.0},
+      "difficulty": 0.35,
+      "options": [],
+      "answer": "info"
+    },
+    {
+      "id": 22,
+      "prompt": "Что по умолчанию считает df.describe() для числовых столбцов?",
+      "answer_type": "choice",
+      "concept_weights": {"describe_stats": 1.0},
+      "difficulty": 0.4,
+      "options": [
+        "count, mean, медиану и моду",
+        "Только mean и std",
+        "count, mean, std, min, квартили и max",
+        "Пропуски и типы столбцов"
+      ],
+      "answer": "2"
+    },
+    {
+      "id": 23,
+      "prompt": "Что вернёт df['age'].mean(), если в столбце есть пропуски (NaN)?",
+      "answer_type": "choice",
+      "concept_weights": {"describe_stats": 1.0},
+      "difficulty": 0.4,
+      "options": [
+        "Ошибку",
+        "Среднее по непустым значениям",
+        "Среднее, где NaN считается нулём",
+        "NaN"
+      ],
+      "answer": "1"
+    },
+    {
+      "id": 24,
+      "prompt": "Каким методом столбцу pandas меняют тип данных? (имя метода)",
+      "answer_type": "short",
+      "concept_weights": {"dtype_conversion": 1.0},
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "astype"
+    },
+    {
+      "id": 25,
+      "prompt": "Что сделает pd.to_numeric(col, errors='coerce') со значением, которое не парсится в число?",
+      "answer_type": "choice",
+      "concept_weights": {"dtype_conversion": 1.0},
+      "difficulty": 0.45,
+      "options": [
+        "Оставит строку как есть",
+        "Бросит исключение",
+        "Заменит его на 0",
+        "Заменит его на NaN"
+      ],
+      "answer": "3"
+    },
+    {
+      "id": 26,
+      "prompt": "Что вернёт df[df['age'] > 30]?",
+      "answer_type": "choice",
+      "concept_weights": {"boolean_indexing": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Столбцы, где есть значения больше 30",
+        "True/False по каждой строке",
+        "Строки, где age больше 30",
+        "Число строк с age больше 30"
+      ],
+      "answer": "2"
+    },
+    {
+      "id": 27,
+      "prompt": "Как объединить два условия маски по «И»?",
+      "answer_type": "choice",
+      "concept_weights": {"boolean_indexing": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Оператором &, и каждое условие — в скобках",
+        "Словом and",
+        "Символами &&",
+        "Словом AND"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 28,
+      "prompt": "Чем sort_values отличается от sort_index?",
+      "answer_type": "choice",
+      "concept_weights": {"sorting": 1.0},
+      "difficulty": 0.4,
+      "options": [
+        "Это синонимы",
+        "sort_values — по значениям столбца, sort_index — по индексу",
+        "sort_values — по индексу, sort_index — по значениям",
+        "sort_index сортирует только строки"
+      ],
+      "answer": "1"
+    },
+    {
+      "id": 29,
+      "prompt": "Какой аргумент sort_values включает сортировку по убыванию? (имя аргумента)",
+      "answer_type": "short",
+      "concept_weights": {"sorting": 1.0},
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "ascending"
+    },
+    {
+      "id": 30,
+      "prompt": "Что делает df['name'].apply(str.upper)?",
+      "answer_type": "choice",
+      "concept_weights": {"apply_functions": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Переименовывает столбец в NAME",
+        "Приводит столбец к типу str",
+        "Считает число заглавных букв",
+        "Применяет str.upper к каждому значению столбца"
+      ],
+      "answer": "3"
+    },
+    {
+      "id": 31,
+      "prompt": "Что передаётся в функцию внутри Series.apply по умолчанию?",
+      "answer_type": "choice",
+      "concept_weights": {"apply_functions": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Одно значение элемента",
+        "Вся Series целиком",
+        "Индекс элемента",
+        "Имя столбца"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 32,
+      "prompt": "Что вернёт df.groupby('city')['age'].agg(['mean', 'max'])?",
+      "answer_type": "choice",
+      "concept_weights": {"agg_functions": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Два отдельных DataFrame",
+        "Одно число",
+        "Таблицу со столбцами mean и max по городам",
+        "Ошибку: agg берёт одну функцию"
+      ],
+      "answer": "2"
+    },
+    {
+      "id": 33,
+      "prompt": "Чем df.groupby('city')['age'].mean() отличается от df.groupby('city').mean()?",
+      "answer_type": "choice",
+      "concept_weights": {"agg_functions": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Считает среднее по всем числовым столбцам",
+        "Считает среднее только по столбцу age",
+        "Ничего не меняет",
+        "Падает с ошибкой"
+      ],
+      "answer": "1"
+    },
+    {
+      "id": 34,
+      "prompt": "Какая функция pandas строит таблицу частот двух категориальных столбцов? (имя функции)",
+      "answer_type": "short",
+      "concept_weights": {"summary_tables": 1.0},
+      "difficulty": 0.65,
+      "options": [],
+      "answer": "crosstab"
+    },
+    {
+      "id": 35,
+      "prompt": "Что вернёт df.pivot_table(values='age', index='city', columns='gender', aggfunc='mean')?",
+      "answer_type": "choice",
+      "concept_weights": {"summary_tables": 1.0},
+      "difficulty": 0.65,
+      "options": [
+        "Список городов",
+        "Средний age по парам city × gender",
+        "Отсортированный по возрасту df",
+        "Число пропусков по городам"
+      ],
+      "answer": "1"
+    },
+    {
+      "id": 36,
+      "prompt": "Что делает df.assign(total=df['price'] * df['qty'])?",
+      "answer_type": "choice",
+      "concept_weights": {"df_transformations": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "Меняет df на месте",
+        "Добавляет строку",
+        "Считает сумму столбцов",
+        "Возвращает копию df с новым столбцом total"
+      ],
+      "answer": "3"
+    },
+    {
+      "id": 37,
+      "prompt": "Чем df.rename(columns={'a': 'b'}) отличается от df.columns = ['b']?",
+      "answer_type": "choice",
+      "concept_weights": {"df_transformations": 1.0},
+      "difficulty": 0.55,
+      "options": [
+        "rename переименовывает по словарю и возвращает копию, а присваивание заменяет все имена сразу",
+        "Это одно и то же",
+        "rename меняет данные, а присваивание — имена",
+        "rename работает только с индексом"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 38,
+      "prompt": "Какая библиотека строит графики и обычно используется вместе с pandas? (одно слово)",
+      "answer_type": "short",
+      "concept_weights": {"visualization_basics": 1.0},
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "matplotlib"
+    },
+    {
+      "id": 39,
+      "prompt": "Что рисует plt.scatter(x, y)?",
+      "answer_type": "choice",
+      "concept_weights": {"visualization_basics": 1.0},
+      "difficulty": 0.5,
+      "options": [
+        "Линию по точкам",
+        "Столбчатую диаграмму",
+        "Точки (x, y) на плоскости",
+        "Гистограмму"
+      ],
+      "answer": "2"
+    },
+    {
+      "id": 40,
+      "prompt": "С чего начинается разведочный анализ таблицы?",
+      "answer_type": "choice",
+      "concept_weights": {"eda_workflow": 1.0},
+      "difficulty": 0.7,
+      "options": [
+        "С обучения модели",
+        "С осмотра данных: размер, типы, пропуски",
+        "С удаления выбросов",
+        "С построения финальных графиков"
+      ],
+      "answer": "1"
+    },
+    {
+      "id": 41,
+      "prompt": "Зачем на этапе EDA смотрят describe() и распределения?",
+      "answer_type": "choice",
+      "concept_weights": {"eda_workflow": 1.0},
+      "difficulty": 0.7,
+      "options": [
+        "Чтобы сразу обучить модель",
+        "Чтобы удалить половину столбцов",
+        "Чтобы посчитать точность модели",
+        "Чтобы заметить выбросы и странные значения до модели"
+      ],
+      "answer": "3"
+    },
+    {
+      "id": 42,
+      "prompt": "Что чаще всего предсказывают в задаче оттока клиентов (churn)?",
+      "answer_type": "choice",
+      "concept_weights": {"churn_eda_case": 1.0},
+      "difficulty": 0.75,
+      "options": [
+        "Уйдёт ли клиент",
+        "Сколько клиент потратит",
+        "Сколько клиентов всего",
+        "Какой у клиента город"
+      ],
+      "answer": "0"
+    },
+    {
+      "id": 43,
+      "prompt": "Что обычно делают с категориальным признаком перед подачей в модель?",
+      "answer_type": "choice",
+      "concept_weights": {"churn_eda_case": 1.0},
+      "difficulty": 0.75,
+      "options": [
+        "Удаляют всегда",
+        "Кодируют числами (one-hot или метками)",
+        "Заменяют на среднее",
+        "Оставляют строкой — модель поймёт"
+      ],
+      "answer": "1"
     }
   ],
   "rubrics": [

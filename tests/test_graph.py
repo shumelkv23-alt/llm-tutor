@@ -168,6 +168,13 @@ def _write_trimmed_seed(tmp_path, *, drop_nodes=(), drop_edges=()) -> "Path":
         and e["from_id"] not in drop_nodes
         and e["to_id"] not in drop_nodes
     ]
+    # Задания убранных узлов тоже уходят: ссылка на несуществующий концепт —
+    # ошибка seed, а не «безобидный лишний пункт банка».
+    data["items"] = [
+        item
+        for item in data["items"]
+        if not set(item["concept_weights"]) & set(drop_nodes)
+    ]
     path = tmp_path / "seed.json"
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return path
@@ -263,14 +270,25 @@ def test_load_seed_deactivates_concept_with_events(conn, tmp_path) -> None:
 
 
 def test_nodes_without_items_reports_gate_nodes() -> None:
-    """Несущий узел без задания запирал бы маршрут — о нём надо предупреждать."""
+    """Несущий узел без задания запирал бы маршрут — о нём надо предупреждать.
+
+    Сам seed дыр не имеет (срез 20: банк покрывает все узлы), поэтому случай
+    собирается руками — иначе проверка перестала бы что-либо проверять.
+    """
     seed = load_seed_data(DEFAULT_SEED_PATH)
+    assert nodes_without_items(seed) == []
 
-    missing = nodes_without_items(seed)
+    trimmed = seed.model_copy(
+        update={
+            "items": [
+                item
+                for item in seed.items
+                if "numpy_basics" not in item.concept_weights
+            ]
+        }
+    )
 
-    assert "python_basics" not in missing  # корень банком покрыт
-    assert missing  # но несущие узлы без заданий ещё есть — о них предупреждаем
-    assert "churn_eda_case" not in missing  # лист без зависимых — не проблема
+    assert nodes_without_items(trimmed) == ["numpy_basics"]
 
 
 def test_seed_rejects_unknown_rubric_reference(tmp_path) -> None:

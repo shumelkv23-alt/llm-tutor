@@ -57,6 +57,12 @@ def test_start_verification_with_removed_node_answers_honestly(conn, settings) -
 def test_start_verification_without_items_answers_honestly(conn, settings) -> None:
     """У узла нет заданий — честный отказ, а не имитация проверки."""
     load_seed(conn)
+    # Банк среза 20 покрывает все узлы: пустой узел делаем руками — случай
+    # остаётся страховкой на случай правки seed.
+    conn.execute(
+        "UPDATE items SET active = 0 WHERE concept_weights LIKE '%visualization_basics%'"
+    )
+    conn.commit()
     _set_state(conn, current_node_id="visualization_basics")
 
     reply = verify.start_verification(conn, now=1.0, settings=settings)

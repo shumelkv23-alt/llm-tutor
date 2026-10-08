@@ -175,7 +175,7 @@ async def test_answer_is_checked_without_llm(conn, settings) -> None:
     assert reply_.text  # задание выдано
     assert "Верно" in reply.text
     assert client.calls == []  # проверял код, не модель
-    assert _state(conn).pending_item_id is None
+    assert _state(conn).pending_item_id != item.id  # отвеченное задание снято
     assert any(event.source == "checked" for event in repos.get_events(conn))
 
 
@@ -429,6 +429,12 @@ def test_task_reply_carries_options_for_choice_task(conn, settings) -> None:
 async def test_node_without_items_says_so_honestly(conn, settings) -> None:
     """По узлу нет заданий — бот честно говорит об этом и не рвёт узел."""
     load_seed(conn)
+    # Банк среза 20 покрывает все узлы: пустой узел делаем руками — случай
+    # остаётся страховкой на случай правки seed.
+    conn.execute(
+        "UPDATE items SET active = 0 WHERE concept_weights LIKE '%describe_stats%'"
+    )
+    conn.commit()
     _set_state(conn, current_node_id="describe_stats", phase="practice")
 
     reply = start_practice_reply(conn, now=1.0, settings=settings)
@@ -594,12 +600,17 @@ async def test_verify_mode_does_not_repeat_item_in_one_pass(conn, settings) -> N
 async def test_verify_mode_reports_exhausted_pass(conn, settings) -> None:
     """Задания узла кончились — честный отказ, режим снят."""
     load_seed(conn)
+    used = [
+        item.id
+        for item in repos.get_items(conn)
+        if "pandas_intro" in item.concept_weights
+    ]
     _set_state(
         conn,
         current_node_id="pandas_intro",
         mode="verify",
         phase="practice",
-        verify_item_ids=[1],
+        verify_item_ids=used,
     )
 
     reply = start_practice_reply(conn, now=1.0, settings=settings)

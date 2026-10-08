@@ -277,9 +277,14 @@ def test_verification_item_uses_repeat_if_nothing_fresh(conn, settings) -> None:
 def test_verification_item_skips_already_used(conn, settings) -> None:
     """В одном проходе одно задание не выдаётся дважды."""
     load_seed(conn)
+    used = frozenset(
+        item.id
+        for item in repos.get_items(conn)
+        if "pandas_intro" in item.concept_weights
+    )
 
     question = diagnostic.verification_item(
-        conn, "pandas_intro", used_item_ids=frozenset({1}), now=1.0, settings=settings
+        conn, "pandas_intro", used_item_ids=used, now=1.0, settings=settings
     )
 
     assert question is None
@@ -288,6 +293,12 @@ def test_verification_item_skips_already_used(conn, settings) -> None:
 def test_verification_item_without_items_for_node(conn, settings) -> None:
     """У узла без заданий подбирать нечего."""
     load_seed(conn)
+    # Банк среза 20 покрывает все узлы: пустой узел делаем руками — случай
+    # остаётся страховкой на случай правки seed.
+    conn.execute(
+        "UPDATE items SET active = 0 WHERE concept_weights LIKE '%visualization_basics%'"
+    )
+    conn.commit()
 
     assert (
         diagnostic.verification_item(
