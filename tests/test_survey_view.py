@@ -61,3 +61,15 @@ def test_summary_lists_every_block() -> None:
 
     assert text.startswith("✅ Понял тебя")
     assert all(f"• {block.title} — впервые вижу" in text for block in survey.BLOCKS)
+
+
+def test_summary_promises_check_when_something_is_confident() -> None:
+    answers = Progress().answer(survey.LEVEL_CONFIDENT).answer(1).answer(1).final_answers()
+
+    assert survey_bot.CLAIMED_NOTE in survey_bot.summary_text(answers)
+
+
+def test_summary_has_no_check_note_without_confident_blocks() -> None:
+    answers = Progress().answer(survey.LEVEL_FROM_SCRATCH).final_answers()
+
+    assert survey_bot.CLAIMED_NOTE not in survey_bot.summary_text(answers)

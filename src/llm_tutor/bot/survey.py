@@ -40,6 +40,7 @@ BACK_LABEL = "‹ Назад"
 BUTTON_HINT_REPLY = "Ответь кнопкой в сообщении выше 👆"
 STALE_CLICK_TOAST = "Этот вопрос уже позади"
 DONE_TOAST = "Анкета уже пройдена"
+CLAIMED_NOTE = "Знакомое не пропускаю — в конце проверим коротким тестом."
 
 
 class SurveyFlow(StatesGroup):
@@ -101,7 +102,10 @@ def summary_text(answers: Mapping[str, int]) -> str:
         f"• {render.escape(block.title)} — {survey.SELF_LEVELS[answers[block.key]].lower()}"
         for block in survey.BLOCKS
     ]
-    return "✅ Понял тебя:\n" + "\n".join(lines)
+    text = "✅ Понял тебя:\n" + "\n".join(lines)
+    if any(index == survey.CONFIDENT_INDEX for index in answers.values()):
+        text = f"{text}\n\n{CLAIMED_NOTE}"
+    return text
 
 
 def _progress(data: Mapping) -> survey.Progress | None:

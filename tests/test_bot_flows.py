@@ -18,6 +18,7 @@ from llm_tutor.bot import survey as survey_bot
 from llm_tutor.bot.survey import SurveyFlow, start_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.core.turn import TurnReply
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import BUSY_REPLY
@@ -846,6 +847,40 @@ async def test_answer_from_stale_keyboard_is_refused(conn, settings) -> None:
     assert "неактуально" in message.last_text
     assert len(repos.get_events(conn)) == events_before
     assert _state(conn).pending_item_id == current
+
+
+def _lesson_node(conn) -> str:
+    return repos.get_session_state(conn, repos.get_open_session(conn)).current_node_id
+
+
+async def test_lesson_starts_where_steps_list_says(conn, settings) -> None:
+    """Первый шаг списка — тот узел, с которого реально начался урок."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, survey.SELF_LEVELS[1])
+    await _press(click, intro, state, survey.SELF_LEVELS[0])
+
+    steps_text = next(text for text, _ in intro.sent if text.startswith("📋"))
+    first_line = next(line for line in steps_text.splitlines() if line.startswith("1. "))
+    node = CourseGraph.load(conn).concept(_lesson_node(conn))
+    assert node.name in first_line
+    assert _lesson_node(conn) not in survey.claimed_concepts(conn)
+
+
+async def test_all_confident_starts_with_check(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+
+    steps_text = next(text for text, _ in intro.sent if text.startswith("📋"))
+    assert "Начинаем с проверки" in steps_text
+    assert "🔍" in steps_text
+    assert "Проверка" in intro.sent[-1][0]  # первое задание прохода
 
 
 async def test_survey_crafted_callback_is_answered(conn, settings) -> None:

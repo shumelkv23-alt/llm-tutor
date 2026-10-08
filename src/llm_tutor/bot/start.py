@@ -33,6 +33,9 @@ INTRO_TEXT = (
     "Пара коротких вопросов — и подберу, с чего начать."
 )
 
+LESSON_LEAD = "Начинаем с «{name}» — сейчас коротко объясню и покажу пример."
+CHECK_LEAD = "Начинаем с проверки «{name}» — пара быстрых вопросов."
+
 WELCOME_BACK_TEMPLATE = "👋 С возвращением! Продолжаем «{name}»."
 WELCOME_BACK_IDLE = "👋 С возвращением! Напиши что угодно — продолжим."
 
@@ -73,9 +76,10 @@ async def begin_lesson(
         goal_concept_id=route_mod.goal_for(conn, graph),
         settings=settings,
     )
-    upcoming = [
-        step for step in route.steps if step.status != "closed"
-    ][: render.PLAN_STEPS]
+    # Первый шаг списка — ровно тот узел, с которого начнётся урок: его же
+    # передаём в resume_reply, иначе планировщик мог бы выбрать другой.
+    first = route_mod.next_node_id(conn, graph, route, settings=settings)
+    upcoming = route_mod.upcoming(route, first, limit=render.PLAN_STEPS)
     if not upcoming:
         await message.answer(
             "Всё доступное уже освоено — можно свериться: /plan.",
@@ -88,10 +92,10 @@ async def begin_lesson(
         if len(upcoming) == render.PLAN_STEPS
         else "📋 Что впереди:"
     )
-    first = render.escape(graph.concept(upcoming[0].concept_id).name)
+    name = render.escape(graph.concept(first).name)
+    lead = (CHECK_LEAD if upcoming[0].status == "claimed" else LESSON_LEAD).format(name=name)
     await message.answer(
-        f"{head}\n\n{render.render_steps(graph, upcoming, marks=False)}\n\n"
-        f"Начинаем с «{first}» — сейчас коротко объясню и покажу пример.",
+        f"{head}\n\n{render.render_steps(graph, upcoming)}\n\n{lead}",
         parse_mode=render.PARSE_MODE,
         reply_markup=menu.main_menu(),
     )
@@ -99,8 +103,8 @@ async def begin_lesson(
     # импорт дал бы цикл.
     from llm_tutor.bot.handlers import _send_reply
 
-    # Урок начинается сразу: объяснение первым сообщением, первый тест —
-    # вторым, ждать реплики ученика не нужно.
     async with typing_action(message):
-        reply = await resume_reply(conn, client, model, settings=settings)
+        reply = await resume_reply(
+            conn, client, model, settings=settings, start_node_id=first
+        )
     await _send_reply(conn, message, reply)
