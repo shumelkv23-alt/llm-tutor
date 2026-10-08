@@ -451,12 +451,21 @@ async def test_node_without_items_says_so_honestly(conn, settings) -> None:
 # --- фиксы ревью Срез 10 ---
 
 
-async def test_answer_after_asking_is_not_clean(conn, settings) -> None:
-    """Спросил про задание — ответ уже не «без подсказок», что бы ни говорила модель."""
+async def test_answer_after_asking_is_not_clean_in_verify_pass(conn, settings) -> None:
+    """В проходе спросил про задание — ответ уже не «без подсказок».
+
+    В уроке это правило среза 21 отменено: там бот объясняет первым по своей
+    схеме, и серию считают верные ответы (§5.2) — см. соседние тесты.
+    """
     load_seed(conn)
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
     item = repos.get_item(conn, 6)
-    _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
+    _set_state(
+        conn,
+        pending_item_id=item.id,
+        current_node_id="python_basics",
+        mode="verify",
+    )
 
     # модель отдаёт разбор и при этом опускает уровень до нуля
     await handle_turn(
@@ -784,6 +793,41 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     assert reply.tail  # задание отдельным сообщением
     assert _state(conn).pending_item_id is not None
     assert _state(conn).phase == "practice"
+
+
+async def test_lesson_answer_after_help_still_counts(conn, settings) -> None:
+    """В уроке бот сам объясняет первым — подсказка серию не обнуляет."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", task_hinted=True, node_streak=1)
+    _set_state(conn, pending_item_id=9)
+    client = _FakeGraderClient(_full_verdict(conn, 9))
+
+    reply = await handle_turn(
+        conn, client, "m", "groupby по ключу", now=1.0, settings=settings
+    )
+
+    # Ответ после помощи дошёл до порога серии и закрыл узел: в уроке серию
+    # считают верные ответы, а не только чистые.
+    assert "закрыта" in reply.text
+    assert _state(conn).current_node_id != "groupby"
+
+
+async def test_verify_pass_answer_after_help_does_not_count(conn, settings) -> None:
+    """В проходе подсказка по-прежнему обнуляет серию."""
+    load_seed(conn)
+    _set_state(
+        conn, current_node_id="groupby", mode="verify", task_hinted=True, node_streak=1
+    )
+    _set_state(conn, pending_item_id=9)
+    client = _FakeGraderClient(_full_verdict(conn, 9))
+
+    reply = await handle_turn(
+        conn, client, "m", "groupby по ключу", now=1.0, settings=settings
+    )
+
+    assert _state(conn).node_streak == 0
+    assert "закрыта" not in reply.text
+    assert _state(conn).current_node_id == "groupby"
 
 
 async def test_lesson_second_test_differs_from_first(conn, settings) -> None:

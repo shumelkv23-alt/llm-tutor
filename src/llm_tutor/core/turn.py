@@ -256,7 +256,12 @@ async def _answer_branch(
     )
     # Помощь по этому заданию — факт, а не выбранный моделью уровень: спросил
     # или попросил глубины, значит ответ не «без подсказок».
-    hinted = state.task_hinted or state.hint_level > 0
+    #
+    # Чистота нужна проверочному проходу: там ученик утверждает, что тему знает,
+    # и помощь обесценивает доказательство. В уроке бот объясняет первым по своей
+    # же схеме (§5.2), поэтому просьба о помощи перестала быть признаком «списал»
+    # — серию считают верные ответы.
+    hinted = (state.task_hinted or state.hint_level > 0) and state.mode == "verify"
     passed = result.score >= diagnostic.SUCCESS_SCORE
     new_state = guide.register_answer(
         new_state, correct=passed, hinted=hinted, settings=settings
