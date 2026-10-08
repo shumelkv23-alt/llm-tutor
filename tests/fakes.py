@@ -1,5 +1,9 @@
 """Общие подставные объекты для тестов."""
 
+import asyncio
+import itertools
+from types import SimpleNamespace
+
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
@@ -22,14 +26,43 @@ class NullSession(AiohttpSession):
 
 
 class FakeMessage:
-    """Подставное сообщение: помнит всё, что бот в него отправил."""
+    """Подставное сообщение: помнит всё, что бот в него отправил или поправил.
 
-    def __init__(self, text: str = "") -> None:
+    ``answer`` возвращает новое подставное сообщение — как настоящий
+    ``Message.answer``: у отправленного свой ``message_id``, по нему анкета
+    привязывает нажатия. ``log`` — порядок действий (``answer`` / ``edit`` /
+    ``callback``), чтобы проверять, что «часики» гаснут раньше правки.
+    """
+
+    _ids = itertools.count(1)
+
+    def __init__(self, text: str = "", *, log: list[str] | None = None) -> None:
         self.text = text
+        self.message_id = next(FakeMessage._ids)
         self.sent: list[tuple[str, InlineKeyboardMarkup | None]] = []
+        self.edits: list[tuple[str, InlineKeyboardMarkup | None]] = []
+        self.reply_markup = None
+        self.log: list[str] = [] if log is None else log
+        self.bot = None
+        self.chat = SimpleNamespace(id=1)
 
-    async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
+    async def answer(self, text: str, reply_markup=None, **kwargs) -> "FakeMessage":
         self.sent.append((text, reply_markup))
+        self.log.append("answer")
+        sent = FakeMessage(text, log=self.log)
+        sent.reply_markup = reply_markup
+        return sent
+
+    async def edit_text(self, text: str, reply_markup=None, **kwargs) -> "FakeMessage":
+        self.edits.append((text, reply_markup))
+        self.log.append("edit")
+        self.text = text
+        self.reply_markup = reply_markup
+        return self
+
+    async def edit_reply_markup(self, reply_markup=None, **kwargs) -> "FakeMessage":
+        self.reply_markup = reply_markup
+        return self
 
     @property
     def last_text(self) -> str:
@@ -43,9 +76,15 @@ class FakeCallback:
         self.data = data
         self.message = message
         self.answered = False
+        self.answer_text: str | None = None
 
-    async def answer(self, *args, **kwargs) -> None:
+    async def answer(self, text: str | None = None, show_alert: bool = False, **kwargs) -> None:
+        # Уступаем цикл, как настоящий сетевой вызов: тесты гонок проверяют,
+        # что решение по нажатию принято ДО него.
+        await asyncio.sleep(0)
         self.answered = True
+        self.answer_text = text
+        self.message.log.append("callback")
 
 
 def _fsm() -> FSMContext:

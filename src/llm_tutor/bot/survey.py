@@ -4,6 +4,8 @@
 прервать на любом вопросе, ничего не сломав.
 """
 
+from collections.abc import Mapping
+
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -14,7 +16,7 @@ from aiogram.types import (
     Message,
 )
 
-from llm_tutor.bot import start
+from llm_tutor.bot import render, start
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.student import survey
@@ -42,6 +44,69 @@ def _keyboard(question: survey.SurveyQuestion) -> InlineKeyboardMarkup:
             for index, option in enumerate(question.options)
         ]
     )
+
+
+GO = "go"
+BACK = "back"
+GO_DATA = f"{CALLBACK_PREFIX}:{GO}"
+GO_LABEL = "▶️ Поехали"
+BACK_LABEL = "‹ Назад"
+
+
+def _button(text: str, data: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=data)
+
+
+def _data(step: int, choice: int | str) -> str:
+    """``callback_data`` с номером шага: клик по старой клавиатуре узнаваем."""
+    return f"{CALLBACK_PREFIX}:{step}:{choice}"
+
+
+def intro_view() -> tuple[str, InlineKeyboardMarkup]:
+    """Приветствие с единственной кнопкой «▶️ Поехали»."""
+    return start.INTRO_TEXT, InlineKeyboardMarkup(
+        inline_keyboard=[[_button(GO_LABEL, GO_DATA)]]
+    )
+
+
+def question_view(progress: survey.Progress) -> tuple[str, InlineKeyboardMarkup]:
+    """Текущий вопрос (готовый HTML) и его клавиатура.
+
+    Вызывать только на незаконченной анкете: у законченной вопроса нет.
+    """
+    key = progress.next_key()
+    step = progress.step
+    if key == survey.LEVEL_KEY:
+        text = render.escape(survey.LEVEL_QUESTION)
+        rows = [
+            [_button(label, _data(step, index))]
+            for index, label in enumerate(survey.LEVEL_OPTIONS)
+        ]
+    else:
+        block = survey.block_by_key(key)
+        number, total = progress.position()
+        bar = "▰" * number + "▱" * (total - number)
+        text = (
+            f"Вопрос {number} из {total}  {bar}\n\n"
+            f"<b>{render.escape(block.question)}</b>\n{render.escape(block.example)}"
+        )
+        buttons = [
+            _button(label, _data(step, index))
+            for index, label in enumerate(survey.SELF_LEVELS)
+        ]
+        rows = [buttons[:2], buttons[2:]]
+    if step > 0:
+        rows.append([_button(BACK_LABEL, _data(step, BACK))])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def summary_text(answers: Mapping[str, int]) -> str:
+    """Сводка «как я тебя понял» (готовый HTML) — финал сообщения анкеты."""
+    lines = [
+        f"• {render.escape(block.title)} — {survey.SELF_LEVELS[answers[block.key]].lower()}"
+        for block in survey.BLOCKS
+    ]
+    return "✅ Понял тебя:\n" + "\n".join(lines)
 
 
 async def ask(message: Message, state: FSMContext, index: int = 0) -> None:
