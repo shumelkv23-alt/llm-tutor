@@ -89,3 +89,21 @@ async def test_route_review_text_gets_hint(conn, settings) -> None:
     await on_text(message)
 
     assert "кнопкой" in message.last_text
+
+
+async def test_route_fix_rolls_back_on_failure(conn, settings, monkeypatch) -> None:
+    """Сбой в середине правки не оставляет половину записи."""
+    load_seed(conn)
+    router = make_onboarding_router(conn, settings)
+    on_know = _named(router, "callback_query", "on_route_know")
+    monkeypatch.setattr(
+        "llm_tutor.bot.onboarding.route_mod.refresh",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    message = FakeMessage()
+
+    await on_know(FakeCallback("route:know:read_csv", message), _fsm())
+
+    assert repos.get_events(conn) == []
+    assert repos.get_mastery(conn, "read_csv") is None
+    assert "пошло не так" in message.last_text

@@ -98,17 +98,31 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
     router = Router()
 
     def _record(node_id: str, *, correct: bool) -> None:
-        """Слабое свидетельство + пересчёт маршрута одним коммитом."""
+        """Слабое свидетельство + пересчёт маршрута одним коммитом.
+
+        Свидетельство и снимок маршрута пишутся общей транзакцией: сбой
+        посередине не оставит начисленную самооценку без пересчёта (повторное
+        нажатие начислило бы её второй раз).
+        """
         stamp = time.time()
         session_id = repos.ensure_open_session(conn, stamp)
         state = repos.get_session_state(conn, session_id)
-        self_report.apply(conn, node_id, correct=correct, now=stamp, settings=settings)
         graph = CourseGraph.load(conn)
-        fresh_route, _ = route_mod.refresh(conn, state, graph, now=stamp, settings=settings)
-        repos.update_session_state(
-            conn, session_id, state.model_copy(update={"route": fresh_route})
-        )
-        conn.commit()
+        try:
+            self_report.apply(
+                conn, node_id, correct=correct, now=stamp, settings=settings, commit=False
+            )
+            fresh_route, _ = route_mod.refresh(conn, state, graph, now=stamp, settings=settings)
+            repos.update_session_state(
+                conn,
+                session_id,
+                state.model_copy(update={"route": fresh_route}),
+                commit=False,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
     @router.callback_query(OnboardingFlow.route_review, F.data.startswith("route:node:"))
     async def on_route_node(callback: CallbackQuery) -> None:

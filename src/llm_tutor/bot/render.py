@@ -62,6 +62,24 @@ def _progress_bar(closed: int, total: int, *, width: int = _PROGRESS_WIDTH) -> s
     return "█" * filled + "░" * (width - filled)
 
 
+def _anchored(steps: list) -> list:
+    """Шаги с опорой для окна: без текущего узла — вокруг первого впереди.
+
+    У нового ученика текущего узла ещё нет, и окно иначе отдало бы все 21 шаг —
+    ту самую стену, от которой окно и спасает.
+    """
+    if any(step.status == "current" for step in steps):
+        return steps
+    for index, step in enumerate(steps):
+        if step.status != "closed":
+            return [
+                *steps[:index],
+                step.model_copy(update={"status": "current"}),
+                *steps[index + 1 :],
+            ]
+    return steps
+
+
 def _windowed(steps: list, window: int) -> list:
     """Окно вокруг текущего шага плюс начало и цель (без дублей)."""
     idx = next((i for i, s in enumerate(steps) if s.status == "current"), None)
@@ -102,7 +120,7 @@ def route_window(
         now=now,
         settings=settings,
     )
-    return _windowed(route.steps, PLAN_WINDOW)
+    return _windowed(_anchored(route.steps), PLAN_WINDOW)
 
 
 def render_plan(

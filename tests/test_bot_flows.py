@@ -499,3 +499,18 @@ def test_intro_explains_what_happens() -> None:
     assert "соберу маршрут" in INTRO_TEXT
     assert "объясняю → даю задачу → проверяю" in INTRO_TEXT
     assert "перестрою" in INTRO_TEXT
+
+
+async def test_start_clears_pending_flow_state(conn, settings) -> None:
+    """Повторный /start выводит из экрана согласования, а не запирает в нём."""
+    load_seed(conn)
+    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    state = _fsm()
+    await state.set_state(OnboardingFlow.route_review)
+    message = FakeMessage()
+
+    await _named(router, "message", "on_start")(message, state)
+
+    assert await state.get_state() is None
+    assert message.sent[-1][1].inline_keyboard[0][0].callback_data == "menu:resume"

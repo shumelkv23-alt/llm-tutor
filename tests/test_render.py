@@ -161,3 +161,14 @@ def test_route_screen_contains_plan_and_invitation(conn) -> None:
     assert "Маршрут" in text
     assert "устраивает" in text
     assert "нажми узел" in text
+
+
+def test_route_window_without_current_node_is_not_a_wall(conn) -> None:
+    """У нового ученика окно строится вокруг первого узла, а не во все 21."""
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+
+    window = render.route_window(conn, now=1.0)
+
+    assert 0 < len(window) < len(graph.node_ids)
+    assert window[0].status == "current"  # опора окна — первый узел впереди

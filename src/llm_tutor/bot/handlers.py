@@ -187,6 +187,10 @@ def make_router(
             await ask_survey(message, state)
             return
         reply = await handle_start(conn, client, model, START_GREETING)
+        # Повторный /start — надёжный выход из незакрытого потока (например,
+        # с экрана согласования маршрута): иначе ученик остался бы в нём, а
+        # «Продолжить» отвечала бы «сначала закончим текущий шаг».
+        await state.clear()
         # Вернувшемуся ученику — главное действие в один тап; постоянная
         # клавиатура и так висит, переприкреплять её не нужно.
         await message.answer(
