@@ -25,7 +25,7 @@ from aiogram.types import (
 
 from llm_tutor.bot import menu, render, themes
 from llm_tutor.bot import start
-from llm_tutor.bot.survey import ask as ask_survey
+from llm_tutor.bot.survey import start_survey
 from llm_tutor.config import Settings
 from llm_tutor.core import verify
 from llm_tutor.core.turn import (
@@ -212,11 +212,10 @@ def make_router(
 
     @router.message(CommandStart())
     async def on_start(message: Message, state: FSMContext) -> None:
-        # Пока профиль не заполнен — сначала представление с меню, потом
-        # короткая анкета (Срез 4.7, 12.4).
+        # Пока профиль не заполнен — одно сообщение-приветствие с «Поехали»:
+        # дальше анкета живёт в нём же.
         if not survey_completed(conn):
-            await message.answer(start.INTRO_TEXT, reply_markup=start.start_keyboard())
-            await ask_survey(message, state)
+            await start_survey(message, state)
             return
         reply = await handle_start(conn, client, model, START_GREETING)
         # Повторный /start — надёжный выход из незакрытого потока (например,

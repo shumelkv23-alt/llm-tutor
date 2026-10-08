@@ -1,12 +1,18 @@
-"""Анкета холодного старта в Telegram (Срез 4.7): инлайн-кнопки.
+"""Анкета холодного старта в Telegram: одно сообщение, которое правится на месте.
 
-Ответы копятся в FSM, а результаты пишутся в БД только в конце — анкету можно
-прервать на любом вопросе, ничего не сломав.
+Приветствие, вопросы и сводка — одно сообщение: нажатие правит его, а не
+шлёт новое, поэтому в истории не копятся живые клавиатуры. Ответы копятся в
+FSM, в БД пишутся только в финале — анкету можно прервать на любом шаге.
+
+Нажатие привязано к сообщению (``message_id`` в FSM) и к шагу (номер в
+``callback_data``): клик по старой клавиатуре и двойной тап ничего не пишут.
 """
 
+import logging
 from collections.abc import Mapping
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -19,38 +25,27 @@ from aiogram.types import (
 from llm_tutor.bot import render, start
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.prompts import BUSY_REPLY
 from llm_tutor.student import survey
 
+logger = logging.getLogger(__name__)
+
 CALLBACK_PREFIX = "survey"
-
-BUTTON_HINT_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"
-
-
-class SurveyFlow(StatesGroup):
-    """Анкета: ждём нажатия кнопки на текущем вопросе."""
-
-    question = State()
-
-
-def _keyboard(question: survey.SurveyQuestion) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=option.label,
-                    callback_data=f"{CALLBACK_PREFIX}:{index}",
-                )
-            ]
-            for index, option in enumerate(question.options)
-        ]
-    )
-
-
 GO = "go"
 BACK = "back"
 GO_DATA = f"{CALLBACK_PREFIX}:{GO}"
 GO_LABEL = "▶️ Поехали"
 BACK_LABEL = "‹ Назад"
+
+BUTTON_HINT_REPLY = "Ответь кнопкой в сообщении выше 👆"
+STALE_CLICK_TOAST = "Этот вопрос уже позади"
+DONE_TOAST = "Анкета уже пройдена"
+
+
+class SurveyFlow(StatesGroup):
+    """Анкета: ждём нажатия кнопки в сообщении анкеты."""
+
+    question = State()
 
 
 def _button(text: str, data: str) -> InlineKeyboardButton:
@@ -109,62 +104,158 @@ def summary_text(answers: Mapping[str, int]) -> str:
     return "✅ Понял тебя:\n" + "\n".join(lines)
 
 
-async def ask(message: Message, state: FSMContext, index: int = 0) -> None:
-    """Задаёт вопрос анкеты и переводит FSM в ожидание ответа."""
-    question = survey.SURVEY_QUESTIONS[index]
+def _progress(data: Mapping) -> survey.Progress | None:
+    """Ход анкеты из FSM; ``None`` — приветствие показано, «Поехали» не нажато."""
+    given = data.get("given")
+    if given is None:
+        return None
+    return survey.Progress(given=tuple((key, index) for key, index in given))
+
+
+def _stored(progress: survey.Progress) -> list[list]:
+    """Ход анкеты в виде для FSM (списки — сериализуемы любым хранилищем)."""
+    return [[key, index] for key, index in progress.given]
+
+
+def _parse(data: str | None) -> tuple[str, str | None]:
+    """``survey:go`` → (``go``, None); ``survey:<шаг>:<выбор>`` → (шаг, выбор)."""
+    parts = (data or "").split(":")
+    if parts[1:] == [GO]:
+        return GO, None
+    if len(parts) == 3:
+        return parts[1], parts[2]
+    return "", None
+
+
+async def safe_edit(
+    message: Message, text: str, markup: InlineKeyboardMarkup | None
+) -> Message:
+    """Правит сообщение; если править нельзя — шлёт новое с тем же содержимым.
+
+    «Не изменилось» — не ошибка (повторная отрисовка того же шага). Остальные
+    отказы (сообщение старое или удалено) не должны оставить ученика без
+    вопроса: он приходит новым сообщением, и вызывающий перепривязывает FSM.
+    """
+    try:
+        await message.edit_text(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
+    except TelegramBadRequest as error:
+        if "message is not modified" in str(error):
+            return message
+        logger.info("Сообщение анкеты не править (%s) — шлю новое", error)
+        return await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
+    return message
+
+
+async def _drop_keyboard(message: Message) -> None:
+    """Снимает кнопки со старого сообщения анкеты."""
+    try:
+        await message.edit_reply_markup(reply_markup=None)
+    except TelegramBadRequest as error:
+        # Кнопки уже сняты или сообщение не править — тост ученик уже видел.
+        logger.info("Кнопки анкеты не снять: %s", error)
+
+
+async def start_survey(message: Message, state: FSMContext) -> Message:
+    """Новое сообщение-приветствие с «Поехали»; анкета привязывается к нему.
+
+    Повторный вызов (``/start`` посреди анкеты) перепривязывает FSM к новому
+    сообщению — нажатия в старом упрутся в тост.
+    """
+    text, markup = intro_view()
+    sent = await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
     await state.set_state(SurveyFlow.question)
-    await state.update_data(index=index, answers={})
-    await message.answer(question.text, reply_markup=_keyboard(question))
+    await state.set_data({"message_id": sent.message_id, "given": None})
+    return sent
 
 
 def make_survey_router(
     conn, settings: Settings, client: LLMClient, model: str
 ) -> Router:
-    """Роутер анкеты: обработка нажатий на кнопки вариантов."""
+    """Роутер анкеты: все нажатия ``survey:*`` и текст посреди анкеты."""
     router = Router()
 
-    @router.callback_query(SurveyFlow.question, F.data.startswith(f"{CALLBACK_PREFIX}:"))
-    async def on_answer(callback: CallbackQuery, state: FSMContext) -> None:
-        data = await state.get_data()
-        index = data["index"]
-        question = survey.SURVEY_QUESTIONS[index]
-        # Данные колбэка подконтрольны клиенту: мусор и вариант вне списка не
-        # должны ронять хендлер — иначе ученик не получит ни ответа, ни вопроса.
-        try:
-            choice = int((callback.data or "").split(":")[1])
-        except (IndexError, ValueError):
-            choice = -1
-        if not 0 <= choice < len(question.options):
-            await callback.message.answer(
-                BUTTON_HINT_REPLY, reply_markup=_keyboard(question)
-            )
-            await callback.answer()
-            return
-
-        answers = dict(data.get("answers", {}))
-        answers[question.key] = choice
-
-        if index + 1 < len(survey.SURVEY_QUESTIONS):
-            await state.update_data(index=index + 1, answers=answers)
-            next_question = survey.SURVEY_QUESTIONS[index + 1]
-            await callback.message.answer(
-                next_question.text, reply_markup=_keyboard(next_question)
-            )
-            await callback.answer()
-            return
-
-        survey.apply_answers(conn, answers, settings=settings)
+    async def _finish(
+        callback: CallbackQuery, state: FSMContext, progress: survey.Progress
+    ) -> None:
+        answers = progress.final_answers()
+        # Запись и снятие FSM — ДО сетевых вызовов: второй параллельный тап
+        # увидит пройденную анкету, а не запустит урок ещё раз.
+        survey.apply_answers(conn, answers, level=progress.level, settings=settings)
+        await state.clear()
         await callback.answer()
-        # Дальше не экран согласования, а список ближайших шагов и первый урок.
-        await start.begin_lesson(
-            callback.message, state, conn, client, model, settings
+        await safe_edit(callback.message, summary_text(answers), None)
+        await start.begin_lesson(callback.message, state, conn, client, model, settings)
+
+    async def _orphan_click(callback: CallbackQuery, state: FSMContext) -> None:
+        """Нажатие не в живом сообщении анкеты: тост или новый старт."""
+        current = await state.get_state()
+        if survey.is_completed(conn):
+            await callback.answer(DONE_TOAST)
+            await _drop_keyboard(callback.message)
+        elif current == SurveyFlow.question.state:
+            # Анкета идёт в другом сообщении — это старое.
+            await callback.answer(STALE_CLICK_TOAST)
+        elif current is not None:
+            await callback.answer(BUSY_REPLY)
+        else:
+            # FSM потерян (рестарт бота), анкета не пройдена: начинаем заново
+            # в этом же сообщении, а не молчим.
+            await state.set_state(SurveyFlow.question)
+            await state.set_data({"message_id": callback.message.message_id, "given": []})
+            await callback.answer()
+            text, markup = question_view(survey.Progress())
+            await safe_edit(callback.message, text, markup)
+
+    @router.callback_query(F.data.startswith(f"{CALLBACK_PREFIX}:"))
+    async def on_survey_click(callback: CallbackQuery, state: FSMContext) -> None:
+        # Всё до первого сетевого await — неделимая часть: MemoryStorage не
+        # уступает цикл, поэтому второй параллельный тап (апдейты идут
+        # задачами, handle_as_tasks=True) увидит уже продвинутый шаг. При смене
+        # хранилища на сетевое — пересмотреть.
+        message = callback.message
+        data = await state.get_data()
+        bound = (
+            await state.get_state() == SurveyFlow.question.state
+            and data.get("message_id") == message.message_id
         )
-        return
+        if not bound:
+            await _orphan_click(callback, state)
+            return
+
+        action, choice = _parse(callback.data)
+        progress = _progress(data)
+        if action == GO:
+            if progress is not None:  # «Поехали» уже нажимали
+                await callback.answer(STALE_CLICK_TOAST)
+                return
+            progress = survey.Progress()
+        elif progress is None or action != str(progress.step):
+            await callback.answer(STALE_CLICK_TOAST)
+            return
+        elif choice == BACK:
+            progress = progress.back()
+        else:
+            try:
+                progress = progress.answer(int(choice or ""))
+            except ValueError:
+                # Данные колбэка подконтрольны клиенту: мусор — не ответ.
+                await callback.answer(STALE_CLICK_TOAST)
+                return
+
+        if progress.next_key() is None:
+            await _finish(callback, state, progress)
+            return
+        await state.update_data(given=_stored(progress))
+        await callback.answer()
+        text, markup = question_view(progress)
+        shown = await safe_edit(message, text, markup)
+        if shown.message_id != message.message_id:
+            await state.update_data(message_id=shown.message_id)
 
     @router.message(SurveyFlow.question, F.text, ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
-        # Анкета принимает только нажатия: иначе напечатанный «1» пропадал
-        # в тишину (тьютор-путь отсечён StateFilter(None)).
+        # Анкета принимает только нажатия: иначе напечатанное пропадало бы в
+        # тишину (тьютор-путь отсечён StateFilter(None)).
         await message.answer(BUTTON_HINT_REPLY)
 
     return router

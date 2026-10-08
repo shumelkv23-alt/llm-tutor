@@ -15,7 +15,7 @@ import respx
 from fakes import FakeCallback, FakeMessage, GradingTutor, _fsm, _named
 
 from llm_tutor.bot.render import render_plan
-from llm_tutor.bot.survey import ask as ask_survey
+from llm_tutor.bot.survey import GO_DATA, start_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import handle_turn
@@ -145,7 +145,7 @@ async def test_full_topic01_scenario() -> None:
         # 1. Анкета: профиль и слабый априор, без обращения к модели
         survey.apply_answers(
             conn,
-            {question.key: 1 for question in survey.SURVEY_QUESTIONS},
+            {block.key: 1 for block in survey.BLOCKS},
             now=0.0,
             settings=settings,
         )
@@ -210,16 +210,16 @@ def _state(conn) -> SessionState:
 
 
 async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> None:
-    """«▶️ Старт» → анкета → список шагов → объяснение → пара тестов → узел закрыт."""
+    """/start → «Поехали» → «С нуля» → список шагов → объяснение → пара тестов → узел закрыт."""
     load_seed(conn)
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
     router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
     state = _fsm()
-    await ask_survey(FakeMessage(), state)
-    on_answer = _named(router, "callback_query", "on_answer")
-    message = FakeMessage()
-    for _ in range(len(survey.SURVEY_QUESTIONS)):
-        await on_answer(FakeCallback("survey:0", message), state)
+    message = await start_survey(FakeMessage(), state)
+    click = _named(router, "callback_query", "on_survey_click")
+    await click(FakeCallback(GO_DATA, message), state)
+    from_scratch = message.reply_markup.inline_keyboard[0][0].callback_data
+    await click(FakeCallback(from_scratch, message), state)
 
     steps = next(text for text, _ in message.sent if "Ближайшие 5 шагов" in text)
     assert "1. " in steps

@@ -1,9 +1,11 @@
 """Тесты FSM-потоков бота: анкета и диагностика (Срез 4.5)."""
 
+import asyncio
 from datetime import datetime
 
 import pytest
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Chat, Message, Update, User
 
 from fakes import FakeCallback, FakeMessage, NullSession, _fsm, _named
@@ -12,18 +14,20 @@ from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot import start
-from llm_tutor.bot.survey import ask as ask_survey
+from llm_tutor.bot import survey as survey_bot
+from llm_tutor.bot.survey import SurveyFlow, start_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.core.turn import TurnReply
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
+from llm_tutor.llm.prompts import BUSY_REPLY
 from llm_tutor.student import beta, survey
 
 
 def _complete_survey(conn) -> None:
     """Профиль заполнен: без этого свободный текст упирается в приглашение."""
-    for question in survey.SURVEY_QUESTIONS:
-        repos.set_fact(conn, question.key, survey.SELF_LEVELS[3], source="self")
+    for block in survey.BLOCKS:
+        repos.set_fact(conn, block.key, survey.SELF_LEVELS[3], source="self")
 
 
 def _handler(router, kind: str, index: int) -> object:
@@ -34,46 +38,216 @@ def _handler(router, kind: str, index: int) -> object:
 # --- анкета ---
 
 
-async def test_survey_asks_first_question_with_buttons(conn, settings) -> None:
+async def _begin(conn, settings, client=None):
+    """Приветствие анкеты и хендлер нажатий."""
+    router = make_survey_router(conn, settings, client or _TutorClient(), "m")
     state = _fsm()
+    intro = await start_survey(FakeMessage(), state)
+    return intro, state, _named(router, "callback_query", "on_survey_click")
+
+
+async def _tap(click, message, state, data: str) -> FakeCallback:
+    callback = FakeCallback(data, message)
+    await click(callback, state)
+    return callback
+
+
+def _data_of(message, label: str) -> str:
+    """``callback_data`` кнопки с подписью ``label`` в клавиатуре сообщения."""
+    for row in message.reply_markup.inline_keyboard:
+        for button in row:
+            if button.text == label:
+                return button.callback_data
+    raise AssertionError(f"нет кнопки {label!r}")
+
+
+async def _press(click, message, state, label: str) -> FakeCallback:
+    return await _tap(click, message, state, _data_of(message, label))
+
+
+async def test_start_survey_sends_intro_with_go_button(conn, settings) -> None:
     message = FakeMessage()
+    state = _fsm()
 
-    await ask_survey(message, state)
+    await start_survey(message, state)
 
-    text, keyboard = message.sent[-1]
-    assert text == survey.SURVEY_QUESTIONS[0].text
-    assert len(keyboard.inline_keyboard) == len(survey.SURVEY_QUESTIONS[0].options)
+    text, markup = message.sent[-1]
+    assert text == start.INTRO_TEXT
+    assert markup.inline_keyboard[0][0].callback_data == survey_bot.GO_DATA
+    assert await state.get_state() == SurveyFlow.question.state
 
 
-async def test_survey_writes_profile_after_last_answer(conn, settings) -> None:
+async def test_go_turns_intro_into_level_question(conn, settings) -> None:
+    """«Поехали» правит то же сообщение — нового не приходит."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    assert survey.LEVEL_QUESTION in intro.text
+    assert intro.sent == []
+
+
+async def test_answer_edits_same_message_to_next_question(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+
+    assert "Вопрос 1 из 5" in intro.text
+    assert intro.sent == []
+
+
+async def test_callback_is_answered_before_edit(conn, settings) -> None:
+    """«Часики» гаснут сразу, правка сообщения — после."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    intro.log.clear()
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    assert intro.log == ["callback", "edit"]
+
+
+async def test_stale_step_click_writes_nothing(conn, settings) -> None:
+    """Клик по клавиатуре прошлого шага — тост, ответ не записан."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    old = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    await _tap(click, intro, state, old)
+
+    callback = await _tap(click, intro, state, old)
+
+    assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
+    assert (await state.get_data())["given"] == [[survey.LEVEL_KEY, survey.LEVEL_SOME]]
+
+
+async def test_click_on_previous_survey_message_is_stale(conn, settings) -> None:
+    """После повторного /start старое сообщение анкеты новое не сбивает."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await start_survey(FakeMessage(), state)  # /start посреди анкеты
+
+    callback = await _press(click, intro, state, survey.LEVEL_OPTIONS[0])
+
+    assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
+    assert (await state.get_data())["given"] is None  # новая анкета не тронута
+    assert survey.is_completed(conn) is False
+
+
+async def test_double_tap_on_last_answer_starts_lesson_once(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    data = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+    first, second = FakeCallback(data, intro), FakeCallback(data, intro)
+
+    await asyncio.gather(click(first, state), click(second, state))
+
+    assert len([text for text, _ in intro.sent if text.startswith("📋")]) == 1
+    assert first.answered and second.answered  # «часики» не висят ни у кого
+
+
+async def test_back_returns_to_previous_question(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+    assert "Вопрос 2 из 5" in intro.text
+
+    await _press(click, intro, state, survey_bot.BACK_LABEL)
+
+    assert "Вопрос 1 из 5" in intro.text
+    assert (await state.get_data())["given"] == [[survey.LEVEL_KEY, survey.LEVEL_SOME]]
+
+
+async def test_garbage_choice_is_ignored(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    callback = await _tap(click, intro, state, "survey:0:99")
+
+    assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
+    assert (await state.get_data())["given"] == []
+
+
+async def test_finish_writes_profile_shows_summary_and_starts_lesson(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, survey.SELF_LEVELS[2])
+    await _press(click, intro, state, survey.SELF_LEVELS[1])
+
+    assert repos.get_fact(conn, "block_python") == survey.SELF_LEVELS[3]
+    assert repos.get_fact(conn, "block_analysis") == survey.SELF_LEVELS[1]
+    assert repos.get_fact(conn, survey.LEVEL_KEY) == survey.LEVEL_OPTIONS[2]
+    assert intro.text.startswith("✅ Понял тебя")
+    assert intro.reply_markup is None  # у сводки кнопок нет
+    assert any(text.startswith("📋") for text, _ in intro.sent)  # список шагов
+    assert await state.get_state() is None
+
+
+async def test_click_after_survey_done_toasts_and_drops_buttons(conn, settings) -> None:
+    load_seed(conn)
+    _complete_survey(conn)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
+    message = FakeMessage()
+    message.reply_markup = survey_bot.intro_view()[1]
+
+    callback = FakeCallback(survey_bot.GO_DATA, message)
+    await _named(router, "callback_query", "on_survey_click")(callback, _fsm())
+
+    assert callback.answer_text == survey_bot.DONE_TOAST
+    assert message.reply_markup is None
+
+
+async def test_click_after_lost_fsm_restarts_survey_in_place(conn, settings) -> None:
+    """Рестарт бота потерял FSM: анкета начинается заново в этом же сообщении."""
+    load_seed(conn)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
+    message = FakeMessage()
+    state = _fsm()
+
+    callback = FakeCallback("survey:3:1", message)
+    await _named(router, "callback_query", "on_survey_click")(callback, state)
+
+    assert callback.answered
+    assert survey.LEVEL_QUESTION in message.text
+    assert (await state.get_data())["message_id"] == message.message_id
+
+
+async def test_click_during_other_flow_is_refused(conn, settings) -> None:
     load_seed(conn)
     router = make_survey_router(conn, settings, _TutorClient(), "m")
     state = _fsm()
-    message = FakeMessage()
-    await ask_survey(message, state)
-    on_answer = _handler(router, "callback_query", 0)
+    await state.set_state(DiagnosticFlow.answering)
 
-    for _ in range(len(survey.SURVEY_QUESTIONS)):
-        await on_answer(FakeCallback("survey:0", message), state)
+    callback = FakeCallback(survey_bot.GO_DATA, FakeMessage())
+    await _named(router, "callback_query", "on_survey_click")(callback, state)
 
-    first = survey.SURVEY_QUESTIONS[0]
-    assert repos.get_fact(conn, first.key) == first.options[0].label
-    assert await state.get_state() is None  # анкета закрыта, урок начался
+    assert callback.answer_text == BUSY_REPLY
+    assert await state.get_state() == DiagnosticFlow.answering.state
 
 
-async def test_survey_goes_through_all_questions(conn, settings) -> None:
+async def test_edit_failure_falls_back_to_new_message(conn, settings, monkeypatch) -> None:
+    """Сообщение не править (старое/удалено) — вопрос приходит новым."""
     load_seed(conn)
-    router = make_survey_router(conn, settings, _TutorClient(), "m")
-    state = _fsm()
-    message = FakeMessage()
-    await ask_survey(message, state)
-    on_answer = _handler(router, "callback_query", 0)
+    intro, state, click = await _begin(conn, settings)
 
-    await on_answer(FakeCallback("survey:1", message), state)
+    async def _cannot_edit(*args, **kwargs):
+        raise TelegramBadRequest(method=None, message="Bad Request: message can't be edited")
 
-    # Следующий вопрос — про цель, и он тоже с кнопками.
-    assert message.last_text == survey.SURVEY_QUESTIONS[1].text
-    assert message.sent[-1][1] is not None
+    monkeypatch.setattr(intro, "edit_text", _cannot_edit)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    assert survey.LEVEL_QUESTION in intro.last_text
+    assert (await state.get_data())["message_id"] != intro.message_id
 
 
 # --- диагностика ---
@@ -154,10 +328,10 @@ async def test_survey_text_gets_button_hint(conn, settings) -> None:
     """Напечатанный вместо кнопки ответ не должен пропадать в тишину."""
     router = make_survey_router(conn, settings, _TutorClient(), "m")
     state = _fsm()
-    await ask_survey(FakeMessage(), state)
+    await start_survey(FakeMessage(), state)
     message = FakeMessage()
 
-    await _handler(router, "message", 0)(message)
+    await _named(router, "message", "on_text")(message)
 
     assert "кнопкой" in message.last_text
 
@@ -388,30 +562,28 @@ async def test_removed_menu_action_answers_nothing(conn, settings) -> None:
 # --- онбординг: /start до анкеты ---
 
 
-async def test_start_before_survey_sends_intro_then_question(conn, settings) -> None:
-    """Первый /start: приветствие с кнопкой «▶️ Старт», потом вопрос анкеты."""
+async def test_start_before_survey_sends_intro_with_go(conn, settings) -> None:
+    """Первый /start: одно сообщение-приветствие с «▶️ Поехали»."""
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
     state = _fsm()
 
     await _named(router, "message", "on_start")(message, state)
 
-    intro_text, intro_markup = message.sent[0]
-    assert intro_text == start.INTRO_TEXT
-    assert intro_markup.keyboard[0][0].text == start.START_LABEL
-    assert message.sent[1][0] == survey.SURVEY_QUESTIONS[0].text
+    assert len(message.sent) == 1
+    text, markup = message.sent[0]
+    assert text == start.INTRO_TEXT
+    assert markup.inline_keyboard[0][0].callback_data == survey_bot.GO_DATA
 
 
 async def test_start_button_opens_survey(conn, settings) -> None:
-    """Кнопка «▶️ Старт» — тот же вход, что /start."""
+    """Текст «▶️ Старт» (висит у старых учеников) — тот же вход, что /start."""
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage(start.START_LABEL)
-    state = _fsm()
 
-    await _named(router, "message", "on_start_button")(message, state)
+    await _named(router, "message", "on_start_button")(message, _fsm())
 
     assert message.sent[0][0] == start.INTRO_TEXT
-    assert message.sent[1][0] == survey.SURVEY_QUESTIONS[0].text
 
 
 async def test_text_before_survey_gets_invitation(conn, settings) -> None:
@@ -505,7 +677,7 @@ async def test_start_after_survey_offers_menu(conn, settings) -> None:
     load_seed(conn)
     survey.apply_answers(
         conn,
-        {question.key: 1 for question in survey.SURVEY_QUESTIONS},
+        {block.key: 1 for block in survey.BLOCKS},
         now=1.0,
         settings=settings,
     )
@@ -576,7 +748,7 @@ async def test_command_on_route_screen_reaches_its_handler(conn, settings) -> No
     load_seed(conn)
     survey.apply_answers(
         conn,
-        {question.key: 1 for question in survey.SURVEY_QUESTIONS},
+        {block.key: 1 for block in survey.BLOCKS},
         now=1.0,
         settings=settings,
     )
@@ -655,33 +827,27 @@ async def test_answer_from_stale_keyboard_is_refused(conn, settings) -> None:
 async def test_survey_crafted_callback_is_answered(conn, settings) -> None:
     """Мусорный колбэк анкеты не роняет хендлер и не оставляет без ответа."""
     load_seed(conn)
-    router = make_survey_router(conn, settings, _TutorClient(), "m")
-    on_answer = _handler(router, "callback_query", 0)
-    state = _fsm()
-    message = FakeMessage()
-    await ask_survey(message, state)
-    callback = FakeCallback("survey:zzz", message)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    await on_answer(callback, state)
+    callback = await _tap(click, intro, state, "survey:zzz")
 
     assert callback.answered is True
-    assert "кнопкой" in message.last_text
+    assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
+    assert (await state.get_data())["given"] == []
 
 
 async def test_survey_out_of_range_callback_is_answered(conn, settings) -> None:
     """Вариант вне списка не проходит в анкету."""
     load_seed(conn)
-    router = make_survey_router(conn, settings, _TutorClient(), "m")
-    on_answer = _handler(router, "callback_query", 0)
-    state = _fsm()
-    message = FakeMessage()
-    await ask_survey(message, state)
-    callback = FakeCallback("survey:99", message)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    await on_answer(callback, state)
+    callback = await _tap(click, intro, state, "survey:0:-1")
 
     assert callback.answered is True
-    assert "кнопкой" in message.last_text
+    assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
+    assert (await state.get_data())["given"] == []
 
 
 async def test_options_keyboard_binds_answer_to_item(conn, settings) -> None:
@@ -736,22 +902,17 @@ async def test_diagnostic_stale_keyboard_is_refused(conn, settings) -> None:
 
 
 async def test_survey_finish_shows_steps_and_starts_lesson(conn, settings) -> None:
-    """Финал анкеты: список ближайших шагов и сразу начало урока."""
+    """Финал анкеты: сводка в сообщении анкеты, список шагов и сразу урок."""
     load_seed(conn)
-    router = make_survey_router(conn, settings, _TutorClient(), "m")
-    ask_state = _fsm()
-    await ask_survey(FakeMessage(), ask_state)
-    on_answer = _handler(router, "callback_query", 0)
-    message = FakeMessage()
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    for _ in range(len(survey.SURVEY_QUESTIONS)):
-        await on_answer(FakeCallback("survey:0", message), ask_state)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
 
-    # Финал анкеты: список ближайших шагов, объяснение первого узла и его тест.
-    # Сообщение ищем по тексту: в этом же FakeMessage осели вопросы анкеты.
-    steps_text = next(text for text, _ in message.sent if "Ближайшие" in text)
+    steps_text = next(text for text, _ in intro.sent if "Ближайшие" in text)
     assert "1. " in steps_text
-    assert "<pre>" not in steps_text  # схема больше не рисуется
-    assert message.sent[-2][0]  # урок начался: объяснение первой темы
-    assert message.sent[-1][0]  # и сразу первое задание
-    assert await ask_state.get_state() is None
+    assert intro.sent[-2][0]  # урок начался: объяснение первой темы
+    assert intro.sent[-1][0]  # и сразу первое задание
+    assert await state.get_state() is None
+
+

@@ -253,32 +253,3 @@ def apply_answers(
 def is_completed(conn: sqlite3.Connection) -> bool:
     """Прошёл ли ученик анкету: ответы есть на все блоки."""
     return all(repos.get_fact(conn, block.key) is not None for block in BLOCKS)
-
-
-# --- Временный мост для старого потока бота (удаляется в задаче 22.3) ---
-
-
-@dataclass(frozen=True)
-class SurveyOption:
-    """Вариант ответа анкеты (старый поток бота)."""
-
-    label: str
-
-
-@dataclass(frozen=True)
-class SurveyQuestion:
-    """Вопрос анкеты (старый поток бота)."""
-
-    key: str
-    text: str
-    options: tuple[SurveyOption, ...]
-
-
-SURVEY_QUESTIONS: tuple[SurveyQuestion, ...] = tuple(
-    SurveyQuestion(
-        key=block.key,
-        text=block.question,
-        options=tuple(SurveyOption(label) for label in SELF_LEVELS),
-    )
-    for block in BLOCKS
-)
