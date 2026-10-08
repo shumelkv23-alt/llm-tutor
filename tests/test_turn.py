@@ -799,6 +799,37 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     assert _state(conn).phase == "practice"
 
 
+async def test_plain_reply_moves_lesson_forward(conn, settings) -> None:
+    """Ремарка без задания ведёт занятие дальше — кнопки для этого нет."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", phase="practice")
+
+    reply = await handle_turn(
+        conn, _FakeTutor(), "m", "ага, понятно", now=1.0, settings=settings
+    )
+
+    assert reply.tail  # выдали следующее задание
+    assert _state(conn).pending_item_id is not None
+
+
+async def test_question_does_not_move_lesson(conn, settings) -> None:
+    """Вопрос оставляет занятие на месте: сначала отвечаем."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", phase="practice")
+
+    reply = await handle_turn(
+        conn,
+        _FakeTutor("Отвечаю на вопрос"),
+        "m",
+        "а что такое ключ?",
+        now=1.0,
+        settings=settings,
+    )
+
+    assert reply.tail is None
+    assert _state(conn).pending_item_id is None
+
+
 async def test_closed_node_leads_into_next_lesson(conn, settings) -> None:
     """Узел закрылся — бот сам объясняет следующий и даёт его первый тест."""
     load_seed(conn)
