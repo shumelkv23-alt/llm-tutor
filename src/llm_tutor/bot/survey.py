@@ -14,8 +14,9 @@ from aiogram.types import (
     Message,
 )
 
-from llm_tutor.bot import onboarding
+from llm_tutor.bot import start
 from llm_tutor.config import Settings
+from llm_tutor.llm.client import LLMClient
 from llm_tutor.student import survey
 
 CALLBACK_PREFIX = "survey"
@@ -61,7 +62,9 @@ async def ask(message: Message, state: FSMContext, index: int = 0) -> None:
     await message.answer(question.text, reply_markup=_keyboard(question))
 
 
-def make_survey_router(conn, settings: Settings) -> Router:
+def make_survey_router(
+    conn, settings: Settings, client: LLMClient, model: str
+) -> Router:
     """Роутер анкеты: обработка нажатий на кнопки вариантов."""
     router = Router()
 
@@ -97,9 +100,10 @@ def make_survey_router(conn, settings: Settings) -> Router:
 
         survey.apply_answers(conn, answers, settings=settings)
         await callback.answer()
-        # Анкета не закрывает поток, а открывает экран согласования маршрута:
-        # ученик ещё может сказать, что часть тем уже знает (Срез 18).
-        await onboarding.show_route_screen(callback.message, state, conn, settings)
+        # Дальше не экран согласования, а список ближайших шагов и первый урок.
+        await start.begin_lesson(
+            callback.message, state, conn, client, model, settings
+        )
         return
 
     @router.message(SurveyFlow.question, F.text, ~F.text.startswith("/"))

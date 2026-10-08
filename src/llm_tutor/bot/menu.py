@@ -14,7 +14,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-Action = Literal["route", "themes", "close", "resume"]
+Action = Literal["route", "themes", "close"]
 
 LABEL_MENU = "☰ Меню"
 MENU_TITLE = "Что сделать?"
@@ -24,7 +24,6 @@ ACTION_LABELS: dict[Action, str] = {
     "route": "🗺 Маршрут",
     "themes": "🎚 Темы",
     "close": "✅ Закрыть тему",
-    "resume": "▶️ Продолжить обучение",
 }
 
 
@@ -45,20 +44,3 @@ def actions_keyboard() -> InlineKeyboardMarkup:
     ]
     rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def resume_keyboard() -> InlineKeyboardMarkup:
-    """Инлайн-кнопка «Продолжить обучение» — главное действие в один тап.
-
-    Постоянная клавиатура остаётся из одной кнопки «☰ Меню»: вторая
-    reply-кнопка сломала бы решение среза 12.
-    """
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=ACTION_LABELS["resume"], callback_data="menu:resume"
-                )
-            ]
-        ]
-    )

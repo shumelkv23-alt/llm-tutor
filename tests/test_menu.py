@@ -22,14 +22,4 @@ def test_actions_keyboard_lists_every_action() -> None:
 
     callbacks = [button.callback_data for row in kb.inline_keyboard for button in row]
     assert callbacks == [f"menu:{action}" for action in menu.ACTION_LABELS]
-    assert set(menu.ACTION_LABELS) == {"route", "themes", "close", "resume"}
-
-
-def test_resume_keyboard_calls_resume_action() -> None:
-    """Кнопка «Продолжить» несёт колбэк действия resume."""
-    kb = menu.resume_keyboard()
-
-    buttons = [button for row in kb.inline_keyboard for button in row]
-    assert len(buttons) == 1
-    assert buttons[0].callback_data == "menu:resume"
-    assert buttons[0].text == menu.ACTION_LABELS["resume"]
+    assert set(menu.ACTION_LABELS) == {"route", "themes", "close"}

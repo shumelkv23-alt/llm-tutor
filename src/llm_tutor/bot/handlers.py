@@ -204,7 +204,7 @@ def make_router(
         # клавиатура и так висит, переприкреплять её не нужно.
         await message.answer(
             render.fit(render.escape(reply)),
-            reply_markup=menu.resume_keyboard(),
+            reply_markup=menu.main_menu(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -233,7 +233,7 @@ def make_router(
             reply = TurnReply(text=BOT_FAILURE_REPLY)
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -256,7 +256,7 @@ def make_router(
             return
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -269,7 +269,7 @@ def make_router(
             text = BOT_FAILURE_REPLY
         await message.answer(
             render.fit(render.escape(text)),
-            reply_markup=menu.resume_keyboard(),
+            reply_markup=menu.main_menu(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -292,7 +292,7 @@ def make_router(
             return
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -355,7 +355,7 @@ def make_router(
         )
         await callback.message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options),
             parse_mode=render.PARSE_MODE,
         )
         await callback.answer()
@@ -389,22 +389,7 @@ def make_router(
                     await callback.message.answer(
                         render.fit(render.escape(reply.text)),
                         parse_mode=render.PARSE_MODE,
-                        reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
-                    )
-            elif action == "resume":
-                # Посреди анкеты или подбора маршрута не продолжаем: в состоянии
-                # повиснет pending_item_id, конфликтующий с FSM-потоком.
-                if await state.get_state() is not None:
-                    await callback.message.answer(
-                        render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
-                    )
-                else:
-                    reply = await resume_reply(conn, client, model, settings=settings)
-                    await callback.message.answer(
-                        render.fit(render.escape(reply.text)),
-                        parse_mode=render.PARSE_MODE,
-                        reply_markup=_options_keyboard(conn, reply.options)
-                        or menu.resume_keyboard(),
+                        reply_markup=_options_keyboard(conn, reply.options),
                     )
         except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
             logger.exception("Сбой действия меню: %s", action)
@@ -433,7 +418,7 @@ def make_router(
             render.fit(render.escape(reply.text)),
             # Варианты ответа (инлайн) в приоритете; иначе — «Продолжить».
             # Постоянная клавиатура persistent, переприкреплять её не нужно.
-            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options),
             parse_mode=render.PARSE_MODE,
         )
 

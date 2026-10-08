@@ -11,7 +11,6 @@ from fakes import FakeCallback, FakeMessage, NullSession, _fsm, _named
 from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
-from llm_tutor.bot.onboarding import OnboardingFlow, make_onboarding_router
 from llm_tutor.bot.survey import INTRO_TEXT
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
@@ -42,7 +41,7 @@ async def test_survey_asks_first_question_with_buttons(conn, settings) -> None:
 
 async def test_survey_writes_profile_after_last_answer(conn, settings) -> None:
     load_seed(conn)
-    router = make_survey_router(conn, settings)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
     state = _fsm()
     message = FakeMessage()
     await ask_survey(message, state)
@@ -53,12 +52,12 @@ async def test_survey_writes_profile_after_last_answer(conn, settings) -> None:
 
     assert repos.get_fact(conn, survey.EXPERIENCE_KEY) == "На Python не писал"
     assert repos.get_fact(conn, survey.GOAL_CONCEPT_KEY) == "pandas_dataframe"
-    assert await state.get_state() == OnboardingFlow.route_review.state
+    assert await state.get_state() is None  # анкета закрыта, урок начался
 
 
 async def test_survey_goes_through_all_questions(conn, settings) -> None:
     load_seed(conn)
-    router = make_survey_router(conn, settings)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
     state = _fsm()
     message = FakeMessage()
     await ask_survey(message, state)
@@ -147,7 +146,7 @@ async def test_button_on_text_question_is_not_recorded(conn, settings) -> None:
 
 async def test_survey_text_gets_button_hint(conn, settings) -> None:
     """Напечатанный вместо кнопки ответ не должен пропадать в тишину."""
-    router = make_survey_router(conn, settings)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
     state = _fsm()
     await ask_survey(FakeMessage(), state)
     message = FakeMessage()
@@ -347,18 +346,6 @@ async def test_menu_action_sends_expected_text(conn, settings, action, expected)
     assert callback.answered is True
 
 
-async def test_menu_resume_answers(conn, settings) -> None:
-    """«Продолжить обучение» из меню ведёт занятие дальше."""
-    load_seed(conn)
-    router = make_router(conn, _TutorClient(), "m", settings=settings)
-    on_menu_action = _named(router, "callback_query", "on_menu_action")
-    message = FakeMessage()
-
-    await on_menu_action(FakeCallback("menu:resume", message), _fsm())
-
-    assert message.sent  # ученик получил ответ, а не тишину
-
-
 async def test_removed_menu_action_answers_nothing(conn, settings) -> None:
     """Убранное действие больше не обрабатывается."""
     load_seed(conn)
@@ -475,7 +462,7 @@ async def test_start_after_survey_offers_resume(conn, settings) -> None:
 
     await on_start(message, _fsm())
 
-    assert message.sent[-1][1].inline_keyboard[0][0].callback_data == "menu:resume"
+    assert message.sent[-1][1] == menu.main_menu()
 
 
 async def test_resume_command_refuses_during_fsm_flow(conn, settings) -> None:
@@ -492,43 +479,12 @@ async def test_resume_command_refuses_during_fsm_flow(conn, settings) -> None:
     assert repos.get_open_session(conn) is None  # сессию не тронули
 
 
-async def test_menu_resume_refuses_during_fsm_flow(conn, settings) -> None:
-    """Та же защита у кнопки «Продолжить обучение»."""
-    load_seed(conn)
-    router = make_router(conn, _TutorClient(), "m", settings=settings)
-    state = _fsm()
-    await state.set_state(DiagnosticFlow.answering)
-    message = FakeMessage()
-    callback = FakeCallback("menu:resume", message)
-
-    await _named(router, "callback_query", "on_menu_action")(callback, state)
-
-    assert "Сначала закончим" in message.last_text
-    assert callback.answered is True
-    assert repos.get_open_session(conn) is None  # сессию не тронули
-
-
 def test_intro_explains_what_happens() -> None:
     """Представление объясняет, что будет происходить, до анкеты."""
     assert "спрошу пару вопросов" in INTRO_TEXT
     assert "соберу маршрут" in INTRO_TEXT
     assert "объясняю → даю задачу → проверяю" in INTRO_TEXT
     assert "перестрою" in INTRO_TEXT
-
-
-async def test_start_clears_pending_flow_state(conn, settings) -> None:
-    """Повторный /start выводит из экрана согласования, а не запирает в нём."""
-    load_seed(conn)
-    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
-    router = make_router(conn, _TutorClient(), "m", settings=settings)
-    state = _fsm()
-    await state.set_state(OnboardingFlow.route_review)
-    message = FakeMessage()
-
-    await _named(router, "message", "on_start")(message, state)
-
-    assert await state.get_state() is None
-    assert message.sent[-1][1].inline_keyboard[0][0].callback_data == "menu:resume"
 
 
 # --- маршрутизация на уровне диспетчера (финал ветки) ---
@@ -553,7 +509,6 @@ async def _dispatch(conn, settings, state_name: str, text: str):
     bot = Bot(token="42:TEST", session=NullSession())
     dispatcher = Dispatcher()
     # Порядок как в bot/main.py: потоки бота идут раньше основного роутера.
-    dispatcher.include_router(make_onboarding_router(conn, settings))
     dispatcher.include_router(make_router(conn, _TutorClient(), "m", settings=settings))
     ctx = dispatcher.fsm.get_context(bot=bot, chat_id=1, user_id=1)
     await ctx.set_state(state_name)
@@ -570,7 +525,7 @@ async def test_command_on_route_screen_reaches_its_handler(conn, settings) -> No
     load_seed(conn)
     survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
 
-    state = await _dispatch(conn, settings, OnboardingFlow.route_review.state, "/start")
+    state = await _dispatch(conn, settings, DiagnosticFlow.answering.state, "/start")
 
     assert state is None  # /start отработал и снял поток
 
@@ -579,9 +534,9 @@ async def test_text_on_route_screen_stays_in_hint(conn, settings) -> None:
     """Свободный текст по-прежнему остаётся подсказкой экрана."""
     load_seed(conn)
 
-    state = await _dispatch(conn, settings, OnboardingFlow.route_review.state, "я это знаю")
+    state = await _dispatch(conn, settings, DiagnosticFlow.answering.state, "groupby")
 
-    assert state == OnboardingFlow.route_review.state
+    assert state == DiagnosticFlow.answering.state  # подбор идёт своим ходом
 
 
 async def test_status_command_reports_failure_instead_of_silence(
@@ -644,7 +599,7 @@ async def test_answer_from_stale_keyboard_is_refused(conn, settings) -> None:
 async def test_survey_crafted_callback_is_answered(conn, settings) -> None:
     """Мусорный колбэк анкеты не роняет хендлер и не оставляет без ответа."""
     load_seed(conn)
-    router = make_survey_router(conn, settings)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
     on_answer = _handler(router, "callback_query", 0)
     state = _fsm()
     message = FakeMessage()
@@ -660,7 +615,7 @@ async def test_survey_crafted_callback_is_answered(conn, settings) -> None:
 async def test_survey_out_of_range_callback_is_answered(conn, settings) -> None:
     """Вариант вне списка не проходит в анкету."""
     load_seed(conn)
-    router = make_survey_router(conn, settings)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
     on_answer = _handler(router, "callback_query", 0)
     state = _fsm()
     message = FakeMessage()
@@ -722,3 +677,23 @@ async def test_diagnostic_stale_keyboard_is_refused(conn, settings) -> None:
 
     assert "прошлого задания" in stale.last_text
     assert len(repos.get_events(conn)) == events_before
+
+
+async def test_survey_finish_shows_steps_and_starts_lesson(conn, settings) -> None:
+    """Финал анкеты: список ближайших шагов и сразу начало урока."""
+    load_seed(conn)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
+    ask_state = _fsm()
+    await ask_survey(FakeMessage(), ask_state)
+    on_answer = _handler(router, "callback_query", 0)
+    message = FakeMessage()
+
+    for _ in range(len(survey.SURVEY_QUESTIONS)):
+        await on_answer(FakeCallback("survey:0", message), ask_state)
+
+    steps_text = message.sent[-2][0]
+    assert "Ближайшие" in steps_text
+    assert "1. " in steps_text
+    assert "<pre>" not in steps_text  # схема больше не рисуется
+    assert message.sent[-1][0]  # урок начался: объяснение первой темы
+    assert await ask_state.get_state() is None
