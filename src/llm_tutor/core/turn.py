@@ -55,8 +55,14 @@ NO_TASK_FOR_NODE_REPLY = (
 )
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
-# Маршрут пройден до конца: заданий больше нет, и это не ошибка.
-ROUTE_DONE_REPLY = "Маршрут пройден до конца. Можно свериться: /plan."
+# Курс пройден: открытых тем не осталось ни в одном модуле (§4.3 спеки модулей).
+ROUTE_DONE_REPLY = "🎓 Курс пройден — открытых тем не осталось. Свериться можно в /plan."
+# Модуль пройден: все темы его рабочего участка закрыты.
+TOPIC_DONE_NOTE = "🎉 Модуль {number} «{title}» пройден!"
+# Переход в следующий модуль: с какой темы начинаем.
+NEXT_TOPIC_NOTE = "Дальше — модуль {number} «{title}», начинаем с «{name}»."
+# Закрыта последняя открытая тема курса.
+COURSE_DONE_NOTE = "🎓 Это был последний шаг — курс пройден! Свериться можно в /plan."
 # Повод хода «Продолжить обучение» — в журнале виден как реплика ученика.
 RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 # Шапка шага проверочного прохода. Номер без общего числа: после неудачного
@@ -383,6 +389,12 @@ def _is_claimed(route: Route | None, node_id: str) -> bool:
     )
 
 
+def _topic_title(conn: sqlite3.Connection, topic_id: int) -> str:
+    """Название модуля для объявлений (без модуля в БД — его номер)."""
+    topic = repos.get_topic(conn, topic_id)
+    return topic.title if topic is not None else f"№{topic_id}"
+
+
 def _checking(state: SessionState, node_id: str) -> SessionState:
     """Состояние входа в проверочный проход по заявленному узлу."""
     return state.model_copy(
@@ -484,6 +496,7 @@ async def handle_turn(
         # Узел пройден? Только на ВЕРНОМ ответе: «не совсем верно» и «узёл
         # закрыт» в одном сообщении противоречат друг другу. Владение считаем
         # с учётом только что отвеченного задания, а не по старым данным.
+        closed_note: str | None = None
         if passed:
             overrides = {
                 change.concept_id: beta.to_mastery(
@@ -548,24 +561,29 @@ async def handle_turn(
             if explanation != LLM_FAILURE_REPLY:
                 reply = f"{reply}\n\n{explanation}"
         # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
-        new_state, task_text, options = _issue_task(
-            conn,
-            graph,
-            new_state,
-            exclude_item_ids=(
-                frozenset({answered_item_id})
-                if answered_item_id is not None
-                else frozenset()
-            ),
-            now=stamp,
-            settings=s,
-        )
+        # Тема закрыта, а следующей нет (курс пройден; со среза 26 — ещё и
+        # анкета нового модуля) — задание выдавать не по чему.
+        if closed_note and new_state.current_node_id is None:
+            task_text, options = "", None
+        else:
+            new_state, task_text, options = _issue_task(
+                conn,
+                graph,
+                new_state,
+                exclude_item_ids=(
+                    frozenset({answered_item_id})
+                    if answered_item_id is not None
+                    else frozenset()
+                ),
+                now=stamp,
+                settings=s,
+            )
         # Задание уходит отдельным сообщением: объяснение и тест в одном
         # сообщении читаются стеной (§5.1). Признак выданного задания —
         # заполненный ``pending_item_id``: у short-задания вариантов нет, и по
         # ``options`` отличить его от отказа «заданий нет» нельзя.
         tail = task_text if new_state.pending_item_id is not None else None
-        if tail is None:
+        if tail is None and task_text:
             reply = f"{reply}\n\n{task_text}"
     else:
         # Вход в узел (§5.1): занятия ещё нет. Код берёт первый шаг маршрута,
@@ -716,17 +734,39 @@ def _close_node_if_ready(
         return state, None
 
     closed_name = graph.concept(node_id).name
-    route = state.route or route_mod.build_route(conn, graph, now=now, settings=settings)
+    # Снимок достраивается до всего курса: у снимка до среза 25 в нём только
+    # темы topic01, и закрытие последней объявило бы «курс пройден».
+    route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=node_id,
+        previous=state.route,
+        now=now,
+        settings=settings,
+    )
+    topic = route.topic_id if route.topic_id is not None else route_mod.choose_topic(graph, route)
     route = route.model_copy(
         update={
             "steps": [
-                step.model_copy(update={"status": "closed"})
+                step.model_copy(update={"status": "closed", "closed_at": now})
                 if step.concept_id == node_id
                 else step
                 for step in route.steps
             ]
         }
     )
+    notes = [f"✅ Тема «{closed_name}» закрыта."]
+    # «🎉» — один раз на модуль: возврат к пройденному его не повторяет.
+    if (
+        topic is not None
+        and route_mod.topic_finished(graph, route, topic)
+        and topic not in route.completed_topics
+    ):
+        route = route.model_copy(update={"completed_topics": [*route.completed_topics, topic]})
+        notes.append(TOPIC_DONE_NOTE.format(number=topic, title=_topic_title(conn, topic)))
+    next_topic = route_mod.choose_topic(graph, route, previous_topic=topic)
+    route = route.model_copy(update={"topic_id": next_topic})
     next_node_id = route_mod.next_node_id(
         conn, graph, route, now=now, settings=settings, mastery_overrides=overrides
     )
@@ -745,15 +785,21 @@ def _close_node_if_ready(
         }
     )
     if next_node_id is None:
-        return new_state, f"✅ Тема «{closed_name}» закрыта — маршрут пройден до конца."
+        notes.append(COURSE_DONE_NOTE)
+        return new_state, "\n\n".join(notes)
     next_name = graph.concept(next_node_id).name
-    if _is_claimed(route, next_node_id):
-        return (
-            _checking(new_state, next_node_id),
-            f"✅ Тема «{closed_name}» закрыта.\n\n"
-            + CLAIMED_CHECK_NOTE.format(name=next_name),
+    if next_topic != topic:
+        notes.append(
+            NEXT_TOPIC_NOTE.format(
+                number=next_topic, title=_topic_title(conn, next_topic), name=next_name
+            )
         )
-    return new_state, f"✅ Тема «{closed_name}» закрыта — идём дальше: {next_name}."
+    if _is_claimed(route, next_node_id):
+        notes.append(CLAIMED_CHECK_NOTE.format(name=next_name))
+        return _checking(new_state, next_node_id), "\n\n".join(notes)
+    if len(notes) == 1:
+        return new_state, f"✅ Тема «{closed_name}» закрыта — идём дальше: {next_name}."
+    return new_state, "\n\n".join(notes)
 
 
 def _issue_task(
