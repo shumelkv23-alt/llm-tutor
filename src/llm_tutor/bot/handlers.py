@@ -269,6 +269,7 @@ def make_router(
             text = BOT_FAILURE_REPLY
         await message.answer(
             render.fit(render.escape(text)),
+            reply_markup=menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
