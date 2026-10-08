@@ -346,3 +346,117 @@ def test_upcoming_respects_limit_and_empty_first() -> None:
 
     assert [step.concept_id for step in route_mod.upcoming(route, "a", limit=2)] == ["a", "b"]
     assert route_mod.upcoming(route, None, limit=5) == []
+
+
+# --- модули курса (срез 25) ---
+
+
+def _course(nodes: dict[str, int], edges: list[tuple[str, str]]) -> CourseGraph:
+    """Граф из тем с модулями: {"a": 1, "x": 2}."""
+    return CourseGraph(
+        [Concept(id=node, name=node, topic_id=topic) for node, topic in nodes.items()],
+        [Edge(from_id=src, to_id=dst, hard=True) for src, dst in edges],
+    )
+
+
+def _route(statuses: dict[str, str], **fields) -> Route:
+    return Route(
+        steps=[RouteStep(concept_id=n, mode="full", status=s) for n, s in statuses.items()],
+        **fields,
+    )
+
+
+def test_working_section_is_module_plus_open_ancestors() -> None:
+    graph = _course({"a": 1, "b": 1, "x": 2, "y": 2}, [("a", "x"), ("b", "y")])
+    route = _route({"a": "closed", "b": "ahead", "x": "ahead", "y": "ahead"})
+
+    assert route_mod.working_section(graph, route, 2) == ["b", "x", "y"]
+
+
+def test_next_node_stays_inside_current_module(conn, settings) -> None:
+    """Лёгкая тема модуля 2 не уводит из модуля 1, пока он не пройден."""
+    graph = CourseGraph(
+        [
+            Concept(id="a", name="a", difficulty=0.9, topic_id=1),
+            Concept(id="x", name="x", difficulty=0.1, topic_id=2),
+        ],
+        [],
+    )
+    route = _route({"a": "ahead", "x": "ahead"}, topic_id=1)
+
+    assert route_mod.next_node_id(conn, graph, route, now=0.0, settings=settings) == "a"
+
+
+def test_choose_topic_moves_on_when_module_finished() -> None:
+    graph = _course({"a": 1, "x": 2}, [])
+    route = _route({"a": "closed", "x": "ahead"})
+
+    assert route_mod.choose_topic(graph, route, previous_topic=1) == 2
+
+
+def test_choose_topic_keeps_module_for_pulled_in_ancestor() -> None:
+    """Незакрытый предок из модуля 1 стал текущим — модуль работы всё ещё 2."""
+    graph = _course({"a": 1, "x": 2}, [("a", "x")])
+    route = _route({"a": "current", "x": "ahead"})
+
+    assert route_mod.choose_topic(graph, route, previous_topic=2) == 2
+
+
+def test_choose_topic_prefers_unfinished_module_over_completed_one() -> None:
+    graph = _course({"a": 1, "x": 2}, [])
+    route = _route({"a": "ahead", "x": "ahead"}, completed_topics=[1])
+
+    assert route_mod.choose_topic(graph, route) == 2
+
+
+def test_choose_topic_is_none_when_everything_closed() -> None:
+    graph = _course({"a": 1}, [])
+
+    assert route_mod.choose_topic(graph, _route({"a": "closed"})) is None
+
+
+def test_build_route_carries_module_state(conn, settings) -> None:
+    graph = _course({"a": 1, "x": 2}, [])
+    previous = _route({"a": "closed", "x": "ahead"}, topic_id=2, completed_topics=[1])
+
+    fresh = route_mod.build_route(conn, graph, previous=previous, now=0.0, settings=settings)
+
+    assert fresh.topic_id == 2
+    assert fresh.completed_topics == [1]
+
+
+def test_legacy_snapshot_continues_in_first_module(conn, settings) -> None:
+    """Снимок до модулей: только темы topic01, без topic_id — работа в модуле 1."""
+    graph = _course({"a": 1, "b": 1, "x": 2}, [("a", "b")])
+    legacy = _route({"a": "closed", "b": "current"})
+
+    fresh = route_mod.build_route(
+        conn, graph, current_node_id="b", previous=legacy, now=0.0, settings=settings
+    )
+
+    assert fresh.topic_id == 1
+    assert {s.concept_id: s.status for s in fresh.steps}["a"] == "closed"
+
+
+def test_mark_claimed_touches_only_ahead() -> None:
+    route = _route({"a": "closed", "b": "current", "c": "ahead"})
+
+    marked = route_mod.mark_claimed(route, {"a", "b", "c"})
+
+    assert _statuses(marked) == {"a": "closed", "b": "current", "c": "claimed"}
+
+
+def test_release_current_makes_it_ahead() -> None:
+    assert _statuses(route_mod.release_current(_route({"a": "current"}))) == {"a": "ahead"}
+
+
+def test_upcoming_respects_section() -> None:
+    route = _route({"a": "ahead", "x": "ahead"})
+
+    assert [s.concept_id for s in route_mod.upcoming(route, "a", limit=5, section=["a"])] == ["a"]
+
+
+def test_topic_for_new_student_is_first_module() -> None:
+    graph = _course({"a": 1, "x": 2}, [])
+
+    assert route_mod.topic_for(graph, SessionState()) == 1

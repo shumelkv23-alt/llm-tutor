@@ -7,7 +7,7 @@
 
 import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
@@ -45,6 +45,127 @@ def _current_of(route: Route | None) -> str | None:
         if step.status == "current":
             return step.concept_id
     return None
+
+
+def working_section(
+    graph: CourseGraph, route: Route, topic_id: int | None
+) -> list[str]:
+    """Рабочий участок модуля (§4.1 спеки модулей), в порядке маршрута.
+
+    Темы модуля плюс незакрытые темы прошлых модулей двух видов: предки тем
+    модуля (на них он опирается) и темы, открывшиеся снова после закрытия
+    (``closed_at`` у незакрытого шага — провал по заданию со вторичным весом
+    или просроченное повторение, §4.2): забытое проходится здесь же.
+    """
+    if topic_id is None:
+        return []
+    known = [step for step in route.steps if graph.has_node(step.concept_id)]
+    own = {step.concept_id for step in known if graph.topic_of(step.concept_id) == topic_id}
+    ancestors: set[str] = set()
+    for node_id in own:
+        ancestors |= graph.ancestors(node_id)
+    return [
+        step.concept_id
+        for step in known
+        if step.concept_id in own
+        or (
+            step.status != "closed"
+            and graph.topic_of(step.concept_id) < topic_id
+            and (step.concept_id in ancestors or step.closed_at is not None)
+        )
+    ]
+
+
+def topic_finished(graph: CourseGraph, route: Route, topic_id: int) -> bool:
+    """Пройден ли модуль: все темы его рабочего участка закрыты."""
+    status = {step.concept_id: step.status for step in route.steps}
+    return all(status[node_id] == "closed" for node_id in working_section(graph, route, topic_id))
+
+
+def choose_topic(
+    graph: CourseGraph, route: Route, *, previous_topic: int | None = None
+) -> int | None:
+    """Модуль, над которым идёт работа (§4.1 спеки модулей).
+
+    1. Текущая тема задаёт модуль — кроме незакрытого предка из прошлого
+       модуля: его подтянул участок модуля, где идёт работа.
+    2. Без текущей темы — прежний модуль, пока в его участке есть открытое.
+    3. Иначе первый по номеру ещё не пройденный модуль с открытыми темами; если
+       открытое осталось только в пройденных (повторение) — первый из них.
+    """
+    current = _current_of(route)
+    if current is not None and graph.has_node(current):
+        if previous_topic is not None and current in working_section(
+            graph, route, previous_topic
+        ):
+            return previous_topic
+        return graph.topic_of(current)
+    if previous_topic is not None and not topic_finished(graph, route, previous_topic):
+        return previous_topic
+    open_topics = sorted(
+        {
+            graph.topic_of(step.concept_id)
+            for step in route.steps
+            if step.status != "closed" and graph.has_node(step.concept_id)
+        }
+    )
+    fresh = [topic for topic in open_topics if topic not in route.completed_topics]
+    if fresh:
+        return fresh[0]
+    return open_topics[0] if open_topics else None
+
+
+def topic_for(graph: CourseGraph, state: SessionState) -> int | None:
+    """Модуль занятия — для анкеты, промпта, RAG и экранов."""
+    if state.route is not None:
+        if state.route.topic_id is not None:
+            return state.route.topic_id
+        return choose_topic(graph, state.route)
+    if state.current_node_id is not None and graph.has_node(state.current_node_id):
+        return graph.topic_of(state.current_node_id)
+    return graph.topic_ids[0] if graph.node_ids else None
+
+
+def section_route(graph: CourseGraph, route: Route) -> Route:
+    """Снимок, урезанный до рабочего участка модуля работы (экраны, промпт)."""
+    topic = route.topic_id if route.topic_id is not None else choose_topic(graph, route)
+    keep = set(working_section(graph, route, topic))
+    return route.model_copy(
+        update={
+            "steps": [step for step in route.steps if step.concept_id in keep],
+            "topic_id": topic,
+        }
+    )
+
+
+def mark_claimed(route: Route, concept_ids: Collection[str]) -> Route:
+    """Помечает заявленным то, что ещё впереди (анкета модуля, §4.1).
+
+    Закрытое и текущее не трогаем: самооценка не отменяет доказанного.
+    """
+    wanted = set(concept_ids)
+    return route.model_copy(
+        update={
+            "steps": [
+                step.model_copy(update={"status": "claimed"})
+                if step.concept_id in wanted and step.status == "ahead"
+                else step
+                for step in route.steps
+            ]
+        }
+    )
+
+
+def release_current(route: Route) -> Route:
+    """Снятая с позиции «текущая» тема снова впереди (урок с чистого листа)."""
+    return route.model_copy(
+        update={
+            "steps": [
+                step.model_copy(update={"status": "ahead"}) if step.status == "current" else step
+                for step in route.steps
+            ]
+        }
+    )
 
 
 def build_route(
@@ -90,7 +211,15 @@ def build_route(
         else:
             status = "ahead"
         steps.append(RouteStep(concept_id=concept_id, mode=mode, status=status))
-    return Route(goal_concept_id=goal_concept_id, steps=steps)
+    route = Route(
+        goal_concept_id=goal_concept_id,
+        steps=steps,
+        completed_topics=list(previous.completed_topics) if previous is not None else [],
+    )
+    previous_topic = previous.topic_id if previous is not None else None
+    return route.model_copy(
+        update={"topic_id": choose_topic(graph, route, previous_topic=previous_topic)}
+    )
 
 
 def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
@@ -134,10 +263,16 @@ def next_node_id(
     Приоритет считает планировщик — важность, пробел, готовность, срочность
     повторения, стоимость и штраф за провал. Маршрут задаёт путь, а не порядок
     прохода: пойти можно по любому узлу, у которого закрыты пререквизиты.
+    Выбор — только внутри рабочего участка модуля работы (§4.1 спеки модулей):
+    так модули идут по порядку.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
-    in_route = {step.concept_id for step in route.steps}
+    # Снимок до среза 25 модуля не знает — выбираем его по снимку.
+    topic = route.topic_id if route.topic_id is not None else choose_topic(graph, route)
+    if topic is None:
+        return None
+    section = set(working_section(graph, route, topic))
     closed = {step.concept_id for step in route.steps if step.status == "closed"}
     claimed = {step.concept_id for step in route.steps if step.status == "claimed"}
     # Заявленное — выполненный пререквизит: урок начинается с первого
@@ -146,31 +281,45 @@ def next_node_id(
         conn,
         graph,
         goal_concept_id=route.goal_concept_id,
-        limit=max(len(route.steps), 1),
+        limit=max(len(section), 1),
         now=stamp,
         settings=s,
         mastery_overrides=mastery_overrides,
         completed_ids=frozenset(closed | claimed),
+        scope=section,
     )
     for node in ready:
         # Готовый узел может быть уже закрытым — тогда он не «следующий».
-        if node.concept_id in in_route and node.concept_id not in closed | claimed:
+        if node.concept_id not in closed | claimed:
             return node.concept_id
     # Незаявленное кончилось — пора подтвердить заявленное, по порядку маршрута.
     return next(
-        (step.concept_id for step in route.steps if step.status == "claimed"), None
+        (
+            step.concept_id
+            for step in route.steps
+            if step.status == "claimed" and step.concept_id in section
+        ),
+        None,
     )
 
 
-def upcoming(route: Route, first: str | None, *, limit: int) -> list[RouteStep]:
+def upcoming(
+    route: Route,
+    first: str | None,
+    *,
+    limit: int,
+    section: Collection[str] | None = None,
+) -> list[RouteStep]:
     """Ближайшие шаги для списка: с какого начнём, потом незакрытые по порядку
     маршрута, в хвосте — заявленные (их проверим в конце)."""
+    allowed = None if section is None else set(section)
+    steps = [s for s in route.steps if allowed is None or s.concept_id in allowed]
     if first is None:
         return []
-    head = [step for step in route.steps if step.concept_id == first]
+    head = [step for step in steps if step.concept_id == first]
     rest = [
         step
-        for step in route.steps
+        for step in steps
         if step.status != "closed" and step.concept_id != first
     ]
     ahead = [step for step in rest if step.status != "claimed"]

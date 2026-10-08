@@ -275,6 +275,10 @@ class RouteStep(BaseModel):
     concept_id: str
     mode: NodeMode
     status: RouteStepStatus
+    # Когда тема закрыта последний раз (unix time). Провалы ПОСЛЕ закрытия
+    # открывают её снова, а у открывшейся время остаётся меткой «была закрыта»:
+    # по ней тема прошлого модуля попадает в рабочий участок текущего.
+    closed_at: float | None = None
 
 
 class Route(BaseModel):
@@ -282,6 +286,11 @@ class Route(BaseModel):
 
     goal_concept_id: str | None = None
     steps: list[RouteStep] = Field(default_factory=list)
+    # Модуль, над которым идёт работа (None — открытых тем нет нигде).
+    topic_id: int | None = None
+    # Модули, о прохождении которых ученику уже сказали «🎉»: возврат к их
+    # темам не объявляет модуль пройденным повторно.
+    completed_topics: list[int] = Field(default_factory=list)
 
     @property
     def closed_count(self) -> int:
