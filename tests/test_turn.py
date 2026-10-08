@@ -733,20 +733,18 @@ async def test_resume_keeps_pending_item(conn, settings) -> None:
 
 
 async def test_resume_explains_first_then_gives_task(conn, settings) -> None:
-    """Фаза объяснения — тьюторский ход; дальше кнопка выдаёт задание."""
+    """Вход в узел: объяснение первым сообщением, задание — вторым."""
     load_seed(conn)
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
     client = _FakeTutor("Смотри: groupby собирает строки в группы")
 
-    first = await resume_reply(conn, client, "m", now=1.0, settings=settings)
+    reply = await resume_reply(conn, client, "m", now=1.0, settings=settings)
 
-    assert "groupby собирает строки" in first.text
+    assert "groupby собирает строки" in reply.text  # объяснение без задания
+    assert reply.tail  # задание отдельным сообщением
     assert _state(conn).phase == "practice"
-
-    second = await resume_reply(conn, client, "m", now=2.0, settings=settings)
-
     assert _state(conn).pending_item_id is not None
-    assert second.options is not None
+    assert reply.options is not None
 
 
 async def test_resume_reports_finished_route(conn, settings) -> None:
@@ -769,6 +767,23 @@ async def test_close_phrase_keeps_students_words_in_journal(conn, settings) -> N
 
     messages = repos.get_messages(conn, repos.get_open_session(conn))
     assert messages[-2].content == "закрой тему"
+
+
+# --- ведомый урок: вход в узел (Срез 21) ---
+
+
+async def test_entering_node_explains_and_gives_first_test(conn, settings) -> None:
+    """Вход в узел: объяснение первым сообщением, задание — вторым."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    client = _FakeTutor("Сейчас разберём Python")
+
+    reply = await handle_turn(conn, client, "m", "давай учиться", now=1.0, settings=settings)
+
+    assert reply.text == "Сейчас разберём Python"  # объяснение без задания
+    assert reply.tail  # задание отдельным сообщением
+    assert _state(conn).pending_item_id is not None
+    assert _state(conn).phase == "practice"
 
 
 @pytest.mark.parametrize("model_level", [0, 4])

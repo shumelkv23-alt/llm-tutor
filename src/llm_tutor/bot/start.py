@@ -86,8 +86,11 @@ async def begin_lesson(
         parse_mode=render.PARSE_MODE,
         reply_markup=menu.main_menu(),
     )
+    # Локальный импорт: handlers импортирует start на уровне модуля, и общий
+    # импорт дал бы цикл.
+    from llm_tutor.bot.handlers import _send_reply
+
+    # Урок начинается сразу: объяснение первым сообщением, первый тест —
+    # вторым, ждать реплики ученика не нужно.
     reply = await resume_reply(conn, client, model, settings=settings)
-    await message.answer(
-        render.fit(render.escape(reply.text)),
-        parse_mode=render.PARSE_MODE,
-    )
+    await _send_reply(conn, message, reply)

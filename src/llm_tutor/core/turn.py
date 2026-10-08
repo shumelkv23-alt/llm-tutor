@@ -418,6 +418,26 @@ async def handle_turn(
         if tail is None:
             reply = f"{reply}\n\n{task_text}"
     else:
+        # Вход в узел (§5.1): занятия ещё нет. Код берёт первый шаг маршрута,
+        # тьютор объясняет именно его, и в том же ходу выдаётся первый тест —
+        # ученику не нужно ничего писать, чтобы получить задание.
+        entering = state.current_node_id is None and state.pending_item_id is None
+        if entering:
+            route = state.route or route_mod.build_route(
+                conn,
+                graph,
+                goal_concept_id=route_mod.goal_for(conn, graph),
+                now=stamp,
+                settings=s,
+            )
+            node_id = route_mod.next_node_id(conn, graph, route, now=stamp, settings=s)
+            if node_id is None:
+                entering = False  # маршрут исчерпан — входить некуда
+            else:
+                state = state.model_copy(
+                    update={"current_node_id": node_id, "route": route}
+                )
+
         reply, events, mastery, new_state, wants_close = await _tutor_branch(
             conn,
             client,
@@ -444,7 +464,36 @@ async def handle_turn(
             return verify.start_verification(
                 conn, now=stamp, settings=s, user_text=user_text, tutor_reply=reply
             )
-        if state.pending_item_id is not None and not force_stuck:
+        # Ведём занятие дальше: на входе в узел — сразу после объяснения, на
+        # реплике без задания — по любой непустой реплике (§5.4). Кнопки
+        # «Продолжить» больше нет, её роль играет текст ученика.
+        moves_lesson = entering or (
+            state.pending_item_id is None
+            and not force_stuck
+            and not _looks_like_question(user_text)
+        )
+        # Сбой модели занятие не двигает: обещать задание после «не смог
+        # получить ответ» — значит выдать сбой за объяснение.
+        if (
+            moves_lesson
+            and new_state.current_node_id is not None
+            and reply != LLM_FAILURE_REPLY
+        ):
+            hint_level = new_state.hint_level
+            new_state, task_text, options = _issue_task(
+                conn, graph, new_state, now=stamp, settings=s
+            )
+            tail = task_text if new_state.pending_item_id is not None else None
+            if tail is None:
+                reply = f"{reply}\n\n{task_text}"
+            else:
+                # Объяснение и задание — один ход, поэтому уровень подсказки
+                # переносится в задание: `_issue_task` обнуляет лестницу
+                # (задание новое — помощи по нему не было), а обнуление стёрло
+                # бы подъём, и следующее «не понял» начинало бы лестницу
+                # заново — до разбора дело не дошло бы никогда.
+                new_state = new_state.model_copy(update={"hint_level": hint_level})
+        elif state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
             # При «не понял» напоминание не нужно — его заменяет STUCK_NOTE.
             reply = f"{reply}\n\n{PENDING_ITEM_NOTE}"
@@ -722,8 +771,8 @@ async def resume_reply(
         return TurnReply(text=ROUTE_DONE_REPLY)
 
     if state.phase == "explain":
-        # Обещанное в представлении «объясняю → даю задачу»: первое нажатие
-        # объясняет, второе выдаёт задание (фаза уходит в practice).
+        # Вход в узел (§5.1): тьютор объясняет, и в том же ходу выдаётся первый
+        # тест — ждать реплики ученика не нужно.
         explaining = state.model_copy(update={"current_node_id": node_id})
         reply, events, mastery, new_state, _ = await _tutor_branch(
             conn,
@@ -736,19 +785,34 @@ async def resume_reply(
             now=stamp,
             settings=s,
         )
-        new_state = new_state.model_copy(update={"phase": "practice"})
+        if reply == LLM_FAILURE_REPLY:
+            # Сбой модели не двигает занятие (см. `handle_turn`): фазу оставляем
+            # объяснением, задание выдаст следующая реплика ученика.
+            new_state = new_state.model_copy(update={"phase": "explain"})
+        else:
+            hint_level = new_state.hint_level
+            new_state, task_text, options = _issue_task(
+                conn, graph, new_state, now=stamp, settings=s
+            )
+            tail = task_text if new_state.pending_item_id is not None else None
+            if tail is None:
+                reply = f"{reply}\n\n{task_text}"
+            else:
+                # См. `handle_turn`: объяснение и задание — один ход, лестницу
+                # подсказок обнулять нельзя.
+                new_state = new_state.model_copy(update={"hint_level": hint_level})
         fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
         post_turn(
             conn,
             session_id,
             user_text=RESUME_KICKOFF_TEXT,
-            assistant_text=reply,
+            assistant_text=f"{reply}\n\n{tail}" if tail else reply,
             state=new_state.model_copy(update={"route": fresh_route}),
             events=events,
             mastery=mastery,
             now=stamp,
         )
-        return TurnReply(text=reply)
+        return TurnReply(text=reply, options=options, tail=tail)
 
     return start_practice_reply(conn, now=stamp, settings=s)
 

@@ -279,7 +279,10 @@ async def test_free_text_goes_to_tutor_turn(conn, settings) -> None:
 
     await _named(router, "message", "on_text")(message)
 
-    assert message.last_text == "ок"
+    # Занятия ещё нет, поэтому реплика входит в узел (Срез 21): объяснение
+    # первым сообщением, задание по первому шагу — вторым.
+    assert message.sent[0][0] == "ок"
+    assert message.sent[1][0]
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
 
 
@@ -744,9 +747,11 @@ async def test_survey_finish_shows_steps_and_starts_lesson(conn, settings) -> No
     for _ in range(len(survey.SURVEY_QUESTIONS)):
         await on_answer(FakeCallback("survey:0", message), ask_state)
 
-    steps_text = message.sent[-2][0]
-    assert "Ближайшие" in steps_text
+    # Финал анкеты: список ближайших шагов, объяснение первого узла и его тест.
+    # Сообщение ищем по тексту: в этом же FakeMessage осели вопросы анкеты.
+    steps_text = next(text for text, _ in message.sent if "Ближайшие" in text)
     assert "1. " in steps_text
     assert "<pre>" not in steps_text  # схема больше не рисуется
-    assert message.sent[-1][0]  # урок начался: объяснение первой темы
+    assert message.sent[-2][0]  # урок начался: объяснение первой темы
+    assert message.sent[-1][0]  # и сразу первое задание
     assert await ask_state.get_state() is None
