@@ -151,16 +151,25 @@ async def _run_turn(
         return TurnReply(text=LLM_FAILURE_REPLY)
 
 
-def _options_keyboard(options: list[str] | None) -> InlineKeyboardMarkup | None:
-    """Кнопки вариантов по подписям (``None``, если вариантов нет)."""
+def _options_keyboard(
+    conn: sqlite3.Connection, options: list[str] | None
+) -> InlineKeyboardMarkup | None:
+    """Кнопки вариантов по подписям (``None``, если вариантов нет).
+
+    В колбэк кладём и id задания: сообщение остаётся в переписке, и клик по
+    старой клавиатуре иначе засчитался бы как ответ на ТЕКУЩЕЕ задание —
+    свидетельство за ответ, которого ученик не давал.
+    """
     if not options:
         return None
+    item = _pending_item(conn)
+    item_id = item.id if item is not None else 0
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text=label,
-                    callback_data=f"{ANSWER_CALLBACK_PREFIX}:{index}",
+                    callback_data=f"{ANSWER_CALLBACK_PREFIX}:{item_id}:{index}",
                 )
             ]
             for index, label in enumerate(options)
@@ -224,7 +233,7 @@ def make_router(
             reply = TurnReply(text=BOT_FAILURE_REPLY)
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -247,7 +256,7 @@ def make_router(
             return
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -277,7 +286,7 @@ def make_router(
             return
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -314,8 +323,14 @@ def make_router(
     async def on_answer(callback: CallbackQuery) -> None:
         # Ответ приходит из состояния сессии в БД — рестарт процесса его не теряет.
         item = _pending_item(conn)
-        index = int((callback.data or "").split(":")[1])
-        if item is None or not 0 <= index < len(item.options):
+        # Данные колбэка подконтрольны клиенту: мусор и клик по старой
+        # клавиатуре должны упираться в «задание неактуально», а не отвечать
+        # за текущее задание.
+        try:
+            item_id, index = (int(part) for part in (callback.data or "").split(":")[1:3])
+        except ValueError:
+            item_id, index = -1, -1
+        if item is None or item.id != item_id or not 0 <= index < len(item.options):
             await callback.message.answer(
                 render.fit(render.escape(STALE_ITEM_REPLY)),
                 parse_mode=render.PARSE_MODE,
@@ -334,7 +349,7 @@ def make_router(
         )
         await callback.message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
         await callback.answer()
@@ -368,7 +383,7 @@ def make_router(
                     await callback.message.answer(
                         render.fit(render.escape(reply.text)),
                         parse_mode=render.PARSE_MODE,
-                        reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
+                        reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
                     )
             elif action == "resume":
                 # Посреди анкеты или подбора маршрута не продолжаем: в состоянии
@@ -382,7 +397,7 @@ def make_router(
                     await callback.message.answer(
                         render.fit(render.escape(reply.text)),
                         parse_mode=render.PARSE_MODE,
-                        reply_markup=_options_keyboard(reply.options)
+                        reply_markup=_options_keyboard(conn, reply.options)
                         or menu.resume_keyboard(),
                     )
         except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
@@ -412,7 +427,7 @@ def make_router(
             render.fit(render.escape(reply.text)),
             # Варианты ответа (инлайн) в приоритете; иначе — «Продолжить».
             # Постоянная клавиатура persistent, переприкреплять её не нужно.
-            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
+            reply_markup=_options_keyboard(conn, reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 

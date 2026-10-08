@@ -209,11 +209,14 @@ async def test_button_answer_goes_through_turn(conn, settings) -> None:
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
     await _named(router, "message", "on_task")(message, _fsm())
+    pending = _state(conn).pending_item_id
 
-    await _handler(router, "callback_query", 0)(FakeCallback("answer:0", message))
+    await _handler(router, "callback_query", 0)(
+        FakeCallback(f"answer:{pending}:0", message)
+    )
 
     assert repos.get_events(conn)  # ответ проверен кодом и записан
-    assert _state(conn).pending_item_id != 6  # отвеченное задание снято
+    assert _state(conn).pending_item_id != pending  # отвеченное задание снято
 
 
 async def test_text_answer_goes_through_turn(conn, settings) -> None:
@@ -402,7 +405,7 @@ async def test_answer_callback_disables_intents(conn, settings, monkeypatch) -> 
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     on_answer = _named(router, "callback_query", "on_answer")
 
-    await on_answer(FakeCallback("answer:0", FakeMessage()))
+    await on_answer(FakeCallback("answer:1:0", FakeMessage()))
 
     assert seen.get("allow_intents") is False
 
@@ -605,3 +608,74 @@ async def test_themes_command_reports_failure_instead_of_silence(
     await _named(router, "message", "on_themes")(message)
 
     assert "пошло не так" in message.last_text
+
+
+async def test_answer_from_stale_keyboard_is_refused(conn, settings) -> None:
+    """Клик по старой клавиатуре не отвечает за текущее задание.
+
+    Индекс варианта применялся бы к тому заданию, что висит сейчас, и в журнал
+    ушло бы свидетельство за ответ, которого ученик не давал.
+    """
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    on_answer = _handler(router, "callback_query", 0)
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
+    answered = _state(conn).pending_item_id
+    await on_answer(FakeCallback(f"answer:{answered}:0", FakeMessage()))
+    events_before = len(repos.get_events(conn))
+    current = _state(conn).pending_item_id
+    message = FakeMessage()
+
+    await on_answer(FakeCallback(f"answer:{answered}:0", message))
+
+    assert "неактуально" in message.last_text
+    assert len(repos.get_events(conn)) == events_before
+    assert _state(conn).pending_item_id == current
+
+
+async def test_survey_crafted_callback_is_answered(conn, settings) -> None:
+    """Мусорный колбэк анкеты не роняет хендлер и не оставляет без ответа."""
+    load_seed(conn)
+    router = make_survey_router(conn, settings)
+    on_answer = _handler(router, "callback_query", 0)
+    state = _fsm()
+    message = FakeMessage()
+    await ask_survey(message, state)
+    callback = FakeCallback("survey:zzz", message)
+
+    await on_answer(callback, state)
+
+    assert callback.answered is True
+    assert "кнопкой" in message.last_text
+
+
+async def test_survey_out_of_range_callback_is_answered(conn, settings) -> None:
+    """Вариант вне списка не проходит в анкету."""
+    load_seed(conn)
+    router = make_survey_router(conn, settings)
+    on_answer = _handler(router, "callback_query", 0)
+    state = _fsm()
+    message = FakeMessage()
+    await ask_survey(message, state)
+    callback = FakeCallback("survey:99", message)
+
+    await on_answer(callback, state)
+
+    assert callback.answered is True
+    assert "кнопкой" in message.last_text
+
+
+async def test_options_keyboard_binds_answer_to_item(conn, settings) -> None:
+    """Колбэк варианта несёт id задания — иначе старый клик не отличить."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage()
+    await _named(router, "message", "on_task")(message, _fsm())
+    pending = _state(conn).pending_item_id
+
+    callbacks = [
+        button.callback_data for row in message.sent[-1][1].inline_keyboard for button in row
+    ]
+
+    assert callbacks[0] == f"answer:{pending}:0"
+    assert len(callbacks) == len(set(callbacks))

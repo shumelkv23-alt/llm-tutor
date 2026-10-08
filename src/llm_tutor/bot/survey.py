@@ -69,8 +69,22 @@ def make_survey_router(conn, settings: Settings) -> Router:
     async def on_answer(callback: CallbackQuery, state: FSMContext) -> None:
         data = await state.get_data()
         index = data["index"]
+        question = survey.SURVEY_QUESTIONS[index]
+        # Данные колбэка подконтрольны клиенту: мусор и вариант вне списка не
+        # должны ронять хендлер — иначе ученик не получит ни ответа, ни вопроса.
+        try:
+            choice = int((callback.data or "").split(":")[1])
+        except (IndexError, ValueError):
+            choice = -1
+        if not 0 <= choice < len(question.options):
+            await callback.message.answer(
+                BUTTON_HINT_REPLY, reply_markup=_keyboard(question)
+            )
+            await callback.answer()
+            return
+
         answers = dict(data.get("answers", {}))
-        answers[survey.SURVEY_QUESTIONS[index].key] = int((callback.data or "").split(":")[1])
+        answers[question.key] = choice
 
         if index + 1 < len(survey.SURVEY_QUESTIONS):
             await state.update_data(index=index + 1, answers=answers)
