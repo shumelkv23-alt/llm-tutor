@@ -12,7 +12,8 @@ LLM не выдаёт.
 import math
 import sqlite3
 import time
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
@@ -229,6 +230,46 @@ def plan_propagation(
             )
         )
     return changes
+
+
+def merge_updates(
+    conn: sqlite3.Connection,
+    updates: Iterable[MasteryUpdate],
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> list[MasteryUpdate]:
+    """Схлопывает обновления одного концепта в одно, сохраняя обе дельты.
+
+    За один ход по концепту приходит несколько свидетельств: прямое (задание
+    меряет этот узел) и распространение по графу (задание меряет узел выше).
+    ``plan_update`` считает каждое от ОДНОЙ базы, а ``write_update`` пишет
+    абсолютные счётчики — записав их по очереди, мы оставили бы только
+    последнее и потеряли прямое свидетельство. Складываем дельты относительно
+    базы, из которой оба и считались.
+
+    ``last_seen`` и ``next_review`` берём у первого обновления концепта: оно и
+    есть прямое свидетельство, а распространение повтором не считается.
+    Порядок концептов — как при первом появлении.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+
+    merged: dict[str, MasteryUpdate] = {}
+    for change in updates:
+        previous = merged.get(change.concept_id)
+        if previous is None:
+            merged[change.concept_id] = change
+            continue
+        base_alpha, base_beta, _, _ = _decayed_now(
+            repos.get_mastery(conn, change.concept_id), s, stamp
+        )
+        merged[change.concept_id] = replace(
+            previous,
+            alpha=previous.alpha + change.alpha - base_alpha,
+            beta=previous.beta + change.beta - base_beta,
+        )
+    return list(merged.values())
 
 
 def propagate_success(

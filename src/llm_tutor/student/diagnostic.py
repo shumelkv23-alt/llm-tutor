@@ -265,7 +265,9 @@ def plan_evidence(
                 settings=s,
             )
         )
-    return events, mastery
+    # По концепту могло накопиться два обновления (прямое и распространение):
+    # пишутся абсолютные счётчики, поэтому без слияния прямое потерялось бы.
+    return events, beta.merge_updates(conn, mastery, now=stamp, settings=s)
 
 
 def record_answer(

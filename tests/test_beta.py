@@ -1,6 +1,7 @@
 """Тесты Beta-модели владения (Срез 4.3)."""
 
 import math
+from dataclasses import replace
 
 import pytest
 
@@ -177,3 +178,25 @@ def test_propagate_with_zero_amount_is_noop(conn, settings, graph) -> None:
 
     assert beta.propagate_success(conn, graph, "b", now=0.0, settings=zero_weight) == []
     assert repos.get_mastery(conn, "a") is None
+
+
+def test_merge_updates_sums_deltas_of_one_concept(conn, settings) -> None:
+    """Два обновления одного концепта складываются, а не перезаписывают друг друга."""
+    direct = beta.plan_update(conn, "a", correct=1.0, weight=0.5, now=1.0, settings=settings)
+    spread = beta.plan_update(conn, "a", correct=1.0, weight=0.1, now=1.0, settings=settings)
+
+    merged = beta.merge_updates(conn, [direct, spread], now=1.0, settings=settings)
+
+    assert len(merged) == 1
+    assert merged[0].alpha == pytest.approx(1.0 + 0.5 + 0.1)
+    assert merged[0].beta == pytest.approx(1.0)
+
+
+def test_merge_updates_keeps_first_next_review(conn, settings) -> None:
+    """Распространение повтором не считается: за повторение отвечает прямое."""
+    direct = beta.plan_update(conn, "a", correct=1.0, weight=0.5, now=1.0, settings=settings)
+    spread = replace(direct, alpha=direct.alpha + 0.1, next_review=None)
+
+    merged = beta.merge_updates(conn, [direct, spread], now=1.0, settings=settings)
+
+    assert merged[0].next_review == direct.next_review

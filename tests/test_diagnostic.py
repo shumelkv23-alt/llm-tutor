@@ -300,3 +300,31 @@ def test_verification_item_without_items_for_node(conn, settings) -> None:
 def test_verify_item_ids_defaults_to_empty() -> None:
     """Старая сессия без поля читается: дефолт пустой."""
     assert SessionState().verify_item_ids == []
+
+
+def test_plan_evidence_sums_direct_and_propagated_evidence(conn, settings) -> None:
+    """Прямое свидетельство не теряется под распространением по графу.
+
+    Задание 9 меряет и `groupby` (прямо), и через `agg_functions` (по графу):
+    без слияния абсолютных счётчиков прямое свидетельство затиралось бы.
+    """
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+    item = repos.get_item(conn, 9)
+    weight_scale = settings.rubric_evidence_weight
+
+    _, mastery = diagnostic.plan_evidence(
+        conn, graph, item, "agg_functions", 1.0, weight_scale=weight_scale, now=1.0,
+        settings=settings,
+    )
+
+    concepts = [change.concept_id for change in mastery]
+    assert len(concepts) == len(set(concepts))  # по концепту ровно одно обновление
+    direct = item.concept_weights["groupby"] * weight_scale
+    propagated = (
+        settings.beta_propagate_weight
+        * item.concept_weights["agg_functions"]
+        * weight_scale
+    )
+    groupby = next(change for change in mastery if change.concept_id == "groupby")
+    assert groupby.alpha == pytest.approx(1.0 + direct + propagated)
