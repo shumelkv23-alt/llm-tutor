@@ -169,6 +169,41 @@ def question_for_node(
     return DiagnosticQuestion(item=item, concept_id=node_id) if item is not None else None
 
 
+def verification_item(
+    conn: sqlite3.Connection,
+    node_id: str,
+    *,
+    used_item_ids: frozenset[int] = frozenset(),
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> DiagnosticQuestion | None:
+    """Задание для проверочного прохода: объяснение приоритетнее автопроверки.
+
+    Пауза ``item_repeat_cooldown_days`` здесь НЕ применяется: ученик явно
+    просит проверить, а банк по большинству узлов содержит одно задание — с
+    паузой проверять было бы нечем. От накрутки защищает ``used_item_ids``:
+    внутри одного прохода задание не выдаётся дважды.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+
+    items = [
+        item
+        for item in _available_items(conn, include_rubric=True)
+        if item.id not in used_item_ids and node_id in item.concept_weights
+    ]
+    if not items:
+        return None
+
+    target = beta.estimate(conn, node_id, now=stamp, settings=s).mean
+    # Объяснение первым: оно несёт больше сигнала, чем выбор варианта.
+    rubric_items = [item for item in items if item.answer_type in RUBRIC_CHECKABLE]
+    candidate = _best_item(rubric_items or items, node_id, target_difficulty=target)
+    if candidate is None:
+        return None
+    return DiagnosticQuestion(item=candidate, concept_id=node_id)
+
+
 def plan_evidence(
     conn: sqlite3.Connection,
     graph: CourseGraph,

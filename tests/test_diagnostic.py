@@ -4,7 +4,7 @@ import pytest
 
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Edge, Event, Item
+from llm_tutor.schemas import Concept, Edge, Event, Item, SessionState
 from llm_tutor.course.seed import load_seed
 from llm_tutor.student import beta, diagnostic
 from llm_tutor.student.diagnostic import (
@@ -240,3 +240,63 @@ def test_first_pass_is_longer_than_followup(conn, settings) -> None:
     repos.add_event(conn, Event(source="checked", result=1.0, ts=0.0))
 
     assert questions_for_pass(conn, settings=settings) == settings.diagnostic_followup
+
+
+# --- задание проверочного прохода (Срез 16) ---
+
+
+def test_verification_item_prefers_rubric_item(conn, settings) -> None:
+    """Объяснение идёт первым: рубричное задание приоритетнее автопроверки."""
+    load_seed(conn)
+
+    question = diagnostic.verification_item(
+        conn, "groupby", used_item_ids=frozenset(), now=1.0, settings=settings
+    )
+
+    assert question is not None
+    assert question.item.answer_type in diagnostic.RUBRIC_CHECKABLE
+
+
+def test_verification_item_uses_repeat_if_nothing_fresh(conn, settings) -> None:
+    """Пауза повтора в проходе не применяется: проверять иначе нечем."""
+    load_seed(conn)
+    item = repos.get_item(conn, 1)
+    repos.add_event(
+        conn,
+        Event(source="checked", result=1.0, item_id=item.id, concept_id="pandas_intro", ts=1.0),
+    )
+
+    question = diagnostic.verification_item(
+        conn, "pandas_intro", used_item_ids=frozenset(), now=1.0, settings=settings
+    )
+
+    assert question is not None
+    assert question.item.id == item.id
+
+
+def test_verification_item_skips_already_used(conn, settings) -> None:
+    """В одном проходе одно задание не выдаётся дважды."""
+    load_seed(conn)
+
+    question = diagnostic.verification_item(
+        conn, "pandas_intro", used_item_ids=frozenset({1}), now=1.0, settings=settings
+    )
+
+    assert question is None
+
+
+def test_verification_item_without_items_for_node(conn, settings) -> None:
+    """У узла без заданий подбирать нечего."""
+    load_seed(conn)
+
+    assert (
+        diagnostic.verification_item(
+            conn, "visualization_basics", used_item_ids=frozenset(), now=1.0, settings=settings
+        )
+        is None
+    )
+
+
+def test_verify_item_ids_defaults_to_empty() -> None:
+    """Старая сессия без поля читается: дефолт пустой."""
+    assert SessionState().verify_item_ids == []
