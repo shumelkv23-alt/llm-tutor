@@ -1,15 +1,15 @@
-"""Вход в курс: кнопка «▶️ Старт», приветствие и начало урока.
+"""Вход в курс: приветствие, «С возвращением» и начало урока.
 
-Нового ученика встречает одна кнопка и три предложения — без схемы маршрута и
-без кнопок согласования. После анкеты бот показывает ближайшие шаги списком и
-сразу начинает урок по первому из них.
+Нового ученика встречает одно сообщение с кнопкой «▶️ Поехали» — анкета живёт
+в нём же (``bot/survey.py``). После анкеты бот показывает ближайшие шаги
+списком и сразу начинает урок по первому из них.
 """
 
 import logging
 import sqlite3
 
 from aiogram.fsm.context import FSMContext
-from aiogram.types import KeyboardButton, Message, ReplyKeyboardMarkup
+from aiogram.types import Message
 
 from llm_tutor.bot import menu, render
 from llm_tutor.config import Settings
@@ -21,26 +21,34 @@ from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
 
+# Текст reply-кнопки прошлой версии: у старых учеников она ещё висит внизу, и
+# её нажатие должно вести на вход, а не в тьюторский ход.
 START_LABEL = "▶️ Старт"
 
-# Приветствие — ровно три предложения: кто я, что будет, что нажать.
+# Приветствие — два предложения: кто я и что сейчас будет. Что нажать, видно
+# по единственной кнопке под ним.
 INTRO_TEXT = (
-    "👋 Привет! Я тьютор по теме 1 курса mlcourse.ai — «Pandas / EDA».\n"
-    "Задам несколько коротких вопросов о тебе — это меньше минуты.\n"
-    f"Нажми «{START_LABEL}», когда будешь готов пройти опрос."
+    "👋 Привет! Я тьютор по теме «Pandas / EDA» курса mlcourse.ai.\n"
+    "Пара коротких вопросов — и подберу, с чего начать."
 )
 
-# Реплика до анкеты: маршрута ещё нет, вести занятие не по чему.
-BEFORE_SURVEY_REPLY = f"Сначала пару вопросов о тебе — нажми «{START_LABEL}»."
+WELCOME_BACK_TEMPLATE = "👋 С возвращением! Продолжаем «{name}»."
+WELCOME_BACK_IDLE = "👋 С возвращением! Напиши что угодно — продолжим."
 
 
-def start_keyboard() -> ReplyKeyboardMarkup:
-    """Постоянная клавиатура нового ученика: одна кнопка «▶️ Старт»."""
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text=START_LABEL)]],
-        resize_keyboard=True,
-        is_persistent=True,
-    )
+def welcome_back_text(conn: sqlite3.Connection) -> str:
+    """«С возвращением» с текущей темой — без модели (сырой текст).
+
+    Это чтение, а не ход: сессию не заводим (её заведёт ``handle_start``).
+    """
+    session_id = repos.get_open_session(conn)
+    if session_id is None:
+        return WELCOME_BACK_IDLE
+    node_id = repos.get_session_state(conn, session_id).current_node_id
+    graph = CourseGraph.load(conn)
+    if node_id is None or not graph.has_node(node_id):
+        return WELCOME_BACK_IDLE
+    return WELCOME_BACK_TEMPLATE.format(name=graph.concept(node_id).name)
 
 
 async def begin_lesson(

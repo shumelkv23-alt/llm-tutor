@@ -428,7 +428,7 @@ async def test_text_answer_goes_through_turn(conn, settings) -> None:
     item = repos.get_item(conn, _state(conn).pending_item_id)
     answer = FakeMessage(item.options[0] if item.options else str(item.answer))
 
-    await _named(router, "message", "on_text")(answer)
+    await _named(router, "message", "on_text")(answer, _fsm())
 
     assert repos.get_events(conn)
     # Ход с заданием уходит двумя сообщениями: разбор — первым, задание —
@@ -451,7 +451,7 @@ async def test_free_text_goes_to_tutor_turn(conn, settings) -> None:
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage("привет!")
 
-    await _named(router, "message", "on_text")(message)
+    await _named(router, "message", "on_text")(message, _fsm())
 
     # Занятия ещё нет, поэтому реплика входит в узел (Срез 21): объяснение
     # первым сообщением, задание по первому шагу — вторым.
@@ -586,14 +586,16 @@ async def test_start_button_opens_survey(conn, settings) -> None:
     assert message.sent[0][0] == start.INTRO_TEXT
 
 
-async def test_text_before_survey_gets_invitation(conn, settings) -> None:
-    """До анкеты реплика отвечает приглашением, а не тьютором."""
+async def test_text_before_survey_gets_intro(conn, settings) -> None:
+    """До анкеты реплика получает приветствие с «Поехали», а не тьютора."""
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage("привет")
+    state = _fsm()
 
-    await _named(router, "message", "on_text")(message)
+    await _named(router, "message", "on_text")(message, state)
 
-    assert message.last_text == start.BEFORE_SURVEY_REPLY
+    assert message.last_text == start.INTRO_TEXT
+    assert await state.get_state() == SurveyFlow.question.state
     assert repos.get_open_session(conn) is None  # в занятие не пошли
 
 
@@ -704,10 +706,32 @@ async def test_resume_command_refuses_during_fsm_flow(conn, settings) -> None:
     assert repos.get_open_session(conn) is None  # сессию не тронули
 
 
-def test_intro_has_three_sentences_and_names_the_button() -> None:
-    """Приветствие — три предложения, третье называет кнопку."""
-    assert len([line for line in start.INTRO_TEXT.splitlines() if line.strip()]) == 3
-    assert start.START_LABEL in start.INTRO_TEXT
+def test_intro_is_two_sentences_without_reply_button() -> None:
+    """Приветствие — два предложения; жать нужно инлайн-«Поехали» под ним."""
+    lines = [line for line in start.INTRO_TEXT.splitlines() if line.strip()]
+    assert len(lines) == 2
+    assert start.START_LABEL not in start.INTRO_TEXT
+
+
+async def test_start_after_survey_does_not_call_model(conn, settings) -> None:
+    """Вернувшемуся — «С возвращением» без LLM и без служебной метки модели."""
+    load_seed(conn)
+    _complete_survey(conn)
+
+    class _NoModel:
+        async def chat(self, *args, **kwargs):
+            raise AssertionError("повторный /start не зовёт модель")
+
+        async def chat_structured(self, *args, **kwargs):
+            raise AssertionError("повторный /start не зовёт модель")
+
+    router = make_router(conn, _NoModel(), "m", settings=settings)
+    message = FakeMessage()
+
+    await _named(router, "message", "on_start")(message, _fsm())
+
+    assert "С возвращением" in message.last_text
+    assert "[модель:" not in message.last_text
 
 
 # --- маршрутизация на уровне диспетчера (финал ветки) ---

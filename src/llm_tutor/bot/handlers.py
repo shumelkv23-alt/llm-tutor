@@ -45,51 +45,22 @@ from llm_tutor.db.repos import (
     get_session_state,
     update_session_state,
 )
-from llm_tutor.llm.client import LLMClient, LLMError
+from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import (
     BOT_FAILURE_REPLY,
     BUSY_REPLY,
     LLM_FAILURE_REPLY,
 )
-from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.schemas import Item
 from llm_tutor.student.survey import is_completed as survey_completed
-
-START_SYSTEM_PROMPT = (
-    "Ты — тьютор по курсу машинного обучения (mlcourse.ai), тема 1 «Pandas / EDA». "
-    "Поздоровайся коротко и предложи задать вопрос по теме."
-)
 
 # /start — команда, а не реплика ученика: в диалог пишем приветствие,
 # чтобы история не засорялась литералом "/start".
 START_GREETING = "Привет! Хочу начать учиться."
 
-# Telegram отклоняет сообщения длиннее 4096 символов — оставляем запас.
-MAX_REPLY_LENGTH = 4000
-
 ANSWER_CALLBACK_PREFIX = "answer"
 
 logger = logging.getLogger(__name__)
-
-
-def _truncate(reply: str) -> str:
-    """Режет ответ до безопасной длины сообщения Telegram."""
-    if len(reply) > MAX_REPLY_LENGTH:
-        return reply[:MAX_REPLY_LENGTH] + "…"
-    return reply
-
-
-async def build_start_reply(client: LLMClient, model: str, user_text: str) -> str:
-    """Ответ на /start: приветствие модели. Сбои LLM ловятся здесь."""
-    messages = [
-        ChatMessage(role="system", content=START_SYSTEM_PROMPT),
-        ChatMessage(role="user", content=user_text or "Привет!"),
-    ]
-    try:
-        answer = await client.chat(messages, model=model)
-    except LLMError:
-        return LLM_FAILURE_REPLY
-    return _truncate(f"[модель: {model}]\n\n{answer}")
 
 
 def _persist_turn(
@@ -102,18 +73,19 @@ def _persist_turn(
     update_session_state(conn, session_id, state.model_copy(update={"last_activity": ts}))
 
 
-async def handle_start(
+def handle_start(
     conn: sqlite3.Connection,
-    client: LLMClient,
-    model: str,
     user_text: str,
     *,
     now: float | None = None,
 ) -> str:
-    """Полный ход на /start: сессия + запись реплик + приветствие модели."""
-    ts = time.time() if now is None else now
-    reply = await build_start_reply(client, model, user_text)
+    """Полный ход на /start вернувшегося: сессия + журнал + «С возвращением».
 
+    Модель не зовём: приветствие не несёт содержания, а LLM-вызов стоил бы
+    секунд ожидания на каждый /start.
+    """
+    ts = time.time() if now is None else now
+    reply = start.welcome_back_text(conn)
     session_id = ensure_open_session(conn, ts)
     _persist_turn(conn, session_id, user_text, reply, ts)
     return reply
@@ -217,9 +189,9 @@ def make_router(
         if not survey_completed(conn):
             await start_survey(message, state)
             return
-        reply = await handle_start(conn, client, model, START_GREETING)
-        # Повторный /start — надёжный выход из незакрытого потока (например,
-        # с экрана согласования маршрута): иначе ученик остался бы в нём, а
+        reply = handle_start(conn, START_GREETING)
+        # Повторный /start — надёжный выход из незакрытого потока (анкета,
+        # диагностика): иначе ученик остался бы в нём, а
         # «Продолжить» отвечала бы «сначала закончим текущий шаг».
         await state.clear()
         # Вернувшемуся ученику — главное действие в один тап; постоянная
@@ -401,8 +373,8 @@ def make_router(
             )
         await callback.answer()
 
-    # Кнопка «▶️ Старт» — тот же вход, что /start: до анкеты это единственная
-    # кнопка внизу, и она должна запускать приветствие и опрос.
+    # Текст «▶️ Старт» — reply-кнопка прошлой версии, у старых учеников она
+    # ещё висит: ведёт на вход, как /start.
     @router.message(StateFilter(None), F.text == start.START_LABEL)
     async def on_start_button(message: Message, state: FSMContext) -> None:
         await on_start(message, state)
@@ -420,15 +392,12 @@ def make_router(
     # бы перехвачен) и не лезет в незавершённые FSM-потоки (анкета, диагностика) —
     # их шаги обрабатывают свои роутеры.
     @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
-    async def on_text(message: Message) -> None:
-        # Анкета не пройдена — маршрута и цели ещё нет: вести занятие не по чему.
+    async def on_text(message: Message, state: FSMContext) -> None:
+        # Анкета не пройдена — маршрута ещё нет: вести занятие не по чему.
+        # Вместо отказа — то же приветствие с «Поехали», что и на /start.
         if not survey_completed(conn):
-            await message.answer(
-                start.BEFORE_SURVEY_REPLY, reply_markup=start.start_keyboard()
-            )
+            await start_survey(message, state)
             return
-        # Варианты ответа (инлайн) — единственные кнопки в интерфейсе;
-        # постоянная клавиатура persistent, переприкреплять её не нужно.
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await _send_reply(conn, message, reply)
 
