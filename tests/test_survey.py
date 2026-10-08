@@ -111,12 +111,11 @@ def test_is_completed_reflects_experience_fact(conn, settings) -> None:
 
 
 def test_onboarding_texts_exist() -> None:
-    """Вход в курс объясняет, как учиться, и указывает на меню."""
+    """Вход в курс объясняет, что будет происходить."""
     from llm_tutor.bot import survey as bot_survey
 
-    assert "учиться" in bot_survey.INTRO_TEXT.lower()
-    assert "меню" in bot_survey.INTRO_TEXT.lower()
-    assert "маршрут" in bot_survey.SURVEY_DONE_REPLY.lower()
+    assert "спрошу пару вопросов" in bot_survey.INTRO_TEXT
+    assert "соберу маршрут" in bot_survey.INTRO_TEXT
 
 
 def test_self_evidence_moves_mastery_weakly(conn, settings) -> None:

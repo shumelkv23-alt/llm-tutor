@@ -534,3 +534,11 @@ async def test_menu_resume_refuses_during_fsm_flow(conn, settings) -> None:
     assert "Сначала закончим" in message.last_text
     assert callback.answered is True
     assert repos.get_open_session(conn) is None  # сессию не тронули
+
+
+def test_intro_explains_what_happens() -> None:
+    """Представление объясняет, что будет происходить, до анкеты."""
+    assert "спрошу пару вопросов" in INTRO_TEXT
+    assert "соберу маршрут" in INTRO_TEXT
+    assert "объясняю → даю задачу → проверяю" in INTRO_TEXT
+    assert "перестрою" in INTRO_TEXT
