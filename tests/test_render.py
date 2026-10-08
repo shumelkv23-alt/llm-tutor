@@ -1,5 +1,7 @@
 """Тесты слоя представления бота."""
 
+from course_fixtures import finish_all_but, load_two_modules
+
 from llm_tutor.bot import menu, render
 from llm_tutor.bot.render import (
     MAX_MESSAGE,
@@ -7,6 +9,7 @@ from llm_tutor.bot.render import (
     escape,
     fit,
     render_help,
+    render_plan,
     render_status,
 )
 from llm_tutor.course.graph import CourseGraph
@@ -145,3 +148,48 @@ def test_render_steps_marks_claimed(conn) -> None:
     steps = [RouteStep(concept_id="python_basics", mode="full", status="claimed")]
 
     assert "🔍 " in render.render_steps(graph, steps)
+
+
+# --- модули курса (срез 25) ---
+
+
+def test_render_plan_shows_only_current_module(conn, settings) -> None:
+    load_two_modules(conn)
+    repos.ensure_open_session(conn, now=1.0)
+
+    text = render_plan(conn, now=0.0, settings=settings)
+
+    assert "Модуль 1/2 · Первичный анализ данных с Pandas" in text
+    assert "Гистограмма" not in text  # тема модуля 2 не в участке модуля 1
+
+
+def test_render_plan_after_course_end(conn, settings) -> None:
+    load_two_modules(conn)
+    finish_all_but(conn, "mini_corr", topic_id=2, completed=(1,))
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id)
+    closed = [
+        s.model_copy(update={"status": "closed", "closed_at": 0.5}) for s in state.route.steps
+    ]
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(
+            update={
+                "current_node_id": None,
+                "pending_item_id": None,
+                "route": state.route.model_copy(
+                    update={"steps": closed, "completed_topics": [1, 2]}
+                ),
+            }
+        ),
+    )
+
+    assert "Курс пройден" in render_plan(conn, now=1.0, settings=settings)
+
+
+def test_render_status_names_module(conn, settings) -> None:
+    load_two_modules(conn)
+    repos.ensure_open_session(conn, now=1.0)
+
+    assert "Модуль: 1/2" in render_status(conn, now=0.0, settings=settings)

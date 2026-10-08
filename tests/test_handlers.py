@@ -167,7 +167,7 @@ def test_render_plan_reports_all_mastered(conn, settings) -> None:
 
     text = render_plan(conn, now=0.0, settings=settings)
 
-    assert "освоено" in text
+    assert "Курс пройден" in text
 
 
 def test_render_plan_empty_graph_hints_seed(conn, settings) -> None:

@@ -101,10 +101,23 @@ def render_plan(
     )
     if not route.steps:
         return EMPTY_GRAPH_REPLY
-    if route.closed_count == len(route.steps):
-        return "Всё доступное уже освоено — можно двигаться дальше или взять цель посложнее."
-    header = f"🗺 <b>Маршрут</b> — пройдено {route.closed_count} из {len(route.steps)}"
-    return f"{header}\n{render_steps(graph, route.steps)}"
+    if route.topic_id is None:
+        return "🎓 Курс пройден — все модули закрыты."
+    section = route_mod.section_route(graph, route)
+    header = (
+        f"🗺 <b>Маршрут</b> · Модуль {_module_label(conn, route.topic_id)} — "
+        f"пройдено {section.closed_count} из {len(section.steps)}"
+    )
+    return f"{header}\n{render_steps(graph, section.steps)}"
+
+
+def _module_label(conn: sqlite3.Connection, topic_id: int) -> str:
+    """«N/M · название» — готовый HTML (без модуля в БД — просто номер)."""
+    topics = repos.get_topics(conn)
+    topic = next((t for t in topics if t.number == topic_id), None)
+    if topic is None:
+        return str(topic_id)
+    return f"{topic_id}/{len(topics)} · {escape(topic.title)}"
 
 
 PHASE_LABELS: dict[str, str] = {
@@ -151,7 +164,12 @@ def render_status(
         settings=settings,
     )
     if route.steps:
-        lines.append(f"Маршрут: пройдено {route.closed_count} из {len(route.steps)}")
+        if route.topic_id is None:
+            lines.append("Маршрут: курс пройден 🎓")
+        else:
+            section = route_mod.section_route(graph, route)
+            lines.append(f"Модуль: {_module_label(conn, route.topic_id)}")
+            lines.append(f"Маршрут: пройдено {section.closed_count} из {len(section.steps)}")
 
     if session_state.pending_item_id is not None:
         lines.append("Ждёт ответа задание — ответь на него или напиши «пропусти».")

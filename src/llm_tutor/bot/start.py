@@ -81,7 +81,12 @@ async def begin_lesson(
     # Первый шаг списка — ровно тот узел, с которого начнётся урок: его же
     # передаём в resume_reply, иначе планировщик мог бы выбрать другой.
     first = route_mod.next_node_id(conn, graph, route, settings=settings)
-    upcoming = route_mod.upcoming(route, first, limit=render.PLAN_STEPS)
+    section = (
+        route_mod.working_section(graph, route, graph.topic_of(first))
+        if first is not None
+        else []
+    )
+    upcoming = route_mod.upcoming(route, first, limit=render.PLAN_STEPS, section=section)
     if not upcoming:
         await message.answer(
             "Всё доступное уже освоено — можно свериться: /plan.",
