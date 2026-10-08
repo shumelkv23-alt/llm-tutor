@@ -799,6 +799,51 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     assert _state(conn).phase == "practice"
 
 
+async def test_stuck_phrase_on_first_reply_starts_lesson_normally(conn, settings) -> None:
+    """«Не понял» до начала занятия — про узел, которого ученик ещё не видел."""
+    load_seed(conn)
+
+    reply = await handle_turn(conn, _FakeTutor(), "m", "не понял", now=1.0, settings=settings)
+
+    assert STUCK_NOTE not in reply.text  # «остаёмся на этом узле» здесь неуместно
+    assert _state(conn).mode is None  # узел не ушёл в усиленный проход
+    assert reply.tail  # ученик получил объяснение первого узла и сразу задание
+
+
+async def test_close_flag_on_first_reply_starts_lesson(conn, settings) -> None:
+    """«Закрой тему» до начала занятия не уводит в проход по несуществующему узлу."""
+    load_seed(conn)
+    client = _FakeTutor("Держишь тему уверенно", wants_close_topic=True)
+
+    reply = await handle_turn(
+        conn, client, "m", "давай закроем, я тут все знаю уже", now=1.0, settings=settings
+    )
+
+    assert reply.tail  # урок начался
+    assert _state(conn).current_node_id is not None
+    assert _state(conn).mode is None  # проверочного прохода нет
+
+
+async def test_closing_explanation_ignores_stuck_flag(conn, settings) -> None:
+    """Флаг «застрял» на объяснении нового узла ничего не значит.
+
+    Объяснение следующего узла — отдельный вызов модели, и «застрял» от неё
+    относился бы к узлу, которого ученик ещё не видел.
+    """
+    load_seed(conn)
+    item = repos.get_item(conn, 6)  # python_basics
+    client = _FakeTutor("Теперь про Series и DataFrame", student_stuck=True)
+    for now in (1.0, 2.0):
+        _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
+        reply = await handle_turn(
+            conn, client, "m", item.options[0], now=now, settings=settings
+        )
+
+    assert STUCK_NOTE not in reply.text
+    assert "Теперь про Series и DataFrame" in reply.text
+    assert _state(conn).mode is None
+
+
 async def test_plain_reply_moves_lesson_forward(conn, settings) -> None:
     """Ремарка без задания ведёт занятие дальше — кнопки для этого нет."""
     load_seed(conn)
@@ -922,6 +967,9 @@ async def test_stuck_raises_hint_level_by_one_step(conn, settings, model_level) 
     """«не понял» поднимает лестницу на одну ступень, а не на две."""
     load_seed(conn)
     ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    # Занятие идёт: на ходу входа «не понял» относится к узлу, которого ученик
+    # ещё не видел, и лестницу не поднимает.
+    _set_state(conn, current_node_id="groupby")
     client = _FakeTutor(hint_level=model_level)
 
     await handle_turn(conn, client, "m", "не понял", now=1.0, settings=settings)

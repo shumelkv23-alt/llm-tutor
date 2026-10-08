@@ -42,7 +42,7 @@ STUCK_KICKOFF_TEXT = "Не понял, давай подробнее по тек
 SKIP_KICKOFF_TEXT = "Пропустить задание."
 SKIP_REPLY = (
     "Пропустил — свидетельство не записано, вернёмся к этому узлу позже. "
-    "Можно взять новое задание: /task."
+    "Напиши что-нибудь — дам следующее задание."
 )
 NOTHING_TO_SKIP_REPLY = "Сейчас нет задания, которое нужно пропустить."
 GRADING_FAILED_REPLY = (
@@ -281,11 +281,16 @@ async def _tutor_branch(
     now: float,
     settings: Settings,
     force_stuck: bool = False,
+    allow_stuck: bool = True,
 ) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool]:
     """Тьюторский путь: контекст → модель → новый уровень подсказки.
 
     Пятый элемент — просьба закрыть тему из флага модели: она обрабатывается
     вызывающим кодом (проход живёт в ``core/verify.py``).
+
+    ``allow_stuck=False`` — ход, на котором узел выбирает код (вход в узел,
+    объяснение следующего): ученик этого узла ещё не видел, и «застрял» от
+    модели относится не к нему, а к прежнему разговору.
     """
     package = build_context(
         conn,
@@ -315,7 +320,7 @@ async def _tutor_branch(
         # Пока задание висело, ученик получил помощь: ответ уже не «без подсказок»,
         # даже если модель на этом ходу опустила уровень до нуля.
         new_state = new_state.model_copy(update={"task_hinted": True})
-    if answer.student_stuck or force_stuck:
+    if (answer.student_stuck and allow_stuck) or force_stuck:
         # Ученик просит глубины (или написал «не понял»): узел в усиленный
         # проход, вперёд не идём. Лестницу поднимаем ровно на одну ступень от
         # уровня ДО хода: `new_state` уже содержит подъём от модели, и второй
@@ -410,6 +415,9 @@ async def handle_turn(
                         graph,
                         now=stamp,
                         settings=s,
+                        # Флаг «застрял» здесь относился бы к узлу, которого
+                        # ученик ещё не видел: он только что верно ответил.
+                        allow_stuck=False,
                     )
                     if explanation != LLM_FAILURE_REPLY:
                         # Сбой объяснения переход не отменяет: объявление и
@@ -472,9 +480,13 @@ async def handle_turn(
             graph,
             now=stamp,
             settings=s,
-            force_stuck=force_stuck,
+            # Ученик этого узла ещё не видел: и «не понял», и «закрой тему» на
+            # ходу входа относятся не к нему, а узел выбрал код — так что ход
+            # остаётся обычным объяснением (§5.1).
+            force_stuck=force_stuck and not entering,
+            allow_stuck=not entering,
         )
-        if wants_close:
+        if wants_close and not entering:
             # Модель заметила просьбу закрыть тему: реплика тьютора и слова
             # ученика уходят в проход, он же пишет ход — и в ответ, и в журнал.
             #

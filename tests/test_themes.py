@@ -8,6 +8,38 @@ from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
 
 
+def _state(conn) -> SessionState:
+    return repos.get_session_state(conn, repos.get_open_session(conn))
+
+
+def _set_state(conn, **patch) -> None:
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(conn, session_id, state.model_copy(update=patch))
+
+
+def test_switch_theme_starts_lesson_item_list_over(conn, settings) -> None:
+    """Список выданного в уроке — про узел: новая тема начинает его заново."""
+    load_seed(conn)
+    # Задание 1 покрывает и pandas_intro, и pandas_dataframe: не сбросив список,
+    # мы молча пропустили бы законное задание нового узла.
+    _set_state(conn, current_node_id="pandas_intro", lesson_item_ids=[1])
+
+    switch_node(conn, "pandas_dataframe", now=2.0, settings=settings)
+
+    assert _state(conn).lesson_item_ids == []
+
+
+def test_switch_to_same_theme_keeps_lesson_item_list(conn, settings) -> None:
+    """Повторный выбор той же темы прогресс не стирает."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="pandas_intro", lesson_item_ids=[1])
+
+    switch_node(conn, "pandas_intro", now=2.0, settings=settings)
+
+    assert _state(conn).lesson_item_ids == [1]
+
+
 def test_node_status_marks_current(conn, settings) -> None:
     load_seed(conn)
     graph = CourseGraph.load(conn)
