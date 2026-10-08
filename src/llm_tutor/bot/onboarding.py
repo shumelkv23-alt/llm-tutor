@@ -97,21 +97,36 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
     """Роутер согласования маршрута."""
     router = Router()
 
-    def _record(node_id: str, *, correct: bool) -> None:
+    def _claim_already_recorded(node_id: str, correct: bool) -> bool:
+        """Звучало ли уже такое заявление по узлу (журнал — источник истины)."""
+        wanted = 1.0 if correct else 0.0
+        return any(
+            event.result == wanted
+            for event in repos.get_events(conn, concept_id=node_id)
+            if event.source == "self"
+        )
+
+    def _record(node_id: str, *, correct: bool) -> bool:
         """Слабое свидетельство + пересчёт маршрута одним коммитом.
 
+        Возвращает ``False``, если такое заявление по узлу уже звучало: кнопка
+        остаётся в переписке и жмётся сколько угодно раз, а самооценка на вес
+        0.3 накопила бы владение до порога, при котором узел закрывается без
+        единой проверки. Маршрут пересчитываем в любом случае.
+
         Свидетельство и снимок маршрута пишутся общей транзакцией: сбой
-        посередине не оставит начисленную самооценку без пересчёта (повторное
-        нажатие начислило бы её второй раз).
+        посередине не оставит начисленную самооценку без пересчёта.
         """
         stamp = time.time()
         session_id = repos.ensure_open_session(conn, stamp)
         state = repos.get_session_state(conn, session_id)
         graph = CourseGraph.load(conn)
+        repeated = _claim_already_recorded(node_id, correct)
         try:
-            self_report.apply(
-                conn, node_id, correct=correct, now=stamp, settings=settings, commit=False
-            )
+            if not repeated:
+                self_report.apply(
+                    conn, node_id, correct=correct, now=stamp, settings=settings, commit=False
+                )
             fresh_route, _ = route_mod.refresh(conn, state, graph, now=stamp, settings=settings)
             repos.update_session_state(
                 conn,
@@ -123,6 +138,7 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
         except Exception:
             conn.rollback()
             raise
+        return not repeated
 
     @router.callback_query(OnboardingFlow.route_review, F.data.startswith("route:node:"))
     async def on_route_node(callback: CallbackQuery) -> None:
@@ -144,10 +160,14 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
             if not CourseGraph.load(conn).has_node(node_id):
                 await callback.answer("Тема недоступна")
                 return
-            _record(node_id, correct=True)
+            written = _record(node_id, correct=True)
             await callback.answer()
             await show_route_screen(
-                callback.message, state, conn, settings, note="Записал: знаешь эту тему."
+                callback.message,
+                state,
+                conn,
+                settings,
+                note="Записал: знаешь эту тему." if written else "Это уже записано.",
             )
         except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
             logger.exception("Сбой правки маршрута: %s", node_id)
@@ -163,10 +183,14 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
             if not CourseGraph.load(conn).has_node(node_id):
                 await callback.answer("Тема недоступна")
                 return
-            _record(node_id, correct=False)
+            written = _record(node_id, correct=False)
             await callback.answer()
             await show_route_screen(
-                callback.message, state, conn, settings, note="Записал: тема новая."
+                callback.message,
+                state,
+                conn,
+                settings,
+                note="Записал: тема новая." if written else "Это уже записано.",
             )
         except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
             logger.exception("Сбой правки маршрута: %s", node_id)

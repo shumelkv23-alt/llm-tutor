@@ -107,3 +107,22 @@ async def test_route_fix_rolls_back_on_failure(conn, settings, monkeypatch) -> N
     assert repos.get_events(conn) == []
     assert repos.get_mastery(conn, "read_csv") is None
     assert "пошло не так" in message.last_text
+
+
+async def test_repeated_claim_does_not_close_node(conn, settings) -> None:
+    """Повторные «я это знаю» не накручивают владение до закрытия узла.
+
+    Кнопка остаётся в переписке и жмётся сколько угодно раз: без защиты
+    30 нажатий давали владение выше порога, и узел закрывался без проверки.
+    """
+    load_seed(conn)
+    router = make_onboarding_router(conn, settings)
+    on_know = _named(router, "callback_query", "on_route_know")
+
+    for _ in range(30):
+        await on_know(FakeCallback("route:know:read_csv", FakeMessage()), _fsm())
+
+    assert [event.source for event in repos.get_events(conn)] == ["self"]  # одно
+    state = _state(conn)
+    closed = [step.concept_id for step in (state.route.steps if state.route else []) if step.status == "closed"]
+    assert closed == []
