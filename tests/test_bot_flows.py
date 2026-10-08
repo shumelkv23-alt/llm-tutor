@@ -11,13 +11,18 @@ from fakes import FakeCallback, FakeMessage, NullSession, _fsm, _named
 from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
-from llm_tutor.bot.survey import INTRO_TEXT
+from llm_tutor.bot import start
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.core.turn import TurnReply
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.student import beta, survey
+
+
+def _complete_survey(conn) -> None:
+    """Профиль заполнен: без этого свободный текст упирается в приглашение."""
+    repos.set_fact(conn, survey.EXPERIENCE_KEY, "Уверенно", source="self")
 
 
 def _handler(router, kind: str, index: int) -> object:
@@ -213,6 +218,7 @@ async def test_task_command_sends_question_with_buttons(conn, settings) -> None:
 
 async def test_button_answer_goes_through_turn(conn, settings) -> None:
     load_seed(conn)
+    _complete_survey(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
     await _named(router, "message", "on_task")(message, _fsm())
@@ -228,6 +234,7 @@ async def test_button_answer_goes_through_turn(conn, settings) -> None:
 
 async def test_text_answer_goes_through_turn(conn, settings) -> None:
     load_seed(conn)
+    _complete_survey(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     await _named(router, "message", "on_task")(FakeMessage(), _fsm())
     item = repos.get_item(conn, _state(conn).pending_item_id)
@@ -250,6 +257,7 @@ async def test_answer_without_pending_item_is_reported(conn, settings) -> None:
 
 async def test_free_text_goes_to_tutor_turn(conn, settings) -> None:
     load_seed(conn)
+    _complete_survey(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage("привет!")
 
@@ -361,10 +369,8 @@ async def test_removed_menu_action_answers_nothing(conn, settings) -> None:
 # --- онбординг: /start до анкеты ---
 
 
-async def test_start_before_survey_sends_intro_with_menu_then_question(
-    conn, settings
-) -> None:
-    """Первый /start: сначала представление с меню, потом вопрос анкеты."""
+async def test_start_before_survey_sends_intro_then_question(conn, settings) -> None:
+    """Первый /start: приветствие с кнопкой «▶️ Старт», потом вопрос анкеты."""
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
     state = _fsm()
@@ -372,9 +378,32 @@ async def test_start_before_survey_sends_intro_with_menu_then_question(
     await _named(router, "message", "on_start")(message, state)
 
     intro_text, intro_markup = message.sent[0]
-    assert intro_text == INTRO_TEXT
-    assert intro_markup == menu.main_menu()          # меню прикреплено к представлению
+    assert intro_text == start.INTRO_TEXT
+    assert intro_markup.keyboard[0][0].text == start.START_LABEL
     assert message.sent[1][0] == survey.SURVEY_QUESTIONS[0].text
+
+
+async def test_start_button_opens_survey(conn, settings) -> None:
+    """Кнопка «▶️ Старт» — тот же вход, что /start."""
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage(start.START_LABEL)
+    state = _fsm()
+
+    await _named(router, "message", "on_start_button")(message, state)
+
+    assert message.sent[0][0] == start.INTRO_TEXT
+    assert message.sent[1][0] == survey.SURVEY_QUESTIONS[0].text
+
+
+async def test_text_before_survey_gets_invitation(conn, settings) -> None:
+    """До анкеты реплика отвечает приглашением, а не тьютором."""
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    message = FakeMessage("привет")
+
+    await _named(router, "message", "on_text")(message)
+
+    assert message.last_text == start.BEFORE_SURVEY_REPLY
+    assert repos.get_open_session(conn) is None  # в занятие не пошли
 
 
 # --- намерение из текста (Срез 15) ---
@@ -479,12 +508,10 @@ async def test_resume_command_refuses_during_fsm_flow(conn, settings) -> None:
     assert repos.get_open_session(conn) is None  # сессию не тронули
 
 
-def test_intro_explains_what_happens() -> None:
-    """Представление объясняет, что будет происходить, до анкеты."""
-    assert "спрошу пару вопросов" in INTRO_TEXT
-    assert "соберу маршрут" in INTRO_TEXT
-    assert "объясняю → даю задачу → проверяю" in INTRO_TEXT
-    assert "перестрою" in INTRO_TEXT
+def test_intro_has_three_sentences_and_names_the_button() -> None:
+    """Приветствие — три предложения, третье называет кнопку."""
+    assert len([line for line in start.INTRO_TEXT.splitlines() if line.strip()]) == 3
+    assert start.START_LABEL in start.INTRO_TEXT
 
 
 # --- маршрутизация на уровне диспетчера (финал ветки) ---

@@ -24,7 +24,8 @@ from aiogram.types import (
 )
 
 from llm_tutor.bot import menu, render, themes
-from llm_tutor.bot.survey import INTRO_TEXT, ask as ask_survey
+from llm_tutor.bot import start
+from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.config import Settings
 from llm_tutor.core import verify
 from llm_tutor.core.turn import (
@@ -192,7 +193,7 @@ def make_router(
         # Пока профиль не заполнен — сначала представление с меню, потом
         # короткая анкета (Срез 4.7, 12.4).
         if not survey_completed(conn):
-            await message.answer(INTRO_TEXT, reply_markup=menu.main_menu())
+            await message.answer(start.INTRO_TEXT, reply_markup=start.start_keyboard())
             await ask_survey(message, state)
             return
         reply = await handle_start(conn, client, model, START_GREETING)
@@ -399,6 +400,12 @@ def make_router(
             )
         await callback.answer()
 
+    # Кнопка «▶️ Старт» — тот же вход, что /start: до анкеты это единственная
+    # кнопка внизу, и она должна запускать приветствие и опрос.
+    @router.message(StateFilter(None), F.text == start.START_LABEL)
+    async def on_start_button(message: Message, state: FSMContext) -> None:
+        await on_start(message, state)
+
     # Кнопка меню открывает инлайн-список действий. Регистрируется ДО on_text,
     # иначе текст кнопки ушёл бы в тьюторский ход.
     @router.message(StateFilter(None), F.text == menu.LABEL_MENU)
@@ -413,11 +420,17 @@ def make_router(
     # их шаги обрабатывают свои роутеры.
     @router.message(StateFilter(None), F.text & ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
+        # Анкета не пройдена — маршрута и цели ещё нет: вести занятие не по чему.
+        if not survey_completed(conn):
+            await message.answer(
+                start.BEFORE_SURVEY_REPLY, reply_markup=start.start_keyboard()
+            )
+            return
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await message.answer(
             render.fit(render.escape(reply.text)),
-            # Варианты ответа (инлайн) в приоритете; иначе — «Продолжить».
-            # Постоянная клавиатура persistent, переприкреплять её не нужно.
+            # Варианты ответа (инлайн) — единственные кнопки в интерфейсе;
+            # постоянная клавиатура persistent, переприкреплять её не нужно.
             reply_markup=_options_keyboard(conn, reply.options),
             parse_mode=render.PARSE_MODE,
         )
