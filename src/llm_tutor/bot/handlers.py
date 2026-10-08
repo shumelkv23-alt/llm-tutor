@@ -178,6 +178,28 @@ def _options_keyboard(
     )
 
 
+async def _send_reply(
+    conn: sqlite3.Connection, message: Message, reply: TurnReply
+) -> None:
+    """Отправляет ответ хода: текст, а следом — задание отдельным сообщением.
+
+    Объяснение и тест в одном сообщении читаются стеной, поэтому ход с
+    ``tail`` уходит двумя сообщениями; варианты ответа прикрепляются к тому из
+    них, которое несёт задание.
+    """
+    await message.answer(
+        render.fit(render.escape(reply.text)),
+        reply_markup=None if reply.tail else _options_keyboard(conn, reply.options),
+        parse_mode=render.PARSE_MODE,
+    )
+    if reply.tail:
+        await message.answer(
+            render.fit(render.escape(reply.tail)),
+            reply_markup=_options_keyboard(conn, reply.options),
+            parse_mode=render.PARSE_MODE,
+        )
+
+
 def make_router(
     conn: sqlite3.Connection,
     client: LLMClient,
@@ -232,11 +254,7 @@ def make_router(
         except Exception:  # noqa: BLE001 — лучше сообщение, чем тишина
             logger.exception("Сбой выдачи задания")
             reply = TurnReply(text=BOT_FAILURE_REPLY)
-        await message.answer(
-            render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options),
-            parse_mode=render.PARSE_MODE,
-        )
+        await _send_reply(conn, message, reply)
 
     @router.message(Command("close"))
     async def on_close(message: Message, state: FSMContext) -> None:
@@ -255,11 +273,7 @@ def make_router(
                 render.fit(render.escape(BOT_FAILURE_REPLY)), parse_mode=render.PARSE_MODE
             )
             return
-        await message.answer(
-            render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options),
-            parse_mode=render.PARSE_MODE,
-        )
+        await _send_reply(conn, message, reply)
 
     @router.message(Command("skip"))
     async def on_skip(message: Message) -> None:
@@ -291,11 +305,7 @@ def make_router(
                 render.fit(render.escape(BOT_FAILURE_REPLY)), parse_mode=render.PARSE_MODE
             )
             return
-        await message.answer(
-            render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options),
-            parse_mode=render.PARSE_MODE,
-        )
+        await _send_reply(conn, message, reply)
 
     @router.message(Command("status"))
     async def on_status(message: Message) -> None:
@@ -354,11 +364,7 @@ def make_router(
             settings=settings,
             allow_intents=False,
         )
-        await callback.message.answer(
-            render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(conn, reply.options),
-            parse_mode=render.PARSE_MODE,
-        )
+        await _send_reply(conn, callback.message, reply)
         await callback.answer()
 
     # Разбор действий из инлайн-списка меню. Регистрируется ПОСЛЕ on_answer:
@@ -387,11 +393,7 @@ def make_router(
                     )
                 else:
                     reply = verify.start_verification(conn, settings=settings)
-                    await callback.message.answer(
-                        render.fit(render.escape(reply.text)),
-                        parse_mode=render.PARSE_MODE,
-                        reply_markup=_options_keyboard(conn, reply.options),
-                    )
+                    await _send_reply(conn, callback.message, reply)
         except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
             logger.exception("Сбой действия меню: %s", action)
             await callback.message.answer(
@@ -426,13 +428,9 @@ def make_router(
                 start.BEFORE_SURVEY_REPLY, reply_markup=start.start_keyboard()
             )
             return
+        # Варианты ответа (инлайн) — единственные кнопки в интерфейсе;
+        # постоянная клавиатура persistent, переприкреплять её не нужно.
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
-        await message.answer(
-            render.fit(render.escape(reply.text)),
-            # Варианты ответа (инлайн) — единственные кнопки в интерфейсе;
-            # постоянная клавиатура persistent, переприкреплять её не нужно.
-            reply_markup=_options_keyboard(conn, reply.options),
-            parse_mode=render.PARSE_MODE,
-        )
+        await _send_reply(conn, message, reply)
 
     return router

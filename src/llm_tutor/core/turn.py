@@ -80,10 +80,16 @@ VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернём�
 
 @dataclass(frozen=True)
 class TurnReply:
-    """Ответ хода: текст и, если выпало задание с вариантами, подписи кнопок."""
+    """Ответ хода: текст и, если задание вынесено отдельно, ``tail``.
+
+    ``tail`` — второе сообщение хода (обычно задание): объяснение и тест в
+    одном сообщении читаются стеной. ``options`` — подписи кнопок того
+    сообщения, которое несёт задание: ``tail``, если он есть, иначе ``text``.
+    """
 
     text: str
     options: list[str] | None = None
+    tail: str | None = None
 
 
 def _render_item(item: Item) -> str:
@@ -353,6 +359,9 @@ async def handle_turn(
         return verify.start_verification(conn, now=stamp, settings=s, user_text=user_text)
     force_stuck = intent == "stuck"
     options: list[str] | None = None
+    # Второе сообщение хода — задание. Появится, если задание реально выдано:
+    # отказ «заданий нет» остаётся в тексте, отдельным сообщением ему не быть.
+    tail: str | None = None
     answered_item_id = state.pending_item_id
 
     if (
@@ -401,7 +410,13 @@ async def handle_turn(
             now=stamp,
             settings=s,
         )
-        reply = f"{reply}\n\n{task_text}"
+        # Задание уходит отдельным сообщением: объяснение и тест в одном
+        # сообщении читаются стеной (§5.1). Признак выданного задания —
+        # заполненный ``pending_item_id``: у short-задания вариантов нет, и по
+        # ``options`` отличить его от отказа «заданий нет» нельзя.
+        tail = task_text if new_state.pending_item_id is not None else None
+        if tail is None:
+            reply = f"{reply}\n\n{task_text}"
     else:
         reply, events, mastery, new_state, wants_close = await _tutor_branch(
             conn,
@@ -445,13 +460,16 @@ async def handle_turn(
         conn,
         session_id,
         user_text=user_text,
-        assistant_text=reply,
+        # В журнал ход ложится целиком: `core/context` собирает хвост диалога
+        # из журнала, и задание модель должна видеть — иначе на следующем ходу
+        # она не поймёт, на что отвечает ученик.
+        assistant_text=f"{reply}\n\n{tail}" if tail else reply,
         state=new_state,
         events=events,
         mastery=mastery,
         now=stamp,
     )
-    return TurnReply(text=reply, options=options)
+    return TurnReply(text=reply, options=options, tail=tail)
 
 
 def _close_node_if_ready(

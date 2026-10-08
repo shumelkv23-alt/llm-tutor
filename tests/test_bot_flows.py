@@ -217,6 +217,19 @@ async def test_task_command_sends_question_with_buttons(conn, settings) -> None:
     assert state.hint_level == 0
 
 
+async def test_send_reply_sends_tail_as_second_message(conn, settings) -> None:
+    """Ход с хвостом шлёт два сообщения: реплика и задание с кнопками."""
+    load_seed(conn)
+    message = FakeMessage()
+
+    await handlers._send_reply(
+        conn, message, TurnReply(text="объяснение", tail="задание", options=["а", "б"])
+    )
+
+    assert [text for text, _ in message.sent] == ["объяснение", "задание"]
+    assert message.sent[1][1] is not None  # варианты ответа на задание
+
+
 async def test_button_answer_goes_through_turn(conn, settings) -> None:
     load_seed(conn)
     _complete_survey(conn)
@@ -244,7 +257,9 @@ async def test_text_answer_goes_through_turn(conn, settings) -> None:
     await _named(router, "message", "on_text")(answer)
 
     assert repos.get_events(conn)
-    assert "Верно" in answer.last_text
+    # Ход с заданием уходит двумя сообщениями: разбор — первым, задание —
+    # вторым (Срез 21), поэтому «Верно» ищем среди отправленного, а не в хвосте.
+    assert any("Верно" in text for text, _ in answer.sent)
 
 
 async def test_answer_without_pending_item_is_reported(conn, settings) -> None:
