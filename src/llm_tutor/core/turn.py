@@ -13,7 +13,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core import intents
@@ -264,8 +264,12 @@ async def _tutor_branch(
     now: float,
     settings: Settings,
     force_stuck: bool = False,
-) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState]:
-    """Тьюторский путь: контекст → модель → новый уровень подсказки."""
+) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool]:
+    """Тьюторский путь: контекст → модель → новый уровень подсказки.
+
+    Пятый элемент — просьба закрыть тему из флага модели: она обрабатывается
+    вызывающим кодом (проход живёт в ``core/verify.py``).
+    """
     package = build_context(
         conn,
         session_id,
@@ -283,10 +287,10 @@ async def _tutor_branch(
     try:
         answer = await client.chat_structured(package.messages, TutorReply, model=model)
     except LLMError:
-        return LLM_FAILURE_REPLY, [], [], idle_state
+        return LLM_FAILURE_REPLY, [], [], idle_state, False
     except Exception:  # noqa: BLE001 — бот не должен молчать на неожиданный сбой
         logger.exception("Неожиданный сбой тьюторского хода")
-        return LLM_FAILURE_REPLY, [], [], idle_state
+        return LLM_FAILURE_REPLY, [], [], idle_state, False
 
     level = hints.next_hint_level(state.hint_level, answer.hint_level)
     new_state = state.model_copy(update={"hint_level": level, "last_activity": now})
@@ -300,8 +304,8 @@ async def _tutor_branch(
         stuck_state = guide.on_student_stuck(new_state).model_copy(
             update={"task_hinted": True}
         )
-        return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], stuck_state
-    return answer.reply, [], [], new_state
+        return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], stuck_state, False
+    return answer.reply, [], [], new_state, answer.wants_close_topic
 
 
 async def handle_turn(
@@ -320,11 +324,18 @@ async def handle_turn(
     session_id = repos.ensure_open_session(conn, stamp)
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
+    # Локальный импорт: turn и verify ссылаются друг на друга, а на уровне
+    # модуля это цикл — verify не найдёт TurnReply в ещё не дочитанном turn.
+    from llm_tutor.core import verify
+
     # Короткая реплика-команда разбирается ДО развилки: иначе при висящем
     # задании «пропусти» ушло бы в ветку ответа и записалось как неверный ответ.
     intent = intents.detect(user_text) if allow_intents else None
     if intent == "skip":
         return TurnReply(text=_skip_turn(conn, session_id, state, user_text, now=stamp))
+    if intent == "close_topic":
+        # Закрытие — отдельный проход; он сам запишет ход и состояние.
+        return verify.start_verification(conn, now=stamp, settings=s)
     force_stuck = intent == "stuck"
     options: list[str] | None = None
     answered_item_id = state.pending_item_id
@@ -375,7 +386,7 @@ async def handle_turn(
         )
         reply = f"{reply}\n\n{task_text}"
     else:
-        reply, events, mastery, new_state = await _tutor_branch(
+        reply, events, mastery, new_state, wants_close = await _tutor_branch(
             conn,
             client,
             model,
@@ -387,6 +398,21 @@ async def handle_turn(
             settings=s,
             force_stuck=force_stuck,
         )
+        if wants_close:
+            # Модель заметила просьбу закрыть тему: её реплику сохраняем, а
+            # занятие уходит в проверочный проход.
+            #
+            # Состояние, посчитанное `_tutor_branch` (hint_level, phase,
+            # task_hinted), СОЗНАТЕЛЬНО не переносится: проход начинается с
+            # чистого листа — закрытие должно опираться на свидетельства
+            # прохода, а не на прежнюю лестницу подсказок и серию. Потерять
+            # при этом нечего: события и владение `_tutor_branch` всегда
+            # возвращает пустыми, а всё остальное проход задаёт сам и пишет
+            # своим `post_turn`.
+            closing = verify.start_verification(conn, now=stamp, settings=s)
+            # TurnReply — frozen dataclass, а не pydantic-модель: копия через
+            # dataclasses.replace, не model_copy.
+            return replace(closing, text=f"{reply}\n\n{closing.text}")
         if state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
             # При «не понял» напоминание не нужно — его заменяет STUCK_NOTE.
@@ -625,7 +651,7 @@ async def stuck_reply(
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
 
-    reply, events, mastery, new_state = await _tutor_branch(
+    reply, events, mastery, new_state, _ = await _tutor_branch(
         conn,
         client,
         model,

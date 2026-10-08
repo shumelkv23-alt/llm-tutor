@@ -30,17 +30,26 @@ class _FakeTutor:
     """Подставной клиент: отвечает заготовкой и задаёт уровень подсказки."""
 
     def __init__(
-        self, reply: str = "Ответ тьютора", hint_level: int = 0, *, student_stuck: bool = False
+        self,
+        reply: str = "Ответ тьютора",
+        hint_level: int = 0,
+        *,
+        student_stuck: bool = False,
+        wants_close_topic: bool = False,
     ) -> None:
         self.reply = reply
         self.hint_level = hint_level
         self.student_stuck = student_stuck
+        self.wants_close_topic = wants_close_topic
         self.calls: list[list] = []
 
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
         self.calls.append(list(messages))
         return schema(
-            reply=self.reply, hint_level=self.hint_level, student_stuck=self.student_stuck
+            reply=self.reply,
+            hint_level=self.hint_level,
+            student_stuck=self.student_stuck,
+            wants_close_topic=self.wants_close_topic,
         )
 
     async def chat(self, messages, *, model=None, temperature=None) -> str:
@@ -604,3 +613,64 @@ async def test_normal_task_is_not_marked_as_verification(conn, settings) -> None
 
     assert "Проверка" not in reply.text
     assert _state(conn).verify_item_ids == []
+
+
+# --- «закрой тему»: фраза и флаг модели (Срез 16.6) ---
+
+
+async def test_close_phrase_starts_verification_with_pending_item(conn, settings) -> None:
+    """«закрой тему» при висящем задании идёт в проверку, а не в ответ."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", pending_item_id=1)
+
+    reply = await handle_turn(conn, _FakeTutor(), "m", "закрой тему", now=1.0, settings=settings)
+
+    assert "Проверка" in reply.text
+    assert _state(conn).mode == "verify"
+    assert not any(event.source == "checked" for event in repos.get_events(conn))
+
+
+async def test_model_flag_starts_verification(conn, settings) -> None:
+    """Формулировку вне таблицы фраз ловит модель."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, current_node_id="groupby")
+    client = _FakeTutor("Держишь тему уверенно", wants_close_topic=True)
+
+    reply = await handle_turn(
+        conn, client, "m", "давай закроем, я тут всё знаю уже", now=1.0, settings=settings
+    )
+
+    assert _state(conn).mode == "verify"
+    assert "Проверка" in reply.text
+
+
+async def test_close_flag_starts_pass_from_clean_state(conn, settings) -> None:
+    """Проход начинается с нуля, а не с подсказок тьюторского хода."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, current_node_id="groupby", hint_level=3, node_streak=1)
+    client = _FakeTutor("Держишь тему уверенно", wants_close_topic=True)
+
+    await handle_turn(
+        conn, client, "m", "давай закроем, я тут всё знаю уже", now=1.0, settings=settings
+    )
+
+    state = _state(conn)
+    assert state.mode == "verify"
+    assert state.hint_level == 0  # лестница подсказок сброшена — задумано
+    assert state.node_streak == 0  # серия считается проходом, а не прежняя
+
+
+async def test_stuck_flag_wins_over_close_flag(conn, settings) -> None:
+    """«Застрял» приоритетнее: сначала разбираемся, потом проверяем."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, current_node_id="groupby")
+    client = _FakeTutor("Разберём", student_stuck=True, wants_close_topic=True)
+
+    await handle_turn(
+        conn, client, "m", "закрой тему но я совсем запутался тут", now=1.0, settings=settings
+    )
+
+    assert _state(conn).mode == "reinforce"

@@ -92,3 +92,8 @@ def test_tutor_prompt_demands_brevity_for_all_material_states() -> None:
         assert "2–4 предложения" in prompt
         assert "без вступлений" in prompt.lower()
         assert "Одна мысль за сообщение" in prompt
+
+
+def test_tutor_prompt_mentions_close_topic_flag() -> None:
+    """Промпт знает про флаг просьбы закрыть тему."""
+    assert "wants_close_topic" in tutor_system_prompt(0, material="found")
