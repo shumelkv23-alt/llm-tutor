@@ -12,6 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from llm_tutor.bot import menu, render
+from llm_tutor.bot.chat_action import typing_action
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import resume_reply
 from llm_tutor.course.graph import CourseGraph
@@ -100,5 +101,6 @@ async def begin_lesson(
 
     # Урок начинается сразу: объяснение первым сообщением, первый тест —
     # вторым, ждать реплики ученика не нужно.
-    reply = await resume_reply(conn, client, model, settings=settings)
+    async with typing_action(message):
+        reply = await resume_reply(conn, client, model, settings=settings)
     await _send_reply(conn, message, reply)

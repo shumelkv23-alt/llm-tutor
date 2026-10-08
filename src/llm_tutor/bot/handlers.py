@@ -25,6 +25,7 @@ from aiogram.types import (
 
 from llm_tutor.bot import menu, render, themes
 from llm_tutor.bot import start
+from llm_tutor.bot.chat_action import typing_action
 from llm_tutor.bot.survey import start_survey
 from llm_tutor.config import Settings
 from llm_tutor.core import verify
@@ -269,7 +270,8 @@ def make_router(
             )
             return
         try:
-            reply = await resume_reply(conn, client, model, settings=settings)
+            async with typing_action(message):
+                reply = await resume_reply(conn, client, model, settings=settings)
         except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
             logger.exception("Сбой продолжения занятия")
             await message.answer(
@@ -325,18 +327,20 @@ def make_router(
             )
             await callback.answer()
             return
+        # «Часики» гасим сразу: дальше ждём модель, и ученик видит «печатает…».
+        await callback.answer()
         # Подпись варианта — это ответ, а не реплика ученика: намерение из неё
         # не ловим, иначе вариант «Пропустить» ушёл бы в /skip.
-        reply = await _run_turn(
-            conn,
-            client,
-            model,
-            item.options[index],
-            settings=settings,
-            allow_intents=False,
-        )
+        async with typing_action(callback.message):
+            reply = await _run_turn(
+                conn,
+                client,
+                model,
+                item.options[index],
+                settings=settings,
+                allow_intents=False,
+            )
         await _send_reply(conn, callback.message, reply)
-        await callback.answer()
 
     # Разбор действий из инлайн-списка меню. Регистрируется ПОСЛЕ on_answer:
     # тесты выбирают хендлер ответа по индексу callback_query[0].
@@ -398,7 +402,8 @@ def make_router(
         if not survey_completed(conn):
             await start_survey(message, state)
             return
-        reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
+        async with typing_action(message):
+            reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await _send_reply(conn, message, reply)
 
     return router
