@@ -46,6 +46,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/*.sqlite
+data/raw/
 
 # --- Логи и временное ---
 *.log
