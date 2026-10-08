@@ -125,6 +125,9 @@ async def test_full_topic01_scenario() -> None:
                 }
             )
         ),
+        # Закрытие узла ведёт в следующий урок: объявление, объяснение нового
+        # узла (второй вызов модели за ход) и его первое задание.
+        _completion(json.dumps({"reply": "Дальше — выборка и сортировка", "hint_level": 0})),
     ]
     requests: list[dict] = []
 
@@ -169,7 +172,8 @@ async def test_full_topic01_scenario() -> None:
             conn, client, "m", "groupby разбивает строки, agg считает", now=3.0, settings=settings
         )
         assert "Верно" in reply.text  # 2 из 3 критериев — выше порога
-        assert len(requests) == 2
+        # грейдер плюс объяснение следующего узла: узел закрылся в этом ходу
+        assert len(requests) == 3
         graded = [e for e in repos.get_events(conn) if e.source == "rubric"]
         assert graded
         assert all(e.result == pytest.approx(2 / 3) for e in graded)  # частичный балл

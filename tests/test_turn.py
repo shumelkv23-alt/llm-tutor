@@ -74,7 +74,11 @@ class _FakeGraderClient:
 
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
         self.calls.append(list(messages))
-        return self.verdict
+        # Схему уважаем: закрытие узла делает ещё и тьюторский ход — на него
+        # грейдерный вердикт не подходит.
+        if schema is RubricVerdict:
+            return self.verdict
+        return schema(reply="Разбираем.", hint_level=0)
 
 
 def _full_verdict(conn, item_id: int) -> RubricVerdict:
@@ -793,6 +797,23 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     assert reply.tail  # задание отдельным сообщением
     assert _state(conn).pending_item_id is not None
     assert _state(conn).phase == "practice"
+
+
+async def test_closed_node_leads_into_next_lesson(conn, settings) -> None:
+    """Узел закрылся — бот сам объясняет следующий и даёт его первый тест."""
+    load_seed(conn)
+    item = repos.get_item(conn, 6)  # python_basics
+    client = _FakeTutor("Теперь про Series и DataFrame")
+    for now in (1.0, 2.0):
+        _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
+        reply = await handle_turn(
+            conn, client, "m", item.options[0], now=now, settings=settings
+        )
+
+    assert "закрыта" in reply.text
+    assert "Теперь про Series и DataFrame" in reply.text  # объяснение следующего
+    assert reply.tail  # и его первый тест
+    assert _state(conn).current_node_id != "python_basics"
 
 
 async def test_lesson_answer_after_help_still_counts(conn, settings) -> None:

@@ -396,6 +396,25 @@ async def handle_turn(
             )
             if closed_note:
                 reply = f"{reply}\n\n{closed_note}"
+                if new_state.current_node_id is not None:
+                    # Закрытие и переход — в одном ходу: сообщение должно быть не
+                    # «тема закрыта», а началом следующей темы (§5.1). Это второй
+                    # вызов модели за ход — осознанный размен.
+                    explanation, _, _, new_state, _ = await _tutor_branch(
+                        conn,
+                        client,
+                        model,
+                        session_id,
+                        user_text,
+                        new_state,
+                        graph,
+                        now=stamp,
+                        settings=s,
+                    )
+                    if explanation != LLM_FAILURE_REPLY:
+                        # Сбой объяснения переход не отменяет: объявление и
+                        # задание нового узла уже есть, терять их незачем.
+                        reply = f"{reply}\n\n{explanation}"
         # Проход не подтвердился: обрываем его, узел уходит в разбор. Ответ,
         # который не удалось проверить (`None`), провалом не считается — это
         # сбой задания, а не пробел в знаниях ученика.
