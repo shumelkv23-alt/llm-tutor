@@ -11,8 +11,7 @@ from dataclasses import dataclass, field
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.db import repos
-from llm_tutor.schemas import Event
-from llm_tutor.student import beta
+from llm_tutor.student import self_report
 
 # Ключи фактов профиля.
 EXPERIENCE_KEY = "pandas_experience"
@@ -105,15 +104,8 @@ def _apply_prior(
     now: float,
     settings: Settings,
 ) -> None:
-    """Пишет слабое свидетельство самооценки: событие + обновление Beta."""
-    weight = settings.self_evidence_weight
-    repos.add_event(
-        conn,
-        Event(source="self", result=correct, concept_id=concept_id, weight=weight, ts=now),
-    )
-    beta.update(
-        conn, concept_id, correct=correct, weight=weight, now=now, settings=settings
-    )
+    """Пишет слабое свидетельство самооценки из анкеты."""
+    self_report.apply(conn, concept_id, correct=bool(correct), now=now, settings=settings)
 
 
 def apply_answers(

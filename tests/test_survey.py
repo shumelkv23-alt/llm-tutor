@@ -4,7 +4,7 @@ import pytest
 
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
-from llm_tutor.student import beta, survey
+from llm_tutor.student import beta, self_report, survey
 
 EXPERIENCE = survey.EXPERIENCE_KEY
 GOAL = survey.GOAL_KEY
@@ -117,3 +117,22 @@ def test_onboarding_texts_exist() -> None:
     assert "учиться" in bot_survey.INTRO_TEXT.lower()
     assert "меню" in bot_survey.INTRO_TEXT.lower()
     assert "маршрут" in bot_survey.SURVEY_DONE_REPLY.lower()
+
+
+def test_self_evidence_moves_mastery_weakly(conn, settings) -> None:
+    """Самооценка — слабое свидетельство: владение растёт, но не до порога."""
+    load_seed(conn)  # событие ссылается на концепт — он должен быть в графе
+    self_report.apply(conn, "read_csv", correct=True, now=1.0, settings=settings)
+
+    mastery = beta.estimate(conn, "read_csv", now=1.0, settings=settings)
+    assert mastery.mean > 0.5
+    assert mastery.mean < settings.mastery_verify_threshold
+    assert [event.source for event in repos.get_events(conn)] == ["self"]
+
+
+def test_survey_prior_uses_shared_self_evidence(conn, settings) -> None:
+    """Анкета пишет тот же тип свидетельства, что и «я это знаю»."""
+    load_seed(conn)
+    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+
+    assert {event.source for event in repos.get_events(conn)} == {"self"}
