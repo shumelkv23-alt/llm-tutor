@@ -214,7 +214,10 @@ def make_onboarding_router(conn: sqlite3.Connection, settings: Settings) -> Rout
         )
         await callback.answer()
 
-    @router.message(OnboardingFlow.route_review, F.text)
+    # Команды пропускаем дальше: иначе экран согласования проглотил бы /start
+    # и ученик остался бы в этом состоянии без выхода (роутер идёт раньше
+    # основного, а его хендлеры команд не знают про FSM-состояние).
+    @router.message(OnboardingFlow.route_review, F.text & ~F.text.startswith("/"))
     async def on_route_text(message: Message) -> None:
         # Экран согласования принимает только кнопки: иначе реплика ушла бы в
         # тьюторский ход и узел выбрался бы «на слух».

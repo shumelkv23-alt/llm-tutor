@@ -745,3 +745,14 @@ async def test_resume_reports_finished_route(conn, settings) -> None:
     reply = await resume_reply(conn, _FakeTutor(), "m", now=1.0, settings=settings)
 
     assert reply.text == ROUTE_DONE_REPLY
+
+
+async def test_close_phrase_keeps_students_words_in_journal(conn, settings) -> None:
+    """В журнал идут слова ученика, а не синтетический повод прохода."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby")
+
+    await handle_turn(conn, _FakeTutor(), "m", "закрой тему", now=1.0, settings=settings)
+
+    messages = repos.get_messages(conn, repos.get_open_session(conn))
+    assert messages[-2].content == "закрой тему"

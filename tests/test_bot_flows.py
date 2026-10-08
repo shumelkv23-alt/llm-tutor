@@ -1,13 +1,17 @@
 """Тесты FSM-потоков бота: анкета и диагностика (Срез 4.5)."""
 
-import pytest
+from datetime import datetime
 
-from fakes import FakeCallback, FakeMessage, _fsm, _named
+import pytest
+from aiogram import Bot, Dispatcher
+from aiogram.types import Chat, Message, Update, User
+
+from fakes import FakeCallback, FakeMessage, NullSession, _fsm, _named
 
 from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
-from llm_tutor.bot.onboarding import OnboardingFlow
+from llm_tutor.bot.onboarding import OnboardingFlow, make_onboarding_router
 from llm_tutor.bot.survey import INTRO_TEXT
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
@@ -514,3 +518,90 @@ async def test_start_clears_pending_flow_state(conn, settings) -> None:
 
     assert await state.get_state() is None
     assert message.sent[-1][1].inline_keyboard[0][0].callback_data == "menu:resume"
+
+
+# --- маршрутизация на уровне диспетчера (финал ветки) ---
+
+
+def _update(text: str):
+    """Настоящее обновление Telegram: прогоняем его через диспетчер как в бою."""
+    return Update(
+        update_id=1,
+        message=Message(
+            message_id=1,
+            date=datetime.now(),
+            chat=Chat(id=1, type="private"),
+            from_user=User(id=1, is_bot=False, first_name="Ученик"),
+            text=text,
+        ),
+    )
+
+
+async def _dispatch(conn, settings, state_name: str, text: str):
+    """Прогоняет текст через боевой диспетчер, стоя в заданном FSM-состоянии."""
+    bot = Bot(token="42:TEST", session=NullSession())
+    dispatcher = Dispatcher()
+    # Порядок как в bot/main.py: потоки бота идут раньше основного роутера.
+    dispatcher.include_router(make_onboarding_router(conn, settings))
+    dispatcher.include_router(make_router(conn, _TutorClient(), "m", settings=settings))
+    ctx = dispatcher.fsm.get_context(bot=bot, chat_id=1, user_id=1)
+    await ctx.set_state(state_name)
+
+    await dispatcher.feed_update(bot, _update(text))
+
+    state = await ctx.get_state()
+    await bot.session.close()
+    return state
+
+
+async def test_command_on_route_screen_reaches_its_handler(conn, settings) -> None:
+    """На экране согласования команда доходит до хендлера, а не в подсказку."""
+    load_seed(conn)
+    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+
+    state = await _dispatch(conn, settings, OnboardingFlow.route_review.state, "/start")
+
+    assert state is None  # /start отработал и снял поток
+
+
+async def test_text_on_route_screen_stays_in_hint(conn, settings) -> None:
+    """Свободный текст по-прежнему остаётся подсказкой экрана."""
+    load_seed(conn)
+
+    state = await _dispatch(conn, settings, OnboardingFlow.route_review.state, "я это знаю")
+
+    assert state == OnboardingFlow.route_review.state
+
+
+async def test_status_command_reports_failure_instead_of_silence(
+    conn, settings, monkeypatch
+) -> None:
+    """Сбой дашборда — сообщение, а не тишина."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    monkeypatch.setattr(
+        "llm_tutor.bot.handlers.render.render_status",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    message = FakeMessage()
+
+    await _named(router, "message", "on_status")(message)
+
+    assert "пошло не так" in message.last_text
+
+
+async def test_themes_command_reports_failure_instead_of_silence(
+    conn, settings, monkeypatch
+) -> None:
+    """Сбой списка тем — сообщение, а не тишина."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    monkeypatch.setattr(
+        "llm_tutor.bot.handlers.themes.themes_keyboard",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    message = FakeMessage()
+
+    await _named(router, "message", "on_themes")(message)
+
+    assert "пошло не так" in message.last_text

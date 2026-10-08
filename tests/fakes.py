@@ -1,5 +1,6 @@
 """Общие подставные объекты для тестов."""
 
+from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.base import StorageKey
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -7,6 +8,17 @@ from aiogram.types import InlineKeyboardMarkup
 
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
+
+
+class NullSession(AiohttpSession):
+    """Сессия-заглушка: наружу ничего не уходит.
+
+    Нужна тестам, которые прогоняют событие через настоящий ``Dispatcher``:
+    ответы хендлеров улетают в никуда, а фильтры и роутеры работают как в бою.
+    """
+
+    async def __call__(self, bot, method, timeout=None):
+        return True
 
 
 class FakeMessage:

@@ -338,8 +338,10 @@ async def handle_turn(
     if intent == "skip":
         return TurnReply(text=_skip_turn(conn, session_id, state, user_text, now=stamp))
     if intent == "close_topic":
-        # Закрытие — отдельный проход; он сам запишет ход и состояние.
-        return verify.start_verification(conn, now=stamp, settings=s)
+        # Закрытие — отдельный проход; он сам запишет ход и состояние. Слова
+        # ученика отдаём как есть: иначе в журнале остался бы синтетический
+        # повод, и модель на следующем ходу не увидела бы реплики ученика.
+        return verify.start_verification(conn, now=stamp, settings=s, user_text=user_text)
     force_stuck = intent == "stuck"
     options: list[str] | None = None
     answered_item_id = state.pending_item_id

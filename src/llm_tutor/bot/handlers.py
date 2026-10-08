@@ -283,9 +283,12 @@ def make_router(
 
     @router.message(Command("status"))
     async def on_status(message: Message) -> None:
-        await message.answer(
-            render.render_status(conn, settings=settings), parse_mode=render.PARSE_MODE
-        )
+        try:
+            text = render.render_status(conn, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой дашборда")
+            text = BOT_FAILURE_REPLY
+        await message.answer(text, parse_mode=render.PARSE_MODE)
 
     @router.message(Command("help"))
     async def on_help(message: Message) -> None:
@@ -293,10 +296,18 @@ def make_router(
 
     @router.message(Command("themes"))
     async def on_themes(message: Message) -> None:
+        try:
+            keyboard = themes.themes_keyboard(conn, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой списка тем")
+            await message.answer(
+                render.fit(render.escape(BOT_FAILURE_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
         await message.answer(
             themes.THEMES_PROMPT,
             parse_mode=render.PARSE_MODE,
-            reply_markup=themes.themes_keyboard(conn, settings=settings),
+            reply_markup=keyboard,
         )
 
     @router.callback_query(F.data.startswith(f"{ANSWER_CALLBACK_PREFIX}:"))
