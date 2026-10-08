@@ -97,3 +97,15 @@ def test_tutor_prompt_demands_brevity_for_all_material_states() -> None:
 def test_tutor_prompt_mentions_close_topic_flag() -> None:
     """Промпт знает про флаг просьбы закрыть тему."""
     assert "wants_close_topic" in tutor_system_prompt(0, material="found")
+
+
+# --- ведомый урок (Срез 21) ---
+
+
+def test_tutor_prompt_explains_before_asking() -> None:
+    """Сократовский диалог идёт ПОСЛЕ объяснения, а не вместо него."""
+    text = tutor_system_prompt(0, material="found")
+
+    assert "сначала" in text.lower() and "объясни" in text.lower()
+    assert "пример" in text.lower()
+    assert "зачем" in text.lower()
