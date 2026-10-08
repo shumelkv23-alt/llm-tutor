@@ -141,6 +141,20 @@ def test_close_wins_over_stuck() -> None:
     assert detect("закрой тему, я не понял") == "close_topic"
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "я пропустил эту тему в курсе",
+        "я пропустила эту лекцию",
+        "мы пропустили этот шаг",
+        "пропустив строки получаем ответ",
+    ],
+)
+def test_word_forms_of_phrases_are_not_commands(text: str) -> None:
+    """«пропустил» — не команда «пропусти»: фраза ищется целым словом."""
+    assert detect(text) is None
+
+
 def test_normalize_strips_case_punctuation_and_yo() -> None:
     assert normalize("  Закрой ТЕМУ!!!  ") == "закрой тему"
     assert normalize("я всё знаю") == "я все знаю"
@@ -234,6 +248,14 @@ INTENT_PHRASES: tuple[tuple[Intent, tuple[str, ...]], ...] = (
 _NON_WORD = re.compile(r"[^0-9a-zа-я\s]+")
 _WHITESPACE = re.compile(r"\s+")
 
+# Фраза ищется целиком, а не подстрокой: иначе «я пропустил эту тему» ловилось
+# бы как команда «пропусти», а «она пропустила» — так же. Фраза при этом
+# остаётся вхождением, а не равенством: «закрой тему пожалуйста» ловится.
+_INTENT_PATTERNS: tuple[tuple[Intent, tuple[re.Pattern[str], ...]], ...] = tuple(
+    (intent, tuple(re.compile(rf"\b{re.escape(phrase)}\b") for phrase in phrases))
+    for intent, phrases in INTENT_PHRASES
+)
+
 
 def normalize(text: str) -> str:
     """Реплика к сравнимому виду: регистр, «ё», пунктуация, лишние пробелы."""
@@ -246,8 +268,8 @@ def detect(text: str) -> Intent | None:
     normalized = normalize(text)
     if not normalized or len(normalized.split()) > INTENT_MAX_WORDS:
         return None
-    for intent, phrases in INTENT_PHRASES:
-        if any(phrase in normalized for phrase in phrases):
+    for intent, patterns in _INTENT_PATTERNS:
+        if any(pattern.search(normalized) for pattern in patterns):
             return intent
     return None
 ```

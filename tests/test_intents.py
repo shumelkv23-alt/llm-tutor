@@ -54,6 +54,20 @@ def test_long_answer_with_intent_words_is_not_intercepted() -> None:
     assert detect(text) is None
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "я пропустил эту тему в курсе",
+        "я пропустила эту лекцию",
+        "мы пропустили этот шаг",
+        "пропустив строки получаем ответ",
+    ],
+)
+def test_word_forms_of_phrases_are_not_commands(text: str) -> None:
+    """«пропустил» — не команда «пропусти»: фраза ищется целым словом."""
+    assert detect(text) is None
+
+
 def test_close_wins_over_stuck() -> None:
     """При нескольких совпадениях приоритет: close > skip > stuck."""
     assert detect("закрой тему, я не понял") == "close_topic"
