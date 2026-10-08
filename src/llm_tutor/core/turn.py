@@ -530,6 +530,23 @@ async def handle_turn(
         if state.mode == "verify" and passed is False:
             new_state = guide.on_verification_failed(new_state)
             reply = f"{reply}\n\n{VERIFY_FAILED_NOTE}"
+            # «Разберёмся» — значит разбор, а не сразу следующий тест: тьютор
+            # объясняет узел заново (обычный урок), задание идёт следом.
+            explanation, _, _, new_state, _ = await _tutor_branch(
+                conn,
+                client,
+                model,
+                session_id,
+                user_text,
+                new_state,
+                graph,
+                now=stamp,
+                settings=s,
+                # Неверный ответ — не просьба о глубине: режим задан провалом.
+                allow_stuck=False,
+            )
+            if explanation != LLM_FAILURE_REPLY:
+                reply = f"{reply}\n\n{explanation}"
         # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
         new_state, task_text, options = _issue_task(
             conn,

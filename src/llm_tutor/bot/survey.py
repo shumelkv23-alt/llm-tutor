@@ -176,7 +176,13 @@ async def start_survey(message: Message, state: FSMContext) -> Message:
     await state.set_state(SurveyFlow.question)
     await state.set_data({"message_id": None, "given": None})
     text, markup = intro_view()
-    sent = await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
+    try:
+        sent = await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
+    except Exception:
+        # Приветствие не ушло — анкеты без сообщения быть не должно: иначе
+        # любая реплика получала бы «ответь кнопкой выше», а кнопок нет.
+        await state.clear()
+        raise
     await state.update_data(message_id=sent.message_id)
     return sent
 
@@ -205,7 +211,12 @@ def make_survey_router(
         survey.apply_answers(conn, answers, level=progress.level, settings=settings)
         await state.clear()
         await callback.answer()
-        await safe_edit(callback.message, summary_text(answers), None)
+        try:
+            await safe_edit(callback.message, summary_text(answers), None)
+        except Exception:  # noqa: BLE001 — анкета уже записана, урок важнее сводки
+            # Без урока ученик остался бы на старом вопросе, а повторный тап
+            # ответил бы «анкета уже пройдена» — тупик без меню.
+            logger.exception("Сводку анкеты не нарисовать — сразу к уроку")
         await start.begin_lesson(callback.message, state, conn, client, model, settings)
 
     async def _orphan_click(callback: CallbackQuery, state: FSMContext) -> None:

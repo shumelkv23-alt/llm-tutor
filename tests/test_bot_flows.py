@@ -1143,3 +1143,39 @@ async def test_check_start_does_not_repeat_itself(conn, settings) -> None:
     said = " ".join(text for text, _ in intro.sent)
     assert said.count("пара быстрых вопросов") == 1
     assert "Осталось" not in said
+
+
+# --- финальное ревью ---
+
+
+async def test_summary_edit_failure_still_starts_lesson(conn, settings, monkeypatch) -> None:
+    """Сводку не удалось нарисовать (сеть) — урок и меню всё равно приходят."""
+    from aiogram.exceptions import TelegramNetworkError
+
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    data = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+
+    async def _network_down(*args, **kwargs):
+        raise TelegramNetworkError(method=None, message="timeout")
+
+    monkeypatch.setattr(intro, "edit_text", _network_down)
+    await _tap(click, intro, state, data)
+
+    assert any(text.startswith("📋") for text, _ in intro.sent)
+
+
+async def test_start_survey_send_failure_does_not_strand_student(conn, settings) -> None:
+    """Приветствие не ушло — анкета не висит без сообщения."""
+    from aiogram.exceptions import TelegramNetworkError
+
+    class _Down(FakeMessage):
+        async def answer(self, *args, **kwargs):
+            raise TelegramNetworkError(method=None, message="timeout")
+
+    state = _fsm()
+    with pytest.raises(TelegramNetworkError):
+        await start_survey(_Down(), state)
+
+    assert await state.get_state() is None

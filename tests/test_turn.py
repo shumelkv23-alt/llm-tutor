@@ -1097,3 +1097,18 @@ def test_feedback_on_rubric_item_does_not_show_none(conn) -> None:
     item = repos.get_item(conn, 9)  # рубричное задание, эталона нет
 
     assert "None" not in _feedback(item, 0.0)
+
+
+async def test_failed_claimed_check_explains_before_next_task(conn, settings) -> None:
+    """Провал проверки — сначала разбор тьютором, потом задание (обычный урок)."""
+    load_seed(conn)
+    _claim(conn, settings, *ALL_BLOCKS)
+    await handle_turn(conn, _FakeTutor(), "m", "привет", now=1.0, settings=settings)
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    tutor = _FakeTutor(reply="Разбираем тему")
+
+    reply = await handle_turn(conn, tutor, "m", _wrong(item), now=2.0, settings=settings)
+
+    assert len(tutor.calls) == 1
+    assert "Разбираем тему" in reply.text
+    assert reply.tail is not None  # и задание урока следом
