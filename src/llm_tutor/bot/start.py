@@ -14,7 +14,7 @@ from aiogram.types import Message
 from llm_tutor.bot import menu, render
 from llm_tutor.bot.chat_action import typing_action
 from llm_tutor.config import Settings
-from llm_tutor.core.turn import TurnReply, resume_reply
+from llm_tutor.core.turn import TurnReply, reset_lesson, resume_reply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
@@ -35,7 +35,7 @@ INTRO_TEXT = (
 )
 
 LESSON_LEAD = "Начинаем с «{name}» — сейчас коротко объясню и покажу пример."
-CHECK_LEAD = "Начинаем с проверки «{name}» — пара быстрых вопросов."
+CHECK_LEAD = "Всё отмечено знакомым — начнём с короткой проверки."
 
 WELCOME_BACK_TEMPLATE = "👋 С возвращением! Продолжаем «{name}»."
 WELCOME_BACK_IDLE = "👋 С возвращением! Напиши что угодно — продолжим."
@@ -70,6 +70,7 @@ async def begin_lesson(
     начинаем первую тему. FSM-состояние анкеты снимаем: дальше занятие.
     """
     await state.clear()
+    reset_lesson(conn)
     graph = CourseGraph.load(conn)
     route = route_mod.build_route(
         conn,

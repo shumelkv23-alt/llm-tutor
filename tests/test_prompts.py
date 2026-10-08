@@ -113,3 +113,8 @@ def test_tutor_prompt_explains_before_asking() -> None:
 
 def test_tutor_rules_tie_depth_to_self_assessment() -> None:
     assert "по самооценке" in tutor_system_prompt(0)
+
+
+def test_confident_rule_has_no_false_premise() -> None:
+    """«Уверенно» в промпте не утверждает провал проверки — его могло и не быть."""
+    assert "не подтвердил проверку" not in tutor_system_prompt(0)

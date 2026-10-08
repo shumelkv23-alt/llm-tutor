@@ -1018,7 +1018,7 @@ async def test_claimed_node_is_entered_as_check_without_explanation(conn, settin
     assert state.current_node_id == "python_basics"
     assert state.pending_item_id is not None
     assert tutor.calls == []  # без объяснения модели
-    assert "Осталось подтвердить знакомое" in reply.text
+    assert "Проверим знакомое" in reply.text
     assert reply.tail and "Проверка" in reply.tail
 
 
@@ -1029,7 +1029,7 @@ async def test_resume_enters_claimed_node_as_check(conn, settings) -> None:
     reply = await resume_reply(conn, _FakeTutor(), "m", now=1.0, settings=settings)
 
     assert _state(conn).mode == "verify"
-    assert "Осталось подтвердить знакомое" in reply.text
+    assert "Проверим знакомое" in reply.text
 
 
 async def test_resume_starts_from_given_node(conn, settings) -> None:
@@ -1062,7 +1062,7 @@ async def test_closing_last_unclaimed_node_moves_to_claimed_check(conn, settings
     state = _state(conn)
     assert state.current_node_id == "numpy_basics"
     assert state.mode == "verify"
-    assert "Осталось подтвердить знакомое" in reply.text
+    assert "Проверим знакомое" in reply.text
     assert tutor.calls == []  # следующий узел не объясняется — проверяется
 
 
@@ -1078,3 +1078,22 @@ async def test_failed_claimed_check_turns_into_lesson(conn, settings) -> None:
     assert state.mode == "reinforce"
     statuses = {step.concept_id: step.status for step in state.route.steps}
     assert statuses["python_basics"] != "claimed"
+
+
+# --- аудит среза 23 ---
+
+
+def test_exhausted_check_does_not_point_to_missing_button() -> None:
+    """Кнопки ▶️ в интерфейсе нет — текст не должен к ней отправлять."""
+    assert "▶️" not in VERIFY_EXHAUSTED_REPLY
+    assert "кнопк" not in VERIFY_EXHAUSTED_REPLY
+
+
+def test_feedback_on_rubric_item_does_not_show_none(conn) -> None:
+    """У рубричного задания нет эталона — «ожидался ответ: None» не показываем."""
+    from llm_tutor.core.turn import _feedback
+
+    load_seed(conn)
+    item = repos.get_item(conn, 9)  # рубричное задание, эталона нет
+
+    assert "None" not in _feedback(item, 0.0)

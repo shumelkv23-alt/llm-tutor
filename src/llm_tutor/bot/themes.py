@@ -200,7 +200,9 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
         return [
             graph.concept(p).name
             for p in graph.hard_prerequisites(node_id)
-            if not _is_closed(conn, p, state, now=time.time(), settings=settings)
+            # Заявленный в анкете пререквизит статус уже засчитал.
+            if p not in _claimed_from_route(state)
+            and not _is_closed(conn, p, state, now=time.time(), settings=settings)
         ]
 
     @router.callback_query(F.data.startswith("theme_go:"))

@@ -67,7 +67,7 @@ VERIFY_EXPLAIN_PREFIX = "Объясни своими словами:"
 # Проход исчерпал задания узла, а серия ещё не набрана.
 VERIFY_EXHAUSTED_REPLY = (
     "Проверить нечем: по этой теме мало заданий, и мы их уже прошли. "
-    "Закрою её, когда владение подтвердится, — или идём дальше кнопкой ▶️."
+    "Разберём её уроком — напиши что угодно, и продолжим."
 )
 # У узла нет ни одного задания.
 VERIFY_NO_ITEMS_REPLY = (
@@ -77,7 +77,7 @@ VERIFY_NO_ITEMS_REPLY = (
 # Проход не подтвердился — говорим честно и возвращаемся к разбору.
 VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к теме и разберёмся."
 # Вход в заявленный в анкете узел: самооценку подтверждаем проходом (срез 23).
-CLAIMED_CHECK_NOTE = "🔍 Осталось подтвердить знакомое: «{name}» — пара быстрых вопросов."
+CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — пара быстрых вопросов."
 
 
 @dataclass(frozen=True)
@@ -135,6 +135,9 @@ def _feedback(item: Item, score: float) -> str:
         return "Верно ✓"
     if item.answer_type == "choice":
         return f"Не совсем ✗ — верный вариант: {item.options[int(item.answer or 0)]}"
+    if item.answer is None:
+        # У рубричного задания эталона нет — показывать нечего (разбор даст урок).
+        return "Не совсем ✗"
     return f"Не совсем ✗ — ожидался ответ: {item.answer}"
 
 
@@ -337,6 +340,40 @@ async def _tutor_branch(
         )
         return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], stuck_state, False
     return answer.reply, [], [], new_state, answer.wants_close_topic
+
+
+def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
+    """Урок с чистого листа: снимает узел, задание, режим и снимок маршрута.
+
+    Зовётся в конце анкеты. Всё, что ученик успел командами до неё (/task,
+    /resume), строилось без самооценки: снимок маршрута без заявленных узлов
+    отменил бы их навсегда (``build_route`` берёт заявленное из снимка).
+    Свидетельства в журнале не трогаем — владение остаётся.
+    """
+    stamp = time.time() if now is None else now
+    session_id = repos.get_open_session(conn)
+    if session_id is None:
+        return
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(
+            update={
+                "current_node_id": None,
+                "mode": None,
+                "hint_level": 0,
+                "pending_item_id": None,
+                "route": None,
+                "phase": "explain",
+                "node_streak": 0,
+                "task_hinted": False,
+                "verify_item_ids": [],
+                "lesson_item_ids": [],
+                "last_activity": stamp,
+            }
+        ),
+    )
 
 
 def _is_claimed(route: Route | None, node_id: str) -> bool:

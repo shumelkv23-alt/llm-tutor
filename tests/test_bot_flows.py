@@ -878,7 +878,7 @@ async def test_all_confident_starts_with_check(conn, settings) -> None:
     await _press(click, intro, state, survey.SELF_LEVELS[3])
 
     steps_text = next(text for text, _ in intro.sent if text.startswith("📋"))
-    assert "Начинаем с проверки" in steps_text
+    assert "начнём с короткой проверки" in steps_text
     assert "🔍" in steps_text
     assert "Проверка" in intro.sent[-1][0]  # первое задание прохода
 
@@ -1109,3 +1109,37 @@ async def test_lesson_failure_after_survey_is_reported(conn, settings, monkeypat
     await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
 
     assert BOT_FAILURE_REPLY in intro.sent[-1][0]
+
+
+# --- аудит среза 23 ---
+
+
+async def test_command_before_survey_does_not_disable_claimed(conn, settings) -> None:
+    """/task до анкеты не отменяет «знакомое»: после анкеты урок с чистого листа."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())  # задание до анкеты
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+
+    lesson = repos.get_session_state(conn, repos.get_open_session(conn))
+    assert lesson.mode == "verify"
+    assert "Проверка" in intro.sent[-1][0]  # пришло задание проверки, а не «задание ждёт»
+    assert any(step.status == "claimed" for step in lesson.route.steps)
+
+
+async def test_check_start_does_not_repeat_itself(conn, settings) -> None:
+    """Старт с проверки: «пара быстрых вопросов» звучит один раз, без «Осталось»."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+
+    said = " ".join(text for text, _ in intro.sent)
+    assert said.count("пара быстрых вопросов") == 1
+    assert "Осталось" not in said

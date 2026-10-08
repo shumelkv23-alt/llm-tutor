@@ -362,3 +362,24 @@ def test_node_status_claimed_and_opens_dependent(conn, settings) -> None:
     assert themes.node_status(conn, graph, "python_basics", state, now=0.0, settings=settings) == "claimed"
     assert themes.node_status(conn, graph, "numpy_basics", state, now=0.0, settings=settings) == "available"
     assert themes.STATUS_ICONS["claimed"] == "🔍"
+
+
+async def test_ahead_warning_does_not_list_claimed_prerequisite(conn, settings) -> None:
+    """Заявленный пререквизит засчитан — в «не закрыты» его не перечисляем."""
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    route = Route(
+        steps=[RouteStep(concept_id="pandas_dataframe", mode="full", status="claimed")]
+    )
+    repos.update_session_state(
+        conn, session_id, SessionState(current_node_id="groupby", route=route)
+    )
+    router = themes.make_themes_router(conn, settings)
+    message = FakeMessage()
+
+    await _named(router, "callback_query", "on_theme")(FakeCallback("theme:df_inspect", message))
+
+    text, _ = message.sent[-1]
+    assert graph.concept("read_csv").name in text
+    assert graph.concept("pandas_dataframe").name not in text
