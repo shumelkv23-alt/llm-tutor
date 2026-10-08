@@ -98,3 +98,10 @@ def test_stuck_keeps_student_on_the_same_node(settings) -> None:
     state = guide.on_student_stuck(state)
 
     assert state.current_node_id == "groupby"
+
+
+def test_stuck_clears_verification_pass() -> None:
+    """Просьба о помощи снимает проход: помощь — не чистое свидетельство."""
+    state = SessionState(current_node_id="groupby", mode="verify", verify_item_ids=[9])
+
+    assert guide.on_student_stuck(state).verify_item_ids == []

@@ -1,6 +1,7 @@
 """Тесты навигации по узлам темы."""
 
 from llm_tutor.bot import themes
+from llm_tutor.bot.themes import switch_node
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
@@ -270,3 +271,23 @@ def test_themes_keyboard_without_session_does_not_open_one(conn, settings) -> No
     themes.themes_keyboard(conn, now=0.0, settings=settings)
 
     assert repos.get_open_session(conn) is None
+
+
+def test_switching_theme_clears_verification_pass(conn, settings) -> None:
+    """Переход на другую тему снимает проход (спека §5.2)."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(
+            update={"current_node_id": "groupby", "mode": "verify", "verify_item_ids": [9]}
+        ),
+    )
+
+    switch_node(conn, "read_csv", now=2.0, settings=settings)
+
+    updated = repos.get_session_state(conn, session_id)
+    assert updated.verify_item_ids == []
+    assert updated.mode is None

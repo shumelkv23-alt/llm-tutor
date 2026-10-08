@@ -65,5 +65,7 @@ def on_student_stuck(state: SessionState) -> SessionState:
             "node_streak": 0,
             "hint_level": hints.next_hint_level(state.hint_level, state.hint_level + 1),
             "phase": "explain",
+            # Помощь по узлу чистым свидетельством не является: проход обрывается.
+            "verify_item_ids": [],
         }
     )

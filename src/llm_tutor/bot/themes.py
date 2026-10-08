@@ -139,6 +139,8 @@ def switch_node(
             "node_streak": 0,
             "hint_level": 0,
             "pending_item_id": None,
+            # Переход на другую тему снимает проверочный проход (спека §5.2).
+            "verify_item_ids": [],
             "last_activity": stamp,
         }
     )

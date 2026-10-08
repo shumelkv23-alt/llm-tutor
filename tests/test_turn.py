@@ -9,6 +9,8 @@ from llm_tutor.core.turn import (
     SKIP_REPLY,
     STALE_ITEM_REPLY,
     STUCK_NOTE,
+    VERIFY_EXHAUSTED_REPLY,
+    VERIFY_EXPLAIN_PREFIX,
     handle_turn,
     post_turn,
     skip_pending,
@@ -545,3 +547,60 @@ async def test_intents_can_be_disabled(conn, settings) -> None:
 
     assert "Не совсем" in reply.text  # ушло в ветку ответа
     assert any(event.source == "checked" for event in repos.get_events(conn))
+
+
+# --- проверочный проход: выдача заданий (Срез 16) ---
+
+
+async def test_verify_mode_asks_explanation_first(conn, settings) -> None:
+    """В режиме прохода шапка и «объясни своими словами» ставятся кодом."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", mode="verify", phase="practice")
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert "Проверка" in reply.text
+    assert "шаг 1" in reply.text
+    assert VERIFY_EXPLAIN_PREFIX in reply.text
+    assert _state(conn).verify_item_ids == [_state(conn).pending_item_id]
+
+
+async def test_verify_mode_does_not_repeat_item_in_one_pass(conn, settings) -> None:
+    """Второй шаг прохода берёт другое задание, а не то же самое."""
+    load_seed(conn)
+    _set_state(
+        conn, current_node_id="groupby", mode="verify", phase="practice", verify_item_ids=[9]
+    )
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert _state(conn).pending_item_id != 9
+    assert "шаг 2" in reply.text
+
+
+async def test_verify_mode_reports_exhausted_pass(conn, settings) -> None:
+    """Задания узла кончились — честный отказ, режим снят."""
+    load_seed(conn)
+    _set_state(
+        conn,
+        current_node_id="pandas_intro",
+        mode="verify",
+        phase="practice",
+        verify_item_ids=[1],
+    )
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert reply.text == VERIFY_EXHAUSTED_REPLY
+    assert _state(conn).mode is None
+    assert _state(conn).verify_item_ids == []
+
+
+async def test_normal_task_is_not_marked_as_verification(conn, settings) -> None:
+    """Обычная выдача задания не несёт шапки прохода."""
+    load_seed(conn)
+
+    reply = start_practice_reply(conn, now=1.0, settings=settings)
+
+    assert "Проверка" not in reply.text
+    assert _state(conn).verify_item_ids == []

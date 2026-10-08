@@ -57,6 +57,21 @@ NO_TASK_FOR_NODE_REPLY = (
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
 # Маршрут пройден до конца: заданий больше нет, и это не ошибка.
 ROUTE_DONE_REPLY = "Маршрут пройден до конца. Можно свериться: /plan."
+# Шапка шага проверочного прохода. Номер без общего числа: после неудачного
+# ответа серия обнуляется и шагов может стать больше двух.
+VERIFY_STEP_TEMPLATE = "🔎 Проверка «{name}» — шаг {step}"
+# Рубричные задания просим объяснить словами — это и есть суть проверки.
+VERIFY_EXPLAIN_PREFIX = "Объясни своими словами:"
+# Проход исчерпал задания узла, а серия ещё не набрана.
+VERIFY_EXHAUSTED_REPLY = (
+    "Проверить нечем: по этой теме мало заданий, и мы их уже прошли. "
+    "Закрою её, когда владение подтвердится, — или идём дальше кнопкой ▶️."
+)
+# У узла нет ни одного задания.
+VERIFY_NO_ITEMS_REPLY = (
+    "По этой теме у меня нет проверочных заданий — "
+    "закрою её, когда владение подтвердится по ходу."
+)
 
 
 @dataclass(frozen=True)
@@ -487,10 +502,37 @@ def _issue_task(
             None,
         )
 
-    question = diagnostic.question_for_node(
-        conn, node_id, asked_item_ids=exclude_item_ids, now=now, settings=settings
-    )
+    if state.mode == "verify":
+        # Проход: задание берём без паузы повтора, но не повторяем внутри прохода.
+        question = diagnostic.verification_item(
+            conn,
+            node_id,
+            used_item_ids=frozenset(state.verify_item_ids),
+            now=now,
+            settings=settings,
+        )
+    else:
+        question = diagnostic.question_for_node(
+            conn, node_id, asked_item_ids=exclude_item_ids, now=now, settings=settings
+        )
     if question is None:
+        if state.mode == "verify":
+            # Проход не может продолжаться: снимаем режим, иначе ученик залип
+            # в «проверяю» на каждом следующем задании.
+            text = VERIFY_EXHAUSTED_REPLY if state.verify_item_ids else VERIFY_NO_ITEMS_REPLY
+            return (
+                state.model_copy(
+                    update={
+                        "mode": None,
+                        "verify_item_ids": [],
+                        "phase": "explain",
+                        "route": route,
+                        "last_activity": now,
+                    }
+                ),
+                text,
+                None,
+            )
         return (
             state.model_copy(update={"phase": "explain", "route": route, "last_activity": now}),
             NO_TASK_FOR_NODE_REPLY,
@@ -507,9 +549,23 @@ def _issue_task(
             "phase": "practice",
             "route": route,
             "last_activity": now,
+            "verify_item_ids": (
+                [*state.verify_item_ids, question.item.id]
+                if state.mode == "verify"
+                else state.verify_item_ids
+            ),
         }
     )
-    return new_state, _render_item(question.item), question.item.options or None
+    text = _render_item(question.item)
+    if state.mode == "verify":
+        header = VERIFY_STEP_TEMPLATE.format(
+            name=graph.concept(node_id).name, step=len(state.verify_item_ids) + 1
+        )
+        if question.item.answer_type in diagnostic.RUBRIC_CHECKABLE:
+            text = f"{header}\n\n{VERIFY_EXPLAIN_PREFIX}\n{text}"
+        else:
+            text = f"{header}\n\n{text}"
+    return new_state, text, question.item.options or None
 
 
 def start_practice_reply(
