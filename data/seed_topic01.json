@@ -1,6 +1,25 @@
 {
   "course": "mlcourse.ai/topic01",
   "comment": "Граф концептов topic01 «Pandas / EDA» + банк заданий. Рёбра: from -> to означает «from требуется для to». hard=false — мягкий пререквизит (штраф, не блокировка). items: для choice answer — индекс варианта (строкой), для short — эталонный текст.",
+  "topic": {
+    "number": 1,
+    "title": "Первичный анализ данных с Pandas",
+    "intro": "Знакомимся с pandas: загружаем таблицу, осматриваем её, фильтруем, группируем и ищем закономерности в данных об оттоке клиентов.",
+    "survey": {
+      "level_key": "survey_level",
+      "level_question": "Для начала — как у тебя с Python и pandas?",
+      "level_options": ["С нуля", "Немного знаю", "Уверенно работаю с pandas"],
+      "blocks": [
+        {"key": "block_python", "title": "Python и NumPy", "question": "Пишешь на Python и NumPy?", "example": "списки, функции, np.array", "concepts": ["python_basics", "numpy_basics"]},
+        {"key": "block_tables", "title": "Таблицы pandas", "question": "Создаёшь Series и DataFrame?", "example": "индекс, столбцы, pd.DataFrame", "concepts": ["pandas_intro", "pandas_series", "pandas_dataframe"]},
+        {"key": "block_loading", "title": "Чтение и осмотр", "question": "Загружаешь и осматриваешь данные?", "example": "read_csv, info, describe, astype", "concepts": ["read_csv", "df_inspect", "describe_stats", "dtype_conversion"]},
+        {"key": "block_selection", "title": "Выборка и сортировка", "question": "Фильтруешь и сортируешь таблицы?", "example": "loc / iloc, условия, sort_values, value_counts", "concepts": ["indexing_loc_iloc", "boolean_indexing", "sorting", "value_counts", "df_transformations"]},
+        {"key": "block_analysis", "title": "Группировки и EDA", "question": "Группируешь и исследуешь данные?", "example": "apply, groupby + agg, pivot_table, графики", "concepts": ["apply_functions", "groupby", "agg_functions", "summary_tables", "visualization_basics", "eda_workflow", "churn_eda_case"]}
+      ],
+      "assumed_by_confident": ["block_python", "block_tables", "block_loading"],
+      "foundation": ["block_python", "block_tables"]
+    }
+  },
   "nodes": [
     {
       "id": "python_basics",

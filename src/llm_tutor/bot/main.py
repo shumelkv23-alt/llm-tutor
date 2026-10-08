@@ -10,7 +10,7 @@ from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.bot.themes import make_themes_router
 from llm_tutor.config import get_settings
-from llm_tutor.course.seed import items_without_rubric, load_seed, nodes_without_items
+from llm_tutor.course.seed import items_without_rubric, load_course, nodes_without_items
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
 
@@ -31,13 +31,15 @@ async def main() -> None:
 
     try:
         migrate(conn)
-        seed = load_seed(conn)  # граф темы — идемпотентный upsert seed-файла
-        missing = nodes_without_items(seed)
+        course = load_course(conn)  # все модули курса — один проход replace_seed
+        for warning in course.warnings:
+            logging.warning(warning)
+        missing = nodes_without_items(course)
         if missing:
             logging.warning(
                 "Узлы без заданий — диагностика их не проверит: %s", ", ".join(missing)
             )
-        without_rubric = items_without_rubric(seed)
+        without_rubric = items_without_rubric(course)
         if without_rubric:
             logging.warning(
                 "Открытые задания без рубрики — проверить нечем, выдаваться не будут: %s",

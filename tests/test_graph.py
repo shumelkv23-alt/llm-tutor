@@ -176,6 +176,9 @@ def _write_trimmed_seed(tmp_path, *, drop_nodes=(), drop_edges=()) -> "Path":
         for item in data["items"]
         if not set(item["concept_weights"]) & set(drop_nodes)
     ]
+    # Анкета модуля накрывает ровно его темы (срез 24): убранная тема уходит и из блока.
+    for block in data["topic"]["survey"]["blocks"]:
+        block["concepts"] = [c for c in block["concepts"] if c not in drop_nodes]
     path = tmp_path / "seed.json"
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     return path

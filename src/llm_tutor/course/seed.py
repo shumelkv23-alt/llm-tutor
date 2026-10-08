@@ -1,32 +1,41 @@
-"""Загрузка seed-графа курса в БД (Срез 4.1).
+"""Загрузка курса в БД: seed-файлы модулей (срез 4.1, модули — срез 24).
 
-Seed — источник графа концептов и рёбер темы (data/seed_topic01.json).
-Перед записью граф валидируется (ссылки на существующие узлы + отсутствие
-циклов), чтобы битый seed падал сразу, а не ломал планировщик позже.
+Курс — десять модулей mlcourse.ai, по seed-файлу на модуль
+(``data/seed_topicNN.json``). В БД все файлы ложатся ОДНИМ проходом
+``replace_seed``: по очереди нельзя — каждый следующий погасил бы предыдущий.
+Перед записью курс валидируется целиком: ссылки между модулями, рёбра только
+назад (``CourseGraph``), анкета модуля накрывает его темы, циклов нет.
 
 CLI: ``python -m llm_tutor.course.seed [--seed PATH] [--db PATH]``.
 """
 
 import json
 import os
+import re
 import sqlite3
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Criterion, Edge, Item, Rubric
+from llm_tutor.schemas import Concept, Criterion, Edge, Item, Rubric, Topic
 
 # Корень проекта (src/llm_tutor/course/seed.py → src → корень).
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_SEED_PATH = _PROJECT_ROOT / "data" / "seed_topic01.json"
+DATA_DIR = _PROJECT_ROOT / "data"
+DEFAULT_SEED_PATH = DATA_DIR / "seed_topic01.json"
+# Имя seed-файла модуля: seed_topicNN.json (суффикс — для тестовых модулей).
+_SEED_NAME_RE = re.compile(r"seed_topic(\d{2})(?:_\w+)?\.json")
 
 
 class Seed(BaseModel):
-    """Содержимое seed-файла: граф курса, банк заданий и рубрики."""
+    """Seed-файл модуля: модуль, его граф, банк заданий и рубрики."""
 
     course: str
+    topic: Topic
     nodes: list[Concept]
     edges: list[Edge]
     items: list[Item] = Field(default_factory=list)
@@ -34,37 +43,60 @@ class Seed(BaseModel):
     criteria: list[Criterion] = Field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class Course:
+    """Курс целиком: модули и склеенные разделы их seed-файлов."""
+
+    topics: tuple[Topic, ...]
+    nodes: tuple[Concept, ...]
+    edges: tuple[Edge, ...]
+    items: tuple[Item, ...]
+    rubrics: tuple[Rubric, ...]
+    criteria: tuple[Criterion, ...]
+    # Не ошибки, но автору стоит посмотреть: жёсткие межмодульные рёбра.
+    warnings: tuple[str, ...] = ()
+
+
 class SeedError(ValueError):
-    """Seed внутренне несогласован: битые ссылки между его разделами."""
+    """Курс внутренне несогласован: битые ссылки между разделами или модулями."""
 
 
-def _check_references(seed: Seed) -> None:
-    """Проверяет ссылки между разделами seed.
+def _check_unique(title: str, ids: Sequence) -> None:
+    """Дубли id молча схлопнулись бы в upsert — содержимое разошлось бы с файлом."""
+    if len(set(ids)) != len(ids):
+        dups = sorted({value for value in ids if ids.count(value) > 1}, key=str)
+        raise SeedError(f"Дубли id {title}: {dups}")
+
+
+def _check_references(
+    nodes: Sequence[Concept],
+    items: Sequence[Item],
+    rubrics: Sequence[Rubric],
+    criteria: Sequence[Criterion],
+) -> None:
+    """Проверяет ссылки между разделами курса.
 
     Опечатка в id рубрики или концепта иначе всплыла бы сырым ``IntegrityError``
     на старте бота (или, хуже, падением при ответе ученика) — а не подсказкой
     автору, который правит банк руками.
     """
-    # Дубли id молча схлопнулись бы в upsert, и содержимое тихо разошлось бы
-    # с файлом. Узлы и рёбра проверяет CourseGraph.
     for title, ids in (
-        ("рубрик", [rubric.id for rubric in seed.rubrics]),
-        ("критериев", [criterion.id for criterion in seed.criteria]),
-        ("заданий", [item.id for item in seed.items]),
+        ("узлов", [node.id for node in nodes]),
+        ("рубрик", [rubric.id for rubric in rubrics]),
+        ("критериев", [criterion.id for criterion in criteria]),
+        ("заданий", [item.id for item in items]),
     ):
-        if len(set(ids)) != len(ids):
-            raise SeedError(f"Дубли id {title}: {sorted(ids)}")
+        _check_unique(title, ids)
 
-    rubric_ids = {rubric.id for rubric in seed.rubrics}
-    node_ids = {node.id for node in seed.nodes}
-
-    for criterion in seed.criteria:
+    rubric_ids = {rubric.id for rubric in rubrics}
+    node_ids = {node.id for node in nodes}
+    for criterion in criteria:
         if criterion.rubric_id not in rubric_ids:
             raise SeedError(
                 f"Критерий {criterion.id} ссылается на неизвестную рубрику "
                 f"{criterion.rubric_id}"
             )
-    for item in seed.items:
+    for item in items:
         if item.rubric_id is not None and item.rubric_id not in rubric_ids:
             raise SeedError(
                 f"Задание {item.id} ссылается на неизвестную рубрику {item.rubric_id}"
@@ -76,28 +108,138 @@ def _check_references(seed: Seed) -> None:
             )
 
 
-def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
-    """Читает и валидирует seed-файл (без записи в БД)."""
+def _check_topics(seeds: Sequence[Seed]) -> list[str]:
+    """Правила модулей; отдаёт предупреждения (жёсткие межмодульные рёбра).
+
+    Направление рёбер (только назад) проверяет ``CourseGraph`` — здесь его
+    повторять незачем.
+    """
+    _check_unique("модулей", [seed.topic.number for seed in seeds])
+    keys = [key for seed in seeds for key in seed.topic.survey.keys]
+    if len(set(keys)) != len(keys):
+        dups = sorted({key for key in keys if keys.count(key) > 1})
+        raise SeedError(f"Дубли ключей анкеты между модулями: {dups}")
+
+    topic_of = {node.id: node.topic_id for seed in seeds for node in seed.nodes}
+    warnings: list[str] = []
+    for seed in seeds:
+        number = seed.topic.number
+        for edge in seed.edges:
+            src, dst = topic_of[edge.from_id], topic_of[edge.to_id]
+            if edge.type == "requires" and edge.hard and src < dst:
+                warnings.append(
+                    f"Жёсткое межмодульное ребро {edge.from_id} -> {edge.to_id} "
+                    f"(модуль {src} -> {dst})"
+                )
+        own = {node.id for node in seed.nodes}
+        covered = [c for block in seed.topic.survey.blocks for c in block.concepts]
+        foreign = sorted(set(covered) - own)
+        if foreign:
+            raise SeedError(f"Анкета модуля {number} ссылается на чужие темы: {foreign}")
+        missing = sorted(own - set(covered))
+        if missing:
+            raise SeedError(f"Анкета модуля {number} не накрывает темы: {missing}")
+        twice = sorted({c for c in covered if covered.count(c) > 1})
+        if twice:
+            raise SeedError(f"Темы в нескольких блоках анкеты модуля {number}: {twice}")
+    return warnings
+
+
+def _parse_seed(path: str | Path) -> Seed:
+    """Читает seed-файл модуля; темам проставляет модуль по файлу."""
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(f"Seed-файл не найден: {source}")
-    raw = json.loads(source.read_text(encoding="utf-8"))
-    seed = Seed.model_validate(raw)
-    CourseGraph(seed.nodes, seed.edges)  # падает на цикле/дубле/битой ссылке
-    _check_references(seed)
+    seed = Seed.model_validate(json.loads(source.read_text(encoding="utf-8")))
+    number = seed.topic.number
+    match = _SEED_NAME_RE.fullmatch(source.name)
+    if match and int(match.group(1)) != number:
+        raise SeedError(
+            f"{source.name}: в файле модуль {number}, а в имени — {int(match.group(1))}"
+        )
+    # Модуль темы задаёт файл, а не поле темы: тема не «уедет» в чужой модуль.
+    return seed.model_copy(
+        update={"nodes": [node.model_copy(update={"topic_id": number}) for node in seed.nodes]}
+    )
+
+
+def build_course(seeds: Sequence[Seed]) -> Course:
+    """Склеивает модули и валидирует курс целиком (``SeedError`` на ошибке)."""
+    ordered = sorted(seeds, key=lambda seed: seed.topic.number)
+    nodes = [node for seed in ordered for node in seed.nodes]
+    edges = [edge for seed in ordered for edge in seed.edges]
+    items = [item for seed in ordered for item in seed.items]
+    rubrics = [rubric for seed in ordered for rubric in seed.rubrics]
+    criteria = [criterion for seed in ordered for criterion in seed.criteria]
+    _check_references(nodes, items, rubrics, criteria)
+    CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
+    warnings = _check_topics(ordered)
+    return Course(
+        topics=tuple(seed.topic for seed in ordered),
+        nodes=tuple(nodes),
+        edges=tuple(edges),
+        items=tuple(items),
+        rubrics=tuple(rubrics),
+        criteria=tuple(criteria),
+        warnings=tuple(warnings),
+    )
+
+
+def course_paths(data_dir: Path | None = None) -> list[Path]:
+    """Seed-файлы модулей курса (черновики и прочие файлы не берутся)."""
+    folder = DATA_DIR if data_dir is None else data_dir
+    return sorted(
+        path for path in folder.glob("seed_topic*.json") if _SEED_NAME_RE.fullmatch(path.name)
+    )
+
+
+def load_course_data(paths: Sequence[str | Path] | None = None) -> Course:
+    """Читает и валидирует модули курса (без записи в БД)."""
+    chosen = course_paths() if paths is None else [Path(path) for path in paths]
+    if not chosen:
+        raise FileNotFoundError(f"Нет seed-файлов модулей в {DATA_DIR}")
+    return build_course([_parse_seed(path) for path in chosen])
+
+
+def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
+    """Читает и валидирует один seed-файл как курс из одного модуля."""
+    seed = _parse_seed(path)
+    build_course([seed])
     return seed
+
+
+def _apply(conn: sqlite3.Connection, course: Course) -> None:
+    repos.replace_seed(
+        conn,
+        course.nodes,
+        course.edges,
+        course.items,
+        course.rubrics,
+        course.criteria,
+        topics=course.topics,
+    )
+
+
+def load_course(
+    conn: sqlite3.Connection, paths: Sequence[str | Path] | None = None
+) -> Course:
+    """Идемпотентно приводит курс в БД к seed-файлам модулей (истина — seed)."""
+    course = load_course_data(paths)
+    _apply(conn, course)
+    return course
 
 
 def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) -> Seed:
-    """Идемпотентно приводит граф в БД к seed-файлу (истина — seed)."""
-    seed = load_seed_data(path)
-    repos.replace_seed(
-        conn, seed.nodes, seed.edges, seed.items, seed.rubrics, seed.criteria
-    )
+    """Один модуль как весь курс — для тестов и отладки одного файла.
+
+    Всё, чего нет в файле, гасится: в том числе другие модули.
+    """
+    seed = _parse_seed(path)
+    _apply(conn, build_course([seed]))
     return seed
 
 
-def items_without_rubric(seed: Seed) -> list[int]:
+def items_without_rubric(seed: Seed | Course) -> list[int]:
     """Открытые и код-задания без рубрики: проверить их нечем, но они грузятся.
 
     Задание не выдаётся (рубрики нет), но автору об этом надо сказать вслух —
@@ -110,7 +252,7 @@ def items_without_rubric(seed: Seed) -> list[int]:
     )
 
 
-def nodes_without_items(seed: Seed) -> list[str]:
+def nodes_without_items(seed: Seed | Course) -> list[str]:
     """«Несущие» узлы без задания в банке — диагностика их проверить не сможет.
 
     Возвращаются только узлы с зависимыми: непроверенная база запирает весь
@@ -126,13 +268,20 @@ def nodes_without_items(seed: Seed) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI: загрузить seed-граф в БД."""
+    """CLI: загрузить курс (или один seed-файл модуля) в БД."""
     import argparse
 
     from llm_tutor.db.connection import get_conn, migrate
 
-    parser = argparse.ArgumentParser(description="Загрузка seed-графа курса в БД.")
-    parser.add_argument("--seed", default=str(DEFAULT_SEED_PATH), help="путь к seed-файлу")
+    parser = argparse.ArgumentParser(description="Загрузка курса в БД.")
+    parser.add_argument(
+        "--seed",
+        default=None,
+        help=(
+            "один seed-файл модуля — только для отладки на отдельной БД: "
+            "остальные модули в ней гаснут; по умолчанию — все модули из data/"
+        ),
+    )
     parser.add_argument(
         "--db",
         default=os.environ.get("DB_PATH", "data/llm_tutor.sqlite3"),
@@ -143,18 +292,20 @@ def main(argv: list[str] | None = None) -> int:
     conn = get_conn(args.db)
     try:
         migrate(conn)
-        seed = load_seed(conn, args.seed)
+        course = load_course(conn, None if args.seed is None else [args.seed])
     finally:
         conn.close()
 
     print(
-        f"Загружено: {len(seed.nodes)} концептов, {len(seed.edges)} рёбер, "
-        f"{len(seed.items)} заданий ({seed.course})"
+        f"Загружено: {len(course.topics)} модулей, {len(course.nodes)} концептов, "
+        f"{len(course.edges)} рёбер, {len(course.items)} заданий"
     )
-    missing = nodes_without_items(seed)
+    for warning in course.warnings:
+        print(f"Предупреждение: {warning}")
+    missing = nodes_without_items(course)
     if missing:
         print(f"Без заданий (диагностика их не возьмёт): {', '.join(missing)}")
-    without_rubric = items_without_rubric(seed)
+    without_rubric = items_without_rubric(course)
     if without_rubric:
         print(f"Открытые задания без рубрики (проверить нечем): {without_rubric}")
     return 0
