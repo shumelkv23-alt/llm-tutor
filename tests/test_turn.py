@@ -27,7 +27,9 @@ from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 from llm_tutor.llm.client import LLMError
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
 from llm_tutor.schemas import Route, RouteStep, SessionState
-from llm_tutor.student import beta
+from llm_tutor.course.graph import CourseGraph
+from llm_tutor.student import beta, survey
+from llm_tutor.student import route as route_mod
 
 
 class _FakeTutor:
@@ -975,3 +977,104 @@ async def test_stuck_raises_hint_level_by_one_step(conn, settings, model_level) 
     await handle_turn(conn, client, "m", "не понял", now=1.0, settings=settings)
 
     assert _state(conn).hint_level == 1
+
+
+# --- заявленное в анкете (срез 23) ---
+
+
+def _claim(conn, settings, *keys: str) -> None:
+    survey.apply_answers(
+        conn, {key: survey.CONFIDENT_INDEX for key in keys}, now=0.0, settings=settings
+    )
+
+
+ALL_BLOCKS = tuple(block.key for block in survey.BLOCKS)
+
+
+def _wrong(item) -> str:
+    if item.options:
+        return item.options[(int(item.answer) + 1) % len(item.options)]
+    return "заведомо неверно"
+
+
+async def test_entering_lesson_skips_claimed_block(conn, settings) -> None:
+    load_seed(conn)
+    _claim(conn, settings, "block_python")
+
+    await handle_turn(conn, _FakeTutor(), "m", "привет", now=1.0, settings=settings)
+
+    assert _state(conn).current_node_id not in {"python_basics", "numpy_basics"}
+
+
+async def test_claimed_node_is_entered_as_check_without_explanation(conn, settings) -> None:
+    load_seed(conn)
+    _claim(conn, settings, *ALL_BLOCKS)
+    tutor = _FakeTutor()
+
+    reply = await handle_turn(conn, tutor, "m", "привет", now=1.0, settings=settings)
+
+    state = _state(conn)
+    assert state.mode == "verify"
+    assert state.current_node_id == "python_basics"
+    assert state.pending_item_id is not None
+    assert tutor.calls == []  # без объяснения модели
+    assert "Осталось подтвердить знакомое" in reply.text
+    assert reply.tail and "Проверка" in reply.tail
+
+
+async def test_resume_enters_claimed_node_as_check(conn, settings) -> None:
+    load_seed(conn)
+    _claim(conn, settings, *ALL_BLOCKS)
+
+    reply = await resume_reply(conn, _FakeTutor(), "m", now=1.0, settings=settings)
+
+    assert _state(conn).mode == "verify"
+    assert "Осталось подтвердить знакомое" in reply.text
+
+
+async def test_resume_starts_from_given_node(conn, settings) -> None:
+    load_seed(conn)
+
+    await resume_reply(
+        conn, _FakeTutor(), "m", now=1.0, settings=settings, start_node_id="numpy_basics"
+    )
+
+    assert _state(conn).current_node_id == "numpy_basics"
+
+
+async def test_closing_last_unclaimed_node_moves_to_claimed_check(conn, settings) -> None:
+    """Незаявленное кончилось — бот сам ведёт в проверку заявленного."""
+    load_seed(conn)
+    _claim(conn, settings, *ALL_BLOCKS)
+    graph = CourseGraph.load(conn)
+    route = route_mod.build_route(
+        conn, graph, current_node_id="python_basics", now=0.0, settings=settings
+    )
+    # Урок по python_basics идёт обычным порядком (заявка снята — стал текущим).
+    item = repos.get_item(conn, 6)  # задание по python_basics, верный вариант первый
+    tutor = _FakeTutor()
+
+    for now in (1.0, 2.0):
+        _set_state(conn, pending_item_id=item.id, current_node_id="python_basics", route=route)
+        reply = await handle_turn(conn, tutor, "m", item.options[0], now=now, settings=settings)
+        route = _state(conn).route
+
+    state = _state(conn)
+    assert state.current_node_id == "numpy_basics"
+    assert state.mode == "verify"
+    assert "Осталось подтвердить знакомое" in reply.text
+    assert tutor.calls == []  # следующий узел не объясняется — проверяется
+
+
+async def test_failed_claimed_check_turns_into_lesson(conn, settings) -> None:
+    load_seed(conn)
+    _claim(conn, settings, *ALL_BLOCKS)
+    await handle_turn(conn, _FakeTutor(), "m", "привет", now=1.0, settings=settings)
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+
+    await handle_turn(conn, _FakeTutor(), "m", _wrong(item), now=2.0, settings=settings)
+
+    state = _state(conn)
+    assert state.mode == "reinforce"
+    statuses = {step.concept_id: step.status for step in state.route.steps}
+    assert statuses["python_basics"] != "claimed"

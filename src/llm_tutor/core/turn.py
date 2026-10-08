@@ -24,7 +24,7 @@ from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
-from llm_tutor.schemas import Event, Item, SessionState
+from llm_tutor.schemas import Event, Item, Route, SessionState
 from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,8 @@ VERIFY_NO_ITEMS_REPLY = (
 )
 # Проход не подтвердился — говорим честно и возвращаемся к разбору.
 VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к теме и разберёмся."
+# Вход в заявленный в анкете узел: самооценку подтверждаем проходом (срез 23).
+CLAIMED_CHECK_NOTE = "🔍 Осталось подтвердить знакомое: «{name}» — пара быстрых вопросов."
 
 
 @dataclass(frozen=True)
@@ -337,6 +339,66 @@ async def _tutor_branch(
     return answer.reply, [], [], new_state, answer.wants_close_topic
 
 
+def _is_claimed(route: Route | None, node_id: str) -> bool:
+    """Заявлен ли узел в анкете и ещё не подтверждён (по снимку маршрута)."""
+    return route is not None and any(
+        step.concept_id == node_id and step.status == "claimed" for step in route.steps
+    )
+
+
+def _checking(state: SessionState, node_id: str) -> SessionState:
+    """Состояние входа в проверочный проход по заявленному узлу."""
+    return state.model_copy(
+        update={
+            "current_node_id": node_id,
+            "mode": "verify",
+            "node_streak": 0,
+            "hint_level": 0,
+            "task_hinted": False,
+            "pending_item_id": None,
+            "phase": "explain",
+            "verify_item_ids": [],
+            "lesson_item_ids": [],
+        }
+    )
+
+
+def _enter_claimed(
+    conn: sqlite3.Connection,
+    session_id: int,
+    graph: CourseGraph,
+    state: SessionState,
+    route: Route,
+    node_id: str,
+    *,
+    user_text: str,
+    now: float,
+    settings: Settings,
+) -> TurnReply:
+    """Ход входа в заявленный узел: объявление и первое задание прохода.
+
+    Модель не зовём: ученик сказал, что тему знает, — объяснять нечего, нужно
+    подтвердить. Провал прохода сам уведёт узел в обычный урок.
+    """
+    checking = _checking(state.model_copy(update={"route": route}), node_id)
+    new_state, task_text, options = _issue_task(
+        conn, graph, checking, now=now, settings=settings
+    )
+    note = CLAIMED_CHECK_NOTE.format(name=graph.concept(node_id).name)
+    tail = task_text if new_state.pending_item_id is not None else None
+    text = note if tail else f"{note}\n\n{task_text}"
+    fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=now, settings=settings)
+    post_turn(
+        conn,
+        session_id,
+        user_text=user_text,
+        assistant_text=f"{text}\n\n{tail}" if tail else text,
+        state=new_state.model_copy(update={"route": fresh_route}),
+        now=now,
+    )
+    return TurnReply(text=text, options=options if tail else None, tail=tail)
+
+
 async def handle_turn(
     conn: sqlite3.Connection,
     client: LLMClient,
@@ -401,7 +463,9 @@ async def handle_turn(
             )
             if closed_note:
                 reply = f"{reply}\n\n{closed_note}"
-                if new_state.current_node_id is not None:
+                # Следующий узел — заявленный: его не объясняем, а проверяем;
+                # задание выдаст общий `_issue_task` ниже.
+                if new_state.current_node_id is not None and new_state.mode != "verify":
                     # Закрытие и переход — в одном ходу: сообщение должно быть не
                     # «тема закрыта», а началом следующей темы (§5.1). Это второй
                     # вызов модели за ход — осознанный размен.
@@ -465,6 +529,12 @@ async def handle_turn(
             node_id = route_mod.next_node_id(conn, graph, route, now=stamp, settings=s)
             if node_id is None:
                 entering = False  # маршрут исчерпан — входить некуда
+            elif _is_claimed(route, node_id):
+                # Заявленное в анкете не объясняем — подтверждаем проходом.
+                return _enter_claimed(
+                    conn, session_id, graph, state, route, node_id,
+                    user_text=user_text, now=stamp, settings=s,
+                )
             else:
                 state = state.model_copy(
                     update={"current_node_id": node_id, "route": route}
@@ -623,6 +693,12 @@ def _close_node_if_ready(
     if next_node_id is None:
         return new_state, f"✅ Тема «{closed_name}» закрыта — маршрут пройден до конца."
     next_name = graph.concept(next_node_id).name
+    if _is_claimed(route, next_node_id):
+        return (
+            _checking(new_state, next_node_id),
+            f"✅ Тема «{closed_name}» закрыта.\n\n"
+            + CLAIMED_CHECK_NOTE.format(name=next_name),
+        )
     return new_state, f"✅ Тема «{closed_name}» закрыта — идём дальше: {next_name}."
 
 
@@ -791,11 +867,13 @@ async def resume_reply(
     *,
     now: float | None = None,
     settings: Settings | None = None,
+    start_node_id: str | None = None,
 ) -> TurnReply:
     """«Продолжить обучение»: занятие идёт с того места, где ученик остановился.
 
     Висящее задание не затирается — в этом отличие от `/task`, который молча
-    выдаёт новое.
+    выдаёт новое. ``start_node_id`` — с какого узла начать, если текущего ещё
+    нет (первый урок после анкеты: тот, что объявлен в списке шагов).
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
@@ -825,8 +903,10 @@ async def resume_reply(
         now=stamp,
         settings=s,
     )
-    node_id = state.current_node_id or route_mod.next_node_id(
-        conn, graph, route, now=stamp, settings=s
+    node_id = (
+        state.current_node_id
+        or start_node_id
+        or route_mod.next_node_id(conn, graph, route, now=stamp, settings=s)
     )
     if node_id is None:
         post_turn(
@@ -838,6 +918,12 @@ async def resume_reply(
             now=stamp,
         )
         return TurnReply(text=ROUTE_DONE_REPLY)
+
+    if state.mode != "verify" and _is_claimed(route, node_id):
+        return _enter_claimed(
+            conn, session_id, graph, state, route, node_id,
+            user_text=RESUME_KICKOFF_TEXT, now=stamp, settings=s,
+        )
 
     if state.phase == "explain":
         # Вход в узел (§5.1): тьютор объясняет, и в том же ходу выдаётся первый
