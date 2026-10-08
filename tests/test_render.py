@@ -1,6 +1,6 @@
 """Тесты слоя представления бота."""
 
-from llm_tutor.bot import menu
+from llm_tutor.bot import menu, render
 from llm_tutor.bot.render import (
     MAX_MESSAGE,
     PARSE_MODE,
@@ -9,6 +9,7 @@ from llm_tutor.bot.render import (
     render_help,
     render_status,
 )
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
@@ -117,3 +118,35 @@ def test_status_does_not_point_to_removed_buttons(conn) -> None:
 
     assert "⏭ Пропустить" not in text
     assert "🎯 Задание" not in text
+
+
+def test_route_window_matches_rendered_plan(conn) -> None:
+    """Окно маршрута — ровно те шаги, что попадают в табличку."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
+    )
+
+    window = render.route_window(conn, now=1.0)
+    text = render.render_plan(conn, now=1.0)
+    graph = CourseGraph.load(conn)
+
+    assert window
+    for step in window:
+        assert graph.concept(step.concept_id).name in text
+
+
+def test_route_window_includes_current_node(conn) -> None:
+    """Текущий узел всегда в окне — иначе экран согласования не о том."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
+    )
+
+    window = render.route_window(conn, now=1.0)
+
+    assert any(step.status == "current" for step in window)

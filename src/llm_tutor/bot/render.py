@@ -77,6 +77,34 @@ def _windowed(steps: list, window: int) -> list:
     return chosen
 
 
+def route_window(
+    conn: sqlite3.Connection,
+    *,
+    state: SessionState | None = None,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> list:
+    """Шаги маршрута в окне вокруг текущего — те же, что показывает табличка.
+
+    Нужна экрану согласования маршрута: кнопки узлов должны соответствовать
+    табличке, а не показывать все 21 узел стеной.
+    """
+    graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return []
+    session_state = state or _first_state(conn)
+    route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=session_state.current_node_id,
+        previous=session_state.route,
+        now=now,
+        settings=settings,
+    )
+    return _windowed(route.steps, PLAN_WINDOW)
+
+
 def render_plan(
     conn: sqlite3.Connection,
     *,
@@ -110,7 +138,7 @@ def render_plan(
         else "вершина темы"
     )
     total = len(route.steps)
-    shown = _windowed(route.steps, PLAN_WINDOW)
+    shown = route_window(conn, state=session_state, now=now, settings=settings)
 
     # Имена экранируем: сообщение уходит с parse_mode=HTML, а имя — динамика.
     names = [escape(graph.concept(step.concept_id).name) for step in shown]
