@@ -3,7 +3,7 @@
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Edge, Route, RouteStep, SessionState
+from llm_tutor.schemas import Concept, Edge, Event, Route, RouteStep, SessionState
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.student import route as route_mod
 from llm_tutor.student import survey
@@ -460,3 +460,113 @@ def test_topic_for_new_student_is_first_module() -> None:
     graph = _course({"a": 1, "x": 2}, [])
 
     assert route_mod.topic_for(graph, SessionState()) == 1
+
+
+def _closed_at(route: Route, node: str) -> float | None:
+    return next(step.closed_at for step in route.steps if step.concept_id == node)
+
+
+def test_closed_node_reopens_after_failures_since_closing(conn, settings) -> None:
+    graph = _course({"a": 1}, [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    previous = Route(
+        steps=[RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0)]
+    )
+    for ts in (11.0, 12.0):
+        repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=ts))
+
+    fresh = route_mod.build_route(conn, graph, previous=previous, now=13.0, settings=settings)
+
+    assert _statuses(fresh)["a"] != "closed"
+
+
+def test_failures_before_closing_do_not_reopen(conn, settings) -> None:
+    graph = _course({"a": 1}, [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    previous = Route(
+        steps=[RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0)]
+    )
+    for ts in (5.0, 6.0):
+        repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=ts))
+
+    fresh = route_mod.build_route(conn, graph, previous=previous, now=13.0, settings=settings)
+
+    assert _statuses(fresh)["a"] == "closed"
+    assert _closed_at(fresh, "a") == 10.0
+
+
+def test_legacy_closed_step_gets_closed_at_now(conn, settings) -> None:
+    """Снимок до среза 25: время закрытия неизвестно — отсчёт с пересчёта."""
+    graph = _course({"a": 1}, [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=1.0))
+    repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=2.0))
+    previous = Route(steps=[RouteStep(concept_id="a", mode="full", status="closed")])
+
+    fresh = route_mod.build_route(conn, graph, previous=previous, now=7.0, settings=settings)
+
+    assert _statuses(fresh)["a"] == "closed"
+    assert _closed_at(fresh, "a") == 7.0
+
+
+def test_reopened_ancestor_joins_next_module_section(conn, settings) -> None:
+    graph = _course({"a": 1, "x": 2}, [("a", "x")])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    previous = Route(
+        steps=[
+            RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0),
+            RouteStep(concept_id="x", mode="full", status="ahead"),
+        ],
+        topic_id=2,
+        completed_topics=[1],
+    )
+    for ts in (11.0, 12.0):
+        repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=ts))
+
+    fresh = route_mod.build_route(conn, graph, previous=previous, now=13.0, settings=settings)
+
+    assert route_mod.working_section(graph, fresh, 2) == ["a", "x"]
+
+
+def test_reopened_theme_without_edge_joins_current_section(conn, settings) -> None:
+    """Провалы по заданию модуля 2 со вторичным весом на «a» — без ребра a → x."""
+    graph = _course({"a": 1, "x": 2}, [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    previous = Route(
+        steps=[
+            RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0),
+            RouteStep(concept_id="x", mode="full", status="current"),
+        ],
+        topic_id=2,
+        completed_topics=[1],
+    )
+    for ts in (11.0, 12.0):
+        repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=ts))
+
+    fresh = route_mod.build_route(
+        conn, graph, current_node_id="x", previous=previous, now=13.0, settings=settings
+    )
+
+    assert _closed_at(fresh, "a") == 10.0  # метка «была закрыта» осталась
+    assert route_mod.working_section(graph, fresh, 2) == ["a", "x"]
+    assert fresh.topic_id == 2
+
+
+def test_never_closed_theme_of_earlier_module_stays_out(conn, settings) -> None:
+    """Прыжок вперёд: незакрытое прошлого модуля без ребра и без метки — не в участке."""
+    graph = _course({"a": 1, "x": 2}, [])
+
+    fresh = route_mod.build_route(conn, graph, current_node_id="x", now=0.0, settings=settings)
+
+    assert route_mod.working_section(graph, fresh, 2) == ["x"]
+
+
+def test_course_growth_is_not_reported_as_route_change(conn, settings) -> None:
+    """Снимок topic01 + новые модули в графе — ученику сообщать не о чем."""
+    graph = _course({"a": 1, "b": 1, "x": 2, "y": 2}, [("a", "b")])
+    legacy = _route({"a": "closed", "b": "current"})
+    state = SessionState(current_node_id="b", route=legacy)
+
+    _, note = route_mod.refresh(conn, state, graph, now=0.0, settings=settings)
+
+    assert note is None

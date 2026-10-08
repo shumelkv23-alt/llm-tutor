@@ -28,6 +28,19 @@ class RouteChanges:
     current_changed: bool
 
 
+# Столько провалов ПОСЛЕ закрытия темы открывают её снова (§4.2 спеки модулей).
+REOPEN_FAILURES = 2
+
+
+def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> int:
+    """Неудачные свидетельства по теме позже момента ``since``."""
+    return sum(
+        1
+        for event in repos.get_events(conn, concept_id)
+        if event.ts is not None and event.ts > since and event.result < 0.5
+    )
+
+
 def _scope(graph: CourseGraph, goal_concept_id: str | None) -> list[str]:
     """Узлы маршрута в топопорядке: предки цели и сама цель."""
     if goal_concept_id is None:
@@ -178,14 +191,15 @@ def build_route(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> Route:
-    """Строит маршрут; узлы, закрытые раньше, сохраняют свой статус."""
+    """Строит маршрут; узлы, закрытые раньше, сохраняют свой статус.
+
+    Закрытая тема открывается снова, если повторение просрочено или после
+    закрытия по ней набралось ``REOPEN_FAILURES`` провалов (§4.2 спеки
+    модулей: путь «назад» через задания следующих модулей).
+    """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
-    closed_before = {
-        step.concept_id
-        for step in (previous.steps if previous is not None else [])
-        if step.status == "closed"
-    }
+    before = {step.concept_id: step for step in (previous.steps if previous else [])}
 
     # Заявленное в анкете: без снимка — из фактов, со снимком — из него. Узел,
     # переставший быть заявленным (стал текущим, проход не подтвердился),
@@ -199,10 +213,19 @@ def build_route(
     steps: list[RouteStep] = []
     for concept_id in _scope(graph, goal_concept_id):
         mode = planner.mode_for_node(conn, graph, concept_id, now=stamp, settings=s)
-        if mode == "skip" or (concept_id in closed_before and mode != "review"):
-            # Закрытый узел остаётся закрытым, пока владение держится. Как
-            # только повторение просрочено (§6.1 «повторение») — возвращаем
-            # узел в маршрут: забытое нельзя считать пройденным (§6.4).
+        old = before.get(concept_id)
+        was_closed = old is not None and old.status == "closed"
+        # Снимок до среза 25 времени закрытия не хранит: отсчёт — с этого пересчёта.
+        closed_at = old.closed_at if was_closed and old.closed_at is not None else stamp
+        # Закрытое остаётся закрытым, пока владение держится: просроченное
+        # повторение (§6.4) или провалы после закрытия — например, по заданиям
+        # следующих модулей, которые на тему опираются, — возвращают её.
+        stays_closed = (
+            was_closed
+            and mode != "review"
+            and _failures_since(conn, concept_id, closed_at) < REOPEN_FAILURES
+        )
+        if mode == "skip" or stays_closed:
             status = "closed"
         elif concept_id == current_node_id:
             status = "current"
@@ -210,7 +233,15 @@ def build_route(
             status = "claimed"
         else:
             status = "ahead"
-        steps.append(RouteStep(concept_id=concept_id, mode=mode, status=status))
+        # Открывшаяся снова тема хранит время прошлого закрытия — метку для
+        # рабочего участка; никогда не закрытая — без метки.
+        if status == "closed" or was_closed:
+            mark = closed_at
+        else:
+            mark = old.closed_at if old is not None else None
+        steps.append(
+            RouteStep(concept_id=concept_id, mode=mode, status=status, closed_at=mark)
+        )
     route = Route(
         goal_concept_id=goal_concept_id,
         steps=steps,
@@ -222,10 +253,23 @@ def build_route(
     )
 
 
-def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
-    """Сравнивает снимок с новым расчётом."""
-    old = {step.concept_id: step for step in (previous.steps if previous is not None else [])}
-    new = {step.concept_id: step for step in current.steps}
+def diff_routes(
+    previous: Route | None, current: Route, *, within: Collection[str] | None = None
+) -> RouteChanges:
+    """Сравнивает снимок с новым расчётом; ``within`` — только эти темы."""
+    keep = None if within is None else set(within)
+
+    def _steps(route: Route | None) -> dict[str, RouteStep]:
+        return {
+            step.concept_id: step
+            for step in (route.steps if route is not None else [])
+            if keep is None or step.concept_id in keep
+        }
+
+    def _current(steps: dict[str, RouteStep]) -> str | None:
+        return next((node for node, step in steps.items() if step.status == "current"), None)
+
+    old, new = _steps(previous), _steps(current)
     return RouteChanges(
         closed=tuple(
             node_id
@@ -236,7 +280,7 @@ def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
         ),
         added=tuple(node_id for node_id in new if node_id not in old),
         removed=tuple(node_id for node_id in old if node_id not in new),
-        current_changed=_current_of(previous) != _current_of(current),
+        current_changed=_current(old) != _current(new),
     )
 
 
@@ -373,7 +417,11 @@ def refresh(
         # Первый расчёт — это не «изменение»: сообщать не о чем.
         return fresh, None
 
-    changes = diff_routes(state.route, fresh)
+    # Ученику важен участок модуля: рост курса и чужие модули — не пересмотр
+    # его плана.
+    changes = diff_routes(
+        state.route, fresh, within=working_section(graph, fresh, fresh.topic_id)
+    )
     note = (
         format_route_change(changes)
         if is_significant(changes, min_steps=s.route_min_significant_changes)
