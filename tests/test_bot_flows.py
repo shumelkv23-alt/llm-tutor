@@ -500,8 +500,8 @@ async def test_menu_close_refuses_during_fsm_flow(conn, settings) -> None:
     assert repos.get_open_session(conn) is None  # сессию не тронули
 
 
-async def test_start_after_survey_offers_resume(conn, settings) -> None:
-    """У вернувшегося ученика /start даёт кнопку «Продолжить обучение»."""
+async def test_start_after_survey_offers_menu(conn, settings) -> None:
+    """У вернувшегося ученика /start даёт постоянную кнопку «☰ Меню»."""
     load_seed(conn)
     survey.apply_answers(
         conn,

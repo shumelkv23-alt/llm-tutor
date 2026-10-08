@@ -49,52 +49,6 @@ def _first_state(conn: sqlite3.Connection) -> SessionState:
     return repos.get_session_state(conn, session_id) if session_id else SessionState()
 
 
-PLAN_WINDOW = 3
-_PROGRESS_WIDTH = 15
-_STATUS_MARKS = {"closed": "[x]", "current": "[>]", "ahead": "[ ]"}
-
-
-def _progress_bar(closed: int, total: int, *, width: int = _PROGRESS_WIDTH) -> str:
-    """Полоса прогресса из моноширинных блоков."""
-    if total <= 0:
-        return "░" * width
-    filled = round(closed / total * width)
-    return "█" * filled + "░" * (width - filled)
-
-
-def _anchored(steps: list) -> list:
-    """Шаги с опорой для окна: без текущего узла — вокруг первого впереди.
-
-    У нового ученика текущего узла ещё нет, и окно иначе отдало бы все 21 шаг —
-    ту самую стену, от которой окно и спасает.
-    """
-    if any(step.status == "current" for step in steps):
-        return steps
-    for index, step in enumerate(steps):
-        if step.status != "closed":
-            return [
-                *steps[:index],
-                step.model_copy(update={"status": "current"}),
-                *steps[index + 1 :],
-            ]
-    return steps
-
-
-def _windowed(steps: list, window: int) -> list:
-    """Окно вокруг текущего шага плюс начало и цель (без дублей)."""
-    idx = next((i for i, s in enumerate(steps) if s.status == "current"), None)
-    if idx is None or len(steps) <= window * 2 + 1:
-        return steps
-    start = max(0, idx - window)
-    end = min(len(steps), idx + window + 1)
-    chosen = list(steps[start:end])
-    if start > 0 and chosen[0] is not steps[0]:
-        chosen = [steps[0]] + chosen
-    if end < len(steps):
-        chosen = chosen + [steps[-1]]
-    return chosen
-
-
 PLAN_STEPS = 5
 _STEP_MARKS = {"closed": "[x] ", "current": "[>] ", "ahead": ""}
 
@@ -121,34 +75,6 @@ def render_steps(
         for index, step in enumerate(shown, start=1)
     ]
     return "\n".join(lines)
-
-
-def route_window(
-    conn: sqlite3.Connection,
-    *,
-    state: SessionState | None = None,
-    now: float | None = None,
-    settings: Settings | None = None,
-) -> list:
-    """Шаги маршрута в окне вокруг текущего — те же, что показывает табличка.
-
-    Нужна экрану согласования маршрута: кнопки узлов должны соответствовать
-    табличке, а не показывать все 21 узел стеной.
-    """
-    graph = CourseGraph.load(conn)
-    if not graph.node_ids:
-        return []
-    session_state = state or _first_state(conn)
-    route = route_mod.build_route(
-        conn,
-        graph,
-        goal_concept_id=route_mod.goal_for(conn, graph),
-        current_node_id=session_state.current_node_id,
-        previous=session_state.route,
-        now=now,
-        settings=settings,
-    )
-    return _windowed(_anchored(route.steps), PLAN_WINDOW)
 
 
 def render_plan(
@@ -179,25 +105,6 @@ def render_plan(
         return "Всё доступное уже освоено — можно двигаться дальше или взять цель посложнее."
     header = f"🗺 <b>Маршрут</b> — пройдено {route.closed_count} из {len(route.steps)}"
     return f"{header}\n{render_steps(graph, route.steps)}"
-
-
-# Приглашение поправить маршрут на входе в курс (готовый HTML: экранируем сами).
-ROUTE_REVIEW_NOTE = (
-    "Если что-то из этого ты уже знаешь — нажми узел и скажи.\n"
-    "Или жми <b>✅ Меня всё устраивает</b>."
-)
-
-
-def render_route_screen(
-    conn: sqlite3.Connection,
-    *,
-    state: SessionState | None = None,
-    now: float | None = None,
-    settings: Settings | None = None,
-) -> str:
-    """Экран согласования маршрута: табличка плюс приглашение поправить."""
-    plan = render_plan(conn, state=state, now=now, settings=settings)
-    return f"{plan}\n\n{ROUTE_REVIEW_NOTE}"
 
 
 PHASE_LABELS: dict[str, str] = {
@@ -249,7 +156,7 @@ def render_status(
     if session_state.pending_item_id is not None:
         lines.append("Ждёт ответа задание — ответь на него или напиши «пропусти».")
     else:
-        lines.append("Задания нет — жми ▶️ Продолжить обучение.")
+        lines.append("Задания нет — просто напиши, и продолжим.")
     return "\n".join(lines)
 
 
