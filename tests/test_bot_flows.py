@@ -335,11 +335,11 @@ async def test_menu_action_failure_is_reported_and_answered(conn, settings, monk
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     monkeypatch.setattr(
-        "llm_tutor.bot.handlers.start_practice_reply",
+        "llm_tutor.bot.handlers.verify.start_verification",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
     )
     message = FakeMessage()
-    callback = FakeCallback("menu:task", message)
+    callback = FakeCallback("menu:close", message)
 
     await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
 
@@ -353,14 +353,18 @@ async def test_menu_action_failure_is_reported_and_answered(conn, settings, monk
 @pytest.mark.parametrize(
     ("action", "expected"),
     [
-        ("status", "Моё обучение"),
         ("route", "Маршрут"),
-        ("help", "Что умею"),
+        ("close", "Проверка"),
     ],
 )
 async def test_menu_action_sends_expected_text(conn, settings, action, expected) -> None:
-    """status/route/help присылают свой экран и всегда отвечают на нажатие."""
+    """route/close присылают свой экран и всегда отвечают на нажатие."""
     load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
+    )
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
     callback = FakeCallback(f"menu:{action}", message)
@@ -371,33 +375,28 @@ async def test_menu_action_sends_expected_text(conn, settings, action, expected)
     assert callback.answered is True
 
 
-async def test_menu_action_task_issues_task_with_options(conn, settings) -> None:
-    """«Задание» выдаёт задание с инлайн-вариантами и вешает его на сессию."""
+async def test_menu_resume_answers(conn, settings) -> None:
+    """«Продолжить обучение» из меню ведёт занятие дальше."""
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
+    on_menu_action = _named(router, "callback_query", "on_menu_action")
     message = FakeMessage()
-    callback = FakeCallback("menu:task", message)
 
-    await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
+    await on_menu_action(FakeCallback("menu:resume", message), _fsm())
 
-    assert message.sent[-1][1] is not None  # задание с вариантами
-    assert _state(conn).pending_item_id is not None
-    assert callback.answered is True
+    assert message.sent  # ученик получил ответ, а не тишину
 
 
-async def test_menu_action_skip_clears_pending_item(conn, settings) -> None:
-    """«Пропустить» снимает висящее задание и отвечает на нажатие."""
+async def test_removed_menu_action_answers_nothing(conn, settings) -> None:
+    """Убранное действие больше не обрабатывается."""
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
-    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
-    assert _state(conn).pending_item_id is not None
+    on_menu_action = _named(router, "callback_query", "on_menu_action")
     message = FakeMessage()
-    callback = FakeCallback("menu:skip", message)
 
-    await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
+    await on_menu_action(FakeCallback("menu:status", message), _fsm())
 
-    assert _state(conn).pending_item_id is None
-    assert callback.answered is True
+    assert message.sent == []
 
 
 # --- онбординг: /start до анкеты ---

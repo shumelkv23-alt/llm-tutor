@@ -14,21 +14,17 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-Action = Literal["status", "route", "themes", "close", "task", "stuck", "skip", "help"]
+Action = Literal["route", "themes", "close", "resume"]
 
 LABEL_MENU = "☰ Меню"
 MENU_TITLE = "Что сделать?"
 
 # Действие → подпись кнопки в инлайн-списке (порядок задаёт порядок кнопок).
 ACTION_LABELS: dict[Action, str] = {
-    "status": "📚 Моё обучение",
     "route": "🗺 Маршрут",
     "themes": "🎚 Темы",
     "close": "✅ Закрыть тему",
-    "task": "🎯 Задание",
-    "stuck": "❓ Не понимаю",
-    "skip": "⏭ Пропустить",
-    "help": "ℹ️ Что умею",
+    "resume": "▶️ Продолжить обучение",
 }
 
 

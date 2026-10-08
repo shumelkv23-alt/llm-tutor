@@ -17,7 +17,9 @@ def test_main_menu_is_persistent_and_resized() -> None:
 
 
 def test_actions_keyboard_lists_every_action() -> None:
-    """Инлайн-список содержит по кнопке на каждое действие."""
+    """В меню ровно четыре действия — по кнопке на каждое."""
     kb = menu.actions_keyboard()
+
     callbacks = [button.callback_data for row in kb.inline_keyboard for button in row]
     assert callbacks == [f"menu:{action}" for action in menu.ACTION_LABELS]
+    assert set(menu.ACTION_LABELS) == {"route", "themes", "close", "resume"}

@@ -31,9 +31,9 @@ from llm_tutor.core.turn import (
     STALE_ITEM_REPLY,
     TurnReply,
     handle_turn,
+    resume_reply,
     skip_pending,
     start_practice_reply,
-    stuck_reply,
 )
 from llm_tutor.db import repos
 from llm_tutor.db.repos import (
@@ -252,6 +252,40 @@ def make_router(
             parse_mode=render.PARSE_MODE,
         )
 
+    @router.message(Command("resume"))
+    async def on_resume(message: Message) -> None:
+        try:
+            reply = await resume_reply(conn, client, model, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой продолжения занятия")
+            await message.answer(
+                render.fit(render.escape(BOT_FAILURE_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
+        await message.answer(
+            render.fit(render.escape(reply.text)),
+            reply_markup=_options_keyboard(reply.options),
+            parse_mode=render.PARSE_MODE,
+        )
+
+    @router.message(Command("status"))
+    async def on_status(message: Message) -> None:
+        await message.answer(
+            render.render_status(conn, settings=settings), parse_mode=render.PARSE_MODE
+        )
+
+    @router.message(Command("help"))
+    async def on_help(message: Message) -> None:
+        await message.answer(render.render_help(), parse_mode=render.PARSE_MODE)
+
+    @router.message(Command("themes"))
+    async def on_themes(message: Message) -> None:
+        await message.answer(
+            themes.THEMES_PROMPT,
+            parse_mode=render.PARSE_MODE,
+            reply_markup=themes.themes_keyboard(conn, settings=settings),
+        )
+
     @router.callback_query(F.data.startswith(f"{ANSWER_CALLBACK_PREFIX}:"))
     async def on_answer(callback: CallbackQuery) -> None:
         # Ответ приходит из состояния сессии в БД — рестарт процесса его не теряет.
@@ -289,10 +323,7 @@ def make_router(
         # Любой сбой действия — сообщение вместо тишины; callback.answer()
         # вызывается всегда (ниже), иначе у ученика зависает «часик».
         try:
-            if action == "status":
-                text = render.render_status(conn, settings=settings)
-                await callback.message.answer(text, parse_mode=render.PARSE_MODE)
-            elif action == "route":
+            if action == "route":
                 text = render.render_plan(conn, settings=settings)
                 await callback.message.answer(text, parse_mode=render.PARSE_MODE)
             elif action == "themes":
@@ -315,30 +346,12 @@ def make_router(
                         parse_mode=render.PARSE_MODE,
                         reply_markup=_options_keyboard(reply.options),
                     )
-            elif action == "help":
-                await callback.message.answer(
-                    render.render_help(), parse_mode=render.PARSE_MODE
-                )
-            elif action == "task":
-                reply = start_practice_reply(conn, settings=settings)
+            elif action == "resume":
+                reply = await resume_reply(conn, client, model, settings=settings)
                 await callback.message.answer(
                     render.fit(render.escape(reply.text)),
                     parse_mode=render.PARSE_MODE,
                     reply_markup=_options_keyboard(reply.options),
-                )
-            elif action == "stuck":
-                reply = await stuck_reply(conn, client, model, settings=settings)
-                await callback.message.answer(
-                    render.fit(render.escape(reply.text)),
-                    parse_mode=render.PARSE_MODE,
-                    reply_markup=menu.main_menu(),
-                )
-            elif action == "skip":
-                text = skip_pending(conn, settings=settings)
-                await callback.message.answer(
-                    render.fit(render.escape(text)),
-                    parse_mode=render.PARSE_MODE,
-                    reply_markup=menu.main_menu(),
                 )
         except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
             logger.exception("Сбой действия меню: %s", action)
