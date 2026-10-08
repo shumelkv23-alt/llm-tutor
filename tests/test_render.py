@@ -88,3 +88,32 @@ def test_render_help_lists_menu_actions() -> None:
     text = render_help()
     for label in menu.ACTION_LABELS.values():
         assert label in text
+
+
+def test_help_covers_every_menu_action() -> None:
+    """Справка описывает ровно те действия, что есть в меню."""
+    text = render_help()
+
+    for label in menu.ACTION_LABELS.values():
+        assert label in text
+    assert "⏭ Пропустить" not in text
+
+
+def test_help_mentions_text_exits_and_commands() -> None:
+    """Справка объясняет, что выходы работают текстом."""
+    text = render_help()
+
+    assert "не понял" in text
+    assert "пропусти" in text
+    assert "закрой тему" in text
+    assert "/status" in text
+
+
+def test_status_does_not_point_to_removed_buttons(conn) -> None:
+    """Дашборд не отправляет к убранным кнопкам."""
+    load_seed(conn)
+
+    text = render_status(conn)
+
+    assert "⏭ Пропустить" not in text
+    assert "🎯 Задание" not in text

@@ -192,9 +192,9 @@ def render_status(
         lines.append(f"Маршрут: пройдено {route.closed_count} из {len(route.steps)}")
 
     if session_state.pending_item_id is not None:
-        lines.append("Ждёт ответа задание — ответь или жми ⏭ Пропустить.")
+        lines.append("Ждёт ответа задание — ответь на него или напиши «пропусти».")
     else:
-        lines.append("Задания нет — жми 🎯 Задание.")
+        lines.append("Задания нет — жми ▶️ Продолжить обучение.")
     return "\n".join(lines)
 
 
@@ -207,9 +207,24 @@ _HELP_LINES: dict[str, str] = {
 }
 
 
+# Выходы работают и текстом, а не только кнопками: см. core/intents.py.
+_TEXT_HINTS = (
+    "Просто напиши, если что-то не так:\n"
+    "  «не понял» — объясню подробнее\n"
+    "  «пропусти» — снять текущее задание\n"
+    "  «закрой тему» — проверю и закрою, если знания подтвердятся"
+)
+
+_COMMANDS = "Команды: /plan · /themes · /close · /resume · /status · /task · /skip · /help"
+
+
 def render_help() -> str:
     """Справка по действиям меню (синхронна с ``menu.ACTION_LABELS``)."""
     lines = ["ℹ️ <b>Что умею</b>"]
     for action, label in menu.ACTION_LABELS.items():
         lines.append(f"{label} — {_HELP_LINES[action]}")
+    lines.append("")
+    lines.append(escape(_TEXT_HINTS))
+    lines.append("")
+    lines.append(escape(_COMMANDS))
     return "\n".join(lines)
