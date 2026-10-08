@@ -33,7 +33,7 @@ from llm_tutor.llm.prompts import (
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import retrieve
 from llm_tutor.schemas import Chunk, SessionState
-from llm_tutor.student import beta
+from llm_tutor.student import beta, survey
 from llm_tutor.student.planner import MODE_LABELS
 
 # Грубая оценка объёма без токенизатора: ~4 символа на токен.
@@ -41,9 +41,6 @@ CHARS_PER_TOKEN = 4
 
 # Сколько соседних узлов показывать в срезе модели ученика.
 _MASTERY_SLICE_SIZE = 6
-
-# Факты профиля, которые не стоит показывать модели как «контекст темы».
-_PROFILE_KEYS = ("pandas_experience", "goal", "time_budget")
 
 
 @dataclass(frozen=True)
@@ -114,13 +111,9 @@ def _system_prompt(
     settings: Settings,
 ) -> str:
     """Правила + профиль + состояние занятия + срез модели ученика."""
-    profile = format_profile_block(
-        {
-            key: value
-            for key, value in repos.get_facts(conn).items()
-            if key in _PROFILE_KEYS
-        }
-    )
+    # Профиль — самооценка из анкеты по блокам (срез 23). Раньше фильтр ждал
+    # ключи старой анкеты и молча отсекал всё.
+    profile = format_profile_block(survey.self_assessment(conn))
     node_name = None
     if graph is not None and state.current_node_id:
         try:
@@ -145,6 +138,11 @@ def _system_prompt(
             node_name=node_name,
             mode_label=MODE_LABELS.get(state.mode) if state.mode else None,
             hint_level=state.hint_level,
+            self_level=(
+                survey.block_level(conn, state.current_node_id)
+                if state.current_node_id
+                else None
+            ),
         ),
         format_mastery_block(
             _mastery_slice(conn, graph, state, now=now, settings=settings)

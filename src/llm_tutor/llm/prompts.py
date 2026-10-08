@@ -79,6 +79,10 @@ _TUTOR_TURN_RULES = (
     "- В фазе explain вопросов не задавай вовсе: ученик ещё не видел "
     "объяснения, и отвечать ему не на что.\n"
     "- Проверяй понимание задачей, а не вопросом «понятно?».\n"
+    "- Глубину объяснения подбирай по самооценке темы: «Впервые вижу» и «Знаю "
+    "в теории» — с азов и с аналогией; «С подсказками» — коротко, без азов, с "
+    "акцентом на тонкостях; «Уверенно» — ученик не подтвердил проверку: "
+    "разбирай именно то, на чём он споткнулся.\n"
     "\n"
     "Лестница подсказок (поле hint_level в ответе):\n"
     "0 — без подсказки: только наводящие вопросы;\n"
@@ -167,22 +171,28 @@ def format_route_block(route: Route, *, names: Mapping[str, str] | None = None) 
 
 
 def format_profile_block(facts: Mapping[str, str]) -> str:
-    """Профиль ученика из анкеты (цель, опыт, время)."""
+    """Самооценка ученика из анкеты: блок темы → ответ."""
     if not facts:
         return ""
     lines = [f"- {key}: {value}" for key, value in facts.items()]
-    return "Профиль ученика:\n" + "\n".join(lines)
+    return "Самооценка ученика (анкета):\n" + "\n".join(lines)
 
 
 def format_state_block(
-    *, node_name: str | None, mode_label: str | None, hint_level: int
+    *,
+    node_name: str | None,
+    mode_label: str | None,
+    hint_level: int,
+    self_level: str | None = None,
 ) -> str:
-    """Где сейчас ученик: узел, режим прохода, уровень подсказки."""
+    """Где сейчас ученик: узел, режим прохода, самооценка, уровень подсказки."""
     lines = []
     if node_name:
         lines.append(f"- текущая тема: {node_name}")
     if mode_label:
         lines.append(f"- режим: {mode_label}")
+    if self_level:
+        lines.append(f"- самооценка по этой теме: {self_level}")
     lines.append(f"- уровень подсказки: {hint_level} ({HINT_LEVEL_NAMES.get(hint_level, '')})")
     return "Состояние занятия:\n" + "\n".join(lines)
 

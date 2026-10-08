@@ -268,3 +268,20 @@ def claimed_concepts(conn: sqlite3.Connection) -> frozenset[str]:
         if repos.get_fact(conn, block.key) == confident
         for concept_id in block.concepts
     )
+
+
+def self_assessment(conn: sqlite3.Connection) -> dict[str, str]:
+    """Самооценка по блокам для промпта: название блока → ответ анкеты."""
+    return {
+        block.title: value
+        for block in BLOCKS
+        if (value := repos.get_fact(conn, block.key)) is not None
+    }
+
+
+def block_level(conn: sqlite3.Connection, concept_id: str) -> str | None:
+    """Ответ анкеты по блоку, в который входит узел (``None`` — не отвечал)."""
+    for block in BLOCKS:
+        if concept_id in block.concepts:
+            return repos.get_fact(conn, block.key)
+    return None

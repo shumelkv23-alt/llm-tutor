@@ -109,3 +109,7 @@ def test_tutor_prompt_explains_before_asking() -> None:
     assert "сначала" in text.lower() and "объясни" in text.lower()
     assert "пример" in text.lower()
     assert "зачем" in text.lower()
+
+
+def test_tutor_rules_tie_depth_to_self_assessment() -> None:
+    assert "по самооценке" in tutor_system_prompt(0)

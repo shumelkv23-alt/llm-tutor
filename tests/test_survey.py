@@ -248,3 +248,18 @@ def test_self_evidence_moves_mastery_weakly(conn, settings) -> None:
     assert mastery.mean > 0.5
     assert mastery.mean < settings.mastery_verify_threshold
     assert [event.source for event in repos.get_events(conn)] == ["self"]
+
+
+def test_self_assessment_uses_block_titles(conn, settings) -> None:
+    load_seed(conn)
+    survey.apply_answers(conn, {FIRST.key: 2}, now=0.0, settings=settings)
+
+    assert survey.self_assessment(conn) == {FIRST.title: survey.SELF_LEVELS[2]}
+
+
+def test_block_level_of_concept(conn, settings) -> None:
+    load_seed(conn)
+    survey.apply_answers(conn, {"block_analysis": 1}, now=0.0, settings=settings)
+
+    assert survey.block_level(conn, "groupby") == survey.SELF_LEVELS[1]
+    assert survey.block_level(conn, "python_basics") is None

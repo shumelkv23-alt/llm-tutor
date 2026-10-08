@@ -95,7 +95,7 @@ def test_course_material_is_not_in_system_message(conn, settings) -> None:
 def test_system_prompt_carries_profile_state_and_mastery(conn, settings) -> None:
     """Правила, профиль и состояние ученика — в системном промпте."""
     load_seed(conn)
-    repos.set_fact(conn, "goal", "пройти тему 1")
+    repos.set_fact(conn, "block_analysis", "С подсказками")
     session_id = repos.ensure_open_session(conn, now=1.0)
     state = SessionState(current_node_id="groupby", hint_level=2)
     repos.update_session_state(conn, session_id, state)
@@ -110,7 +110,8 @@ def test_system_prompt_carries_profile_state_and_mastery(conn, settings) -> None
     )
 
     system = package.messages[0].content
-    assert "пройти тему 1" in system
+    assert "Группировки и EDA: С подсказками" in system  # профиль из анкеты
+    assert "самооценка по этой теме: С подсказками" in system
     assert "Группировка" in system  # текущая тема в состоянии
     assert "уровень подсказки: 2" in system
     assert "≈" in system  # срез модели ученика по соседним узлам
