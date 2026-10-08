@@ -173,6 +173,25 @@ def render_plan(
     return header + "\n<pre>" + "\n".join(lines) + "</pre>"
 
 
+# Приглашение поправить маршрут на входе в курс (готовый HTML: экранируем сами).
+ROUTE_REVIEW_NOTE = (
+    "Если что-то из этого ты уже знаешь — нажми узел и скажи.\n"
+    "Или жми <b>✅ Меня всё устраивает</b>."
+)
+
+
+def render_route_screen(
+    conn: sqlite3.Connection,
+    *,
+    state: SessionState | None = None,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Экран согласования маршрута: табличка плюс приглашение поправить."""
+    plan = render_plan(conn, state=state, now=now, settings=settings)
+    return f"{plan}\n\n{ROUTE_REVIEW_NOTE}"
+
+
 PHASE_LABELS: dict[str, str] = {
     "explain": "объяснение",
     "practice": "практика",

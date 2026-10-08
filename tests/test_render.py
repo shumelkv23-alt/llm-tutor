@@ -150,3 +150,14 @@ def test_route_window_includes_current_node(conn) -> None:
     window = render.route_window(conn, now=1.0)
 
     assert any(step.status == "current" for step in window)
+
+
+def test_route_screen_contains_plan_and_invitation(conn) -> None:
+    """Экран согласования — та же табличка плюс приглашение поправить."""
+    load_seed(conn)
+
+    text = render.render_route_screen(conn, now=1.0)
+
+    assert "Маршрут" in text
+    assert "устраивает" in text
+    assert "нажми узел" in text
