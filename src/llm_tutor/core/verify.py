@@ -122,6 +122,8 @@ def start_verification(
             "pending_item_id": None,
             "phase": "explain",
             "verify_item_ids": [],
+            # Список выданного в уроке про заход урока: у прохода свой.
+            "lesson_item_ids": [],
             "last_activity": stamp,
         }
     )

@@ -578,6 +578,8 @@ def _close_node_if_ready(
             "mode": None,
             # Закрытый узел не тащит за собой проверочный проход.
             "verify_item_ids": [],
+            # Список выданного — про узел: новый узел начинает его заново.
+            "lesson_item_ids": [],
             "hint_level": 0,
             "route": route,
         }
@@ -619,6 +621,12 @@ def _issue_task(
             None,
         )
 
+    # Задания, уже выданные в этом заходе по узлу. Сменили узел — список
+    # начинается заново: он про текущую тему, а не про ученика вообще.
+    lesson_used = (
+        frozenset(state.lesson_item_ids) if state.current_node_id == node_id else frozenset()
+    )
+
     if state.mode == "verify":
         # Проход: задание берём без паузы повтора, но не повторяем внутри прохода.
         question = diagnostic.verification_item(
@@ -629,9 +637,29 @@ def _issue_task(
             settings=settings,
         )
     else:
-        question = diagnostic.question_for_node(
-            conn, node_id, asked_item_ids=exclude_item_ids, now=now, settings=settings
+        # Урок: пауза повтора не применяется, рубричные задания остаются проходу
+        # (§5.3), а одно и то же задание не выдаётся дважды подряд.
+        question = diagnostic.verification_item(
+            conn,
+            node_id,
+            used_item_ids=lesson_used | exclude_item_ids,
+            include_rubric=False,
+            now=now,
+            settings=settings,
         )
+        if question is None and lesson_used:
+            # Задания узла кончились, а серия ещё не набрана (например, оба
+            # отвечены неверно) — идём по второму кругу. Без него узел с двумя
+            # заданиями становился бы незакрываемым: оба выданы, серия нулевая.
+            lesson_used = frozenset()
+            question = diagnostic.verification_item(
+                conn,
+                node_id,
+                used_item_ids=exclude_item_ids,
+                include_rubric=False,
+                now=now,
+                settings=settings,
+            )
     if question is None:
         if state.mode == "verify":
             # Проход не может продолжаться: снимаем режим, иначе ученик залип
@@ -670,6 +698,11 @@ def _issue_task(
                 [*state.verify_item_ids, question.item.id]
                 if state.mode == "verify"
                 else state.verify_item_ids
+            ),
+            "lesson_item_ids": (
+                [*lesson_used, question.item.id]
+                if state.mode != "verify"
+                else state.lesson_item_ids
             ),
         }
     )

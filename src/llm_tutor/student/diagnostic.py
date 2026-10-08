@@ -140,56 +140,32 @@ def next_question(
     return None
 
 
-def question_for_node(
-    conn: sqlite3.Connection,
-    node_id: str,
-    *,
-    asked_item_ids: frozenset[int] = frozenset(),
-    now: float | None = None,
-    settings: Settings | None = None,
-) -> DiagnosticQuestion | None:
-    """Задание именно по этому узлу (ведение занятия, а не диагностика).
-
-    Отличие от ``next_question``: узел задан маршрутом, а не выбран по
-    неопределённости. Целевая сложность — текущее владение узлом.
-    """
-    s = settings or get_settings()
-    stamp = time.time() if now is None else now
-
-    unavailable = set(asked_item_ids) | _freshly_answered_items(
-        conn, stamp, s.item_repeat_cooldown_days
-    )
-    items = [
-        item
-        for item in _available_items(conn, include_rubric=True)
-        if item.id not in unavailable
-    ]
-    target = beta.estimate(conn, node_id, now=stamp, settings=s).mean
-    item = _best_item(items, node_id, target_difficulty=target)
-    return DiagnosticQuestion(item=item, concept_id=node_id) if item is not None else None
-
-
 def verification_item(
     conn: sqlite3.Connection,
     node_id: str,
     *,
     used_item_ids: frozenset[int] = frozenset(),
+    include_rubric: bool = True,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> DiagnosticQuestion | None:
-    """Задание для проверочного прохода: объяснение приоритетнее автопроверки.
+    """Задание захода по узлу: объяснение приоритетнее автопроверки.
 
     Пауза ``item_repeat_cooldown_days`` здесь НЕ применяется: ученик явно
     просит проверить, а банк по большинству узлов содержит одно задание — с
     паузой проверять было бы нечем. От накрутки защищает ``used_item_ids``:
-    внутри одного прохода задание не выдаётся дважды.
+    внутри одного захода задание не выдаётся дважды.
+
+    ``include_rubric=False`` — заход ведомого урока: рубричные задания
+    остаются проверочному проходу, там ученик доказывает знание словами
+    (§5.3), а урок не должен зависеть от вердикта грейдера.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
 
     items = [
         item
-        for item in _available_items(conn, include_rubric=True)
+        for item in _available_items(conn, include_rubric=include_rubric)
         if item.id not in used_item_ids and node_id in item.concept_weights
     ]
     if not items:

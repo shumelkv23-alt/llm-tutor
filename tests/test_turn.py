@@ -786,6 +786,41 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     assert _state(conn).phase == "practice"
 
 
+async def test_lesson_second_test_differs_from_first(conn, settings) -> None:
+    """Второй тест узла — другое задание, а не то же самое."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", phase="practice")
+    start_practice_reply(conn, now=1.0, settings=settings)
+    first_id = _state(conn).pending_item_id
+
+    reply = await handle_turn(conn, _FakeTutor(), "m", "мимо", now=2.0, settings=settings)
+
+    assert reply.tail  # следующее задание выдано
+    assert _state(conn).pending_item_id not in (None, first_id)
+
+
+async def test_lesson_cycles_tests_when_exhausted(conn, settings) -> None:
+    """Оба задания выданы, серия нулевая — идём по второму кругу, не залипаем."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", phase="practice")
+    start_practice_reply(conn, now=1.0, settings=settings)
+    issued = {_state(conn).pending_item_id}
+
+    for now in (2.0, 3.0, 4.0):
+        reply = await handle_turn(
+            conn, _FakeTutor(), "m", "мимо", now=now, settings=settings
+        )
+        issued.add(_state(conn).pending_item_id)
+
+    assert reply.tail  # задание есть всегда: узел не залипает
+    assert len(issued) < 4  # третий заход — повтор, а не четвёртое «новое» задание
+
+
+def test_lesson_item_ids_defaults_to_empty() -> None:
+    """Старая сессия без поля читается: дефолт пустой."""
+    assert SessionState().lesson_item_ids == []
+
+
 @pytest.mark.parametrize("model_level", [0, 4])
 async def test_stuck_raises_hint_level_by_one_step(conn, settings, model_level) -> None:
     """«не понял» поднимает лестницу на одну ступень, а не на две."""
