@@ -187,9 +187,11 @@ def make_router(
             await ask_survey(message, state)
             return
         reply = await handle_start(conn, client, model, START_GREETING)
+        # Вернувшемуся ученику — главное действие в один тап; постоянная
+        # клавиатура и так висит, переприкреплять её не нужно.
         await message.answer(
             render.fit(render.escape(reply)),
-            reply_markup=menu.main_menu(),
+            reply_markup=menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -218,7 +220,7 @@ def make_router(
             reply = TurnReply(text=BOT_FAILURE_REPLY)
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options),
+            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -241,7 +243,7 @@ def make_router(
             return
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options),
+            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -264,7 +266,7 @@ def make_router(
             return
         await message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options),
+            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 
@@ -310,7 +312,7 @@ def make_router(
         )
         await callback.message.answer(
             render.fit(render.escape(reply.text)),
-            reply_markup=_options_keyboard(reply.options),
+            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
         await callback.answer()
@@ -344,14 +346,14 @@ def make_router(
                     await callback.message.answer(
                         render.fit(render.escape(reply.text)),
                         parse_mode=render.PARSE_MODE,
-                        reply_markup=_options_keyboard(reply.options),
+                        reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
                     )
             elif action == "resume":
                 reply = await resume_reply(conn, client, model, settings=settings)
                 await callback.message.answer(
                     render.fit(render.escape(reply.text)),
                     parse_mode=render.PARSE_MODE,
-                    reply_markup=_options_keyboard(reply.options),
+                    reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
                 )
         except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
             logger.exception("Сбой действия меню: %s", action)
@@ -378,8 +380,9 @@ def make_router(
         reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await message.answer(
             render.fit(render.escape(reply.text)),
-            # Варианты ответа (инлайн) в приоритете; иначе — постоянная кнопка меню.
-            reply_markup=_options_keyboard(reply.options) or menu.main_menu(),
+            # Варианты ответа (инлайн) в приоритете; иначе — «Продолжить».
+            # Постоянная клавиатура persistent, переприкреплять её не нужно.
+            reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
             parse_mode=render.PARSE_MODE,
         )
 

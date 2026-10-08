@@ -491,3 +491,16 @@ async def test_menu_close_refuses_during_fsm_flow(conn, settings) -> None:
     assert "Сначала закончим" in message.last_text
     assert callback.answered is True
     assert repos.get_open_session(conn) is None  # сессию не тронули
+
+
+async def test_start_after_survey_offers_resume(conn, settings) -> None:
+    """У вернувшегося ученика /start даёт кнопку «Продолжить обучение»."""
+    load_seed(conn)
+    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    on_start = _named(router, "message", "on_start")
+    message = FakeMessage()
+
+    await on_start(message, _fsm())
+
+    assert message.sent[-1][1].inline_keyboard[0][0].callback_data == "menu:resume"
