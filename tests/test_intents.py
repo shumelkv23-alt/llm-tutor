@@ -68,6 +68,21 @@ def test_word_forms_of_phrases_are_not_commands(text: str) -> None:
     assert detect(text) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("пропустите", "skip"),
+        ("пропустите это задание", "skip"),
+        ("пропустим это", "skip"),
+        ("скипнем", "skip"),
+        ("не поняли", "stuck"),
+    ],
+)
+def test_imperative_forms_are_commands(text: str, expected: str) -> None:
+    """Повелительные формы — команды: целое слово их не должно терять."""
+    assert detect(text) == expected
+
+
 def test_close_wins_over_stuck() -> None:
     """При нескольких совпадениях приоритет: close > skip > stuck."""
     assert detect("закрой тему, я не понял") == "close_topic"

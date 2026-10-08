@@ -155,6 +155,21 @@ def test_word_forms_of_phrases_are_not_commands(text: str) -> None:
     assert detect(text) is None
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("пропустите", "skip"),
+        ("пропустите это задание", "skip"),
+        ("пропустим это", "skip"),
+        ("скипнем", "skip"),
+        ("не поняли", "stuck"),
+    ],
+)
+def test_imperative_forms_are_commands(text: str, expected: str) -> None:
+    """Повелительные формы — команды: целое слово их не должно терять."""
+    assert detect(text) == expected
+
+
 def test_normalize_strips_case_punctuation_and_yo() -> None:
     assert normalize("  Закрой ТЕМУ!!!  ") == "закрой тему"
     assert normalize("я всё знаю") == "я все знаю"
@@ -217,12 +232,15 @@ INTENT_PHRASES: tuple[tuple[Intent, tuple[str, ...]], ...] = (
         (
             "пропусти",
             "пропустить",
+            "пропустите",
+            "пропустим",
             "пропусти задание",
             "пропусти это",
             "пропускаем",
             "давай пропустим",
             "скип",
             "скипнуть",
+            "скипнем",
         ),
     ),
     (
@@ -230,6 +248,7 @@ INTENT_PHRASES: tuple[tuple[Intent, tuple[str, ...]], ...] = (
         (
             "не понял",
             "не поняла",
+            "не поняли",
             "не понимаю",
             "непонятно",
             "не понятно",
