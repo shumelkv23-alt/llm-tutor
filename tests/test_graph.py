@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from course_fixtures import TOPIC01_ORDER
 
 from llm_tutor.course.graph import CourseGraph, CourseGraphError
 from llm_tutor.course.seed import (
@@ -369,3 +370,37 @@ def test_db_graph_matches_seed(conn) -> None:
     assert graph.difficulty("groupby") == pytest.approx(
         next(n.difficulty for n in seed.nodes if n.id == "groupby")
     )
+
+
+def _modules(nodes: dict[str, int], edges: list[tuple[str, str]]) -> CourseGraph:
+    return CourseGraph(
+        [Concept(id=node, name=node, topic_id=topic) for node, topic in nodes.items()],
+        [Edge(from_id=src, to_id=dst, hard=True) for src, dst in edges],
+    )
+
+
+def test_topo_order_goes_module_by_module() -> None:
+    graph = _modules({"b2": 2, "a1": 1, "c1": 1}, [("a1", "b2")])
+
+    assert graph.topo_order()[-1] == "b2"
+    # Без рёбер прежний порядок шёл бы по вставке узлов: модуль 2 впереди.
+    assert _modules({"b2": 2, "a1": 1}, []).topo_order() == ["a1", "b2"]
+
+
+def test_forward_edge_between_modules_is_rejected() -> None:
+    with pytest.raises(CourseGraphError, match="вперёд"):
+        _modules({"a1": 1, "b2": 2}, [("b2", "a1")])
+
+
+def test_topic_helpers() -> None:
+    graph = _modules({"a1": 1, "b2": 2, "c2": 2}, [("b2", "c2")])
+
+    assert graph.topic_of("c2") == 2
+    assert graph.topic_ids == [1, 2]
+    assert graph.topic_nodes(2) == ["b2", "c2"]
+
+
+def test_topic01_order_is_unchanged(conn) -> None:
+    load_seed(conn)
+
+    assert CourseGraph.load(conn).topo_order() == TOPIC01_ORDER
