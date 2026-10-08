@@ -1,5 +1,7 @@
 """Тесты обработчика хода (Срез 5.5)."""
 
+from course_fixtures import T1
+
 import sqlite3
 
 import pytest
@@ -984,11 +986,11 @@ async def test_stuck_raises_hint_level_by_one_step(conn, settings, model_level) 
 
 def _claim(conn, settings, *keys: str) -> None:
     survey.apply_answers(
-        conn, {key: survey.CONFIDENT_INDEX for key in keys}, now=0.0, settings=settings
+        conn, T1, {key: survey.CONFIDENT_INDEX for key in keys}, now=0.0, settings=settings
     )
 
 
-ALL_BLOCKS = tuple(block.key for block in survey.BLOCKS)
+ALL_BLOCKS = tuple(block.key for block in T1.blocks)
 
 
 def _wrong(item) -> str:

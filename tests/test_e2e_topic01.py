@@ -6,6 +6,8 @@
 сходятся.
 """
 
+from course_fixtures import T1
+
 import json
 
 import httpx
@@ -145,11 +147,12 @@ async def test_full_topic01_scenario() -> None:
         # 1. Анкета: профиль и слабый априор, без обращения к модели
         survey.apply_answers(
             conn,
-            {block.key: 1 for block in survey.BLOCKS},
+            T1,
+            {block.key: 1 for block in T1.blocks},
             now=0.0,
             settings=settings,
         )
-        assert survey.is_completed(conn)
+        assert survey.is_completed(conn, T1)
         assert repos.get_events(conn)  # самооценка записана в журнал
 
         # 2. Вопрос тьютору — структурированный ответ модели
@@ -274,7 +277,7 @@ async def test_confident_student_skips_known_blocks(conn, settings) -> None:
         )
 
     await click(FakeCallback(GO_DATA, message), state)
-    await click(FakeCallback(data_of(survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT]), message), state)
+    await click(FakeCallback(data_of(T1.level_options[survey.LEVEL_CONFIDENT]), message), state)
     await click(FakeCallback(data_of(survey.SELF_LEVELS[1]), message), state)
     await click(FakeCallback(data_of(survey.SELF_LEVELS[0]), message), state)
 

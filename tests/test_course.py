@@ -16,7 +16,6 @@ from llm_tutor.course.seed import (
     main,
 )
 from llm_tutor.db import repos
-from llm_tutor.student import survey
 
 
 def _mini() -> dict:
@@ -146,19 +145,6 @@ def test_empty_data_dir_reports_clearly(tmp_path, monkeypatch) -> None:
 def test_seed_cli_loads_whole_course(tmp_path, capsys) -> None:
     assert main(["--db", str(tmp_path / "t.db")]) == 0
     assert "модул" in capsys.readouterr().out
-
-
-def test_topic01_seed_carries_its_survey_verbatim() -> None:
-    """Анкета переехала в seed без изменений (удаляется в задаче 11 вместе с константами)."""
-    config = load_seed_data(DEFAULT_SEED_PATH).topic.survey
-
-    assert config.level_question == survey.LEVEL_QUESTION
-    assert config.level_options == survey.LEVEL_OPTIONS
-    assert [(b.key, b.title, b.question, b.example, b.concepts) for b in config.blocks] == [
-        (b.key, b.title, b.question, b.example, b.concepts) for b in survey.BLOCKS
-    ]
-    assert config.assumed_by_confident == survey.ASSUMED_BY_CONFIDENT
-    assert config.foundation == survey.FOUNDATION
 
 
 def test_topic01_survey_keys_never_change() -> None:

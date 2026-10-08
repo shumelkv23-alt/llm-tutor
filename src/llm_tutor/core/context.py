@@ -113,7 +113,10 @@ def _system_prompt(
     """Правила + профиль + состояние занятия + срез модели ученика."""
     # Профиль — самооценка из анкеты по блокам (срез 23). Раньше фильтр ждал
     # ключи старой анкеты и молча отсекал всё.
-    profile = format_profile_block(survey.self_assessment(conn))
+    # Пока анкета модуля 1 (задача 16 возьмёт модуль занятия).
+    profile = format_profile_block(
+        survey.self_assessment(conn, cfg) if (cfg := survey.config_for(conn, 1)) else {}
+    )
     node_name = None
     if graph is not None and state.current_node_id:
         try:

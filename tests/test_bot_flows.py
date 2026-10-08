@@ -1,5 +1,7 @@
 """Тесты FSM-потоков бота: анкета и диагностика (Срез 4.5)."""
 
+from course_fixtures import T1
+
 import asyncio
 from datetime import datetime
 
@@ -27,7 +29,7 @@ from llm_tutor.student import beta, survey
 
 def _complete_survey(conn) -> None:
     """Профиль заполнен: без этого свободный текст упирается в приглашение."""
-    for block in survey.BLOCKS:
+    for block in T1.blocks:
         repos.set_fact(conn, block.key, survey.SELF_LEVELS[2], source="self")
 
 
@@ -85,7 +87,7 @@ async def test_go_turns_intro_into_level_question(conn, settings) -> None:
 
     await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    assert survey.LEVEL_QUESTION in intro.text
+    assert T1.level_question in intro.text
     assert intro.sent == []
 
 
@@ -94,7 +96,7 @@ async def test_answer_edits_same_message_to_next_question(conn, settings) -> Non
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_SOME])
 
     assert "Вопрос 1 из 5" in intro.text
     assert intro.sent == []
@@ -116,13 +118,13 @@ async def test_stale_step_click_writes_nothing(conn, settings) -> None:
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    old = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    old = _data_of(intro, T1.level_options[survey.LEVEL_SOME])
     await _tap(click, intro, state, old)
 
     callback = await _tap(click, intro, state, old)
 
     assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
-    assert (await state.get_data())["given"] == [[survey.LEVEL_KEY, survey.LEVEL_SOME]]
+    assert (await state.get_data())["given"] == [[T1.level_key, survey.LEVEL_SOME]]
 
 
 async def test_click_on_previous_survey_message_is_stale(conn, settings) -> None:
@@ -132,18 +134,18 @@ async def test_click_on_previous_survey_message_is_stale(conn, settings) -> None
     await _press(click, intro, state, survey_bot.GO_LABEL)
     await start_survey(FakeMessage(), state)  # /start посреди анкеты
 
-    callback = await _press(click, intro, state, survey.LEVEL_OPTIONS[0])
+    callback = await _press(click, intro, state, T1.level_options[0])
 
     assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
     assert (await state.get_data())["given"] is None  # новая анкета не тронута
-    assert survey.is_completed(conn) is False
+    assert survey.is_completed(conn, T1) is False
 
 
 async def test_double_tap_on_last_answer_starts_lesson_once(conn, settings) -> None:
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    data = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+    data = _data_of(intro, T1.level_options[survey.LEVEL_FROM_SCRATCH])
     first, second = FakeCallback(data, intro), FakeCallback(data, intro)
 
     await asyncio.gather(click(first, state), click(second, state))
@@ -156,14 +158,14 @@ async def test_back_returns_to_previous_question(conn, settings) -> None:
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_SOME])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
     assert "Вопрос 2 из 5" in intro.text
 
     await _press(click, intro, state, survey_bot.BACK_LABEL)
 
     assert "Вопрос 1 из 5" in intro.text
-    assert (await state.get_data())["given"] == [[survey.LEVEL_KEY, survey.LEVEL_SOME]]
+    assert (await state.get_data())["given"] == [[T1.level_key, survey.LEVEL_SOME]]
 
 
 async def test_garbage_choice_is_ignored(conn, settings) -> None:
@@ -181,13 +183,13 @@ async def test_finish_writes_profile_shows_summary_and_starts_lesson(conn, setti
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_CONFIDENT])
     await _press(click, intro, state, survey.SELF_LEVELS[2])
     await _press(click, intro, state, survey.SELF_LEVELS[1])
 
     assert repos.get_fact(conn, "block_python") == survey.SELF_LEVELS[3]
     assert repos.get_fact(conn, "block_analysis") == survey.SELF_LEVELS[1]
-    assert repos.get_fact(conn, survey.LEVEL_KEY) == survey.LEVEL_OPTIONS[2]
+    assert repos.get_fact(conn, T1.level_key) == T1.level_options[2]
     assert intro.text.startswith("✅ Понял тебя")
     assert intro.reply_markup is None  # у сводки кнопок нет
     assert any(text.startswith("📋") for text, _ in intro.sent)  # список шагов
@@ -219,7 +221,7 @@ async def test_click_after_lost_fsm_restarts_survey_in_place(conn, settings) -> 
     await _named(router, "callback_query", "on_survey_click")(callback, state)
 
     assert callback.answered
-    assert survey.LEVEL_QUESTION in message.text
+    assert T1.level_question in message.text
     assert (await state.get_data())["message_id"] == message.message_id
 
 
@@ -247,7 +249,7 @@ async def test_edit_failure_falls_back_to_new_message(conn, settings, monkeypatc
     monkeypatch.setattr(intro, "edit_text", _cannot_edit)
     await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    assert survey.LEVEL_QUESTION in intro.last_text
+    assert T1.level_question in intro.last_text
     assert (await state.get_data())["message_id"] != intro.message_id
 
 
@@ -565,6 +567,7 @@ async def test_removed_menu_action_answers_nothing(conn, settings) -> None:
 
 async def test_start_before_survey_sends_intro_with_go(conn, settings) -> None:
     """Первый /start: одно сообщение-приветствие с «▶️ Поехали»."""
+    load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage()
     state = _fsm()
@@ -579,6 +582,7 @@ async def test_start_before_survey_sends_intro_with_go(conn, settings) -> None:
 
 async def test_start_button_opens_survey(conn, settings) -> None:
     """Текст «▶️ Старт» (висит у старых учеников) — тот же вход, что /start."""
+    load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage(start.START_LABEL)
 
@@ -589,6 +593,7 @@ async def test_start_button_opens_survey(conn, settings) -> None:
 
 async def test_text_before_survey_gets_intro(conn, settings) -> None:
     """До анкеты реплика получает приветствие с «Поехали», а не тьютора."""
+    load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     message = FakeMessage("привет")
     state = _fsm()
@@ -680,7 +685,8 @@ async def test_start_after_survey_offers_menu(conn, settings) -> None:
     load_seed(conn)
     survey.apply_answers(
         conn,
-        {block.key: 1 for block in survey.BLOCKS},
+        T1,
+        {block.key: 1 for block in T1.blocks},
         now=1.0,
         settings=settings,
     )
@@ -773,7 +779,8 @@ async def test_command_on_route_screen_reaches_its_handler(conn, settings) -> No
     load_seed(conn)
     survey.apply_answers(
         conn,
-        {block.key: 1 for block in survey.BLOCKS},
+        T1,
+        {block.key: 1 for block in T1.blocks},
         now=1.0,
         settings=settings,
     )
@@ -858,7 +865,7 @@ async def test_lesson_starts_where_steps_list_says(conn, settings) -> None:
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_CONFIDENT])
     await _press(click, intro, state, survey.SELF_LEVELS[1])
     await _press(click, intro, state, survey.SELF_LEVELS[0])
 
@@ -873,7 +880,7 @@ async def test_all_confident_starts_with_check(conn, settings) -> None:
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_CONFIDENT])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
 
@@ -966,7 +973,7 @@ async def test_survey_finish_shows_steps_and_starts_lesson(conn, settings) -> No
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
 
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_FROM_SCRATCH])
 
     steps_text = next(text for text, _ in intro.sent if "Ближайшие" in text)
     assert "1. " in steps_text
@@ -1003,7 +1010,7 @@ async def test_inaccessible_survey_message_gets_question_anew(conn, settings) ->
 
     await _tap(click, old, state, survey_bot.GO_DATA)
 
-    assert survey.LEVEL_QUESTION in old.sent[-1][0]
+    assert T1.level_question in old.sent[-1][0]
     assert (await state.get_data())["message_id"] != intro.message_id  # перепривязали
 
 
@@ -1011,13 +1018,13 @@ async def test_inaccessible_message_on_last_answer_still_starts_lesson(conn, set
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    data = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+    data = _data_of(intro, T1.level_options[survey.LEVEL_FROM_SCRATCH])
 
     old = _Inaccessible(intro.message_id)
 
     await _tap(click, old, state, data)
 
-    assert survey.is_completed(conn)
+    assert survey.is_completed(conn, T1)
     texts = [text for text, _ in old.sent]
     assert any(text.startswith("✅ Понял тебя") for text in texts)  # сводка — новым
     assert any(text.startswith("📋") for text in texts)  # и урок начался
@@ -1030,7 +1037,7 @@ async def test_stale_step_in_bound_message_redraws_current_question(conn, settin
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    level_some = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    level_some = _data_of(intro, T1.level_options[survey.LEVEL_SOME])
     real_edit = intro.edit_text
 
     async def _network_down(*args, **kwargs):
@@ -1076,7 +1083,7 @@ async def test_restart_keeps_answer_to_level_question(conn, settings) -> None:
     )
 
     assert "Вопрос 1 из 5" in message.text
-    assert (await state.get_data())["given"] == [[survey.LEVEL_KEY, survey.LEVEL_SOME]]
+    assert (await state.get_data())["given"] == [[T1.level_key, survey.LEVEL_SOME]]
 
 
 async def test_start_survey_binds_state_before_sending(conn, settings) -> None:
@@ -1106,7 +1113,7 @@ async def test_lesson_failure_after_survey_is_reported(conn, settings, monkeypat
         raise RuntimeError("сбой")
 
     monkeypatch.setattr(start, "resume_reply", _boom)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_FROM_SCRATCH])
 
     assert BOT_FAILURE_REPLY in intro.sent[-1][0]
 
@@ -1121,7 +1128,7 @@ async def test_command_before_survey_does_not_disable_claimed(conn, settings) ->
     await _named(router, "message", "on_task")(FakeMessage(), _fsm())  # задание до анкеты
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_CONFIDENT])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
 
@@ -1136,7 +1143,7 @@ async def test_check_start_does_not_repeat_itself(conn, settings) -> None:
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, T1.level_options[survey.LEVEL_CONFIDENT])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
     await _press(click, intro, state, survey.SELF_LEVELS[3])
 
@@ -1155,7 +1162,7 @@ async def test_summary_edit_failure_still_starts_lesson(conn, settings, monkeypa
     load_seed(conn)
     intro, state, click = await _begin(conn, settings)
     await _press(click, intro, state, survey_bot.GO_LABEL)
-    data = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+    data = _data_of(intro, T1.level_options[survey.LEVEL_FROM_SCRATCH])
 
     async def _network_down(*args, **kwargs):
         raise TelegramNetworkError(method=None, message="timeout")

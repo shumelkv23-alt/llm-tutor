@@ -1,5 +1,7 @@
 """Вид сообщения анкеты: вопросы, сетка вариантов, «Назад», сводка."""
 
+from course_fixtures import T1
+
 from llm_tutor.bot import start
 from llm_tutor.bot import survey as survey_bot
 from llm_tutor.student import survey
@@ -19,14 +21,14 @@ def test_intro_view_has_single_go_button() -> None:
 
 
 def test_level_question_has_one_option_per_row_and_no_back() -> None:
-    text, markup = survey_bot.question_view(Progress())
+    text, markup = survey_bot.question_view(Progress(T1))
 
-    assert survey.LEVEL_QUESTION in text
-    assert _labels(markup) == [[label] for label in survey.LEVEL_OPTIONS]
+    assert T1.level_question in text
+    assert _labels(markup) == [[label] for label in T1.level_options]
 
 
 def test_block_question_is_two_by_two_grid_with_back() -> None:
-    _, markup = survey_bot.question_view(Progress().answer(survey.LEVEL_SOME))
+    _, markup = survey_bot.question_view(Progress(T1).answer(survey.LEVEL_SOME))
 
     assert _labels(markup) == [
         list(survey.SELF_LEVELS[:2]),
@@ -36,9 +38,9 @@ def test_block_question_is_two_by_two_grid_with_back() -> None:
 
 
 def test_block_question_shows_progress_question_and_example() -> None:
-    text, _ = survey_bot.question_view(Progress().answer(survey.LEVEL_SOME))
+    text, _ = survey_bot.question_view(Progress(T1).answer(survey.LEVEL_SOME))
 
-    first = survey.BLOCKS[0]
+    first = T1.blocks[0]
     assert "Вопрос 1 из 5" in text
     assert "▰▱▱▱▱" in text
     assert f"<b>{first.question}</b>" in text
@@ -46,7 +48,7 @@ def test_block_question_shows_progress_question_and_example() -> None:
 
 
 def test_callback_data_carries_step() -> None:
-    progress = Progress().answer(survey.LEVEL_SOME).answer(2)
+    progress = Progress(T1).answer(survey.LEVEL_SOME).answer(2)
     _, markup = survey_bot.question_view(progress)
 
     data = [button.callback_data for row in markup.inline_keyboard for button in row]
@@ -55,21 +57,21 @@ def test_callback_data_carries_step() -> None:
 
 
 def test_summary_lists_every_block() -> None:
-    answers = Progress().answer(survey.LEVEL_FROM_SCRATCH).final_answers()
+    answers = Progress(T1).answer(survey.LEVEL_FROM_SCRATCH).final_answers()
 
-    text = survey_bot.summary_text(answers)
+    text = survey_bot.summary_text(T1, answers)
 
     assert text.startswith("✅ Понял тебя")
-    assert all(f"• {block.title} — впервые вижу" in text for block in survey.BLOCKS)
+    assert all(f"• {block.title} — впервые вижу" in text for block in T1.blocks)
 
 
 def test_summary_promises_check_when_something_is_confident() -> None:
-    answers = Progress().answer(survey.LEVEL_CONFIDENT).answer(1).answer(1).final_answers()
+    answers = Progress(T1).answer(survey.LEVEL_CONFIDENT).answer(1).answer(1).final_answers()
 
-    assert survey_bot.CLAIMED_NOTE in survey_bot.summary_text(answers)
+    assert survey_bot.CLAIMED_NOTE in survey_bot.summary_text(T1, answers)
 
 
 def test_summary_has_no_check_note_without_confident_blocks() -> None:
-    answers = Progress().answer(survey.LEVEL_FROM_SCRATCH).final_answers()
+    answers = Progress(T1).answer(survey.LEVEL_FROM_SCRATCH).final_answers()
 
-    assert survey_bot.CLAIMED_NOTE not in survey_bot.summary_text(answers)
+    assert survey_bot.CLAIMED_NOTE not in survey_bot.summary_text(T1, answers)

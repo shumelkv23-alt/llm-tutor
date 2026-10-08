@@ -1,5 +1,7 @@
 """«Печатает…», пока бот ждёт модель."""
 
+from course_fixtures import T1
+
 import asyncio
 
 from fakes import FakeMessage, _fsm, _named
@@ -56,7 +58,7 @@ async def test_typing_action_is_noop_without_bot() -> None:
 
 async def test_free_text_shows_typing(conn, settings) -> None:
     load_seed(conn)
-    for block in survey.BLOCKS:
+    for block in T1.blocks:
         repos.set_fact(conn, block.key, survey.SELF_LEVELS[1], source="self")
     bot = _RecordingBot()
     router = make_router(conn, _SlowTutor(bot), "m", settings=settings)

@@ -1,5 +1,7 @@
 """Тесты маршрута: построение, снимок, пересмотр (Срез 9)."""
 
+from course_fixtures import T1
+
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
@@ -271,7 +273,7 @@ def _claimed_route(*statuses: tuple[str, str]) -> Route:
 def test_claimed_comes_from_confident_survey_answer(conn, settings) -> None:
     load_seed(conn)
     survey.apply_answers(
-        conn, {"block_python": survey.CONFIDENT_INDEX}, now=0.0, settings=settings
+        conn, T1, {"block_python": survey.CONFIDENT_INDEX}, now=0.0, settings=settings
     )
 
     route = route_mod.build_route(conn, CourseGraph.load(conn), now=0.0, settings=settings)
@@ -314,14 +316,14 @@ def test_first_node_is_never_claimed_while_unclaimed_remain(conn, settings) -> N
     """По всем 32 наборам «уверенных» блоков старт — с незаявленного узла."""
     from itertools import combinations
 
-    keys = [block.key for block in survey.BLOCKS]
+    keys = [block.key for block in T1.blocks]
     for size in range(len(keys) + 1):
         for confident in combinations(keys, size):
             db = get_conn(":memory:")
             migrate(db)
             load_seed(db)
             answers = {key: (survey.CONFIDENT_INDEX if key in confident else 1) for key in keys}
-            survey.apply_answers(db, answers, now=0.0, settings=settings)
+            survey.apply_answers(db, T1, answers, now=0.0, settings=settings)
             graph = CourseGraph.load(db)
             route = route_mod.build_route(db, graph, now=0.0, settings=settings)
             first = route_mod.next_node_id(db, graph, route, now=0.0, settings=settings)

@@ -53,7 +53,7 @@ from llm_tutor.llm.prompts import (
     LLM_FAILURE_REPLY,
 )
 from llm_tutor.schemas import Item
-from llm_tutor.student.survey import is_completed as survey_completed
+from llm_tutor.student import survey
 
 # /start — команда, а не реплика ученика: в диалог пишем приветствие,
 # чтобы история не засорялась литералом "/start".
@@ -183,11 +183,16 @@ def make_router(
     """Собирает роутер с внедрёнными зависимостями (conn, client, model)."""
     router = Router()
 
+    def _survey_pending() -> bool:
+        """Анкета модуля 1 не пройдена (до задачи 12 — единственная анкета)."""
+        config = survey.config_for(conn, 1)
+        return config is not None and not survey.is_completed(conn, config)
+
     @router.message(CommandStart())
     async def on_start(message: Message, state: FSMContext) -> None:
         # Пока профиль не заполнен — одно сообщение-приветствие с «Поехали»:
         # дальше анкета живёт в нём же.
-        if not survey_completed(conn):
+        if _survey_pending():
             await start_survey(message, state)
             return
         reply = handle_start(conn, START_GREETING)
@@ -399,7 +404,7 @@ def make_router(
     async def on_text(message: Message, state: FSMContext) -> None:
         # Анкета не пройдена — маршрута ещё нет: вести занятие не по чему.
         # Вместо отказа — то же приветствие с «Поехали», что и на /start.
-        if not survey_completed(conn):
+        if _survey_pending():
             await start_survey(message, state)
             return
         async with typing_action(message):

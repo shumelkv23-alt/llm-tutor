@@ -26,6 +26,7 @@ from llm_tutor.bot import render, start
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import BUSY_REPLY
+from llm_tutor.schemas import SurveyConfig
 from llm_tutor.student import survey
 
 logger = logging.getLogger(__name__)
@@ -72,14 +73,15 @@ def question_view(progress: survey.Progress) -> tuple[str, InlineKeyboardMarkup]
     """
     key = progress.next_key()
     step = progress.step
-    if key == survey.LEVEL_KEY:
-        text = render.escape(survey.LEVEL_QUESTION)
+    config = progress.config
+    if key == config.level_key:
+        text = render.escape(config.level_question)
         rows = [
             [_button(label, _data(step, index))]
-            for index, label in enumerate(survey.LEVEL_OPTIONS)
+            for index, label in enumerate(config.level_options)
         ]
     else:
-        block = survey.block_by_key(key)
+        block = config.block(key)
         number, total = progress.position()
         bar = "▰" * number + "▱" * (total - number)
         text = (
@@ -96,11 +98,11 @@ def question_view(progress: survey.Progress) -> tuple[str, InlineKeyboardMarkup]
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def summary_text(answers: Mapping[str, int]) -> str:
+def summary_text(config: SurveyConfig, answers: Mapping[str, int]) -> str:
     """Сводка «как я тебя понял» (готовый HTML) — финал сообщения анкеты."""
     lines = [
         f"• {render.escape(block.title)} — {survey.SELF_LEVELS[answers[block.key]].lower()}"
-        for block in survey.BLOCKS
+        for block in config.blocks
     ]
     text = "✅ Понял тебя:\n" + "\n".join(lines)
     if any(index == survey.CONFIDENT_INDEX for index in answers.values()):
@@ -108,12 +110,12 @@ def summary_text(answers: Mapping[str, int]) -> str:
     return text
 
 
-def _progress(data: Mapping) -> survey.Progress | None:
+def _progress(data: Mapping, config: SurveyConfig) -> survey.Progress | None:
     """Ход анкеты из FSM; ``None`` — приветствие показано, «Поехали» не нажато."""
     given = data.get("given")
     if given is None:
         return None
-    return survey.Progress(given=tuple((key, index) for key, index in given))
+    return survey.Progress(config, tuple((key, index) for key, index in given))
 
 
 def _stored(progress: survey.Progress) -> list[list]:
@@ -202,17 +204,23 @@ def make_survey_router(
     """Роутер анкеты: все нажатия ``survey:*`` и текст посреди анкеты."""
     router = Router()
 
+    def _config() -> SurveyConfig:
+        """Анкета модуля 1 — до задачи 12 модуль в FSM не хранится."""
+        return survey.config_for(conn, 1)
+
     async def _finish(
         callback: CallbackQuery, state: FSMContext, progress: survey.Progress
     ) -> None:
         answers = progress.final_answers()
         # Запись и снятие FSM — ДО сетевых вызовов: второй параллельный тап
         # увидит пройденную анкету, а не запустит урок ещё раз.
-        survey.apply_answers(conn, answers, level=progress.level, settings=settings)
+        survey.apply_answers(
+            conn, progress.config, answers, level=progress.level, settings=settings
+        )
         await state.clear()
         await callback.answer()
         try:
-            await safe_edit(callback.message, summary_text(answers), None)
+            await safe_edit(callback.message, summary_text(progress.config, answers), None)
         except Exception:  # noqa: BLE001 — анкета уже записана, урок важнее сводки
             # Без урока ученик остался бы на старом вопросе, а повторный тап
             # ответил бы «анкета уже пройдена» — тупик без меню.
@@ -222,7 +230,7 @@ def make_survey_router(
     async def _orphan_click(callback: CallbackQuery, state: FSMContext) -> None:
         """Нажатие не в живом сообщении анкеты: тост или новый старт."""
         current = await state.get_state()
-        if survey.is_completed(conn):
+        if survey.is_completed(conn, _config()):
             await callback.answer(DONE_TOAST)
             await _drop_keyboard(callback.message)
         elif current == SurveyFlow.question.state:
@@ -234,7 +242,7 @@ def make_survey_router(
             # FSM потерян (рестарт бота), анкета не пройдена: начинаем заново
             # в этом же сообщении, а не молчим. Нажатие на вопросе об уровне
             # (шаг 0 — всегда он) засчитываем: иначе ответ пропал бы молча.
-            progress = survey.Progress()
+            progress = survey.Progress(_config())
             action, choice = _parse(callback.data)
             if action == "0" and choice is not None and choice.isdigit():
                 try:
@@ -283,12 +291,12 @@ def make_survey_router(
             return
 
         action, choice = _parse(callback.data)
-        progress = _progress(data)
+        progress = _progress(data, _config())
         if action == GO:
             if progress is not None:  # «Поехали» уже нажимали
                 await _redraw(callback, state, progress)
                 return
-            progress = survey.Progress()
+            progress = survey.Progress(_config())
         elif progress is None or action != str(progress.step):
             await _redraw(callback, state, progress)
             return
