@@ -37,6 +37,22 @@ def register_answer(
     )
 
 
+def on_verification_failed(state: SessionState) -> SessionState:
+    """Проход не подтвердился: узел в усиленный проход, проход снят.
+
+    Ученик заявил, что знает тему, но не подтвердил — значит тему надо
+    разобрать, а не продолжать допрашивать.
+    """
+    return state.model_copy(
+        update={
+            "mode": "reinforce",
+            "node_streak": 0,
+            "verify_item_ids": [],
+            "phase": "explain",
+        }
+    )
+
+
 def is_node_closed(
     state: SessionState,
     mastery: beta.Mastery,

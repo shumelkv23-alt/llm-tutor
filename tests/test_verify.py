@@ -1,7 +1,9 @@
 """Тесты проверочного прохода по узлу (Срез 16)."""
 
+from fakes import GradingTutor
+
 from llm_tutor.core import verify
-from llm_tutor.core.turn import VERIFY_NO_ITEMS_REPLY
+from llm_tutor.core.turn import VERIFY_FAILED_NOTE, VERIFY_NO_ITEMS_REPLY, handle_turn
 from llm_tutor.core.verify import VERIFY_NO_NODE_REPLY
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
@@ -78,3 +80,42 @@ def test_restarting_pass_drops_pending_item_without_evidence(conn, settings) -> 
     assert state.pending_item_id is not None
     assert state.verify_item_ids == [state.pending_item_id]
     assert repos.get_events(conn) == []
+
+
+# --- исходы прохода (Срез 16.4) ---
+#
+# Узел берём `groupby`: это единственный узел с более чем одним заданием в
+# банке (id 4, 9, 10), поэтому серия из двух чистых ответов достижима только
+# на нём; задания 9 и 10 рубричные, отсюда грейдер в одной роли с тьютором.
+
+
+async def test_pass_closes_node_after_two_clean_answers(conn, settings) -> None:
+    """Проход закрывает узел обычным критерием — серией чистых ответов."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby")
+    verify.start_verification(conn, now=1.0, settings=settings)
+    client = GradingTutor(conn, passed=True)
+
+    for ts in (2.0, 3.0):
+        reply = await handle_turn(
+            conn, client, "m", "groupby группирует строки по ключу", now=ts, settings=settings
+        )
+
+    assert "закрыт" in reply.text
+    assert _state(conn).verify_item_ids == []
+    assert _state(conn).mode is None
+
+
+async def test_wrong_answer_drops_the_pass(conn, settings) -> None:
+    """Неверный ответ обрывает проход — узел уходит в усиленный проход."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby")
+    verify.start_verification(conn, now=1.0, settings=settings)
+    client = GradingTutor(conn, passed=False)
+
+    reply = await handle_turn(conn, client, "m", "не знаю", now=2.0, settings=settings)
+
+    assert VERIFY_FAILED_NOTE in reply.text
+    assert _state(conn).mode == "reinforce"
+    assert _state(conn).verify_item_ids == []
+    assert "Проверка" not in reply.text  # проход оборван, шагов больше нет

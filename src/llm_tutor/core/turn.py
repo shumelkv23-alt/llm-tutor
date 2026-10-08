@@ -72,6 +72,8 @@ VERIFY_NO_ITEMS_REPLY = (
     "По этой теме у меня нет проверочных заданий — "
     "закрою её, когда владение подтвердится по ходу."
 )
+# Проход не подтвердился — говорим честно и возвращаемся к разбору.
+VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к теме и разберёмся."
 
 
 @dataclass(frozen=True)
@@ -354,6 +356,10 @@ async def handle_turn(
             )
             if closed_note:
                 reply = f"{reply}\n\n{closed_note}"
+        # Проход не подтвердился: обрываем его, узел уходит в разбор.
+        if state.mode == "verify" and not passed:
+            new_state = guide.on_verification_failed(new_state)
+            reply = f"{reply}\n\n{VERIFY_FAILED_NOTE}"
         # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
         new_state, task_text, options = _issue_task(
             conn,
@@ -461,6 +467,8 @@ def _close_node_if_ready(
             "node_streak": 0,
             "phase": "explain",
             "mode": None,
+            # Закрытый узел не тащит за собой проверочный проход.
+            "verify_item_ids": [],
             "hint_level": 0,
             "route": route,
         }
