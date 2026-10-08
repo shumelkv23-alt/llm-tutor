@@ -14,10 +14,11 @@ from aiogram.types import Message
 from llm_tutor.bot import menu, render
 from llm_tutor.bot.chat_action import typing_action
 from llm_tutor.config import Settings
-from llm_tutor.core.turn import resume_reply
+from llm_tutor.core.turn import TurnReply, resume_reply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
 from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
@@ -103,8 +104,12 @@ async def begin_lesson(
     # импорт дал бы цикл.
     from llm_tutor.bot.handlers import _send_reply
 
-    async with typing_action(message):
-        reply = await resume_reply(
-            conn, client, model, settings=settings, start_node_id=first
-        )
+    try:
+        async with typing_action(message):
+            reply = await resume_reply(
+                conn, client, model, settings=settings, start_node_id=first
+            )
+    except Exception:  # noqa: BLE001 — после «сейчас объясню» молчать нельзя
+        logger.exception("Сбой первого хода урока")
+        reply = TurnReply(text=BOT_FAILURE_REPLY)
     await _send_reply(conn, message, reply)

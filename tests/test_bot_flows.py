@@ -975,3 +975,137 @@ async def test_survey_finish_shows_steps_and_starts_lesson(conn, settings) -> No
     assert await state.get_state() is None
 
 
+
+
+# --- аудит среза 22 ---
+
+
+class _Inaccessible:
+    """Как InaccessibleMessage: писать в чат можно, править нельзя."""
+
+    def __init__(self, message_id: int) -> None:
+        self.message_id = message_id
+        self.sent: list = []
+        self.log: list[str] = []
+
+    async def answer(self, text: str, reply_markup=None, **kwargs) -> FakeMessage:
+        self.sent.append((text, reply_markup))
+        sent = FakeMessage(text, log=self.log)
+        sent.reply_markup = reply_markup
+        return sent
+
+
+async def test_inaccessible_survey_message_gets_question_anew(conn, settings) -> None:
+    """Старое (недоступное для правки) сообщение анкеты — вопрос приходит новым."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    old = _Inaccessible(intro.message_id)
+
+    await _tap(click, old, state, survey_bot.GO_DATA)
+
+    assert survey.LEVEL_QUESTION in old.sent[-1][0]
+    assert (await state.get_data())["message_id"] != intro.message_id  # перепривязали
+
+
+async def test_inaccessible_message_on_last_answer_still_starts_lesson(conn, settings) -> None:
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    data = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+
+    old = _Inaccessible(intro.message_id)
+
+    await _tap(click, old, state, data)
+
+    assert survey.is_completed(conn)
+    texts = [text for text, _ in old.sent]
+    assert any(text.startswith("✅ Понял тебя") for text in texts)  # сводка — новым
+    assert any(text.startswith("📋") for text in texts)  # и урок начался
+
+
+async def test_stale_step_in_bound_message_redraws_current_question(conn, settings, monkeypatch) -> None:
+    """Правка сорвалась (сеть), шаг уже сдвинут — следующее нажатие перерисует вопрос."""
+    from aiogram.exceptions import TelegramNetworkError
+
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    level_some = _data_of(intro, survey.LEVEL_OPTIONS[survey.LEVEL_SOME])
+    real_edit = intro.edit_text
+
+    async def _network_down(*args, **kwargs):
+        raise TelegramNetworkError(method=None, message="timeout")
+
+    monkeypatch.setattr(intro, "edit_text", _network_down)
+    with pytest.raises(TelegramNetworkError):
+        await _tap(click, intro, state, level_some)
+    monkeypatch.setattr(intro, "edit_text", real_edit)
+
+    callback = await _tap(click, intro, state, level_some)  # кнопки на экране старые
+
+    assert callback.answer_text == survey_bot.STALE_CLICK_TOAST
+    assert "Вопрос 1 из 5" in intro.text  # экран догнал состояние
+
+
+async def test_restart_fallback_rebinds_survey_to_new_message(conn, settings, monkeypatch) -> None:
+    load_seed(conn)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
+    message = FakeMessage()
+    state = _fsm()
+
+    async def _cannot_edit(*args, **kwargs):
+        raise TelegramBadRequest(method=None, message="Bad Request: message can't be edited")
+
+    monkeypatch.setattr(message, "edit_text", _cannot_edit)
+    await _named(router, "callback_query", "on_survey_click")(
+        FakeCallback(survey_bot.GO_DATA, message), state
+    )
+
+    assert (await state.get_data())["message_id"] != message.message_id
+
+
+async def test_restart_keeps_answer_to_level_question(conn, settings) -> None:
+    """После рестарта нажатие на вопросе об уровне не теряется."""
+    load_seed(conn)
+    router = make_survey_router(conn, settings, _TutorClient(), "m")
+    message = FakeMessage()
+    state = _fsm()
+
+    await _named(router, "callback_query", "on_survey_click")(
+        FakeCallback(f"survey:0:{survey.LEVEL_SOME}", message), state
+    )
+
+    assert "Вопрос 1 из 5" in message.text
+    assert (await state.get_data())["given"] == [[survey.LEVEL_KEY, survey.LEVEL_SOME]]
+
+
+async def test_start_survey_binds_state_before_sending(conn, settings) -> None:
+    """Состояние анкеты ставится до отправки: вторая реплика пачкой уйдёт в анкету."""
+    state = _fsm()
+    seen: list = []
+
+    class _Probe(FakeMessage):
+        async def answer(self, text, reply_markup=None, **kwargs):
+            seen.append(await state.get_state())
+            return await super().answer(text, reply_markup=reply_markup, **kwargs)
+
+    await start_survey(_Probe(), state)
+
+    assert seen == [SurveyFlow.question.state]
+
+
+async def test_lesson_failure_after_survey_is_reported(conn, settings, monkeypatch) -> None:
+    """Сбой первого хода урока не оставляет ученика в тишине после «сейчас объясню»."""
+    from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
+
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    async def _boom(*args, **kwargs):
+        raise RuntimeError("сбой")
+
+    monkeypatch.setattr(start, "resume_reply", _boom)
+    await _press(click, intro, state, survey.LEVEL_OPTIONS[survey.LEVEL_FROM_SCRATCH])
+
+    assert BOT_FAILURE_REPLY in intro.sent[-1][0]

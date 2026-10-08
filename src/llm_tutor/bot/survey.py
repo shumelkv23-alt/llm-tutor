@@ -140,6 +140,10 @@ async def safe_edit(
     отказы (сообщение старое или удалено) не должны оставить ученика без
     вопроса: он приходит новым сообщением, и вызывающий перепривязывает FSM.
     """
+    # Недоступное сообщение (InaccessibleMessage — слишком старое) не править
+    # вовсе: у него нет edit_text, но писать в чат через него можно.
+    if getattr(message, "edit_text", None) is None:
+        return await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
     try:
         await message.edit_text(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
     except TelegramBadRequest as error:
@@ -152,6 +156,8 @@ async def safe_edit(
 
 async def _drop_keyboard(message: Message) -> None:
     """Снимает кнопки со старого сообщения анкеты."""
+    if getattr(message, "edit_reply_markup", None) is None:
+        return  # недоступное сообщение: снимать нечего и нечем
     try:
         await message.edit_reply_markup(reply_markup=None)
     except TelegramBadRequest as error:
@@ -165,11 +171,23 @@ async def start_survey(message: Message, state: FSMContext) -> Message:
     Повторный вызов (``/start`` посреди анкеты) перепривязывает FSM к новому
     сообщению — нажатия в старом упрутся в тост.
     """
+    # Состояние — ДО отправки: вторая реплика, пришедшая пачкой, уже увидит
+    # анкету и получит подсказку, а не второе приветствие.
+    await state.set_state(SurveyFlow.question)
+    await state.set_data({"message_id": None, "given": None})
     text, markup = intro_view()
     sent = await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
-    await state.set_state(SurveyFlow.question)
-    await state.set_data({"message_id": sent.message_id, "given": None})
+    await state.update_data(message_id=sent.message_id)
     return sent
+
+
+async def _show(
+    message: Message, state: FSMContext, text: str, markup: InlineKeyboardMarkup | None
+) -> None:
+    """Рисует шаг анкеты; пришёл новым сообщением — анкета переезжает в него."""
+    shown = await safe_edit(message, text, markup)
+    if shown.message_id != message.message_id:
+        await state.update_data(message_id=shown.message_id)
 
 
 def make_survey_router(
@@ -203,12 +221,39 @@ def make_survey_router(
             await callback.answer(BUSY_REPLY)
         else:
             # FSM потерян (рестарт бота), анкета не пройдена: начинаем заново
-            # в этом же сообщении, а не молчим.
+            # в этом же сообщении, а не молчим. Нажатие на вопросе об уровне
+            # (шаг 0 — всегда он) засчитываем: иначе ответ пропал бы молча.
+            progress = survey.Progress()
+            action, choice = _parse(callback.data)
+            if action == "0" and choice is not None and choice.isdigit():
+                try:
+                    progress = progress.answer(int(choice))
+                except ValueError:
+                    pass  # вариант вне списка — просто начинаем сначала
             await state.set_state(SurveyFlow.question)
-            await state.set_data({"message_id": callback.message.message_id, "given": []})
+            await state.set_data(
+                {"message_id": callback.message.message_id, "given": _stored(progress)}
+            )
+            if progress.next_key() is None:
+                await _finish(callback, state, progress)
+                return
             await callback.answer()
-            text, markup = question_view(survey.Progress())
-            await safe_edit(callback.message, text, markup)
+            text, markup = question_view(progress)
+            await _show(callback.message, state, text, markup)
+
+    async def _redraw(
+        callback: CallbackQuery, state: FSMContext, progress: survey.Progress | None
+    ) -> None:
+        """Тост и перерисовка текущего шага.
+
+        Нажатие в своём сообщении с чужим шагом значит, что экран отстал от
+        FSM (правка сорвалась: сеть, лимит) или это двойной тап. Перерисовка
+        лечит первое и безвредна для второго — иначе анкета застревала бы
+        на «уже позади» до /start.
+        """
+        await callback.answer(STALE_CLICK_TOAST)
+        text, markup = intro_view() if progress is None else question_view(progress)
+        await _show(callback.message, state, text, markup)
 
     @router.callback_query(F.data.startswith(f"{CALLBACK_PREFIX}:"))
     async def on_survey_click(callback: CallbackQuery, state: FSMContext) -> None:
@@ -230,11 +275,11 @@ def make_survey_router(
         progress = _progress(data)
         if action == GO:
             if progress is not None:  # «Поехали» уже нажимали
-                await callback.answer(STALE_CLICK_TOAST)
+                await _redraw(callback, state, progress)
                 return
             progress = survey.Progress()
         elif progress is None or action != str(progress.step):
-            await callback.answer(STALE_CLICK_TOAST)
+            await _redraw(callback, state, progress)
             return
         elif choice == BACK:
             progress = progress.back()
@@ -243,7 +288,7 @@ def make_survey_router(
                 progress = progress.answer(int(choice or ""))
             except ValueError:
                 # Данные колбэка подконтрольны клиенту: мусор — не ответ.
-                await callback.answer(STALE_CLICK_TOAST)
+                await _redraw(callback, state, progress)
                 return
 
         if progress.next_key() is None:
@@ -252,9 +297,7 @@ def make_survey_router(
         await state.update_data(given=_stored(progress))
         await callback.answer()
         text, markup = question_view(progress)
-        shown = await safe_edit(message, text, markup)
-        if shown.message_id != message.message_id:
-            await state.update_data(message_id=shown.message_id)
+        await _show(message, state, text, markup)
 
     @router.message(SurveyFlow.question, F.text, ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
