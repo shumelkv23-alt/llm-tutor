@@ -10,6 +10,7 @@ from llm_tutor.bot.render import (
     render_status,
 )
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.student import route as route_mod
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
@@ -120,55 +121,19 @@ def test_status_does_not_point_to_removed_buttons(conn) -> None:
     assert "🎯 Задание" not in text
 
 
-def test_route_window_matches_rendered_plan(conn) -> None:
-    """Окно маршрута — ровно те шаги, что попадают в табличку."""
-    load_seed(conn)
-    session_id = repos.ensure_open_session(conn, now=1.0)
-    state = repos.get_session_state(conn, session_id)
-    repos.update_session_state(
-        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
-    )
-
-    window = render.route_window(conn, now=1.0)
-    text = render.render_plan(conn, now=1.0)
-    graph = CourseGraph.load(conn)
-
-    assert window
-    for step in window:
-        assert graph.concept(step.concept_id).name in text
-
-
-def test_route_window_includes_current_node(conn) -> None:
-    """Текущий узел всегда в окне — иначе экран согласования не о том."""
-    load_seed(conn)
-    session_id = repos.ensure_open_session(conn, now=1.0)
-    state = repos.get_session_state(conn, session_id)
-    repos.update_session_state(
-        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
-    )
-
-    window = render.route_window(conn, now=1.0)
-
-    assert any(step.status == "current" for step in window)
-
-
-def test_route_screen_contains_plan_and_invitation(conn) -> None:
-    """Экран согласования — та же табличка плюс приглашение поправить."""
-    load_seed(conn)
-
-    text = render.render_route_screen(conn, now=1.0)
-
-    assert "Маршрут" in text
-    assert "устраивает" in text
-    assert "нажми узел" in text
-
-
-def test_route_window_without_current_node_is_not_a_wall(conn) -> None:
-    """У нового ученика окно строится вокруг первого узла, а не во все 21."""
+def test_render_steps_limit_shows_only_first_steps(conn) -> None:
+    """``limit`` оставляет только ближайшие шаги."""
     load_seed(conn)
     graph = CourseGraph.load(conn)
+    route = route_mod.build_route(conn, graph, now=1.0)
 
-    window = render.route_window(conn, now=1.0)
+    text = render.render_steps(graph, route.steps, limit=2)
 
-    assert 0 < len(window) < len(graph.node_ids)
-    assert window[0].status == "current"  # опора окна — первый узел впереди
+    assert len(text.splitlines()) == 2
+
+
+def test_render_steps_says_so_when_nothing_left(conn) -> None:
+    """Пустой список — вежливая строка, а не пустое сообщение."""
+    load_seed(conn)
+
+    assert render.render_steps(CourseGraph.load(conn), []).strip()

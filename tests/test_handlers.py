@@ -143,8 +143,8 @@ async def test_state_survives_restart(tmp_path) -> None:
 # --- маршрут (/plan) ---
 
 
-def test_render_plan_draws_table_with_progress(conn, settings) -> None:
-    """Маршрут — табличка с прогрессом и текущим узлом."""
+def test_render_plan_lists_steps_with_marks(conn, settings) -> None:
+    """Маршрут — нумерованный список с пометкой текущего узла."""
     load_seed(conn)
     repos.set_fact(conn, "goal_concept_id", "summary_tables")
     session_id = repos.ensure_open_session(conn, now=1.0)
@@ -154,11 +154,10 @@ def test_render_plan_draws_table_with_progress(conn, settings) -> None:
 
     text = render_plan(conn, now=0.0, settings=settings)
 
-    assert "<pre>" in text
+    assert "<pre>" not in text and "┌" not in text
     assert "Маршрут" in text
-    assert "Пройдено" in text
+    assert "1. " in text
     assert "[>]" in text            # метка текущего узла
-    assert "groupby" in text
 
 
 def test_render_plan_escapes_concept_names(conn, settings) -> None:
@@ -174,9 +173,8 @@ def test_render_plan_escapes_concept_names(conn, settings) -> None:
     assert "A & B" not in text   # сырой амперсанд в HTML не просачивается
 
 
-def test_render_plan_windows_long_route(conn, settings) -> None:
-    """Длинный маршрут показывается окном, а не целиком."""
-    from llm_tutor.bot.render import PLAN_WINDOW
+def test_render_plan_lists_every_step(conn, settings) -> None:
+    """Маршрут показывается целиком: список, а не окно вокруг текущего узла."""
     from llm_tutor.course.graph import CourseGraph
     from llm_tutor.student import route as route_mod
 
@@ -190,7 +188,7 @@ def test_render_plan_windows_long_route(conn, settings) -> None:
     text = render_plan(conn, now=0.0, settings=settings)
 
     graph = CourseGraph.load(conn)
-    full_route = route_mod.build_route(
+    route = route_mod.build_route(
         conn,
         graph,
         goal_concept_id="churn_eda_case",
@@ -198,9 +196,8 @@ def test_render_plan_windows_long_route(conn, settings) -> None:
         now=0.0,
         settings=settings,
     )
-    marks = text.count("[x]") + text.count("[>]") + text.count("[ ]")
-    assert marks < len(full_route.steps)     # показано меньше, чем весь путь
-    assert marks <= PLAN_WINDOW * 2 + 3
+    for step in route.steps:
+        assert graph.concept(step.concept_id).name in text
 
 
 def test_render_plan_reports_all_mastered(conn, settings) -> None:

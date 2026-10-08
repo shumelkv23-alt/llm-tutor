@@ -95,6 +95,34 @@ def _windowed(steps: list, window: int) -> list:
     return chosen
 
 
+PLAN_STEPS = 5
+_STEP_MARKS = {"closed": "[x] ", "current": "[>] ", "ahead": ""}
+
+
+def render_steps(
+    graph: CourseGraph,
+    steps: list,
+    *,
+    limit: int | None = None,
+    marks: bool = True,
+) -> str:
+    """Шаги маршрута нумерованным списком.
+
+    Без псевдографики: та же форма, что у списка ближайших шагов на входе в
+    курс, — одна форма на весь интерфейс. ``limit`` режет список (ближайшие
+    шаги), ``marks`` рисует пометки пройденного.
+    """
+    shown = steps[:limit] if limit is not None else steps
+    if not shown:
+        return "Пока нечего показывать — маршрут пуст."
+    lines = [
+        f"{index}. {_STEP_MARKS[step.status] if marks else ''}"
+        f"{escape(graph.concept(step.concept_id).name)}"
+        for index, step in enumerate(shown, start=1)
+    ]
+    return "\n".join(lines)
+
+
 def route_window(
     conn: sqlite3.Connection,
     *,
@@ -130,7 +158,7 @@ def render_plan(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Табличка маршрута: путь, прогресс и окно вокруг текущего узла."""
+    """Маршрут целиком: нумерованный список с пометками пройденного."""
     graph = CourseGraph.load(conn)
     if not graph.node_ids:
         return EMPTY_GRAPH_REPLY
@@ -149,46 +177,8 @@ def render_plan(
         return EMPTY_GRAPH_REPLY
     if route.closed_count == len(route.steps):
         return "Всё доступное уже освоено — можно двигаться дальше или взять цель посложнее."
-
-    goal_name = (
-        graph.concept(route.goal_concept_id).name
-        if route.goal_concept_id is not None
-        else "вершина темы"
-    )
-    total = len(route.steps)
-    shown = route_window(conn, state=session_state, now=now, settings=settings)
-
-    # Имена экранируем: сообщение уходит с parse_mode=HTML, а имя — динамика.
-    names = [escape(graph.concept(step.concept_id).name) for step in shown]
-    name_w = max(len(name) for name in names)
-    label_w = len("←сейчас")
-
-    cells: list[str] = []
-    for step, name in zip(shown, names):
-        if step.concept_id == route.goal_concept_id:
-            label = "цель"
-        elif step.status == "current":
-            label = "←сейчас"
-        elif step.status == "closed":
-            label = "усвоен"
-        else:
-            label = "впереди"
-        cells.append(f"  {_STATUS_MARKS[step.status]}  {name.ljust(name_w)} {label.rjust(label_w)} ")
-
-    bar = f" Пройдено  {_progress_bar(route.closed_count, total)}  {route.closed_count}/{total} "
-    inner = max(len(bar), *(len(cell) for cell in cells))
-    lines = [
-        "┌" + "─" * inner + "┐",
-        f"│{bar.ljust(inner)}│",
-        "├" + "─" * inner + "┤",
-        *(f"│{cell.ljust(inner)}│" for cell in cells),
-        "└" + "─" * inner + "┘",
-    ]
-    header = (
-        f"🗺 <b>Маршрут</b> — цель «{escape(goal_name)}», "
-        f"пройдено {route.closed_count}/{total}"
-    )
-    return header + "\n<pre>" + "\n".join(lines) + "</pre>"
+    header = f"🗺 <b>Маршрут</b> — пройдено {route.closed_count} из {len(route.steps)}"
+    return f"{header}\n{render_steps(graph, route.steps)}"
 
 
 # Приглашение поправить маршрут на входе в курс (готовый HTML: экранируем сами).
