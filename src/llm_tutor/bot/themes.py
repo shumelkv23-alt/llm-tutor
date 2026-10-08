@@ -147,7 +147,7 @@ def switch_node(
     fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
     text = (
         f"Ок, тема — <b>{escape(name)}</b>. "
-        "Спроси, что непонятно, или жми 🎯 Задание."
+        "Спроси, что непонятно, или жми ▶️ Продолжить обучение."
     )
     post_turn(
         conn,

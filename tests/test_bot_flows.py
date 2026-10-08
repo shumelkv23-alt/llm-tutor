@@ -504,3 +504,33 @@ async def test_start_after_survey_offers_resume(conn, settings) -> None:
     await on_start(message, _fsm())
 
     assert message.sent[-1][1].inline_keyboard[0][0].callback_data == "menu:resume"
+
+
+async def test_resume_command_refuses_during_fsm_flow(conn, settings) -> None:
+    """Посреди анкеты занятие не продолжаем: состояние сессии поедет."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    state = _fsm()
+    await state.set_state(DiagnosticFlow.answering)
+    message = FakeMessage()
+
+    await _named(router, "message", "on_resume")(message, state)
+
+    assert "Сначала закончим" in message.last_text
+    assert repos.get_open_session(conn) is None  # сессию не тронули
+
+
+async def test_menu_resume_refuses_during_fsm_flow(conn, settings) -> None:
+    """Та же защита у кнопки «Продолжить обучение»."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    state = _fsm()
+    await state.set_state(DiagnosticFlow.answering)
+    message = FakeMessage()
+    callback = FakeCallback("menu:resume", message)
+
+    await _named(router, "callback_query", "on_menu_action")(callback, state)
+
+    assert "Сначала закончим" in message.last_text
+    assert callback.answered is True
+    assert repos.get_open_session(conn) is None  # сессию не тронули

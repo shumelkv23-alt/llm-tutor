@@ -255,7 +255,14 @@ def make_router(
         )
 
     @router.message(Command("resume"))
-    async def on_resume(message: Message) -> None:
+    async def on_resume(message: Message, state: FSMContext) -> None:
+        # Посреди анкеты или подбора маршрута занятие не продолжаем: в состоянии
+        # сессии повиснет pending_item_id, конфликтующий с FSM-потоком.
+        if await state.get_state() is not None:
+            await message.answer(
+                render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
         try:
             reply = await resume_reply(conn, client, model, settings=settings)
         except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
@@ -349,12 +356,20 @@ def make_router(
                         reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
                     )
             elif action == "resume":
-                reply = await resume_reply(conn, client, model, settings=settings)
-                await callback.message.answer(
-                    render.fit(render.escape(reply.text)),
-                    parse_mode=render.PARSE_MODE,
-                    reply_markup=_options_keyboard(reply.options) or menu.resume_keyboard(),
-                )
+                # Посреди анкеты или подбора маршрута не продолжаем: в состоянии
+                # повиснет pending_item_id, конфликтующий с FSM-потоком.
+                if await state.get_state() is not None:
+                    await callback.message.answer(
+                        render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
+                    )
+                else:
+                    reply = await resume_reply(conn, client, model, settings=settings)
+                    await callback.message.answer(
+                        render.fit(render.escape(reply.text)),
+                        parse_mode=render.PARSE_MODE,
+                        reply_markup=_options_keyboard(reply.options)
+                        or menu.resume_keyboard(),
+                    )
         except Exception:  # noqa: BLE001 — действие не должно отвечать молчанием
             logger.exception("Сбой действия меню: %s", action)
             await callback.message.answer(
