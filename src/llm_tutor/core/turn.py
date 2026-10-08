@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
+from llm_tutor.core import intents
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -294,6 +295,7 @@ async def handle_turn(
     *,
     now: float | None = None,
     settings: Settings | None = None,
+    allow_intents: bool = True,
 ) -> TurnReply:
     """Один ход диалога: ответ на задание или реплика тьютору."""
     s = settings or get_settings()
@@ -301,10 +303,20 @@ async def handle_turn(
     session_id = repos.ensure_open_session(conn, stamp)
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
+    # Короткая реплика-команда разбирается ДО развилки: иначе при висящем
+    # задании «пропусти» ушло бы в ветку ответа и записалось как неверный ответ.
+    intent = intents.detect(user_text) if allow_intents else None
+    if intent == "skip":
+        return TurnReply(text=_skip_turn(conn, session_id, state, user_text, now=stamp))
+    force_stuck = intent == "stuck"
     options: list[str] | None = None
     answered_item_id = state.pending_item_id
 
-    if state.pending_item_id is not None and not _looks_like_question(user_text):
+    if (
+        state.pending_item_id is not None
+        and not force_stuck
+        and not _looks_like_question(user_text)
+    ):
         reply, events, mastery, new_state, passed = await _answer_branch(
             conn, client, model, graph, user_text, state, now=stamp, settings=s
         )
@@ -343,10 +355,20 @@ async def handle_turn(
         reply = f"{reply}\n\n{task_text}"
     else:
         reply, events, mastery, new_state = await _tutor_branch(
-            conn, client, model, session_id, user_text, state, graph, now=stamp, settings=s
+            conn,
+            client,
+            model,
+            session_id,
+            user_text,
+            state,
+            graph,
+            now=stamp,
+            settings=s,
+            force_stuck=force_stuck,
         )
-        if state.pending_item_id is not None:
+        if state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
+            # При «не понял» напоминание не нужно — его заменяет STUCK_NOTE.
             reply = f"{reply}\n\n{PENDING_ITEM_NOTE}"
 
     # Маршрут пересчитывается на каждом ходу, но ученику сообщается только
@@ -565,28 +587,39 @@ async def stuck_reply(
     return TurnReply(text=reply)
 
 
+def _skip_turn(
+    conn: sqlite3.Connection,
+    session_id: int,
+    state: SessionState,
+    user_text: str,
+    *,
+    now: float,
+) -> str:
+    """Снимает ожидание ответа, НЕ записывая свидетельство."""
+    if state.pending_item_id is None:
+        return NOTHING_TO_SKIP_REPLY
+    post_turn(
+        conn,
+        session_id,
+        user_text=user_text,
+        assistant_text=SKIP_REPLY,
+        state=state.model_copy(
+            update={"pending_item_id": None, "phase": "explain", "last_activity": now}
+        ),
+        now=now,
+    )
+    return SKIP_REPLY
+
+
 def skip_pending(
     conn: sqlite3.Connection, *, now: float | None = None, settings: Settings | None = None
 ) -> str:
-    """Снимает ожидание ответа, НЕ записывая свидетельство.
+    """Явный выход из задания командой `/skip`.
 
-    Явный выход из задания: без него единственным способом выйти было
-    ответить (и получить неверный ответ в журнал).
+    Снимает ожидание ответа, НЕ записывая свидетельство: без него единственным
+    способом выйти было ответить (и получить неверный ответ в журнал).
     """
     stamp = time.time() if now is None else now
     session_id = repos.ensure_open_session(conn, stamp)
     state = repos.get_session_state(conn, session_id)
-    if state.pending_item_id is None:
-        return NOTHING_TO_SKIP_REPLY
-
-    post_turn(
-        conn,
-        session_id,
-        user_text=SKIP_KICKOFF_TEXT,
-        assistant_text=SKIP_REPLY,
-        state=state.model_copy(
-            update={"pending_item_id": None, "phase": "explain", "last_activity": stamp}
-        ),
-        now=stamp,
-    )
-    return SKIP_REPLY
+    return _skip_turn(conn, session_id, state, SKIP_KICKOFF_TEXT, now=stamp)

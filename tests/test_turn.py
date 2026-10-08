@@ -6,7 +6,9 @@ import pytest
 
 from llm_tutor.core.turn import (
     NOTHING_TO_SKIP_REPLY,
+    SKIP_REPLY,
     STALE_ITEM_REPLY,
+    STUCK_NOTE,
     handle_turn,
     post_turn,
     skip_pending,
@@ -105,7 +107,10 @@ async def test_hint_level_rises_at_most_one_step(conn, settings) -> None:
     ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
     client = _FakeTutor(hint_level=4)
 
-    await handle_turn(conn, client, "m", "не понимаю groupby", now=1.0, settings=settings)
+    # Текст со словами-триггерами, но проверяем не намерение, а лестницу.
+    await handle_turn(
+        conn, client, "m", "не понимаю groupby", now=1.0, settings=settings, allow_intents=False
+    )
 
     assert _state(conn).hint_level == 1  # было 0
 
@@ -364,7 +369,10 @@ async def test_stuck_keeps_student_on_the_same_node(conn, settings) -> None:
     _set_state(conn, current_node_id="groupby", node_streak=1)
     client = _FakeTutor("давай разберём подробнее", student_stuck=True)
 
-    await handle_turn(conn, client, "m", "не понял groupby", now=1.0, settings=settings)
+    # Проверяем флаг модели student_stuck, а не распознавание фразы текстом.
+    await handle_turn(
+        conn, client, "m", "не понял groupby", now=1.0, settings=settings, allow_intents=False
+    )
 
     state = _state(conn)
     assert state.mode == "reinforce"
@@ -491,3 +499,49 @@ def test_skip_resets_phase(conn, settings) -> None:
     skip_pending(conn, now=1.0, settings=settings)
 
     assert _state(conn).phase == "explain"
+
+
+# --- намерение из текста (Срез 15) ---
+
+
+async def test_skip_phrase_clears_pending_item_without_evidence(conn, settings) -> None:
+    """«пропусти» текстом работает как команда: свидетельство не пишется."""
+    load_seed(conn)
+    client = _FakeTutor("тьютор не должен вызываться")
+    start_practice_reply(conn, now=1.0, settings=settings)
+
+    reply = await handle_turn(conn, client, "m", "пропусти", now=2.0, settings=settings)
+
+    assert reply.text == SKIP_REPLY
+    assert _state(conn).pending_item_id is None
+    assert repos.get_events(conn) == []
+    assert client.calls == []
+
+
+async def test_stuck_phrase_goes_to_tutor_even_with_pending_item(conn, settings) -> None:
+    """«не понял» при висящем задании — просьба о помощи, а не ответ."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, pending_item_id=1, current_node_id="pandas_intro")
+    client = _FakeTutor("Давай разберём")
+
+    reply = await handle_turn(conn, client, "m", "не понял", now=1.0, settings=settings)
+
+    assert "Давай разберём" in reply.text
+    assert STUCK_NOTE in reply.text
+    assert _state(conn).mode == "reinforce"
+    assert _state(conn).pending_item_id == 1  # задание не тронуто
+    assert client.calls  # модель спросили
+
+
+async def test_intents_can_be_disabled(conn, settings) -> None:
+    """Подпись варианта ответа не должна перехватываться как намерение."""
+    load_seed(conn)
+    _set_state(conn, pending_item_id=1, current_node_id="pandas_intro")
+
+    reply = await handle_turn(
+        conn, _FakeTutor(), "m", "пропусти", now=1.0, settings=settings, allow_intents=False
+    )
+
+    assert "Не совсем" in reply.text  # ушло в ветку ответа
+    assert any(event.source == "checked" for event in repos.get_events(conn))
