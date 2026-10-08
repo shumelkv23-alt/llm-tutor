@@ -598,7 +598,6 @@ def test_verification_item_uses_repeat_if_nothing_fresh(conn, settings) -> None:
     repos.add_event(
         conn,
         Event(source="checked", result=1.0, item_id=item.id, concept_id="pandas_intro", ts=1.0),
-        ts=1.0,
     )
 
     question = diagnostic.verification_item(
@@ -1546,13 +1545,25 @@ Expected: FAIL — `TypeError: TutorReply() got an unexpected keyword argument
     wants_close_topic: bool = False
 ```
 
-В `src/llm_tutor/llm/prompts.py` в `_TUTOR_TURN_RULES` (рядом с правилом про
-`student_stuck`):
+В `src/llm_tutor/llm/prompts.py` в `_GUIDE_RULES` — там, где живёт правило про
+`student_stuck` (в `_TUTOR_TURN_RULES` его нет):
 
 ```python
     "- Если ученик просит закрыть текущую тему или утверждает, что уже её\n"
     "  знает, поставь wants_close_topic = true: тему проверит отдельный проход.\n"
 ```
+
+И в `_TUTOR_TURN_CONTRACT` — иначе модель не узнает про новое поле
+(там перечислен JSON-контракт ответа; тест `test_prompts.py` проверяет, что
+`"student_stuck"` в промпте есть):
+
+```python
+    '{"reply": "<ответ ученику>", "hint_level": <число 0..%d>, '
+    '"student_stuck": <true|false>, "wants_close_topic": <true|false>}\n'
+    "hint_level — уровень, на котором ты ведёшь объяснение прямо сейчас; "
+    "student_stuck — заметил ли ты, что ученик просит глубины; "
+    "wants_close_topic — просит ли ученик закрыть текущую тему."
+) % MAX_HINT_LEVEL
 
 В `src/llm_tutor/core/turn.py` — импорт `intents` на уровне модуля (он от
 `turn` не зависит) и ветка в `handle_turn` рядом с веткой skip:
@@ -1979,6 +1990,14 @@ ACTION_LABELS: dict[Action, str] = {
 ```python
 from llm_tutor.core.turn import resume_reply
 ```
+
+И убрать из импортов `stuck_reply`: единственная ветка, которая его звала
+(`elif action == "stuck"`), удалена, а команды `/stuck` нет — иначе мёртвый
+импорт.
+
+
+
+
 
 **Тут же правится `_HELP_LINES` в `src/llm_tutor/bot/render.py`.** `render_help`
 идёт по `menu.ACTION_LABELS` и берёт пояснение из `_HELP_LINES` — без записи
@@ -2698,7 +2717,7 @@ async def test_know_writes_weak_evidence_and_does_not_close(conn, settings) -> N
     router = make_onboarding_router(conn, settings)
     on_know = _named(router, "callback_query", "on_route_know")
 
-    await on_know(FakeCallback("route:know:read_csv", FakeMessage()))
+    await on_know(FakeCallback("route:know:read_csv", FakeMessage()), _fsm())
 
     mastery = beta.estimate(conn, "read_csv", now=1.0, settings=settings)
     assert mastery.mean > 0.5
@@ -2711,7 +2730,7 @@ async def test_unknown_lowers_priority(conn, settings) -> None:
     router = make_onboarding_router(conn, settings)
     on_unknown = _named(router, "callback_query", "on_route_unknown")
 
-    await on_unknown(FakeCallback("route:unknown:read_csv", FakeMessage()))
+    await on_unknown(FakeCallback("route:unknown:read_csv", FakeMessage()), _fsm())
 
     mastery = beta.estimate(conn, "read_csv", now=1.0, settings=settings)
     assert mastery.mean < 0.5
@@ -2724,7 +2743,7 @@ async def test_route_ok_fixes_route_and_offers_resume(conn, settings) -> None:
     on_ok = _named(router, "callback_query", "on_route_ok")
     message = FakeMessage()
 
-    await on_ok(FakeCallback("route:ok", message))
+    await on_ok(FakeCallback("route:ok", message), _fsm())
 
     text, markup = message.sent[-1]
     assert "Маршрут зафиксирован" in text
@@ -2750,7 +2769,7 @@ async def test_route_review_text_gets_hint(conn, settings) -> None:
     on_text = _named(router, "message", "on_route_text")
     message = FakeMessage("я это знаю")
 
-    await on_text(message, _fsm())
+    await on_text(message)
 
     assert "кнопкой" in message.last_text
 ```
@@ -3059,7 +3078,7 @@ async def test_new_student_walks_the_whole_path(conn, settings) -> None:
     # 1. Согласование маршрута: заявление о знании узел НЕ закрывает.
     onboarding_router = make_onboarding_router(conn, settings)
     on_know = _named(onboarding_router, "callback_query", "on_route_know")
-    await on_know(FakeCallback("route:know:read_csv", FakeMessage()))
+    await on_know(FakeCallback("route:know:read_csv", FakeMessage()), _fsm())
 
     assert not _is_closed(conn, "read_csv")
 
@@ -3089,7 +3108,7 @@ async def test_new_student_walks_the_whole_path(conn, settings) -> None:
 Заглушку не дублируем — берём общую из `tests/fakes.py`:
 
 ```python
-from fakes import FakeCallback, FakeMessage, GradingTutor, _named
+from fakes import FakeCallback, FakeMessage, GradingTutor, _fsm, _named
 ```
 
 Остальные недостающие импорты: `make_onboarding_router` из
