@@ -27,7 +27,7 @@ from llm_tutor.student import beta, survey
 def _complete_survey(conn) -> None:
     """Профиль заполнен: без этого свободный текст упирается в приглашение."""
     for block in survey.BLOCKS:
-        repos.set_fact(conn, block.key, survey.SELF_LEVELS[3], source="self")
+        repos.set_fact(conn, block.key, survey.SELF_LEVELS[2], source="self")
 
 
 def _handler(router, kind: str, index: int) -> object:

@@ -15,7 +15,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
 from llm_tutor.student import beta, planner
-from llm_tutor.student.survey import GOAL_CONCEPT_KEY
+from llm_tutor.student.survey import GOAL_CONCEPT_KEY, claimed_concepts
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,15 @@ def build_route(
         if step.status == "closed"
     }
 
+    # Заявленное в анкете: без снимка — из фактов, со снимком — из него. Узел,
+    # переставший быть заявленным (стал текущим, проход не подтвердился),
+    # обратно не возвращается.
+    claimed_before = (
+        {step.concept_id for step in previous.steps if step.status == "claimed"}
+        if previous is not None
+        else set(claimed_concepts(conn))
+    )
+
     steps: list[RouteStep] = []
     for concept_id in _scope(graph, goal_concept_id):
         mode = planner.mode_for_node(conn, graph, concept_id, now=stamp, settings=s)
@@ -76,6 +85,8 @@ def build_route(
             status = "closed"
         elif concept_id == current_node_id:
             status = "current"
+        elif concept_id in claimed_before:
+            status = "claimed"
         else:
             status = "ahead"
         steps.append(RouteStep(concept_id=concept_id, mode=mode, status=status))
@@ -128,6 +139,9 @@ def next_node_id(
     stamp = time.time() if now is None else now
     in_route = {step.concept_id for step in route.steps}
     closed = {step.concept_id for step in route.steps if step.status == "closed"}
+    claimed = {step.concept_id for step in route.steps if step.status == "claimed"}
+    # Заявленное — выполненный пререквизит: урок начинается с первого
+    # неуверенного блока, а не с азов, которые ученик назвал знакомыми.
     ready = planner.ready_nodes(
         conn,
         graph,
@@ -136,13 +150,32 @@ def next_node_id(
         now=stamp,
         settings=s,
         mastery_overrides=mastery_overrides,
-        completed_ids=frozenset(closed),
+        completed_ids=frozenset(closed | claimed),
     )
     for node in ready:
         # Готовый узел может быть уже закрытым — тогда он не «следующий».
-        if node.concept_id in in_route and node.concept_id not in closed:
+        if node.concept_id in in_route and node.concept_id not in closed | claimed:
             return node.concept_id
-    return None
+    # Незаявленное кончилось — пора подтвердить заявленное, по порядку маршрута.
+    return next(
+        (step.concept_id for step in route.steps if step.status == "claimed"), None
+    )
+
+
+def upcoming(route: Route, first: str | None, *, limit: int) -> list[RouteStep]:
+    """Ближайшие шаги для списка: с какого начнём, потом незакрытые по порядку
+    маршрута, в хвосте — заявленные (их проверим в конце)."""
+    if first is None:
+        return []
+    head = [step for step in route.steps if step.concept_id == first]
+    rest = [
+        step
+        for step in route.steps
+        if step.status != "closed" and step.concept_id != first
+    ]
+    ahead = [step for step in rest if step.status != "claimed"]
+    claimed = [step for step in rest if step.status == "claimed"]
+    return (head + ahead + claimed)[:limit]
 
 
 def format_route_change(changes: RouteChanges) -> str:

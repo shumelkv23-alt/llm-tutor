@@ -13,7 +13,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.student import route as route_mod
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
-from llm_tutor.schemas import SessionState
+from llm_tutor.schemas import RouteStep, SessionState
 
 
 def test_escape_neutralizes_model_markup() -> None:
@@ -137,3 +137,11 @@ def test_render_steps_says_so_when_nothing_left(conn) -> None:
     load_seed(conn)
 
     assert render.render_steps(CourseGraph.load(conn), []).strip()
+
+
+def test_render_steps_marks_claimed(conn) -> None:
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+    steps = [RouteStep(concept_id="python_basics", mode="full", status="claimed")]
+
+    assert "🔍 " in render.render_steps(graph, steps)

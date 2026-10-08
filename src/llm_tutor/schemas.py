@@ -20,7 +20,7 @@ NodeMode = Literal["skip", "verify", "compressed", "full", "reinforce", "revisit
 GuidePhase = Literal["explain", "practice", "check"]
 
 # Место узла в маршруте: закрыт, в работе сейчас или ещё впереди.
-RouteStepStatus = Literal["closed", "current", "ahead"]
+RouteStepStatus = Literal["closed", "current", "claimed", "ahead"]
 
 # Тип связи между концептами графа курса.
 EdgeType = Literal["requires", "part_of", "leads_to"]

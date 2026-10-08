@@ -24,11 +24,12 @@ from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
 logger = logging.getLogger(__name__)
 
-NodeStatus = Literal["closed", "current", "available", "ahead"]
+NodeStatus = Literal["closed", "current", "claimed", "available", "ahead"]
 
 STATUS_ICONS: dict[str, str] = {
     "closed": "✅",
     "current": "▶️",
+    "claimed": "🔍",
     "available": "🟢",
     "ahead": "🔜",
 }
@@ -49,6 +50,13 @@ def _closed_from_route(state: SessionState) -> set[str]:
     if state.route is None:
         return set()
     return {step.concept_id for step in state.route.steps if step.status == "closed"}
+
+
+def _claimed_from_route(state: SessionState) -> set[str]:
+    """Узлы, заявленные в анкете и ещё не подтверждённые (снимок маршрута)."""
+    if state.route is None:
+        return set()
+    return {step.concept_id for step in state.route.steps if step.status == "claimed"}
 
 
 def _is_closed(
@@ -82,9 +90,13 @@ def node_status(
         return "current"
     if _is_closed(conn, node_id, state, now=now, settings=settings):
         return "closed"
+    claimed = _claimed_from_route(state)
+    if node_id in claimed:
+        return "claimed"
     prereqs = graph.hard_prerequisites(node_id)
     if all(
-        _is_closed(conn, prereq, state, now=now, settings=settings) for prereq in prereqs
+        prereq in claimed or _is_closed(conn, prereq, state, now=now, settings=settings)
+        for prereq in prereqs
     ):
         return "available"
     return "ahead"

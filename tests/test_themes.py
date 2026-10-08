@@ -349,3 +349,16 @@ def test_reselecting_same_theme_keeps_progress(conn, settings) -> None:
     assert updated.node_streak == 1
     assert updated.hint_level == 2
     assert updated.pending_item_id == 9
+
+
+def test_node_status_claimed_and_opens_dependent(conn, settings) -> None:
+    """Заявленный узел помечен 🔍, а зависимый от него доступен."""
+    load_seed(conn)
+    graph = CourseGraph.load(conn)
+    state = SessionState(
+        route=Route(steps=[RouteStep(concept_id="python_basics", mode="full", status="claimed")])
+    )
+
+    assert themes.node_status(conn, graph, "python_basics", state, now=0.0, settings=settings) == "claimed"
+    assert themes.node_status(conn, graph, "numpy_basics", state, now=0.0, settings=settings) == "available"
+    assert themes.STATUS_ICONS["claimed"] == "🔍"

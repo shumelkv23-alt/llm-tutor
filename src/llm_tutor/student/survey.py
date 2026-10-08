@@ -253,3 +253,18 @@ def apply_answers(
 def is_completed(conn: sqlite3.Connection) -> bool:
     """Прошёл ли ученик анкету: ответы есть на все блоки."""
     return all(repos.get_fact(conn, block.key) is not None for block in BLOCKS)
+
+
+def claimed_concepts(conn: sqlite3.Connection) -> frozenset[str]:
+    """Узлы блоков, которые ученик назвал знакомыми («Уверенно»).
+
+    Самооценка узел не закрывает: такие узлы маршрут пропускает вперёд и
+    проверяет проходом в конце (срез 23).
+    """
+    confident = SELF_LEVELS[CONFIDENT_INDEX]
+    return frozenset(
+        concept_id
+        for block in BLOCKS
+        if repos.get_fact(conn, block.key) == confident
+        for concept_id in block.concepts
+    )

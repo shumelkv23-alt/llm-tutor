@@ -50,7 +50,7 @@ def _first_state(conn: sqlite3.Connection) -> SessionState:
 
 
 PLAN_STEPS = 5
-_STEP_MARKS = {"closed": "[x] ", "current": "[>] ", "ahead": ""}
+_STEP_MARKS = {"closed": "[x] ", "current": "[>] ", "claimed": "🔍 ", "ahead": ""}
 
 
 def render_steps(

@@ -4,7 +4,9 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Route, RouteStep, SessionState
+from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.student import route as route_mod
+from llm_tutor.student import survey
 
 
 def _graph(concepts: list[str], edges: list[tuple[str, str]]) -> CourseGraph:
@@ -252,3 +254,95 @@ def test_route_change_text_mentions_added_and_removed() -> None:
 
     assert "добавилось b" in text
     assert "ушло c" in text
+
+
+# --- заявленное в анкете (срез 23) ---
+
+
+def _claimed_route(*statuses: tuple[str, str]) -> Route:
+    return Route(
+        steps=[
+            RouteStep(concept_id=concept_id, mode="full", status=status)
+            for concept_id, status in statuses
+        ]
+    )
+
+
+def test_claimed_comes_from_confident_survey_answer(conn, settings) -> None:
+    load_seed(conn)
+    survey.apply_answers(
+        conn, {"block_python": survey.CONFIDENT_INDEX}, now=0.0, settings=settings
+    )
+
+    route = route_mod.build_route(conn, CourseGraph.load(conn), now=0.0, settings=settings)
+
+    statuses = _statuses(route)
+    assert statuses["python_basics"] == statuses["numpy_basics"] == "claimed"
+    assert statuses["pandas_intro"] == "ahead"
+
+
+def test_claimed_kept_in_snapshot_until_node_becomes_current(conn, settings) -> None:
+    graph = _graph(["a", "b"], [("a", "b")])
+    previous = _claimed_route(("a", "claimed"), ("b", "ahead"))
+
+    kept = route_mod.build_route(conn, graph, previous=previous, now=0.0, settings=settings)
+    current = route_mod.build_route(
+        conn, graph, current_node_id="a", previous=kept, now=0.0, settings=settings
+    )
+    after = route_mod.build_route(conn, graph, previous=current, now=0.0, settings=settings)
+
+    assert _statuses(kept)["a"] == "claimed"
+    assert _statuses(current)["a"] == "current"
+    assert _statuses(after)["a"] == "ahead"  # заявка снята — обратно не возвращается
+
+
+def test_next_node_treats_claimed_as_done_prerequisite(conn, settings) -> None:
+    graph = _graph(["a", "b"], [("a", "b")])
+    route = _claimed_route(("a", "claimed"), ("b", "ahead"))
+
+    assert route_mod.next_node_id(conn, graph, route, now=0.0, settings=settings) == "b"
+
+
+def test_next_node_checks_claimed_when_nothing_else_left(conn, settings) -> None:
+    graph = _graph(["a", "b", "c"], [("a", "b")])
+    route = _claimed_route(("a", "closed"), ("b", "claimed"), ("c", "claimed"))
+
+    assert route_mod.next_node_id(conn, graph, route, now=0.0, settings=settings) == "b"
+
+
+def test_first_node_is_never_claimed_while_unclaimed_remain(conn, settings) -> None:
+    """По всем 32 наборам «уверенных» блоков старт — с незаявленного узла."""
+    from itertools import combinations
+
+    keys = [block.key for block in survey.BLOCKS]
+    for size in range(len(keys) + 1):
+        for confident in combinations(keys, size):
+            db = get_conn(":memory:")
+            migrate(db)
+            load_seed(db)
+            answers = {key: (survey.CONFIDENT_INDEX if key in confident else 1) for key in keys}
+            survey.apply_answers(db, answers, now=0.0, settings=settings)
+            graph = CourseGraph.load(db)
+            route = route_mod.build_route(db, graph, now=0.0, settings=settings)
+            first = route_mod.next_node_id(db, graph, route, now=0.0, settings=settings)
+            statuses = _statuses(route)
+            db.close()
+            if size < len(keys):
+                assert statuses[first] != "claimed", confident
+            else:
+                assert first == "python_basics"  # всё заявлено — проверка с начала
+
+
+def test_upcoming_puts_first_then_ahead_then_claimed() -> None:
+    route = _claimed_route(("a", "claimed"), ("b", "ahead"), ("c", "closed"), ("d", "ahead"))
+
+    steps = route_mod.upcoming(route, "d", limit=5)
+
+    assert [step.concept_id for step in steps] == ["d", "b", "a"]
+
+
+def test_upcoming_respects_limit_and_empty_first() -> None:
+    route = _claimed_route(("a", "ahead"), ("b", "ahead"), ("c", "ahead"))
+
+    assert [step.concept_id for step in route_mod.upcoming(route, "a", limit=2)] == ["a", "b"]
+    assert route_mod.upcoming(route, None, limit=5) == []
