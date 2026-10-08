@@ -22,7 +22,8 @@ from llm_tutor.student import beta, survey
 
 def _complete_survey(conn) -> None:
     """Профиль заполнен: без этого свободный текст упирается в приглашение."""
-    repos.set_fact(conn, survey.EXPERIENCE_KEY, "Уверенно", source="self")
+    for question in survey.SURVEY_QUESTIONS:
+        repos.set_fact(conn, question.key, survey.SELF_LEVELS[3], source="self")
 
 
 def _handler(router, kind: str, index: int) -> object:
@@ -55,8 +56,8 @@ async def test_survey_writes_profile_after_last_answer(conn, settings) -> None:
     for _ in range(len(survey.SURVEY_QUESTIONS)):
         await on_answer(FakeCallback("survey:0", message), state)
 
-    assert repos.get_fact(conn, survey.EXPERIENCE_KEY) == "На Python не писал"
-    assert repos.get_fact(conn, survey.GOAL_CONCEPT_KEY) == "pandas_dataframe"
+    first = survey.SURVEY_QUESTIONS[0]
+    assert repos.get_fact(conn, first.key) == first.options[0].label
     assert await state.get_state() is None  # анкета закрыта, урок начался
 
 
@@ -484,7 +485,12 @@ async def test_menu_close_refuses_during_fsm_flow(conn, settings) -> None:
 async def test_start_after_survey_offers_resume(conn, settings) -> None:
     """У вернувшегося ученика /start даёт кнопку «Продолжить обучение»."""
     load_seed(conn)
-    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+    survey.apply_answers(
+        conn,
+        {question.key: 1 for question in survey.SURVEY_QUESTIONS},
+        now=1.0,
+        settings=settings,
+    )
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     on_start = _named(router, "message", "on_start")
     message = FakeMessage()
@@ -550,7 +556,12 @@ async def _dispatch(conn, settings, state_name: str, text: str):
 async def test_command_on_route_screen_reaches_its_handler(conn, settings) -> None:
     """На экране согласования команда доходит до хендлера, а не в подсказку."""
     load_seed(conn)
-    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+    survey.apply_answers(
+        conn,
+        {question.key: 1 for question in survey.SURVEY_QUESTIONS},
+        now=1.0,
+        settings=settings,
+    )
 
     state = await _dispatch(conn, settings, DiagnosticFlow.answering.state, "/start")
 

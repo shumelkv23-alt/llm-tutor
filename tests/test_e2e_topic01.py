@@ -138,9 +138,12 @@ async def test_full_topic01_scenario() -> None:
     try:
         # 1. Анкета: профиль и слабый априор, без обращения к модели
         survey.apply_answers(
-            conn, {survey.EXPERIENCE_KEY: 1, survey.GOAL_KEY: 2}, now=0.0, settings=settings
+            conn,
+            {question.key: 1 for question in survey.SURVEY_QUESTIONS},
+            now=0.0,
+            settings=settings,
         )
-        assert repos.get_fact(conn, survey.GOAL_CONCEPT_KEY) == "churn_eda_case"
+        assert survey.is_completed(conn)
         assert repos.get_events(conn)  # самооценка записана в журнал
 
         # 2. Вопрос тьютору — структурированный ответ модели

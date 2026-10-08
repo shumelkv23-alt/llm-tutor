@@ -1,8 +1,12 @@
-"""Анкета холодного старта: профиль в ``facts`` + слабый априор (Срез 4.7).
+"""Анкета холодного старта: профиль в ``facts`` + слабый априор.
 
 Модель ученика стартует с априора Beta(1,1) — «не знаем». Анкета не заменяет
 диагностику, а даёт лишь слабые свидетельства ``source='self'``: их вес мал
 (``self_evidence_weight``), чтобы самооценка не подменяла реальные задания.
+
+Вопросы — по блокам узлов курса (срез 19): вместо общих «опыт / цель / время»
+пять тематических, каждый про свой участок темы. Цель маршрута не спрашиваем:
+маршрут строим по всей теме целиком.
 """
 
 import sqlite3
@@ -13,19 +17,65 @@ from llm_tutor.config import Settings, get_settings
 from llm_tutor.db import repos
 from llm_tutor.student import self_report
 
-# Ключи фактов профиля.
-EXPERIENCE_KEY = "pandas_experience"
-GOAL_KEY = "goal"
+# Ключ факта цели: анкетой больше не заполняется, но маршрут его читает.
 GOAL_CONCEPT_KEY = "goal_concept_id"
-TIME_BUDGET_KEY = "time_budget"
+
+# Градации самооценки — общие для всех вопросов.
+SELF_LEVELS: tuple[str, ...] = (
+    "Не знаю",
+    "Слышал(а), но не делал(а)",
+    "Делал(а), но с подсказками",
+    "Уверенно",
+)
+
+# Во что превращается индекс ответа: 0 — «не знаю», 3 — «уверенно».
+PRIOR_LEVELS: tuple[float, ...] = (0.0, 0.3, 0.65, 1.0)
+
+# Блоки темы: ключ вопроса, название для текста, узлы блока.
+BLOCKS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("python", "Основы Python и NumPy", ("python_basics", "numpy_basics")),
+    (
+        "tables",
+        "Таблицы pandas: Series и DataFrame",
+        ("pandas_intro", "pandas_series", "pandas_dataframe"),
+    ),
+    (
+        "loading",
+        "Чтение и осмотр данных",
+        ("read_csv", "df_inspect", "describe_stats", "dtype_conversion"),
+    ),
+    (
+        "selection",
+        "Выборка и упорядочивание",
+        (
+            "indexing_loc_iloc",
+            "boolean_indexing",
+            "sorting",
+            "value_counts",
+            "df_transformations",
+        ),
+    ),
+    (
+        "analysis",
+        "Группировки и разведочный анализ",
+        (
+            "apply_functions",
+            "groupby",
+            "agg_functions",
+            "summary_tables",
+            "visualization_basics",
+            "eda_workflow",
+            "churn_eda_case",
+        ),
+    ),
+)
 
 
 @dataclass(frozen=True)
 class SurveyOption:
-    """Вариант ответа: что сказать и (для цели) какой концепт он нацеливает."""
+    """Вариант ответа анкеты."""
 
     label: str
-    target_concept: str | None = None
 
 
 @dataclass(frozen=True)
@@ -37,55 +87,22 @@ class SurveyQuestion:
     options: list[SurveyOption] = field(default_factory=list)
 
 
-SURVEY_QUESTIONS: tuple[SurveyQuestion, ...] = (
+SURVEY_QUESTIONS: tuple[SurveyQuestion, ...] = tuple(
     SurveyQuestion(
-        key=EXPERIENCE_KEY,
-        text="Насколько ты знаком с Python и pandas?",
-        options=[
-            SurveyOption("На Python не писал"),
-            SurveyOption("Python знаю, pandas — нет"),
-            SurveyOption("pandas трогал(а) пару раз"),
-            SurveyOption("Работаю с pandas уверенно"),
-        ],
-    ),
-    SurveyQuestion(
-        key=GOAL_KEY,
-        text="Зачем тебе эта тема?",
-        options=[
-            SurveyOption("Разобраться с основами pandas", target_concept="pandas_dataframe"),
-            SurveyOption("Освоить группировки и сводные таблицы", target_concept="summary_tables"),
-            SurveyOption("Пройти тему 1 целиком", target_concept="churn_eda_case"),
-        ],
-    ),
-    SurveyQuestion(
-        key=TIME_BUDGET_KEY,
-        text="Сколько времени в неделю готов заниматься?",
-        options=[
-            SurveyOption("Меньше часа"),
-            SurveyOption("1–3 часа"),
-            SurveyOption("3–7 часов"),
-            SurveyOption("Больше 7 часов"),
-        ],
-    ),
+        key=f"block_{block_key}",
+        text=f"Как у тебя с блоком «{title}»?",
+        options=[SurveyOption(label) for label in SELF_LEVELS],
+    )
+    for block_key, title, _ in BLOCKS
 )
 
 
-# Самооценка опыта → слабый априор по фундаментальным концептам.
-# Программист без pandas получает высокий python_basics и низкие pandas-узлы.
-_EXPERIENCE_PRIOR: tuple[dict[str, float], ...] = (
-    {"python_basics": 0.0},
-    {"python_basics": 1.0, "pandas_intro": 0.0},
-    {"python_basics": 1.0, "pandas_intro": 1.0, "pandas_series": 1.0, "pandas_dataframe": 1.0},
-    {
-        "python_basics": 1.0,
-        "pandas_intro": 1.0,
-        "pandas_series": 1.0,
-        "pandas_dataframe": 1.0,
-        "read_csv": 1.0,
-        "df_inspect": 1.0,
-        "indexing_loc_iloc": 1.0,
-    },
-)
+def _block_concepts(question_key: str) -> tuple[str, ...]:
+    """Узлы блока по ключу вопроса (``KeyError``, если такого блока нет)."""
+    for block_key, _, concepts in BLOCKS:
+        if question_key == f"block_{block_key}":
+            return concepts
+    raise KeyError(f"Нет блока анкеты с ключом {question_key!r}")
 
 
 def question_by_key(key: str) -> SurveyQuestion:
@@ -96,18 +113,6 @@ def question_by_key(key: str) -> SurveyQuestion:
     raise KeyError(f"Нет вопроса анкеты с ключом {key!r}")
 
 
-def _apply_prior(
-    conn: sqlite3.Connection,
-    concept_id: str,
-    correct: float,
-    *,
-    now: float,
-    settings: Settings,
-) -> None:
-    """Пишет слабое свидетельство самооценки из анкеты."""
-    self_report.apply(conn, concept_id, correct=bool(correct), now=now, settings=settings)
-
-
 def apply_answers(
     conn: sqlite3.Connection,
     answers: dict[str, int],
@@ -115,7 +120,7 @@ def apply_answers(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> None:
-    """Сохраняет ответы анкеты в ``facts`` и раздаёт слабый априор по концептам.
+    """Сохраняет ответы анкеты в ``facts`` и раздаёт слабый априор по блокам.
 
     ``answers`` — ключ вопроса → индекс выбранного варианта. Незаполненные
     вопросы просто не сохраняются (анкету можно прервать). Повторное
@@ -124,7 +129,6 @@ def apply_answers(
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
-    first_completion = not is_completed(conn)
 
     for key, index in answers.items():
         question = question_by_key(key)
@@ -132,17 +136,25 @@ def apply_answers(
             raise ValueError(
                 f"Нет варианта {index} у вопроса {key!r} (их {len(question.options)})"
             )
-        option = question.options[index]
-        repos.set_fact(conn, key, option.label, source="self")
-        if key == GOAL_KEY and option.target_concept is not None:
-            repos.set_fact(conn, GOAL_CONCEPT_KEY, option.target_concept, source="self")
-
-    experience = answers.get(EXPERIENCE_KEY)
-    if experience is not None and first_completion:
-        for concept_id, correct in _EXPERIENCE_PRIOR[experience].items():
-            _apply_prior(conn, concept_id, correct, now=stamp, settings=s)
+        # Априор блока начисляем, только когда ответ на него звучит впервые:
+        # иначе повторное прохождение анкеты накрутило бы самооценку.
+        fresh = repos.get_fact(conn, key) is None
+        repos.set_fact(conn, key, question.options[index].label, source="self")
+        if fresh:
+            for concept_id in _block_concepts(key):
+                self_report.apply(
+                    conn,
+                    concept_id,
+                    correct=PRIOR_LEVELS[index],
+                    now=stamp,
+                    settings=s,
+                    commit=False,
+                )
+    conn.commit()
 
 
 def is_completed(conn: sqlite3.Connection) -> bool:
-    """Прошёл ли ученик анкету (по наличию факта об опыте)."""
-    return repos.get_fact(conn, EXPERIENCE_KEY) is not None
+    """Прошёл ли ученик анкету: ответы есть на все вопросы."""
+    return all(
+        repos.get_fact(conn, question.key) is not None for question in SURVEY_QUESTIONS
+    )

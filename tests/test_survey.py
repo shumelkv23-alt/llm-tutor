@@ -1,121 +1,98 @@
-"""Тесты анкеты холодного старта (Срез 4.7)."""
+"""Тесты анкеты холодного старта (Срез 19: пять тематических вопросов)."""
 
 import pytest
 
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.student import beta, self_report, survey
 
-EXPERIENCE = survey.EXPERIENCE_KEY
-GOAL = survey.GOAL_KEY
-TIME_BUDGET = survey.TIME_BUDGET_KEY
+FIRST = survey.SURVEY_QUESTIONS[0]
+FIRST_BLOCK_NODES = survey.BLOCKS[0][2]
+
+
+def test_survey_has_five_topical_questions() -> None:
+    """Пять вопросов, у каждого четыре градации самооценки."""
+    assert len(survey.SURVEY_QUESTIONS) == 5
+    assert all(len(question.options) == 4 for question in survey.SURVEY_QUESTIONS)
+
+
+def test_survey_blocks_cover_every_node(conn) -> None:
+    """Блоки накрывают все узлы курса: априор достаётся каждому."""
+    load_seed(conn)
+    covered = {concept for _, _, concepts in survey.BLOCKS for concept in concepts}
+
+    assert covered == set(CourseGraph.load(conn).node_ids)
 
 
 def test_apply_answers_writes_facts(conn, settings) -> None:
     load_seed(conn)
 
-    survey.apply_answers(conn, {EXPERIENCE: 1, TIME_BUDGET: 2}, now=0.0, settings=settings)
+    survey.apply_answers(conn, {FIRST.key: 1}, now=0.0, settings=settings)
 
-    assert repos.get_fact(conn, EXPERIENCE) == "Python знаю, pandas — нет"
-    assert repos.get_fact(conn, TIME_BUDGET) == "3–7 часов"
+    assert repos.get_fact(conn, FIRST.key) == survey.SELF_LEVELS[1]
 
 
-def test_apply_answers_sets_goal_concept(conn, settings) -> None:
+def test_prior_uses_levels(conn, settings) -> None:
+    """Индекс ответа задаёт силу априора, а не только «знаю / не знаю»."""
     load_seed(conn)
 
-    survey.apply_answers(conn, {GOAL: 2}, now=0.0, settings=settings)
+    survey.apply_answers(conn, {FIRST.key: 1}, now=0.0, settings=settings)
 
-    assert repos.get_fact(conn, GOAL) == "Пройти тему 1 целиком"
-    assert repos.get_fact(conn, survey.GOAL_CONCEPT_KEY) == "churn_eda_case"
+    assert repos.get_events(conn)[0].result == pytest.approx(survey.PRIOR_LEVELS[1])
 
 
-def test_goal_concept_not_written_without_goal_answer(conn, settings) -> None:
+def test_prior_covers_every_node_of_block(conn, settings) -> None:
+    """Один ответ накрывает весь блок узлов."""
     load_seed(conn)
 
-    survey.apply_answers(conn, {EXPERIENCE: 0}, now=0.0, settings=settings)
+    survey.apply_answers(conn, {FIRST.key: 3}, now=0.0, settings=settings)
 
-    assert repos.get_fact(conn, survey.GOAL_CONCEPT_KEY) is None
-
-
-def test_experience_prior_raises_foundation(conn, settings) -> None:
-    """«Уверенно работаю с pandas» поднимает фундаментальные концепты."""
-    load_seed(conn)
-
-    survey.apply_answers(conn, {EXPERIENCE: 3}, now=0.0, settings=settings)
-
-    assert beta.estimate(conn, "pandas_dataframe", now=0.0, settings=settings).mean > 0.5
-
-
-def test_beginner_prior_lowers_python_basics(conn, settings) -> None:
-    """«На Python не писал» опускает базу ниже априора и блокирует зависимые."""
-    load_seed(conn)
-
-    survey.apply_answers(conn, {EXPERIENCE: 0}, now=0.0, settings=settings)
-
-    assert beta.estimate(conn, "python_basics", now=0.0, settings=settings).mean < 0.5
-
-
-def test_prior_is_weak_evidence(conn, settings) -> None:
-    """Самооценка не должна перевешивать реальные задания (малый вес)."""
-    load_seed(conn)
-
-    survey.apply_answers(conn, {EXPERIENCE: 3}, now=0.0, settings=settings)
-
-    mastery = beta.estimate(conn, "pandas_dataframe", now=0.0, settings=settings)
-    assert mastery.alpha <= 1.0 + settings.self_evidence_weight + 1e-9
+    assert {event.concept_id for event in repos.get_events(conn)} == set(FIRST_BLOCK_NODES)
 
 
 def test_prior_events_are_labelled_as_self(conn, settings) -> None:
+    """Анкета пишет тот же тип свидетельства, что и «я это знаю»."""
     load_seed(conn)
 
-    survey.apply_answers(conn, {EXPERIENCE: 1}, now=0.0, settings=settings)
+    survey.apply_answers(conn, {FIRST.key: 1}, now=0.0, settings=settings)
 
-    events = repos.get_events(conn)
-    assert events
-    assert {event.source for event in events} == {"self"}
-    assert all(event.weight == settings.self_evidence_weight for event in events)
+    assert {event.source for event in repos.get_events(conn)} == {"self"}
 
 
 def test_invalid_option_index_raises(conn, settings) -> None:
     load_seed(conn)
 
-    with pytest.raises(ValueError, match="Нет варианта"):
-        survey.apply_answers(conn, {EXPERIENCE: 99}, now=0.0, settings=settings)
+    with pytest.raises(ValueError):
+        survey.apply_answers(conn, {FIRST.key: 99}, now=0.0, settings=settings)
 
 
 def test_unknown_question_key_raises(conn, settings) -> None:
     load_seed(conn)
 
     with pytest.raises(KeyError):
-        survey.apply_answers(conn, {"favourite_food": 0}, now=0.0, settings=settings)
+        survey.apply_answers(conn, {"нет_такого_блока": 0}, now=0.0, settings=settings)
 
 
 def test_reapplying_survey_does_not_double_prior(conn, settings) -> None:
-    """Повторный проход анкеты не должен накручивать самооценку дважды."""
+    """Повторное прохождение факты перезаписывает, априор — нет."""
     load_seed(conn)
-    survey.apply_answers(conn, {EXPERIENCE: 3}, now=0.0, settings=settings)
-    after_first = repos.get_mastery(conn, "pandas_dataframe")["alpha"]
+    survey.apply_answers(conn, {FIRST.key: 3}, now=0.0, settings=settings)
+    before = len(repos.get_events(conn))
 
-    survey.apply_answers(conn, {EXPERIENCE: 3}, now=0.0, settings=settings)
+    survey.apply_answers(conn, {FIRST.key: 3}, now=1.0, settings=settings)
 
-    assert repos.get_mastery(conn, "pandas_dataframe")["alpha"] == after_first
+    assert len(repos.get_events(conn)) == before
 
 
-def test_is_completed_reflects_experience_fact(conn, settings) -> None:
+def test_is_completed_needs_every_answer(conn, settings) -> None:
+    """Анкета считается пройденной только целиком."""
     load_seed(conn)
+
     assert survey.is_completed(conn) is False
 
-    survey.apply_answers(conn, {EXPERIENCE: 2}, now=0.0, settings=settings)
-
-    assert survey.is_completed(conn) is True
-
-
-def test_onboarding_texts_exist() -> None:
-    """Вход в курс объясняет, что будет происходить."""
-    from llm_tutor.bot import start
-
-    assert len([line for line in start.INTRO_TEXT.splitlines() if line.strip()]) == 3
-    assert start.START_LABEL in start.INTRO_TEXT
+    survey.apply_answers(conn, {FIRST.key: 2}, now=0.0, settings=settings)
+    assert survey.is_completed(conn) is False
 
 
 def test_self_evidence_moves_mastery_weakly(conn, settings) -> None:
@@ -132,6 +109,14 @@ def test_self_evidence_moves_mastery_weakly(conn, settings) -> None:
 def test_survey_prior_uses_shared_self_evidence(conn, settings) -> None:
     """Анкета пишет тот же тип свидетельства, что и «я это знаю»."""
     load_seed(conn)
-    survey.apply_answers(conn, {survey.EXPERIENCE_KEY: 1}, now=1.0, settings=settings)
+    survey.apply_answers(conn, {FIRST.key: 1}, now=1.0, settings=settings)
 
     assert {event.source for event in repos.get_events(conn)} == {"self"}
+
+
+def test_onboarding_texts_exist() -> None:
+    """Вход в курс объясняет, что будет происходить."""
+    from llm_tutor.bot import start
+
+    assert len([line for line in start.INTRO_TEXT.splitlines() if line.strip()]) == 3
+    assert start.START_LABEL in start.INTRO_TEXT
