@@ -1071,12 +1071,15 @@ def test_restarting_pass_drops_pending_item_without_evidence(conn, settings) -> 
     load_seed(conn)
     _set_state(conn, current_node_id="groupby")
     verify.start_verification(conn, now=1.0, settings=settings)
-    first = _state(conn).pending_item_id
+    # Второй заход должен начать список выданного с нуля: без сброса он бы
+    # счёл все три задания узла уже использованными и сдался.
+    _set_state(conn, verify_item_ids=[4, 9, 10])
 
     verify.start_verification(conn, now=2.0, settings=settings)
 
-    assert _state(conn).pending_item_id != first
-    assert _state(conn).verify_item_ids == [_state(conn).pending_item_id]
+    state = _state(conn)
+    assert state.pending_item_id is not None
+    assert state.verify_item_ids == [state.pending_item_id]
     assert repos.get_events(conn) == []
 ```
 
