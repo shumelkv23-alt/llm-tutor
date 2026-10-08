@@ -6,7 +6,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Role = Literal["system", "user", "assistant"]
 
@@ -38,6 +38,9 @@ class Concept(BaseModel):
     difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
     description: str | None = None
     source_url: str | None = None
+    # Модуль курса (1–10). Проставляет загрузчик по seed-файлу модуля (срез 24);
+    # у узлов из тестов и данных до модулей — первый модуль.
+    topic_id: int = Field(default=1, ge=1)
     # Убранный из seed узел не удаляется (на него ссылаются события), а гасится.
     active: bool = True
 
@@ -123,6 +126,83 @@ class Criterion(BaseModel):
     active: bool = True
 
 
+# Вопрос об общем уровне: «с нуля», «немного», «уверенно» (срез 22).
+SURVEY_LEVEL_OPTIONS = 3
+
+
+class SurveyBlock(BaseModel):
+    """Блок анкеты модуля: ключ факта, имя для сводки, вопрос, пример API, темы."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    question: str
+    example: str
+    concepts: tuple[str, ...]
+
+
+class SurveyConfig(BaseModel):
+    """Анкета модуля: вопрос об общем уровне и вопросы по блокам (срез 26).
+
+    Живёт в seed модуля: у каждого модуля свои блоки, а правила ветвления
+    общие (``student/survey.py``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    level_key: str
+    level_question: str
+    level_options: tuple[str, ...]
+    blocks: tuple[SurveyBlock, ...]
+    # «Уверенно» в вопросе об уровне: эти блоки знакомы без вопроса.
+    assumed_by_confident: tuple[str, ...] = ()
+    # Фундамент: «Впервые вижу» здесь — дальше всё тоже незнакомо.
+    foundation: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _check(self) -> "SurveyConfig":
+        """Анкета согласована сама с собой: иначе бот упал бы посреди вопросов."""
+        if len(self.level_options) != SURVEY_LEVEL_OPTIONS:
+            raise ValueError("в вопросе об уровне должно быть три варианта")
+        if not self.blocks:
+            raise ValueError("в анкете модуля нет блоков")
+        keys = [self.level_key, *(block.key for block in self.blocks)]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"Дубли ключей анкеты: {keys}")
+        unknown = sorted(
+            (set(self.assumed_by_confident) | set(self.foundation))
+            - {block.key for block in self.blocks}
+        )
+        if unknown:
+            raise ValueError(f"анкета ссылается на неизвестные блоки: {unknown}")
+        return self
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """Ключи фактов анкеты: вопрос об уровне и все блоки."""
+        return (self.level_key, *(block.key for block in self.blocks))
+
+    def block(self, key: str) -> SurveyBlock:
+        """Блок по ключу факта (``KeyError``, если такого нет)."""
+        for block in self.blocks:
+            if block.key == key:
+                return block
+        raise KeyError(f"Нет блока анкеты с ключом {key!r}")
+
+
+class Topic(BaseModel):
+    """Модуль курса: номер, название, вводная и анкета (срез 24)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int = Field(ge=1)
+    title: str
+    intro: str
+    survey: SurveyConfig
+    active: bool = True
+
+
 class Event(BaseModel):
     """Атомарное свидетельство об ученике — запись в журнал ``events``."""
 
@@ -185,6 +265,8 @@ class Chunk(BaseModel):
     id: int | None = None
     concept_id: str | None = None
     section: str | None = None
+    # Модуль, к которому относится материал: RAG не подмешивает будущие модули.
+    topic_id: int = Field(default=1, ge=1)
 
 
 class RouteStep(BaseModel):

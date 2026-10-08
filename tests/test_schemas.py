@@ -3,7 +3,17 @@
 import pytest
 from pydantic import ValidationError
 
-from llm_tutor.schemas import Event, Message, Route, RouteStep, SessionState
+from llm_tutor.schemas import (
+    Chunk,
+    Concept,
+    Event,
+    Message,
+    Route,
+    RouteStep,
+    SessionState,
+    SurveyConfig,
+    Topic,
+)
 
 
 def test_session_state_roundtrip() -> None:
@@ -93,3 +103,64 @@ def test_message_id_and_meta_default_to_none() -> None:
     message = Message(role="user", content="x")
     assert message.id is None
     assert message.meta is None
+
+
+def _survey(**patch) -> dict:
+    data = {
+        "level_key": "t02_level",
+        "level_question": "Как у тебя с графиками?",
+        "level_options": ["С нуля", "Немного", "Уверенно"],
+        "blocks": [
+            {"key": "t02_a", "title": "А", "question": "А?", "example": "a", "concepts": ["x"]},
+            {"key": "t02_b", "title": "Б", "question": "Б?", "example": "b", "concepts": ["y"]},
+        ],
+        "assumed_by_confident": ["t02_a"],
+        "foundation": ["t02_a"],
+    }
+    data.update(patch)
+    return data
+
+
+def test_concept_and_chunk_default_to_first_module() -> None:
+    assert Concept(id="a", name="a").topic_id == 1
+    assert Chunk(source_url="u", content="c", seq=0).topic_id == 1
+
+
+def test_survey_config_parses_lists_into_tuples() -> None:
+    config = SurveyConfig.model_validate(_survey())
+
+    assert config.block("t02_b").concepts == ("y",)
+    assert config.keys == ("t02_level", "t02_a", "t02_b")
+
+
+def test_survey_config_needs_three_level_options() -> None:
+    with pytest.raises(ValidationError, match="три варианта"):
+        SurveyConfig.model_validate(_survey(level_options=["С нуля", "Уверенно"]))
+
+
+def test_survey_config_needs_blocks() -> None:
+    with pytest.raises(ValidationError, match="нет блоков"):
+        SurveyConfig.model_validate(_survey(blocks=[], assumed_by_confident=[], foundation=[]))
+
+
+def test_survey_config_rejects_duplicate_keys() -> None:
+    with pytest.raises(ValidationError, match="Дубли ключей"):
+        SurveyConfig.model_validate(_survey(level_key="t02_a"))
+
+
+def test_survey_config_rejects_unknown_block_references() -> None:
+    with pytest.raises(ValidationError, match="неизвестные блоки"):
+        SurveyConfig.model_validate(_survey(foundation=["t02_zzz"]))
+
+
+def test_survey_config_unknown_block_key_raises() -> None:
+    with pytest.raises(KeyError):
+        SurveyConfig.model_validate(_survey()).block("nope")
+
+
+def test_topic_is_frozen_and_hashable() -> None:
+    topic = Topic(number=2, title="Т", intro="И", survey=SurveyConfig.model_validate(_survey()))
+
+    assert hash(topic) == hash(topic.model_copy())
+    with pytest.raises(ValidationError):
+        topic.title = "другое"
