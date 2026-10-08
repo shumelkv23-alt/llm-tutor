@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 
 from llm_tutor.bot.diagnostic import make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
+from llm_tutor.bot.onboarding import make_onboarding_router
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.bot.themes import make_themes_router
 from llm_tutor.config import get_settings
@@ -49,6 +50,7 @@ async def main() -> None:
         # попадать в тьютор-путь.
         dispatcher.include_router(make_survey_router(conn, settings))
         dispatcher.include_router(make_diagnostic_router(conn, settings))
+        dispatcher.include_router(make_onboarding_router(conn, settings))
         dispatcher.include_router(make_themes_router(conn, settings))
         dispatcher.include_router(
             make_router(conn, client, settings.tutor_model, settings=settings)

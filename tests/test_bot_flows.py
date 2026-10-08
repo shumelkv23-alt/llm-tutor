@@ -1,14 +1,13 @@
 """Тесты FSM-потоков бота: анкета и диагностика (Срез 4.5)."""
 
 import pytest
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.storage.base import StorageKey
-from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardMarkup
+
+from fakes import FakeCallback, FakeMessage, _fsm, _named
 
 from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
+from llm_tutor.bot.onboarding import OnboardingFlow
 from llm_tutor.bot.survey import INTRO_TEXT
 from llm_tutor.bot.survey import ask as ask_survey
 from llm_tutor.bot.survey import make_survey_router
@@ -18,51 +17,9 @@ from llm_tutor.db import repos
 from llm_tutor.student import beta, survey
 
 
-class FakeMessage:
-    """Подставное сообщение: помнит всё, что бот в него отправил."""
-
-    def __init__(self, text: str = "") -> None:
-        self.text = text
-        self.sent: list[tuple[str, InlineKeyboardMarkup | None]] = []
-
-    async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
-        self.sent.append((text, reply_markup))
-
-    @property
-    def last_text(self) -> str:
-        return self.sent[-1][0]
-
-
-class FakeCallback:
-    """Подставное нажатие инлайн-кнопки."""
-
-    def __init__(self, data: str, message: FakeMessage) -> None:
-        self.data = data
-        self.message = message
-        self.answered = False
-
-    async def answer(self, *args, **kwargs) -> None:
-        self.answered = True
-
-
-def _fsm() -> FSMContext:
-    return FSMContext(
-        storage=MemoryStorage(),
-        key=StorageKey(bot_id=1, chat_id=1, user_id=1),
-    )
-
-
 def _handler(router, kind: str, index: int) -> object:
     """Достаёт callback зарегистрированного хендлера (фильтры обходим)."""
     return getattr(router, kind).handlers[index].callback
-
-
-def _named(router, kind: str, name: str):
-    """Находит хендлер по имени функции — не зависит от порядка регистрации."""
-    for handler in getattr(router, kind).handlers:
-        if handler.callback.__name__ == name:
-            return handler.callback
-    raise AssertionError(f"нет хендлера {name}")
 
 
 # --- анкета ---
@@ -92,7 +49,7 @@ async def test_survey_writes_profile_after_last_answer(conn, settings) -> None:
 
     assert repos.get_fact(conn, survey.EXPERIENCE_KEY) == "На Python не писал"
     assert repos.get_fact(conn, survey.GOAL_CONCEPT_KEY) == "pandas_dataframe"
-    assert await state.get_state() is None  # поток закрыт
+    assert await state.get_state() == OnboardingFlow.route_review.state
 
 
 async def test_survey_goes_through_all_questions(conn, settings) -> None:

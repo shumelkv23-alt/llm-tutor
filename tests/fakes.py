@@ -1,7 +1,54 @@
 """Общие подставные объекты для тестов."""
 
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.storage.base import StorageKey
+from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import InlineKeyboardMarkup
+
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
+
+
+class FakeMessage:
+    """Подставное сообщение: помнит всё, что бот в него отправил."""
+
+    def __init__(self, text: str = "") -> None:
+        self.text = text
+        self.sent: list[tuple[str, InlineKeyboardMarkup | None]] = []
+
+    async def answer(self, text: str, reply_markup=None, **kwargs) -> None:
+        self.sent.append((text, reply_markup))
+
+    @property
+    def last_text(self) -> str:
+        return self.sent[-1][0]
+
+
+class FakeCallback:
+    """Подставное нажатие инлайн-кнопки."""
+
+    def __init__(self, data: str, message: FakeMessage) -> None:
+        self.data = data
+        self.message = message
+        self.answered = False
+
+    async def answer(self, *args, **kwargs) -> None:
+        self.answered = True
+
+
+def _fsm() -> FSMContext:
+    return FSMContext(
+        storage=MemoryStorage(),
+        key=StorageKey(bot_id=1, chat_id=1, user_id=1),
+    )
+
+
+def _named(router, kind: str, name: str):
+    """Находит хендлер по имени функции — не зависит от порядка регистрации."""
+    for handler in getattr(router, kind).handlers:
+        if handler.callback.__name__ == name:
+            return handler.callback
+    raise AssertionError(f"нет хендлера {name}")
 
 
 class GradingTutor:

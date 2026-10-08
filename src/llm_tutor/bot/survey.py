@@ -14,7 +14,7 @@ from aiogram.types import (
     Message,
 )
 
-from llm_tutor.bot import menu
+from llm_tutor.bot import onboarding
 from llm_tutor.config import Settings
 from llm_tutor.student import survey
 
@@ -30,11 +30,6 @@ INTRO_TEXT = (
     "Поехали 👇"
 )
 
-SURVEY_DONE_REPLY = (
-    "✅ Профиль заполнен. Можно посмотреть маршрут (🗺)\n"
-    "или сразу взять первое задание (🎯).\n"
-    "Я рядом — жми ❓, если что-то непонятно."
-)
 BUTTON_HINT_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"
 
 
@@ -87,9 +82,11 @@ def make_survey_router(conn, settings: Settings) -> Router:
             return
 
         survey.apply_answers(conn, answers, settings=settings)
-        await state.clear()
-        await callback.message.answer(SURVEY_DONE_REPLY, reply_markup=menu.main_menu())
         await callback.answer()
+        # Анкета не закрывает поток, а открывает экран согласования маршрута:
+        # ученик ещё может сказать, что часть тем уже знает (Срез 18).
+        await onboarding.show_route_screen(callback.message, state, conn, settings)
+        return
 
     @router.message(SurveyFlow.question, F.text, ~F.text.startswith("/"))
     async def on_text(message: Message) -> None:
