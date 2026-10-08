@@ -12,6 +12,9 @@ import httpx
 import pytest
 import respx
 
+from fakes import FakeCallback, FakeMessage, GradingTutor, _fsm, _named
+
+from llm_tutor.bot.onboarding import make_onboarding_router
 from llm_tutor.bot.render import render_plan
 from llm_tutor.config import Settings
 from llm_tutor.core.turn import handle_turn
@@ -189,3 +192,64 @@ async def test_full_topic01_scenario() -> None:
     finally:
         await client.aclose()
         conn.close()
+
+
+def _is_closed(conn, node_id: str) -> bool:
+    """Закрыт ли узел — по снимку маршрута (его пишет код закрытия узла).
+
+    Снимок, а не `beta.estimate`: закрытие по серии чистых ответов не обязано
+    поднимать владение выше порога, а `build_route` сохраняет отметку закрытия
+    из предыдущего снимка.
+    """
+    session_id = repos.get_open_session(conn)
+    if session_id is None:
+        return False
+    state = repos.get_session_state(conn, session_id)
+    if state.route is None:
+        return False
+    return any(
+        step.concept_id == node_id and step.status == "closed" for step in state.route.steps
+    )
+
+
+async def test_new_student_walks_the_whole_path(conn, settings) -> None:
+    """Согласование маршрута → «закрой тему» текстом → проверка → узел закрыт.
+
+    Проверяет, что куски срезов 15–18 сходятся: экран согласования пишет
+    слабое свидетельство и НЕ закрывает узел, «закрой тему» текстом ведёт
+    проверочный проход, а закрывает узел серия чистых ответов.
+    """
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+
+    # 1. Согласование маршрута: заявление о знании узел НЕ закрывает.
+    onboarding_router = make_onboarding_router(conn, settings)
+    on_know = _named(onboarding_router, "callback_query", "on_route_know")
+    await on_know(FakeCallback("route:know:read_csv", FakeMessage()), _fsm())
+
+    # Снимок маршрута уже есть: иначе проверка ниже прошла бы вхолостую.
+    assert repos.get_session_state(conn, repos.get_open_session(conn)).route is not None
+    assert not _is_closed(conn, "read_csv")
+
+    # 2. Переходим на groupby — единственный узел с несколькими заданиями —
+    #    и просим закрыть тему текстом.
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"current_node_id": "groupby"})
+    )
+    client = GradingTutor(conn, passed=True)
+
+    reply = await handle_turn(conn, client, "m", "закрой тему", now=2.0, settings=settings)
+
+    assert "Проверка" in reply.text
+    assert repos.get_session_state(conn, session_id).mode == "verify"
+    assert not _is_closed(conn, "groupby")  # до ответов узел ещё не закрыт
+
+    # 3. Два чистых ответа закрывают узел.
+    for ts in (3.0, 4.0):
+        await handle_turn(
+            conn, client, "m", "groupby группирует строки по ключу", now=ts, settings=settings
+        )
+
+    assert _is_closed(conn, "groupby")
