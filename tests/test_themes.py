@@ -291,3 +291,29 @@ def test_switching_theme_clears_verification_pass(conn, settings) -> None:
     updated = repos.get_session_state(conn, session_id)
     assert updated.verify_item_ids == []
     assert updated.mode is None
+
+
+def test_reselecting_same_theme_keeps_progress(conn, settings) -> None:
+    """Повторный выбор текущей темы не стирает серию и висящее задание."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = repos.get_session_state(conn, session_id)
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(
+            update={
+                "current_node_id": "groupby",
+                "node_streak": 1,
+                "hint_level": 2,
+                "pending_item_id": 9,
+            }
+        ),
+    )
+
+    switch_node(conn, "groupby", now=2.0, settings=settings)
+
+    updated = repos.get_session_state(conn, session_id)
+    assert updated.node_streak == 1
+    assert updated.hint_level == 2
+    assert updated.pending_item_id == 9

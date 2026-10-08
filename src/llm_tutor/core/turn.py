@@ -200,12 +200,14 @@ async def _answer_branch(
                 conn, client, model, item, user_text, settings=settings
             )
         else:
+            # Тип задания код проверять не умеет (например, открытый ответ без
+            # рубрики) — это сбой задания, а не ошибка ученика.
             return (
                 STALE_ITEM_REPLY,
                 [],
                 [],
                 state.model_copy(update={"pending_item_id": None}),
-                False,
+                None,
             )
     except (rubric.RubricError, autocheck.AutoCheckError):
         # Задание нельзя проверить (рубрику убрали, эталон битый) — снимаем его,
@@ -303,10 +305,17 @@ async def _tutor_branch(
         # даже если модель на этом ходу опустила уровень до нуля.
         new_state = new_state.model_copy(update={"task_hinted": True})
     if answer.student_stuck or force_stuck:
-        # Ученик просит глубины (или нажал «Не понимаю»): узел в усиленный
-        # проход, вперёд не идём.
+        # Ученик просит глубины (или написал «не понял»): узел в усиленный
+        # проход, вперёд не идём. Лестницу поднимаем ровно на одну ступень от
+        # уровня ДО хода: `new_state` уже содержит подъём от модели, и второй
+        # подъём поверх него дал бы +2 за ход.
         stuck_state = guide.on_student_stuck(new_state).model_copy(
-            update={"task_hinted": True}
+            update={
+                "hint_level": hints.next_hint_level(
+                    state.hint_level, state.hint_level + 1
+                ),
+                "task_hinted": True,
+            }
         )
         return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], stuck_state, False
     return answer.reply, [], [], new_state, answer.wants_close_topic
@@ -507,9 +516,9 @@ def _close_node_if_ready(
         }
     )
     if next_node_id is None:
-        return new_state, f"Узел «{closed_name}» закрыт — маршрут пройден до конца."
+        return new_state, f"✅ Тема «{closed_name}» закрыта — маршрут пройден до конца."
     next_name = graph.concept(next_node_id).name
-    return new_state, f"Узел «{closed_name}» закрыт ✓ — идём дальше: {next_name}."
+    return new_state, f"✅ Тема «{closed_name}» закрыта — идём дальше: {next_name}."
 
 
 def _issue_task(

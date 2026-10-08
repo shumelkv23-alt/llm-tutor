@@ -134,3 +134,21 @@ async def test_ungradable_item_does_not_drop_the_pass(conn, settings) -> None:
 
     assert VERIFY_FAILED_NOTE not in reply.text
     assert _state(conn).mode == "verify"
+
+
+async def test_item_without_rubric_does_not_drop_the_pass(conn, settings) -> None:
+    """Задание, которое код не умеет проверить, — сбой, а не провал ученика."""
+    load_seed(conn)
+    conn.execute("UPDATE items SET answer_type = 'open', rubric_id = NULL WHERE id = 9")
+    conn.commit()
+    _set_state(
+        conn, current_node_id="groupby", mode="verify", phase="practice", pending_item_id=9
+    )
+    client = GradingTutor(conn, passed=False)
+
+    reply = await handle_turn(
+        conn, client, "m", "groupby группирует строки", now=2.0, settings=settings
+    )
+
+    assert VERIFY_FAILED_NOTE not in reply.text
+    assert _state(conn).mode == "verify"

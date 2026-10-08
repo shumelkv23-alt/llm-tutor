@@ -262,8 +262,13 @@ def make_router(
 
     @router.message(Command("skip"))
     async def on_skip(message: Message) -> None:
+        try:
+            text = skip_pending(conn, settings=settings)
+        except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
+            logger.exception("Сбой пропуска задания")
+            text = BOT_FAILURE_REPLY
         await message.answer(
-            render.fit(render.escape(skip_pending(conn, settings=settings))),
+            render.fit(render.escape(text)),
             parse_mode=render.PARSE_MODE,
         )
 

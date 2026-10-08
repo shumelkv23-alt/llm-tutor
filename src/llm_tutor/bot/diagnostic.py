@@ -30,6 +30,7 @@ CORRECT_REPLY = "Верно ✓"
 WRONG_REPLY = "Не совсем ✗ — ничего страшного, это и нужно было выяснить."
 NO_QUESTIONS_REPLY = "Спрашивать пока нечего — по всем доступным узлам картина уже есть."
 BROKEN_STATE_REPLY = "Состояние захода потерялось — начнём заново, жми /diagnostic."
+STALE_CHOICE_REPLY = "Это вариант от прошлого задания — ответь на текущий вопрос."
 CHOOSE_BUTTON_REPLY = "Выбери, пожалуйста, один из вариантов кнопкой ниже 👇"
 WRITE_TEXT_REPLY = "Здесь нужен короткий ответ текстом — напиши его сообщением."
 
@@ -41,9 +42,19 @@ class DiagnosticFlow(StatesGroup):
 
 
 def _choice_keyboard(item: Item) -> InlineKeyboardMarkup:
+    """Кнопки вариантов; в колбэк кладём и id задания.
+
+    Сообщения остаются в переписке: клик по клавиатуре прошлого задания иначе
+    засчитался бы ответом на текущее — свидетельство за ответ, которого ученик
+    не давал.
+    """
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text=option, callback_data=f"{CALLBACK_PREFIX}:{index}")]
+            [
+                InlineKeyboardButton(
+                    text=option, callback_data=f"{CALLBACK_PREFIX}:{item.id}:{index}"
+                )
+            ]
             for index, option in enumerate(item.options)
         ]
     )
@@ -159,13 +170,29 @@ def make_diagnostic_router(conn, settings: Settings) -> Router:
     )
     async def on_choice(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
-        hint = _mismatch_hint(await state.get_data(), via_keyboard=True)
+        data = await state.get_data()
+        # Данные колбэка подконтрольны клиенту, и клавиатура могла остаться от
+        # прошлого задания: отвечаем только за то, что спрашивают сейчас.
+        try:
+            item_id, index = (
+                int(part) for part in (callback.data or "").split(":")[1:3]
+            )
+        except ValueError:
+            item_id, index = -1, -1
+        current = data.get("item_id")
+        if current is not None and item_id != current:
+            await callback.message.answer(STALE_CHOICE_REPLY)
+            return
+        hint = _mismatch_hint(data, via_keyboard=True)
         if hint is not None:
             await callback.message.answer(hint)
             return
-        await _record(
-            callback.message, state, conn, settings, (callback.data or "").split(":")[1]
-        )
+        item = repos.get_item(conn, item_id)
+        if item is not None and not 0 <= index < len(item.options):
+            await callback.message.answer(STALE_CHOICE_REPLY)
+            return
+        # Задания нет вовсе — потерянный заход: им занимается _record.
+        await _record(callback.message, state, conn, settings, str(index))
 
     @router.message(DiagnosticFlow.answering, F.text, ~F.text.startswith("/"))
     async def on_text(message: Message, state: FSMContext) -> None:

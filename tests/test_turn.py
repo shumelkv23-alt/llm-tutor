@@ -374,7 +374,7 @@ async def test_two_clean_answers_close_node_and_move_on(conn, settings) -> None:
     assert state.current_node_id != "python_basics"  # ушли с закрытого узла
     assert state.phase == "practice"  # и сразу получили задание по новому узлу
     assert state.pending_item_id is not None
-    assert "закрыт" in reply.text.lower()
+    assert "Тема «Основы Python» закрыта — идём дальше" in reply.text
 
 
 async def test_stuck_keeps_student_on_the_same_node(conn, settings) -> None:
@@ -756,3 +756,15 @@ async def test_close_phrase_keeps_students_words_in_journal(conn, settings) -> N
 
     messages = repos.get_messages(conn, repos.get_open_session(conn))
     assert messages[-2].content == "закрой тему"
+
+
+@pytest.mark.parametrize("model_level", [0, 4])
+async def test_stuck_raises_hint_level_by_one_step(conn, settings, model_level) -> None:
+    """«не понял» поднимает лестницу на одну ступень, а не на две."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    client = _FakeTutor(hint_level=model_level)
+
+    await handle_turn(conn, client, "m", "не понял", now=1.0, settings=settings)
+
+    assert _state(conn).hint_level == 1

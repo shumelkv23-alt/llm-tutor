@@ -86,7 +86,9 @@ async def test_diagnostic_asks_question_and_records_answer(conn, settings) -> No
     assert message.sent[1][1] is not None  # задание с вариантами
     item_id = (await state.get_data())["item_id"]
 
-    await _handler(router, "callback_query", 0)(FakeCallback("diag:0", message), state)
+    await _handler(router, "callback_query", 0)(
+        FakeCallback(f"diag:{item_id}:0", message), state
+    )
 
     events = repos.get_events(conn)
     assert events  # у задания может быть несколько концептов — отсюда несколько событий
@@ -134,7 +136,10 @@ async def test_button_on_text_question_is_not_recorded(conn, settings) -> None:
     )
     message = FakeMessage()
 
-    await _handler(router, "callback_query", 0)(FakeCallback("diag:0", message), state)
+    item_id = (await state.get_data())["item_id"]
+    await _handler(router, "callback_query", 0)(
+        FakeCallback(f"diag:{item_id}:0", message), state
+    )
 
     assert repos.get_events(conn) == []
     assert "текстом" in message.last_text
@@ -168,7 +173,10 @@ async def test_diagnostic_survives_lost_state(conn, settings) -> None:
     await state.update_data(item_id=None)  # как после рестарта
 
     message = FakeMessage()
-    await _handler(router, "callback_query", 0)(FakeCallback("diag:0", message), state)
+    item_id = (await state.get_data())["item_id"]
+    await _handler(router, "callback_query", 0)(
+        FakeCallback(f"diag:{item_id}:0", message), state
+    )
 
     assert "заново" in message.last_text
 
@@ -679,3 +687,38 @@ async def test_options_keyboard_binds_answer_to_item(conn, settings) -> None:
 
     assert callbacks[0] == f"answer:{pending}:0"
     assert len(callbacks) == len(set(callbacks))
+
+
+async def test_skip_command_reports_failure(conn, settings, monkeypatch) -> None:
+    """Сбой пропуска задания — сообщение, а не тишина."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    monkeypatch.setattr(
+        "llm_tutor.bot.handlers.skip_pending",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
+    )
+    message = FakeMessage()
+
+    await _named(router, "message", "on_skip")(message)
+
+    assert "пошло не так" in message.last_text
+
+
+async def test_diagnostic_stale_keyboard_is_refused(conn, settings) -> None:
+    """Клик по клавиатуре прошлого задания не отвечает за текущее."""
+    load_seed(conn)
+    router = make_diagnostic_router(conn, settings)
+    state = _fsm()
+    message = FakeMessage()
+    await _handler(router, "message", 0)(message, state)  # /diagnostic
+    first = (await state.get_data())["item_id"]
+    on_choice = _handler(router, "callback_query", 0)
+    await on_choice(FakeCallback(f"diag:{first}:0", message), state)
+    events_before = len(repos.get_events(conn))
+    assert (await state.get_data())["item_id"] != first  # заход пошёл дальше
+    stale = FakeMessage()
+
+    await on_choice(FakeCallback(f"diag:{first}:0", stale), state)
+
+    assert "прошлого задания" in stale.last_text
+    assert len(repos.get_events(conn)) == events_before

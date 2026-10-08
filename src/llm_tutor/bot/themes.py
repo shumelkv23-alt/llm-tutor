@@ -131,17 +131,26 @@ def switch_node(
     graph = CourseGraph.load(conn)
     name = graph.concept(node_id).name
 
+    # Повторный выбор той же темы (ученик вернулся в список и ткнул в текущую)
+    # не должен молча стирать набранную серию, лестницу подсказок и висящее
+    # задание: тема та же, прогресс по ней никуда не делся.
+    if state.current_node_id == node_id:
+        keep = {
+            "phase": state.phase,
+            "node_streak": state.node_streak,
+            "hint_level": state.hint_level,
+            "pending_item_id": state.pending_item_id,
+        }
+    else:
+        keep = {"phase": "explain", "node_streak": 0, "hint_level": 0, "pending_item_id": None}
     new_state = state.model_copy(
         update={
             "current_node_id": node_id,
-            "phase": "explain",
             "mode": None,
-            "node_streak": 0,
-            "hint_level": 0,
-            "pending_item_id": None,
             # Переход на другую тему снимает проверочный проход (спека §5.2).
             "verify_item_ids": [],
             "last_activity": stamp,
+            **keep,
         }
     )
     fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
