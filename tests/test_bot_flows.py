@@ -341,7 +341,7 @@ async def test_menu_action_failure_is_reported_and_answered(conn, settings, monk
     message = FakeMessage()
     callback = FakeCallback("menu:task", message)
 
-    await _named(router, "callback_query", "on_menu_action")(callback)
+    await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
 
     assert "пошло не так" in message.last_text
     assert callback.answered is True
@@ -365,7 +365,7 @@ async def test_menu_action_sends_expected_text(conn, settings, action, expected)
     message = FakeMessage()
     callback = FakeCallback(f"menu:{action}", message)
 
-    await _named(router, "callback_query", "on_menu_action")(callback)
+    await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
 
     assert expected in message.last_text
     assert callback.answered is True
@@ -378,7 +378,7 @@ async def test_menu_action_task_issues_task_with_options(conn, settings) -> None
     message = FakeMessage()
     callback = FakeCallback("menu:task", message)
 
-    await _named(router, "callback_query", "on_menu_action")(callback)
+    await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
 
     assert message.sent[-1][1] is not None  # задание с вариантами
     assert _state(conn).pending_item_id is not None
@@ -394,7 +394,7 @@ async def test_menu_action_skip_clears_pending_item(conn, settings) -> None:
     message = FakeMessage()
     callback = FakeCallback("menu:skip", message)
 
-    await _named(router, "callback_query", "on_menu_action")(callback)
+    await _named(router, "callback_query", "on_menu_action")(callback, _fsm())
 
     assert _state(conn).pending_item_id is None
     assert callback.answered is True
@@ -459,6 +459,36 @@ async def test_menu_close_starts_verification(conn, settings) -> None:
     on_menu_action = _named(router, "callback_query", "on_menu_action")
     message = FakeMessage()
 
-    await on_menu_action(FakeCallback("menu:close", message))
+    await on_menu_action(FakeCallback("menu:close", message), _fsm())
 
     assert "Проверка" in message.last_text
+
+
+async def test_close_command_refuses_during_fsm_flow(conn, settings) -> None:
+    """Посреди анкеты или подбора проверку не начинаем: состояние сессии поедет."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    state = _fsm()
+    await state.set_state(DiagnosticFlow.answering)
+    message = FakeMessage()
+
+    await _named(router, "message", "on_close")(message, state)
+
+    assert "Сначала закончим" in message.last_text
+    assert repos.get_open_session(conn) is None  # сессию не тронули
+
+
+async def test_menu_close_refuses_during_fsm_flow(conn, settings) -> None:
+    """Та же защита у кнопки «Закрыть тему»."""
+    load_seed(conn)
+    router = make_router(conn, _TutorClient(), "m", settings=settings)
+    state = _fsm()
+    await state.set_state(DiagnosticFlow.answering)
+    message = FakeMessage()
+    callback = FakeCallback("menu:close", message)
+
+    await _named(router, "callback_query", "on_menu_action")(callback, state)
+
+    assert "Сначала закончим" in message.last_text
+    assert callback.answered is True
+    assert repos.get_open_session(conn) is None  # сессию не тронули

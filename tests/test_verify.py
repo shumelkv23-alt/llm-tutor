@@ -119,3 +119,18 @@ async def test_wrong_answer_drops_the_pass(conn, settings) -> None:
     assert _state(conn).mode == "reinforce"
     assert _state(conn).verify_item_ids == []
     assert "Проверка" not in reply.text  # проход оборван, шагов больше нет
+
+
+async def test_ungradable_item_does_not_drop_the_pass(conn, settings) -> None:
+    """Задание, которое не удалось проверить, — сбой, а не провал ученика."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", mode="verify", phase="practice")
+    _set_state(conn, pending_item_id=999)  # задание пропало из банка
+    client = GradingTutor(conn, passed=False)
+
+    reply = await handle_turn(
+        conn, client, "m", "groupby группирует строки по ключу", now=2.0, settings=settings
+    )
+
+    assert VERIFY_FAILED_NOTE not in reply.text
+    assert _state(conn).mode == "verify"

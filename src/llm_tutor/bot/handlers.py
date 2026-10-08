@@ -223,7 +223,14 @@ def make_router(
         )
 
     @router.message(Command("close"))
-    async def on_close(message: Message) -> None:
+    async def on_close(message: Message, state: FSMContext) -> None:
+        # Посреди анкеты или подбора маршрута проверку не начинаем: в состоянии
+        # сессии повиснет pending_item_id, конфликтующий с FSM-потоком.
+        if await state.get_state() is not None:
+            await message.answer(
+                render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
         try:
             reply = verify.start_verification(conn, settings=settings)
         except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
@@ -277,7 +284,7 @@ def make_router(
     # Разбор действий из инлайн-списка меню. Регистрируется ПОСЛЕ on_answer:
     # тесты выбирают хендлер ответа по индексу callback_query[0].
     @router.callback_query(F.data.startswith("menu:"))
-    async def on_menu_action(callback: CallbackQuery) -> None:
+    async def on_menu_action(callback: CallbackQuery, state: FSMContext) -> None:
         action = (callback.data or "").split(":", 1)[1]
         # Любой сбой действия — сообщение вместо тишины; callback.answer()
         # вызывается всегда (ниже), иначе у ученика зависает «часик».
@@ -295,12 +302,19 @@ def make_router(
                     reply_markup=themes.themes_keyboard(conn, settings=settings),
                 )
             elif action == "close":
-                reply = verify.start_verification(conn, settings=settings)
-                await callback.message.answer(
-                    render.fit(render.escape(reply.text)),
-                    parse_mode=render.PARSE_MODE,
-                    reply_markup=_options_keyboard(reply.options),
-                )
+                # Посреди анкеты или подбора маршрута не начинаем: в состоянии
+                # повиснет pending_item_id, конфликтующий с FSM-потоком.
+                if await state.get_state() is not None:
+                    await callback.message.answer(
+                        render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
+                    )
+                else:
+                    reply = verify.start_verification(conn, settings=settings)
+                    await callback.message.answer(
+                        render.fit(render.escape(reply.text)),
+                        parse_mode=render.PARSE_MODE,
+                        reply_markup=_options_keyboard(reply.options),
+                    )
             elif action == "help":
                 await callback.message.answer(
                     render.render_help(), parse_mode=render.PARSE_MODE

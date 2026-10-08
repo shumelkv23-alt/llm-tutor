@@ -674,3 +674,25 @@ async def test_stuck_flag_wins_over_close_flag(conn, settings) -> None:
     )
 
     assert _state(conn).mode == "reinforce"
+
+
+async def test_close_flag_journals_tutor_reply(conn, settings) -> None:
+    """Реплика тьютора и слова ученика попадают в журнал вместе с проходом.
+
+    Хвост диалога для модели собирается из журнала: если реплики там нет,
+    следующий ход модели не увидит того, что ученик только что прочитал.
+    """
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    _set_state(conn, current_node_id="groupby")
+    client = _FakeTutor("Держишь тему уверенно", wants_close_topic=True)
+
+    reply = await handle_turn(
+        conn, client, "m", "давай закроем, я тут всё знаю уже", now=1.0, settings=settings
+    )
+
+    messages = repos.get_messages(conn, repos.get_open_session(conn))
+    assert messages[-2].content == "давай закроем, я тут всё знаю уже"
+    assert reply.text == messages[-1].content
+    assert "Держишь тему уверенно" in messages[-1].content
+    assert "Проверка" in messages[-1].content

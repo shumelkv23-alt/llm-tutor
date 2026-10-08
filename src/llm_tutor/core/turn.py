@@ -13,7 +13,7 @@ import logging
 import sqlite3
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core import intents
@@ -167,12 +167,14 @@ async def _answer_branch(
     *,
     now: float,
     settings: Settings,
-) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool]:
+) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool | None]:
     """Ученик отвечает на выданное задание.
 
     ``choice``/``short`` проверяет код, ``open``/``code`` — рубричный грейдер
     (его вердикт идёт в журнал с ограниченным весом). Пятый элемент — был ли
-    ответ верным: закрывать узел на неудачном ответе нельзя.
+    ответ верным (``False``) или верным (``True``): закрывать узел на
+    неудачном ответе нельзя. ``None`` — задание проверено не было (пропало из
+    банка или его нечем проверить): это технический сбой, а не ошибка ученика.
     """
     item = (
         repos.get_item(conn, state.pending_item_id)
@@ -185,7 +187,7 @@ async def _answer_branch(
             [],
             [],
             state.model_copy(update={"pending_item_id": None}),
-            False,
+            None,
         )
 
     try:
@@ -212,7 +214,7 @@ async def _answer_branch(
             [],
             [],
             state.model_copy(update={"pending_item_id": None}),
-            False,
+            None,
         )
 
     measured = state.current_node_id or next(iter(item.concept_weights), "")
@@ -367,8 +369,10 @@ async def handle_turn(
             )
             if closed_note:
                 reply = f"{reply}\n\n{closed_note}"
-        # Проход не подтвердился: обрываем его, узел уходит в разбор.
-        if state.mode == "verify" and not passed:
+        # Проход не подтвердился: обрываем его, узел уходит в разбор. Ответ,
+        # который не удалось проверить (`None`), провалом не считается — это
+        # сбой задания, а не пробел в знаниях ученика.
+        if state.mode == "verify" and passed is False:
             new_state = guide.on_verification_failed(new_state)
             reply = f"{reply}\n\n{VERIFY_FAILED_NOTE}"
         # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
@@ -399,8 +403,8 @@ async def handle_turn(
             force_stuck=force_stuck,
         )
         if wants_close:
-            # Модель заметила просьбу закрыть тему: её реплику сохраняем, а
-            # занятие уходит в проверочный проход.
+            # Модель заметила просьбу закрыть тему: реплика тьютора и слова
+            # ученика уходят в проход, он же пишет ход — и в ответ, и в журнал.
             #
             # Состояние, посчитанное `_tutor_branch` (hint_level, phase,
             # task_hinted), СОЗНАТЕЛЬНО не переносится: проход начинается с
@@ -409,10 +413,9 @@ async def handle_turn(
             # при этом нечего: события и владение `_tutor_branch` всегда
             # возвращает пустыми, а всё остальное проход задаёт сам и пишет
             # своим `post_turn`.
-            closing = verify.start_verification(conn, now=stamp, settings=s)
-            # TurnReply — frozen dataclass, а не pydantic-модель: копия через
-            # dataclasses.replace, не model_copy.
-            return replace(closing, text=f"{reply}\n\n{closing.text}")
+            return verify.start_verification(
+                conn, now=stamp, settings=s, user_text=user_text, tutor_reply=reply
+            )
         if state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
             # При «не понял» напоминание не нужно — его заменяет STUCK_NOTE.
