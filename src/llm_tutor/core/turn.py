@@ -57,6 +57,8 @@ NO_TASK_FOR_NODE_REPLY = (
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
 # Маршрут пройден до конца: заданий больше нет, и это не ошибка.
 ROUTE_DONE_REPLY = "Маршрут пройден до конца. Можно свериться: /plan."
+# Повод хода «Продолжить обучение» — в журнале виден как реплика ученика.
+RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 # Шапка шага проверочного прохода. Номер без общего числа: после неудачного
 # ответа серия обнуляется и шагов может стать больше двух.
 VERIFY_STEP_TEMPLATE = "🔎 Проверка «{name}» — шаг {step}"
@@ -633,6 +635,93 @@ def start_practice_reply(
         now=stamp,
     )
     return TurnReply(text=text, options=options)
+
+
+async def resume_reply(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> TurnReply:
+    """«Продолжить обучение»: занятие идёт с того места, где ученик остановился.
+
+    Висящее задание не затирается — в этом отличие от `/task`, который молча
+    выдаёт новое.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return TurnReply(text=EMPTY_GRAPH_REPLY)
+
+    pending = state.pending_item_id
+    if pending is not None and repos.get_item(conn, pending) is not None:
+        post_turn(
+            conn,
+            session_id,
+            user_text=RESUME_KICKOFF_TEXT,
+            assistant_text=PENDING_ITEM_NOTE,
+            state=state.model_copy(update={"last_activity": stamp}),
+            now=stamp,
+        )
+        return TurnReply(text=PENDING_ITEM_NOTE)
+
+    route = state.route or route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=state.current_node_id,
+        now=stamp,
+        settings=s,
+    )
+    node_id = state.current_node_id or route_mod.next_node_id(
+        conn, graph, route, now=stamp, settings=s
+    )
+    if node_id is None:
+        post_turn(
+            conn,
+            session_id,
+            user_text=RESUME_KICKOFF_TEXT,
+            assistant_text=ROUTE_DONE_REPLY,
+            state=state.model_copy(update={"route": route, "last_activity": stamp}),
+            now=stamp,
+        )
+        return TurnReply(text=ROUTE_DONE_REPLY)
+
+    if state.phase == "explain":
+        # Обещанное в представлении «объясняю → даю задачу»: первое нажатие
+        # объясняет, второе выдаёт задание (фаза уходит в practice).
+        explaining = state.model_copy(update={"current_node_id": node_id})
+        reply, events, mastery, new_state, _ = await _tutor_branch(
+            conn,
+            client,
+            model,
+            session_id,
+            RESUME_KICKOFF_TEXT,
+            explaining,
+            graph,
+            now=stamp,
+            settings=s,
+        )
+        new_state = new_state.model_copy(update={"phase": "practice"})
+        fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
+        post_turn(
+            conn,
+            session_id,
+            user_text=RESUME_KICKOFF_TEXT,
+            assistant_text=reply,
+            state=new_state.model_copy(update={"route": fresh_route}),
+            events=events,
+            mastery=mastery,
+            now=stamp,
+        )
+        return TurnReply(text=reply)
+
+    return start_practice_reply(conn, now=stamp, settings=s)
 
 
 async def stuck_reply(

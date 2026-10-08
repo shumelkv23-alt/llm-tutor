@@ -6,6 +6,9 @@ import pytest
 
 from llm_tutor.core.turn import (
     NOTHING_TO_SKIP_REPLY,
+    PENDING_ITEM_NOTE,
+    RESUME_KICKOFF_TEXT,
+    ROUTE_DONE_REPLY,
     SKIP_REPLY,
     STALE_ITEM_REPLY,
     STUCK_NOTE,
@@ -13,6 +16,7 @@ from llm_tutor.core.turn import (
     VERIFY_EXPLAIN_PREFIX,
     handle_turn,
     post_turn,
+    resume_reply,
     skip_pending,
     start_practice_reply,
 )
@@ -696,3 +700,48 @@ async def test_close_flag_journals_tutor_reply(conn, settings) -> None:
     assert reply.text == messages[-1].content
     assert "Держишь тему уверенно" in messages[-1].content
     assert "Проверка" in messages[-1].content
+
+
+# --- «Продолжить обучение» (Срез 17.1) ---
+
+
+async def test_resume_keeps_pending_item(conn, settings) -> None:
+    """Висящее задание не затирается — в этом смысл «продолжить»."""
+    load_seed(conn)
+    start_practice_reply(conn, now=1.0, settings=settings)
+    pending = _state(conn).pending_item_id
+
+    reply = await resume_reply(conn, _FakeTutor(), "m", now=2.0, settings=settings)
+
+    assert reply.text == PENDING_ITEM_NOTE
+    assert _state(conn).pending_item_id == pending
+    messages = repos.get_messages(conn, repos.get_open_session(conn))
+    assert messages[-2].content == RESUME_KICKOFF_TEXT
+
+
+async def test_resume_explains_first_then_gives_task(conn, settings) -> None:
+    """Фаза объяснения — тьюторский ход; дальше кнопка выдаёт задание."""
+    load_seed(conn)
+    ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
+    client = _FakeTutor("Смотри: groupby собирает строки в группы")
+
+    first = await resume_reply(conn, client, "m", now=1.0, settings=settings)
+
+    assert "groupby собирает строки" in first.text
+    assert _state(conn).phase == "practice"
+
+    second = await resume_reply(conn, client, "m", now=2.0, settings=settings)
+
+    assert _state(conn).pending_item_id is not None
+    assert second.options is not None
+
+
+async def test_resume_reports_finished_route(conn, settings) -> None:
+    """Маршрут исчерпан — честное сообщение, а не пустое задание."""
+    load_seed(conn)
+    route = Route(steps=[RouteStep(concept_id="pandas_intro", mode="skip", status="closed")])
+    _set_state(conn, current_node_id=None, route=route, phase="practice")
+
+    reply = await resume_reply(conn, _FakeTutor(), "m", now=1.0, settings=settings)
+
+    assert reply.text == ROUTE_DONE_REPLY
