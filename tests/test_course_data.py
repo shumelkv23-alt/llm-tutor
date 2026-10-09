@@ -101,3 +101,41 @@ def test_choice_answer_is_not_systematically_the_longest(conn) -> None:
             f"в модуле {topic_id} верный вариант — самый длинный "
             f"в {share:.0%} заданий ({sum(longest)} из {len(longest)})"
         )
+
+
+# Дистракторы, которые придумывались как ложные, а запуск кода показал, что
+# они верны (problems.md, раздел 4). Ученик, знающий sklearn, получал за них 0.
+TRUE_DISTRACTORS = {
+    4037: "Модель перестаёт зависеть от значений входных признаков",
+}
+
+
+def test_distractors_proven_true_are_gone(conn) -> None:
+    load_course(conn)
+    items = {item.id: item for item in repos.get_items(conn)}
+
+    for item_id, statement in TRUE_DISTRACTORS.items():
+        assert statement not in items[item_id].options, item_id
+
+
+def test_module4_content_audit(conn) -> None:
+    """Аудит модуля 4: ребро, анкета и угадываемое задание (4-M1, 4-M2, 4-M3)."""
+    course = load_course(conn)
+    survey = next(topic.survey for topic in course.topics if topic.number == 4)
+    items = {item.id: item for item in repos.get_items(conn)}
+
+    # 4-M1: кейсы деревьев и kNN не пререквизит текстового пайплайна.
+    assert ("trees_knn_cases", "text_pipeline") not in {
+        (edge.from_id, edge.to_id) for edge in course.edges
+    }
+    # 4-M2: «уверенно обучаю в sklearn» не означает знания теории МНК.
+    assumed = {
+        concept
+        for key in survey.assumed_by_confident
+        for concept in survey.block(key).concepts
+    }
+    assert not assumed & {"gauss_markov", "normal_equation"}
+    # 4-M3: short с подсказкой «L1 или L2» угадывался 50/50.
+    assert items[4021].answer_type == "choice"
+    # Взамен short модулю 4 — 4035 (C = 1/λ), иначе их бы не осталось ни одного.
+    assert items[4035].answer_type == "short"
