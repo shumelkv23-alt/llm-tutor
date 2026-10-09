@@ -24,9 +24,10 @@ from aiogram.types import (
 
 from llm_tutor.bot import render, start
 from llm_tutor.config import Settings
+from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import BUSY_REPLY
-from llm_tutor.schemas import SurveyConfig
+from llm_tutor.schemas import SurveyConfig, Topic
 from llm_tutor.student import survey
 
 logger = logging.getLogger(__name__)
@@ -42,6 +43,9 @@ BUTTON_HINT_REPLY = "Ответь кнопкой в сообщении выше 
 STALE_CLICK_TOAST = "Этот вопрос уже позади"
 DONE_TOAST = "Анкета уже пройдена"
 CLAIMED_NOTE = "Знакомое не пропускаю — в конце проверим коротким тестом."
+
+# Анкета без модуля — вход в курс: модуль 1 (так же и в FSM до среза 26).
+FIRST_TOPIC = 1
 
 
 class SurveyFlow(StatesGroup):
@@ -59,11 +63,16 @@ def _data(step: int, choice: int | str) -> str:
     return f"{CALLBACK_PREFIX}:{step}:{choice}"
 
 
-def intro_view() -> tuple[str, InlineKeyboardMarkup]:
-    """Приветствие с единственной кнопкой «▶️ Поехали»."""
-    return start.INTRO_TEXT, InlineKeyboardMarkup(
-        inline_keyboard=[[_button(GO_LABEL, GO_DATA)]]
-    )
+def intro_view(topic: Topic | None = None) -> tuple[str, InlineKeyboardMarkup]:
+    """Приветствие с единственной кнопкой «▶️ Поехали» (готовый HTML).
+
+    Модуль 1 — приветствие курса; дальше — вводная модуля.
+    """
+    if topic is None or topic.number == FIRST_TOPIC:
+        text = start.INTRO_TEXT
+    else:
+        text = render.escape(start.module_intro_text(topic))
+    return text, InlineKeyboardMarkup(inline_keyboard=[[_button(GO_LABEL, GO_DATA)]])
 
 
 def question_view(progress: survey.Progress) -> tuple[str, InlineKeyboardMarkup]:
@@ -167,17 +176,31 @@ async def _drop_keyboard(message: Message) -> None:
         logger.info("Кнопки анкеты не снять: %s", error)
 
 
-async def start_survey(message: Message, state: FSMContext) -> Message:
-    """Новое сообщение-приветствие с «Поехали»; анкета привязывается к нему.
+async def start_survey(
+    message: Message,
+    state: FSMContext,
+    topic: Topic | None = None,
+    *,
+    then_node: str | None = None,
+) -> Message:
+    """Новое сообщение-приветствие с «Поехали»; анкета модуля привязывается к нему.
 
     Повторный вызов (``/start`` посреди анкеты) перепривязывает FSM к новому
-    сообщению — нажатия в старом упрутся в тост.
+    сообщению — нажатия в старом упрутся в тост. ``then_node`` — тема, к
+    которой ученик шёл из меню: урок начнётся с неё.
     """
     # Состояние — ДО отправки: вторая реплика, пришедшая пачкой, уже увидит
     # анкету и получит подсказку, а не второе приветствие.
     await state.set_state(SurveyFlow.question)
-    await state.set_data({"message_id": None, "given": None})
-    text, markup = intro_view()
+    await state.set_data(
+        {
+            "message_id": None,
+            "given": None,
+            "topic": topic.number if topic is not None else FIRST_TOPIC,
+            "then": then_node,
+        }
+    )
+    text, markup = intro_view(topic)
     try:
         sent = await message.answer(text, reply_markup=markup, parse_mode=render.PARSE_MODE)
     except Exception:
@@ -204,12 +227,16 @@ def make_survey_router(
     """Роутер анкеты: все нажатия ``survey:*`` и текст посреди анкеты."""
     router = Router()
 
-    def _config() -> SurveyConfig:
-        """Анкета модуля 1 — до задачи 12 модуль в FSM не хранится."""
-        return survey.config_for(conn, 1)
+    def _config(data: Mapping) -> SurveyConfig | None:
+        """Анкета модуля из FSM; до среза 26 номер не хранился — модуль 1."""
+        return survey.config_for(conn, int(data.get("topic") or FIRST_TOPIC))
 
     async def _finish(
-        callback: CallbackQuery, state: FSMContext, progress: survey.Progress
+        callback: CallbackQuery,
+        state: FSMContext,
+        progress: survey.Progress,
+        *,
+        then_node: str | None = None,
     ) -> None:
         answers = progress.final_answers()
         # Запись и снятие FSM — ДО сетевых вызовов: второй параллельный тап
@@ -225,12 +252,22 @@ def make_survey_router(
             # Без урока ученик остался бы на старом вопросе, а повторный тап
             # ответил бы «анкета уже пройдена» — тупик без меню.
             logger.exception("Сводку анкеты не нарисовать — сразу к уроку")
-        await start.begin_lesson(callback.message, state, conn, client, model, settings)
+        await start.begin_lesson(
+            callback.message,
+            state,
+            conn,
+            client,
+            model,
+            settings,
+            claimed=survey.claimed_concepts(conn, progress.config),
+            start_node_id=then_node,
+        )
 
     async def _orphan_click(callback: CallbackQuery, state: FSMContext) -> None:
         """Нажатие не в живом сообщении анкеты: тост или новый старт."""
         current = await state.get_state()
-        if survey.is_completed(conn, _config()):
+        pending = start.pending_survey_topic(conn)
+        if pending is None:
             await callback.answer(DONE_TOAST)
             await _drop_keyboard(callback.message)
         elif current == SurveyFlow.question.state:
@@ -242,7 +279,7 @@ def make_survey_router(
             # FSM потерян (рестарт бота), анкета не пройдена: начинаем заново
             # в этом же сообщении, а не молчим. Нажатие на вопросе об уровне
             # (шаг 0 — всегда он) засчитываем: иначе ответ пропал бы молча.
-            progress = survey.Progress(_config())
+            progress = survey.Progress(pending.survey)
             action, choice = _parse(callback.data)
             if action == "0" and choice is not None and choice.isdigit():
                 try:
@@ -251,7 +288,12 @@ def make_survey_router(
                     pass  # вариант вне списка — просто начинаем сначала
             await state.set_state(SurveyFlow.question)
             await state.set_data(
-                {"message_id": callback.message.message_id, "given": _stored(progress)}
+                {
+                    "message_id": callback.message.message_id,
+                    "given": _stored(progress),
+                    "topic": pending.number,
+                    "then": None,
+                }
             )
             if progress.next_key() is None:
                 await _finish(callback, state, progress)
@@ -261,7 +303,10 @@ def make_survey_router(
             await _show(callback.message, state, text, markup)
 
     async def _redraw(
-        callback: CallbackQuery, state: FSMContext, progress: survey.Progress | None
+        callback: CallbackQuery,
+        state: FSMContext,
+        progress: survey.Progress | None,
+        topic: Topic | None = None,
     ) -> None:
         """Тост и перерисовка текущего шага.
 
@@ -271,7 +316,7 @@ def make_survey_router(
         на «уже позади» до /start.
         """
         await callback.answer(STALE_CLICK_TOAST)
-        text, markup = intro_view() if progress is None else question_view(progress)
+        text, markup = intro_view(topic) if progress is None else question_view(progress)
         await _show(callback.message, state, text, markup)
 
     @router.callback_query(F.data.startswith(f"{CALLBACK_PREFIX}:"))
@@ -290,15 +335,21 @@ def make_survey_router(
             await _orphan_click(callback, state)
             return
 
+        config = _config(data)
+        if config is None:
+            # Модуль из FSM исчез из курса (правка seed) — начинаем заново.
+            await _orphan_click(callback, state)
+            return
         action, choice = _parse(callback.data)
-        progress = _progress(data, _config())
+        progress = _progress(data, config)
         if action == GO:
             if progress is not None:  # «Поехали» уже нажимали
                 await _redraw(callback, state, progress)
                 return
-            progress = survey.Progress(_config())
+            progress = survey.Progress(config)
         elif progress is None or action != str(progress.step):
-            await _redraw(callback, state, progress)
+            topic = repos.get_topic(conn, int(data.get("topic") or FIRST_TOPIC))
+            await _redraw(callback, state, progress, topic)
             return
         elif choice == BACK:
             progress = progress.back()
@@ -311,7 +362,7 @@ def make_survey_router(
                 return
 
         if progress.next_key() is None:
-            await _finish(callback, state, progress)
+            await _finish(callback, state, progress, then_node=data.get("then"))
             return
         await state.update_data(given=_stored(progress))
         await callback.answer()

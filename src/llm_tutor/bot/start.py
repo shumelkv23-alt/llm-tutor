@@ -7,6 +7,7 @@
 
 import logging
 import sqlite3
+from collections.abc import Collection
 
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
@@ -19,7 +20,9 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
+from llm_tutor.schemas import SessionState, Topic
 from llm_tutor.student import route as route_mod
+from llm_tutor.student import survey
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +39,13 @@ INTRO_TEXT = (
 
 LESSON_LEAD = "Начинаем с «{name}» — сейчас коротко объясню и покажу пример."
 CHECK_LEAD = "Всё отмечено знакомым — начнём с короткой проверки."
+
+# Вход в модуль 2–10: что за модуль и что сейчас будет (сырой текст).
+MODULE_INTRO_TEMPLATE = (
+    "📘 Модуль {number} · {title}\n"
+    "{intro}\n"
+    "Пара коротких вопросов — и подберу, с чего начать."
+)
 
 WELCOME_BACK_TEMPLATE = "👋 С возвращением! Продолжаем «{name}»."
 WELCOME_BACK_IDLE = "👋 С возвращением! Напиши что угодно — продолжим."
@@ -56,6 +66,30 @@ def welcome_back_text(conn: sqlite3.Connection) -> str:
     return WELCOME_BACK_TEMPLATE.format(name=graph.concept(node_id).name)
 
 
+def module_intro_text(topic: Topic) -> str:
+    """Приветствие анкеты модуля (сырой текст)."""
+    return MODULE_INTRO_TEMPLATE.format(
+        number=topic.number, title=topic.title, intro=topic.intro
+    )
+
+
+def pending_survey_topic(conn: sqlite3.Connection) -> Topic | None:
+    """Модуль занятия, анкета которого ещё не пройдена (§5.2), иначе ``None``.
+
+    Это чтение, а не ход: сессию не заводим.
+    """
+    graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return None
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    topic_id = route_mod.topic_for(graph, state)
+    topic = repos.get_topic(conn, topic_id) if topic_id is not None else None
+    if topic is None or survey.is_completed(conn, topic.survey):
+        return None
+    return topic
+
+
 async def begin_lesson(
     message: Message,
     state: FSMContext,
@@ -63,29 +97,44 @@ async def begin_lesson(
     client: LLMClient,
     model: str,
     settings: Settings,
+    *,
+    claimed: Collection[str] = (),
+    start_node_id: str | None = None,
 ) -> None:
     """Список ближайших шагов и первый ход урока.
 
     Экран согласования маршрута убран: показали, что впереди, — и сразу
     начинаем первую тему. FSM-состояние анкеты снимаем: дальше занятие.
+    ``claimed`` — темы, которые анкета модуля только что назвала знакомыми.
+    ``start_node_id`` — тема, выбранная в меню до анкеты (прыжок в модуль).
     """
     await state.clear()
-    reset_lesson(conn)
+    reset_lesson(conn, claimed=claimed)
     graph = CourseGraph.load(conn)
+    session_id = repos.get_open_session(conn)
+    previous = repos.get_session_state(conn, session_id).route if session_id else None
     route = route_mod.build_route(
         conn,
         graph,
         goal_concept_id=route_mod.goal_for(conn, graph),
+        previous=previous,
         settings=settings,
     )
     # Первый шаг списка — ровно тот узел, с которого начнётся урок: его же
     # передаём в resume_reply, иначе планировщик мог бы выбрать другой.
-    first = route_mod.next_node_id(conn, graph, route, settings=settings)
-    section = (
-        route_mod.working_section(graph, route, graph.topic_of(first))
-        if first is not None
-        else []
+    first = (
+        start_node_id
+        if start_node_id is not None and graph.has_node(start_node_id)
+        else route_mod.next_node_id(conn, graph, route, settings=settings)
     )
+    # Список — по участку модуля работы: первой темой может быть подтянутый
+    # предок из прошлого модуля, и участок его модуля был бы не тот.
+    topic = (
+        route.topic_id
+        if start_node_id is None and route.topic_id is not None
+        else graph.topic_of(first) if first is not None else None
+    )
+    section = route_mod.working_section(graph, route, topic) if first is not None else []
     upcoming = route_mod.upcoming(route, first, limit=render.PLAN_STEPS, section=section)
     if not upcoming:
         await message.answer(

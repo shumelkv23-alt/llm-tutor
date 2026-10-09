@@ -1,6 +1,6 @@
 """Тесты FSM-потоков бота: анкета и диагностика (Срез 4.5)."""
 
-from course_fixtures import T1
+from course_fixtures import T1, T2, correct_answer, enter_module, finish_all_but, load_two_modules
 
 import asyncio
 from datetime import datetime
@@ -10,7 +10,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import Chat, Message, Update, User
 
-from fakes import FakeCallback, FakeMessage, NullSession, _fsm, _named
+from fakes import FakeCallback, FakeMessage, GradingTutor, NullSession, _fsm, _named
 
 from llm_tutor.bot import handlers, menu
 from llm_tutor.bot.diagnostic import DiagnosticFlow, make_diagnostic_router
@@ -1186,3 +1186,104 @@ async def test_start_survey_send_failure_does_not_strand_student(conn, settings)
         await start_survey(_Down(), state)
 
     assert await state.get_state() is None
+
+
+# --- вход в модуль через его анкету (срез 26) ---
+
+
+def test_pending_survey_topic(conn, settings) -> None:
+    load_two_modules(conn)
+    assert start.pending_survey_topic(conn).number == 1  # новый ученик
+
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    enter_module(conn, 2, completed=(1,))
+    assert start.pending_survey_topic(conn).number == 2
+
+    survey.apply_answers(conn, T2, {"t02_basics": 1, "t02_relations": 1}, settings=settings)
+    assert start.pending_survey_topic(conn) is None
+
+
+async def test_finishing_module_one_opens_module_two_survey(conn, settings) -> None:
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    item = finish_all_but(conn, "churn_eda_case", topic_id=1)
+    router = make_router(conn, GradingTutor(conn, passed=True), "m", settings=settings)
+    state = _fsm()
+    message = FakeMessage(correct_answer(item))
+
+    await _named(router, "message", "on_text")(message, state)
+
+    assert any("🎉 Модуль 1" in text for text, _ in message.sent)
+    assert message.sent[-1][0].startswith("📘 Модуль 2")
+    assert await state.get_state() == SurveyFlow.question.state
+    assert (await state.get_data())["topic"] == 2
+
+
+async def test_module_two_survey_keeps_module_one_and_starts_lesson(conn, settings) -> None:
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    enter_module(conn, 2, completed=(1,))
+    session_id = repos.get_open_session(conn)
+    lesson = repos.get_session_state(conn, session_id)
+    closed_before = sum(1 for s in lesson.route.steps if s.status == "closed")
+    survey_router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    state = _fsm()
+    intro = await start_survey(FakeMessage(), state, repos.get_topic(conn, 2))
+    click = _named(survey_router, "callback_query", "on_survey_click")
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, T2.level_options[survey.LEVEL_SOME])
+    await _press(click, intro, state, survey.SELF_LEVELS[1])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+
+    after = repos.get_session_state(conn, session_id)
+    statuses = {s.concept_id: s.status for s in after.route.steps}
+    assert statuses["mini_box"] == statuses["mini_corr"] == "claimed"
+    assert sum(1 for s in after.route.steps if s.status == "closed") == closed_before
+    assert after.current_node_id == "mini_plots"
+
+
+async def test_all_confident_module_starts_with_check(conn, settings) -> None:
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    enter_module(conn, 2, completed=(1,))
+    session_id = repos.get_open_session(conn)
+    router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    state = _fsm()
+    intro = await start_survey(FakeMessage(), state, repos.get_topic(conn, 2))
+    click = _named(router, "callback_query", "on_survey_click")
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, T2.level_options[survey.LEVEL_CONFIDENT])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+
+    assert repos.get_session_state(conn, session_id).mode == "verify"
+
+
+async def test_survey_click_without_module_in_fsm_is_module_one(conn, settings) -> None:
+    """Анкета, начатая до обновления: в FSM нет ``topic`` — это модуль 1."""
+    load_seed(conn)
+    intro, state, click = await _begin(conn, settings)
+    data = await state.get_data()
+    await state.set_data({k: v for k, v in data.items() if k not in ("topic", "then")})
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+
+    assert T1.level_question in intro.edits[-1][0]
+
+
+async def test_answer_to_task_taken_before_module_survey_is_kept(conn, settings) -> None:
+    """/task до анкеты модуля 2, потом ответ текстом: ответ засчитан, анкета — следом."""
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    enter_module(conn, 2, completed=(1,))
+    router = make_router(conn, GradingTutor(conn, passed=True), "m", settings=settings)
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    state = _fsm()
+    message = FakeMessage(correct_answer(item))
+
+    await _named(router, "message", "on_text")(message, state)
+
+    assert repos.item_was_answered(conn, item.id)
+    assert message.sent[-1][0].startswith("📘 Модуль 2")

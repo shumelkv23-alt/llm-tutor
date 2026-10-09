@@ -53,7 +53,6 @@ from llm_tutor.llm.prompts import (
     LLM_FAILURE_REPLY,
 )
 from llm_tutor.schemas import Item
-from llm_tutor.student import survey
 
 # /start — команда, а не реплика ученика: в диалог пишем приветствие,
 # чтобы история не засорялась литералом "/start".
@@ -183,17 +182,21 @@ def make_router(
     """Собирает роутер с внедрёнными зависимостями (conn, client, model)."""
     router = Router()
 
-    def _survey_pending() -> bool:
-        """Анкета модуля 1 не пройдена (до задачи 12 — единственная анкета)."""
-        config = survey.config_for(conn, 1)
-        return config is not None and not survey.is_completed(conn, config)
+    async def _offer_survey(message: Message, state: FSMContext | None) -> None:
+        """Ход перевёл в модуль с непройденной анкетой — сразу её приветствие (§5.2)."""
+        if state is None:
+            return
+        topic = start.pending_survey_topic(conn)
+        if topic is not None:
+            await start_survey(message, state, topic)
 
     @router.message(CommandStart())
     async def on_start(message: Message, state: FSMContext) -> None:
         # Пока профиль не заполнен — одно сообщение-приветствие с «Поехали»:
         # дальше анкета живёт в нём же.
-        if _survey_pending():
-            await start_survey(message, state)
+        topic = start.pending_survey_topic(conn)
+        if topic is not None:
+            await start_survey(message, state, topic)
             return
         reply = handle_start(conn, START_GREETING)
         # Повторный /start — надёжный выход из незакрытого потока (анкета,
@@ -315,7 +318,7 @@ def make_router(
         )
 
     @router.callback_query(F.data.startswith(f"{ANSWER_CALLBACK_PREFIX}:"))
-    async def on_answer(callback: CallbackQuery) -> None:
+    async def on_answer(callback: CallbackQuery, state: FSMContext | None = None) -> None:
         # Ответ приходит из состояния сессии в БД — рестарт процесса его не теряет.
         item = _pending_item(conn)
         # Данные колбэка подконтрольны клиенту: мусор и клик по старой
@@ -346,6 +349,7 @@ def make_router(
                 allow_intents=False,
             )
         await _send_reply(conn, callback.message, reply)
+        await _offer_survey(callback.message, state)
 
     # Разбор действий из инлайн-списка меню. Регистрируется ПОСЛЕ on_answer:
     # тесты выбирают хендлер ответа по индексу callback_query[0].
@@ -404,11 +408,15 @@ def make_router(
     async def on_text(message: Message, state: FSMContext) -> None:
         # Анкета не пройдена — маршрута ещё нет: вести занятие не по чему.
         # Вместо отказа — то же приветствие с «Поехали», что и на /start.
-        if _survey_pending():
-            await start_survey(message, state)
+        # Висит задание (взято командой до анкеты) — текст это ответ на него:
+        # анкету предложит `_offer_survey` после хода, ответ не теряется.
+        topic = start.pending_survey_topic(conn)
+        if topic is not None and _pending_item(conn) is None:
+            await start_survey(message, state, topic)
             return
         async with typing_action(message):
             reply = await _run_turn(conn, client, model, message.text or "", settings=settings)
         await _send_reply(conn, message, reply)
+        await _offer_survey(message, state)
 
     return router

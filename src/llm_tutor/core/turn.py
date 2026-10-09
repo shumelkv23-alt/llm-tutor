@@ -12,7 +12,7 @@
 import logging
 import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
@@ -25,7 +25,8 @@ from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, Item, Route, SessionState
-from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
+from llm_tutor.student import beta, diagnostic, guide, hints, survey
+from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,10 @@ TOPIC_DONE_NOTE = "🎉 Модуль {number} «{title}» пройден!"
 NEXT_TOPIC_NOTE = "Дальше — модуль {number} «{title}», начинаем с «{name}»."
 # Закрыта последняя открытая тема курса.
 COURSE_DONE_NOTE = "🎓 Это был последний шаг — курс пройден! Свериться можно в /plan."
+# Следующий модуль ещё без анкеты: урок продолжится после неё (§5.2 спеки модулей).
+NEXT_TOPIC_SURVEY_NOTE = (
+    "Дальше — модуль {number} «{title}». Сначала пара вопросов — подберу, с чего начать."
+)
 # Повод хода «Продолжить обучение» — в журнале виден как реплика ученика.
 RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 # Шапка шага проверочного прохода. Номер без общего числа: после неудачного
@@ -348,19 +353,27 @@ async def _tutor_branch(
     return answer.reply, [], [], new_state, answer.wants_close_topic
 
 
-def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
-    """Урок с чистого листа: снимает узел, задание, режим и снимок маршрута.
+def reset_lesson(
+    conn: sqlite3.Connection, *, claimed: Collection[str] = (), now: float | None = None
+) -> None:
+    """Урок с чистого листа после анкеты модуля: снимает тему, задание и режим.
 
-    Зовётся в конце анкеты. Всё, что ученик успел командами до неё (/task,
-    /resume), строилось без самооценки: снимок маршрута без заявленных узлов
-    отменил бы их навсегда (``build_route`` берёт заявленное из снимка).
-    Свидетельства в журнале не трогаем — владение остаётся.
+    Снимок маршрута НЕ обнуляется (срез 26): в нём закрытое прошлых модулей.
+    Текущая тема снова «впереди», а ``claimed`` — знакомое по только что
+    пройденной анкете — помечается заявленным (``route.mark_claimed``). Так
+    /task до анкеты не отменяет «Уверенно» (срез 23). Свидетельства в журнале
+    не трогаем — владение остаётся.
     """
     stamp = time.time() if now is None else now
     session_id = repos.get_open_session(conn)
     if session_id is None:
         return
     state = repos.get_session_state(conn, session_id)
+    route = (
+        route_mod.mark_claimed(route_mod.release_current(state.route), claimed)
+        if state.route is not None
+        else None
+    )
     repos.update_session_state(
         conn,
         session_id,
@@ -370,7 +383,7 @@ def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
                 "mode": None,
                 "hint_level": 0,
                 "pending_item_id": None,
-                "route": None,
+                "route": route,
                 "phase": "explain",
                 "node_streak": 0,
                 "task_hinted": False,
@@ -786,6 +799,30 @@ def _close_node_if_ready(
         notes.append(TOPIC_DONE_NOTE.format(number=topic, title=_topic_title(conn, topic)))
     next_topic = route_mod.choose_topic(graph, route, previous_topic=topic)
     route = route.model_copy(update={"topic_id": next_topic})
+    if next_topic is not None and next_topic != topic:
+        config = survey.config_for(conn, next_topic)
+        if config is not None and not survey.is_completed(conn, config):
+            # Вход в модуль — через его анкету: тему выберет урок после неё.
+            notes.append(
+                NEXT_TOPIC_SURVEY_NOTE.format(
+                    number=next_topic, title=_topic_title(conn, next_topic)
+                )
+            )
+            return (
+                state.model_copy(
+                    update={
+                        "current_node_id": None,
+                        "node_streak": 0,
+                        "phase": "explain",
+                        "mode": None,
+                        "verify_item_ids": [],
+                        "lesson_item_ids": [],
+                        "hint_level": 0,
+                        "route": route,
+                    }
+                ),
+                "\n\n".join(notes),
+            )
     next_node_id = route_mod.next_node_id(
         conn, graph, route, now=now, settings=settings, mastery_overrides=overrides
     )

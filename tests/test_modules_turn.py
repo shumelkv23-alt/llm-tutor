@@ -89,3 +89,19 @@ async def test_legacy_snapshot_does_not_end_course_early(conn, settings) -> None
 
     assert "курс пройден" not in reply.text
     assert "Дальше — модуль 2" in reply.text
+
+
+async def test_next_module_without_survey_waits_for_it(conn, settings) -> None:
+    """Модуль 1 пройден, анкета модуля 2 не пройдена — задания нет, ждём анкету."""
+    load_two_modules(conn)
+    item = finish_all_but(conn, "churn_eda_case", topic_id=1)
+
+    reply = await handle_turn(
+        conn, GradingTutor(conn, passed=True), "m", correct_answer(item), now=2.0, settings=settings
+    )
+
+    assert "Дальше — модуль 2" in reply.text
+    assert "пара вопросов" in reply.text
+    state = _state(conn)
+    assert state.current_node_id is None and state.pending_item_id is None
+    assert state.route.topic_id == 2
