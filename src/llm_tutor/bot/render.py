@@ -108,7 +108,10 @@ def render_plan(
         f"🗺 <b>Маршрут</b> · Модуль {_module_label(conn, route.topic_id)} — "
         f"пройдено {section.closed_count} из {len(section.steps)}"
     )
-    return f"{header}\n{render_steps(graph, section.steps)}"
+    # Участок после прыжка далеко вперёд тянет всех незакрытых предков —
+    # список может не влезть в сообщение (аудит среза 25, L3). Теги только в
+    # шапке, поэтому обрезка хвоста разметку не рвёт.
+    return fit(f"{header}\n{render_steps(graph, section.steps)}")
 
 
 def _module_label(conn: sqlite3.Connection, topic_id: int) -> str:

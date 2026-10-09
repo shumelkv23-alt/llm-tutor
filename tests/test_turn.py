@@ -518,10 +518,17 @@ async def test_node_missing_from_graph_does_not_lock_turn(conn, settings) -> Non
 
 def test_route_done_hands_no_task(conn, settings) -> None:
     """Маршрут исчерпан — заданий больше нет, и это не ошибка."""
-    load_seed(conn)
+    seed = load_seed(conn)
+    # Курс пройден честно: закрыты все темы (снимок из одной темы теперь
+    # достраивается до всего курса — аудит среза 25, H1).
     _set_state(
         conn,
-        route=Route(steps=[RouteStep(concept_id="python_basics", mode="full", status="closed")]),
+        route=Route(
+            steps=[
+                RouteStep(concept_id=node.id, mode="full", status="closed")
+                for node in seed.nodes
+            ]
+        ),
     )
 
     reply = start_practice_reply(conn, now=1.0, settings=settings)
@@ -766,8 +773,10 @@ async def test_resume_explains_first_then_gives_task(conn, settings) -> None:
 
 async def test_resume_reports_finished_route(conn, settings) -> None:
     """Маршрут исчерпан — честное сообщение, а не пустое задание."""
-    load_seed(conn)
-    route = Route(steps=[RouteStep(concept_id="pandas_intro", mode="skip", status="closed")])
+    seed = load_seed(conn)
+    route = Route(
+        steps=[RouteStep(concept_id=node.id, mode="skip", status="closed") for node in seed.nodes]
+    )
     _set_state(conn, current_node_id=None, route=route, phase="practice")
 
     reply = await resume_reply(conn, _FakeTutor(), "m", now=1.0, settings=settings)

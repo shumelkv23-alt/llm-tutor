@@ -389,6 +389,31 @@ def _is_claimed(route: Route | None, node_id: str) -> bool:
     )
 
 
+def _fresh_route(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    now: float,
+    settings: Settings,
+) -> Route:
+    """Снимок, достроенный до всего курса перед выбором темы.
+
+    Сохранённый снимок мог отстать от курса (снимок до среза 25, модуль
+    добавлен после «🎓»): решение по нему объявило бы конец курса, когда
+    в новом модуле есть темы (аудит среза 25, H1).
+    """
+    return route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=state.current_node_id,
+        previous=state.route,
+        now=now,
+        settings=settings,
+    )
+
+
 def _topic_title(conn: sqlite3.Connection, topic_id: int) -> str:
     """Название модуля для объявлений (без модуля в БД — его номер)."""
     topic = repos.get_topic(conn, topic_id)
@@ -591,13 +616,7 @@ async def handle_turn(
         # ученику не нужно ничего писать, чтобы получить задание.
         entering = state.current_node_id is None and state.pending_item_id is None
         if entering:
-            route = state.route or route_mod.build_route(
-                conn,
-                graph,
-                goal_concept_id=route_mod.goal_for(conn, graph),
-                now=stamp,
-                settings=s,
-            )
+            route = _fresh_route(conn, graph, state, now=stamp, settings=s)
             node_id = route_mod.next_node_id(conn, graph, route, now=stamp, settings=s)
             if node_id is None:
                 entering = False  # маршрут исчерпан — входить некуда
@@ -817,9 +836,7 @@ def _issue_task(
     события ещё не записаны (запись идёт одним коммитом после), поэтому защита
     от повтора должна учитывать их явно.
     """
-    route = state.route or route_mod.build_route(
-        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), now=now, settings=settings
-    )
+    route = _fresh_route(conn, graph, state, now=now, settings=settings)
     # Узел задан маршрутом: если его нет — берём следующий по приоритету.
     node_id = state.current_node_id or route_mod.next_node_id(
         conn, graph, route, now=now, settings=settings
@@ -995,14 +1012,7 @@ async def resume_reply(
         )
         return TurnReply(text=PENDING_ITEM_NOTE)
 
-    route = state.route or route_mod.build_route(
-        conn,
-        graph,
-        goal_concept_id=route_mod.goal_for(conn, graph),
-        current_node_id=state.current_node_id,
-        now=stamp,
-        settings=s,
-    )
+    route = _fresh_route(conn, graph, state, now=stamp, settings=s)
     node_id = (
         state.current_node_id
         or start_node_id

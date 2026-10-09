@@ -41,6 +41,26 @@ def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> 
     )
 
 
+def _completed_topics(graph: CourseGraph, previous: Route | None) -> list[int]:
+    """Пройденные модули из прошлого снимка.
+
+    Модуль, все темы которого в снимке закрыты, считается пройденным и без
+    «🎉»: так снимок до среза 25, где topic01 закрыт целиком, при росте курса
+    не празднует модуль 1 задним числом (аудит среза 25, H1).
+    """
+    if previous is None:
+        return []
+    done = list(previous.completed_topics)
+    by_topic: dict[int, list[str]] = {}
+    for step in previous.steps:
+        if graph.has_node(step.concept_id):
+            by_topic.setdefault(graph.topic_of(step.concept_id), []).append(step.status)
+    for topic, statuses in sorted(by_topic.items()):
+        if topic not in done and all(status == "closed" for status in statuses):
+            done.append(topic)
+    return done
+
+
 def _scope(graph: CourseGraph, goal_concept_id: str | None) -> list[str]:
     """Узлы маршрута в топопорядке: предки цели и сама цель."""
     if goal_concept_id is None:
@@ -74,19 +94,19 @@ def working_section(
         return []
     known = [step for step in route.steps if graph.has_node(step.concept_id)]
     own = {step.concept_id for step in known if graph.topic_of(step.concept_id) == topic_id}
-    ancestors: set[str] = set()
-    for node_id in own:
-        ancestors |= graph.ancestors(node_id)
-    return [
-        step.concept_id
+    earlier_open = [
+        step
         for step in known
-        if step.concept_id in own
-        or (
-            step.status != "closed"
-            and graph.topic_of(step.concept_id) < topic_id
-            and (step.concept_id in ancestors or step.closed_at is not None)
-        )
+        if step.status != "closed" and graph.topic_of(step.concept_id) < topic_id
     ]
+    reopened = {step.concept_id for step in earlier_open if step.closed_at is not None}
+    # Предки и тем модуля, и открывшихся снова: иначе жёсткий пререквизит
+    # открывшейся темы остался бы вне участка и запер его (аудит среза 25, M1).
+    ancestors: set[str] = set()
+    for node_id in own | reopened:
+        ancestors |= graph.ancestors(node_id)
+    pulled = reopened | {step.concept_id for step in earlier_open if step.concept_id in ancestors}
+    return [step.concept_id for step in known if step.concept_id in own | pulled]
 
 
 def topic_finished(graph: CourseGraph, route: Route, topic_id: int) -> bool:
@@ -245,7 +265,7 @@ def build_route(
     route = Route(
         goal_concept_id=goal_concept_id,
         steps=steps,
-        completed_topics=list(previous.completed_topics) if previous is not None else [],
+        completed_topics=_completed_topics(graph, previous),
     )
     previous_topic = previous.topic_id if previous is not None else None
     return route.model_copy(
@@ -418,10 +438,18 @@ def refresh(
         return fresh, None
 
     # Ученику важен участок модуля: рост курса и чужие модули — не пересмотр
-    # его плана.
-    changes = diff_routes(
-        state.route, fresh, within=working_section(graph, fresh, fresh.topic_id)
-    )
+    # его плана. Темы модулей, которых в снимке не было вовсе, — тоже рост
+    # курса, а не «добавилось» (аудит среза 25, H1).
+    previous_ids = {step.concept_id for step in state.route.steps}
+    known_topics = {
+        graph.topic_of(node_id) for node_id in previous_ids if graph.has_node(node_id)
+    }
+    within = [
+        node_id
+        for node_id in working_section(graph, fresh, fresh.topic_id)
+        if node_id in previous_ids or graph.topic_of(node_id) in known_topics
+    ]
+    changes = diff_routes(state.route, fresh, within=within)
     note = (
         format_route_change(changes)
         if is_significant(changes, min_steps=s.route_min_significant_changes)
