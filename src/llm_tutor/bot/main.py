@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 
 from llm_tutor.bot.diagnostic import make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
+from llm_tutor.bot.serial import SerialMiddleware
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.bot.themes import make_themes_router
 from llm_tutor.config import get_settings
@@ -47,6 +48,8 @@ async def main() -> None:
             )
         bot = Bot(token=settings.telegram_bot_token.get_secret_value())
         dispatcher = Dispatcher()
+        # Ходы по одному: второе сообщение во время хода ждёт его конца.
+        dispatcher.update.outer_middleware(SerialMiddleware())
         # FSM-потоки (анкета, диагностика) идут первыми: их шаги не должны
         # попадать в тьютор-путь.
         dispatcher.include_router(

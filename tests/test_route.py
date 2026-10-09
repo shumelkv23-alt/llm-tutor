@@ -482,6 +482,37 @@ def test_closed_node_reopens_after_failures_since_closing(conn, settings) -> Non
     assert _statuses(fresh)["a"] != "closed"
 
 
+def test_secondary_weight_failures_count_by_weight(conn, settings) -> None:
+    """25-L5: провал по заданию, где тема лишь вторична, весит меньше прямого."""
+    from llm_tutor.schemas import Item
+
+    graph = _course({"a": 1, "b": 1}, [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    repos.upsert_concept(conn, Concept(id="b", name="b"))
+    repos.upsert_item(
+        conn,
+        Item(
+            id=1,
+            prompt="?",
+            answer_type="short",
+            answer="1",
+            concept_weights={"b": 1.0, "a": 0.3},
+        ),
+    )
+    previous = Route(
+        steps=[RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0)]
+    )
+    for ts in (11.0, 12.0):
+        repos.add_event(
+            conn,
+            Event(source="autotest", result=0.0, concept_id="a", item_id=1, weight=0.3, ts=ts),
+        )
+
+    fresh = route_mod.build_route(conn, graph, previous=previous, now=13.0, settings=settings)
+
+    assert _statuses(fresh)["a"] == "closed"
+
+
 def test_failures_before_closing_do_not_reopen(conn, settings) -> None:
     graph = _course({"a": 1}, [])
     repos.upsert_concept(conn, Concept(id="a", name="a"))
@@ -572,3 +603,33 @@ def test_course_growth_is_not_reported_as_route_change(conn, settings) -> None:
     _, note = route_mod.refresh(conn, state, graph, now=0.0, settings=settings)
 
     assert note is None
+
+
+def test_module_finished_by_mastery_alone_is_celebrated(conn, settings) -> None:
+    """25-L1: последнюю тему модуля закрыло владение, а не урок, — «🎉» всё равно есть."""
+    from course_fixtures import load_two_modules
+
+    load_two_modules(conn)
+    graph = CourseGraph.load(conn)
+    last = graph.topic_nodes(1)[-1]
+    steps = [
+        RouteStep(
+            concept_id=node,
+            mode="full",
+            status="ahead" if node == last or graph.topic_of(node) == 2 else "closed",
+            closed_at=None if node == last or graph.topic_of(node) == 2 else 0.5,
+        )
+        for node in graph.topo_order()
+    ]
+    repos.upsert_mastery(conn, last, alpha=38.0, beta=2.0, last_seen=0.0)
+    state = SessionState(route=Route(steps=steps, topic_id=1))
+
+    fresh, note = route_mod.refresh(conn, state, graph, now=0.0, settings=settings)
+
+    assert 1 in fresh.completed_topics
+    assert note is not None and "🎉 Модуль 1" in note
+    # Повторный пересчёт не празднует ещё раз.
+    _, again = route_mod.refresh(
+        conn, state.model_copy(update={"route": fresh}), graph, now=0.0, settings=settings
+    )
+    assert again is None or "🎉" not in again

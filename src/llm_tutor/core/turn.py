@@ -59,11 +59,13 @@ STUCK_NOTE = "Ок, остаёмся на этом узле и разбирае�
 # Курс пройден: открытых тем не осталось ни в одном модуле (§4.3 спеки модулей).
 ROUTE_DONE_REPLY = "🎓 Курс пройден — открытых тем не осталось. Свериться можно в /plan."
 # Модуль пройден: все темы его рабочего участка закрыты.
-TOPIC_DONE_NOTE = "🎉 Модуль {number} «{title}» пройден!"
+TOPIC_DONE_NOTE = route_mod.TOPIC_DONE_NOTE
 # Переход в следующий модуль: с какой темы начинаем.
 NEXT_TOPIC_NOTE = "Дальше — модуль {number} «{title}», начинаем с «{name}»."
 # Закрыта последняя открытая тема курса.
 COURSE_DONE_NOTE = "🎓 Это был последний шаг — курс пройден! Свериться можно в /plan."
+# Повтор уже закрытой темы, когда курс пройден: «🎓» второй раз не нужен.
+COURSE_STILL_DONE_NOTE = "Открытых тем по-прежнему нет — свериться можно в /plan."
 # Следующий модуль ещё без анкеты: урок продолжится после неё (§5.2 спеки модулей).
 NEXT_TOPIC_SURVEY_NOTE = (
     "Дальше — модуль {number} «{title}». Сначала пара вопросов — подберу, с чего начать."
@@ -889,6 +891,11 @@ def _close_node_if_ready(
         settings=settings,
     )
     topic = route.topic_id if route.topic_id is not None else route_mod.choose_topic(graph, route)
+    # Тема была закрыта и до этого хода (повтор из меню) — значит, это не
+    # «последний шаг курса», даже если открытых тем нет (аудит среза 25, 25-L2).
+    reclosed = any(
+        step.concept_id == node_id and step.status == "closed" for step in route.steps
+    )
     route = route.model_copy(
         update={
             "steps": [
@@ -958,7 +965,7 @@ def _close_node_if_ready(
         }
     )
     if next_node_id is None:
-        notes.append(COURSE_DONE_NOTE)
+        notes.append(COURSE_STILL_DONE_NOTE if reclosed else COURSE_DONE_NOTE)
         return new_state, "\n\n".join(notes)
     next_name = graph.concept(next_node_id).name
     if next_topic != topic:

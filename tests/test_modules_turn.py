@@ -106,3 +106,26 @@ async def test_next_module_without_survey_waits_for_it(conn, settings) -> None:
     state = _state(conn)
     assert state.current_node_id is None and state.pending_item_id is None
     assert state.route.topic_id == 2
+
+
+async def test_reclosing_topic_after_course_end_has_no_second_graduation(conn, settings) -> None:
+    """25-L2: курс уже пройден, ученик повторил закрытую тему — «🎓» второй раз нет."""
+    load_two_modules(conn)
+    _module_two_survey_done(conn)
+    item = finish_all_but(conn, "mini_corr", topic_id=2, completed=(1, 2))
+    session_id = repos.get_open_session(conn)
+    state = _state(conn)
+    steps = [
+        step.model_copy(update={"status": "closed", "closed_at": 0.5}) for step in state.route.steps
+    ]
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"route": state.route.model_copy(update={"steps": steps})})
+    )
+
+    reply = await handle_turn(
+        conn, GradingTutor(conn, passed=True), "m", correct_answer(item), now=2.0, settings=settings
+    )
+
+    assert COURSE_DONE_NOTE not in reply.text
+    assert "🎉" not in reply.text
+    assert "/plan" in reply.text

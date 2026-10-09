@@ -1421,3 +1421,36 @@ async def test_jump_to_claimed_topic_does_not_say_all_claimed(conn, settings) ->
     plan = next(text for text, _ in intro.sent if text.startswith("📋"))
     assert start.CHECK_LEAD not in plan
     assert "проверк" in plan
+
+
+# --- гонка двух апдейтов (problems.md, 25-L4) ---
+
+
+async def test_updates_are_handled_one_at_a_time() -> None:
+    """25-L4: второе сообщение во время хода ждёт его конца, а не читает то же состояние."""
+    from aiogram import Router
+
+    from llm_tutor.bot.serial import SerialMiddleware
+
+    active, overlaps = 0, []
+    router = Router()
+
+    @router.message()
+    async def slow(message: Message) -> None:
+        nonlocal active
+        active += 1
+        overlaps.append(active)
+        await asyncio.sleep(0.01)
+        active -= 1
+
+    bot = Bot(token="42:TEST", session=NullSession())
+    dispatcher = Dispatcher()
+    dispatcher.update.outer_middleware(SerialMiddleware())
+    dispatcher.include_router(router)
+
+    await asyncio.gather(
+        dispatcher.feed_update(bot, _update("раз")), dispatcher.feed_update(bot, _update("два"))
+    )
+    await bot.session.close()
+
+    assert overlaps == [1, 1]

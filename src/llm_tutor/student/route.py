@@ -28,17 +28,30 @@ class RouteChanges:
     current_changed: bool
 
 
+# Модуль пройден — объявляется один раз (``Route.completed_topics``).
+TOPIC_DONE_NOTE = "🎉 Модуль {number} «{title}» пройден!"
+
 # Столько провалов ПОСЛЕ закрытия темы открывают её снова (§4.2 спеки модулей).
 REOPEN_FAILURES = 2
 
 
-def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> int:
-    """Неудачные свидетельства по теме позже момента ``since``."""
-    return sum(
-        1
-        for event in repos.get_events(conn, concept_id)
-        if event.ts is not None and event.ts > since and event.result < 0.5
-    )
+def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> float:
+    """Неудачные свидетельства по теме позже момента ``since``.
+
+    Провал по заданию, где тема лишь вторична, считается долей: весом темы
+    относительно главной темы задания. Иначе вторичные веса модулей 2–10
+    открывали бы пройденное после пары промахов по чужой теме (25-L5).
+    """
+    total = 0.0
+    for event in repos.get_events(conn, concept_id):
+        if event.ts is None or event.ts <= since or event.result >= 0.5:
+            continue
+        item = repos.get_item(conn, event.item_id) if event.item_id is not None else None
+        if item is None or concept_id not in item.concept_weights:
+            total += 1.0
+        else:
+            total += item.concept_weights[concept_id] / max(item.concept_weights.values())
+    return total
 
 
 def _completed_topics(graph: CourseGraph, previous: Route | None) -> list[int]:
@@ -437,6 +450,11 @@ def refresh(
         # Первый расчёт — это не «изменение»: сообщать не о чем.
         return fresh, None
 
+    # Модуль бывает пройден и без закрытия темы уроком: последнюю закрыло
+    # владение (режим skip) — «🎉» тогда здесь, иначе модуль сменился бы молча
+    # (аудит среза 25, 25-L1).
+    fresh, done_note = _celebrate_finished(conn, graph, fresh, state.route.topic_id)
+
     # Ученику важен участок модуля: рост курса и чужие модули — не пересмотр
     # его плана. Темы модулей, которых в снимке не было вовсе, — тоже рост
     # курса, а не «добавилось» (аудит среза 25, H1).
@@ -455,4 +473,22 @@ def refresh(
         if is_significant(changes, min_steps=s.route_min_significant_changes)
         else None
     )
-    return fresh, note
+    notes = [part for part in (done_note, note) if part]
+    return fresh, "\n\n".join(notes) if notes else None
+
+
+def _celebrate_finished(
+    conn: sqlite3.Connection, graph: CourseGraph, route: Route, topic_id: int | None
+) -> tuple[Route, str | None]:
+    """Отмечает пройденным модуль прошлого снимка, если его участок закрыт."""
+    if (
+        topic_id is None
+        or topic_id in route.completed_topics
+        or topic_id not in graph.topic_ids
+        or not topic_finished(graph, route, topic_id)
+    ):
+        return route, None
+    topic = repos.get_topic(conn, topic_id)
+    title = topic.title if topic is not None else f"№{topic_id}"
+    marked = route.model_copy(update={"completed_topics": [*route.completed_topics, topic_id]})
+    return marked, TOPIC_DONE_NOTE.format(number=topic_id, title=title)
