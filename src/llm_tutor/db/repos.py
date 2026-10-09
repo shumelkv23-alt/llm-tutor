@@ -643,9 +643,16 @@ def set_fact(
 # --- chunks (материалы курса для RAG, Срез 3) ---
 
 
-def count_chunks(conn: sqlite3.Connection) -> int:
-    """Сколько чанков курса загружено (0 — материалов нет вовсе)."""
-    return int(conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+def count_chunks(conn: sqlite3.Connection, *, max_topic: int | None = None) -> int:
+    """Сколько чанков курса загружено (0 — материалов нет вовсе).
+
+    ``max_topic`` — только материалы модулей до этого номера включительно.
+    """
+    if max_topic is None:
+        return int(conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+    return int(
+        conn.execute("SELECT count(*) FROM chunks WHERE topic_id <= ?", (max_topic,)).fetchone()[0]
+    )
 
 
 def replace_chunks(

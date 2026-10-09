@@ -231,3 +231,21 @@ def test_ingest_text_marks_module(conn) -> None:
     ingest_text(conn, "# T\n\n## S\n\nseaborn pairplot\n", "http://u", topic_id=2)
 
     assert {r[0] for r in conn.execute("SELECT topic_id FROM chunks")} == {2}
+
+
+def test_ingest_text_rejects_topic_zero(conn) -> None:
+    """27-2: модуль 0 протёк бы в RAG всех модулей (фильтр topic_id <= N)."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ingest_text(conn, "# T\n\nseaborn\n", "http://u", topic_id=0)
+
+
+def test_cli_rejects_topic_out_of_range(tmp_path) -> None:
+    import pytest
+
+    md = tmp_path / "m.md"
+    md.write_text("# T\n\nseaborn\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([str(md), "--topic", "99999999999999999999", "--db", str(tmp_path / "t.db")])

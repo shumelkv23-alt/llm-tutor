@@ -220,3 +220,17 @@ def test_context_speaks_about_current_module(conn, settings) -> None:
     assert "модуль 2" in system
     assert "Простые графики" in system  # профиль — анкета модуля 2
     assert "Группировки и EDA" not in system  # анкета модуля 1 в профиль не идёт
+
+
+def test_material_state_counts_only_reachable_modules(conn, settings) -> None:
+    """27-4: есть только материал будущего модуля — «материалов нет», а не «не нашлось»."""
+    load_two_modules(conn)
+    ingest_text(conn, "# T\n\n## S\n\nseaborn pairplot\n", "http://u2", topic_id=2)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+
+    package = build_context(
+        conn, session_id, "что такое groupby?", graph=CourseGraph.load(conn), now=2.0,
+        settings=settings,
+    )
+
+    assert package.material_state == "empty"

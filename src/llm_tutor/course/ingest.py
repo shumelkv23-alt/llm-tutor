@@ -239,8 +239,10 @@ def ingest_text(
 
     ``topic_id`` — модуль материала: RAG не подмешивает будущие модули.
     """
+    # model_validate, а не model_copy: copy не проверяет поля, и модуль 0
+    # протёк бы в поиск всех модулей (ревью среза 27, 27-2).
     chunks = [
-        chunk.model_copy(update={"topic_id": topic_id})
+        Chunk.model_validate({**chunk.model_dump(), "topic_id": topic_id})
         for chunk in chunk_markdown(to_markdown(text), source_url, max_chars=max_chars)
     ]
     return replace_chunks(conn, source_url, chunks)
@@ -293,7 +295,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Загрузка материалов курса в БД.")
     parser.add_argument("source", help="URL или путь к локальному markdown/HTML-файлу")
     parser.add_argument(
-        "--topic", type=int, required=True, help="номер модуля материала (1–10)"
+        "--topic",
+        type=int,
+        required=True,
+        choices=range(1, 11),
+        metavar="N",
+        help="номер модуля материала (1–10)",
     )
     parser.add_argument(
         "--source-url", default=None, help="URL страницы для цитат (для файла)"

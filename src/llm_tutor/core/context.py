@@ -89,7 +89,9 @@ def _mastery_slice(
     ]
 
 
-def _material_state(conn: sqlite3.Connection, chunks: list[Chunk]) -> MaterialState:
+def _material_state(
+    conn: sqlite3.Connection, chunks: list[Chunk], *, max_topic: int | None = None
+) -> MaterialState:
     """Состояние материалов курса для промпта.
 
     Промах поиска НЕ значит «вне курса»: поиск ключевой, а материал
@@ -99,7 +101,8 @@ def _material_state(conn: sqlite3.Connection, chunks: list[Chunk]) -> MaterialSt
     """
     if chunks:
         return "found"
-    return "empty" if repos.count_chunks(conn) == 0 else "no_match"
+    # Материалы будущих модулей ученику недоступны — для него их нет (27-4).
+    return "empty" if repos.count_chunks(conn, max_topic=max_topic) == 0 else "no_match"
 
 
 def _system_prompt(
@@ -225,7 +228,7 @@ def build_context(
             if message.role in ("user", "assistant")
         ]
 
-    material_state = _material_state(conn, chunks)
+    material_state = _material_state(conn, chunks, max_topic=topic_id)
     system = _system_prompt(
         conn,
         session_state,

@@ -314,7 +314,10 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
     async def on_topic(callback: CallbackQuery) -> None:
         raw = (callback.data or "").split(":", 1)[1]
         try:
-            topic = repos.get_topic(conn, int(raw)) if raw.isdigit() else None
+            # isdigit пропускает «²», а длинное число роняет SQLite — адресное
+            # «Модуль недоступен» вместо общей ошибки (ревью среза 27, 27-3).
+            valid = raw.isascii() and raw.isdecimal() and len(raw) <= 3
+            topic = repos.get_topic(conn, int(raw)) if valid else None
             if topic is None:
                 await callback.answer("Модуль недоступен")
                 return

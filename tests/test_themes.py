@@ -463,3 +463,16 @@ async def test_unknown_topic_tap_is_answered(conn, settings) -> None:
     await _named(router, "callback_query", "on_topic")(callback)
 
     assert callback.answered is True
+
+
+async def test_forged_topic_numbers_answer_module_unavailable(conn, settings) -> None:
+    """27-3: надстрочные «цифры» и огромные числа — «Модуль недоступен», без трейсбека."""
+    load_two_modules(conn)
+    router = themes.make_themes_router(conn, settings)
+
+    for data in ("topic:²", "topic:999999999999999999999999999999"):
+        message = fakes.FakeMessage()
+        callback = fakes.FakeCallback(data, message)
+        await _named(router, "callback_query", "on_topic")(callback)
+        assert callback.answered is True
+        assert message.sent == [], data
