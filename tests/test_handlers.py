@@ -8,6 +8,7 @@ from llm_tutor.bot.handlers import (
 )
 from llm_tutor.bot import start
 from llm_tutor.bot.render import render_plan
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
@@ -190,3 +191,14 @@ def test_menu_handlers_are_registered(conn) -> None:
     assert "on_menu" in names
     callbacks = [h.callback.__name__ for h in router.callback_query.handlers]
     assert "on_menu_action" in callbacks
+
+
+async def test_welcome_back_names_module_and_topic(conn, settings) -> None:
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.update_session_state(conn, session_id, SessionState(current_node_id="groupby"))
+
+    text = start.welcome_back_text(conn)
+
+    name = CourseGraph.load(conn).concept("groupby").name
+    assert "Модуль 1" in text and f"«{name}»" in text

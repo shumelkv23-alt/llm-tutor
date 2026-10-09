@@ -33,7 +33,7 @@ START_LABEL = "▶️ Старт"
 # Приветствие — два предложения: кто я и что сейчас будет. Что нажать, видно
 # по единственной кнопке под ним.
 INTRO_TEXT = (
-    "👋 Привет! Я тьютор по теме «Pandas / EDA» курса mlcourse.ai.\n"
+    "👋 Привет! Я тьютор по курсу mlcourse.ai: 10 модулей, от pandas до градиентного бустинга.\n"
     "Пара коротких вопросов — и подберу, с чего начать."
 )
 
@@ -47,7 +47,7 @@ MODULE_INTRO_TEMPLATE = (
     "Пара коротких вопросов — и подберу, с чего начать."
 )
 
-WELCOME_BACK_TEMPLATE = "👋 С возвращением! Продолжаем «{name}»."
+WELCOME_BACK_TEMPLATE = "👋 С возвращением! Модуль {number} «{topic}» — продолжаем «{name}»."
 WELCOME_BACK_IDLE = "👋 С возвращением! Напиши что угодно — продолжим."
 
 
@@ -63,7 +63,11 @@ def welcome_back_text(conn: sqlite3.Connection) -> str:
     graph = CourseGraph.load(conn)
     if node_id is None or not graph.has_node(node_id):
         return WELCOME_BACK_IDLE
-    return WELCOME_BACK_TEMPLATE.format(name=graph.concept(node_id).name)
+    topic = repos.get_topic(conn, graph.topic_of(node_id))
+    name = graph.concept(node_id).name
+    if topic is None:
+        return f"👋 С возвращением! Продолжаем «{name}»."
+    return WELCOME_BACK_TEMPLATE.format(number=topic.number, topic=topic.title, name=name)
 
 
 def module_intro_text(topic: Topic) -> str:
