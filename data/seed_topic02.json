@@ -10,12 +10,12 @@
       "level_question": "Как у тебя с графиками в Python?",
       "level_options": ["С нуля", "Немного рисовал", "Уверенно строю графики"],
       "blocks": [
-        {"key": "t02_basics", "title": "Основы графиков", "question": "Строишь графики через pandas и matplotlib?", "example": "типы признаков, df.plot, matplotlib и seaborn", "concepts": ["viz_purpose", "feature_types", "viz_libraries", "df_plot"]},
-        {"key": "t02_distributions", "title": "Распределения", "question": "Смотришь на распределение одного признака?", "example": "hist, плотность, boxplot, violinplot, countplot", "concepts": ["histogram", "density_plot", "box_plot", "violin_plot", "bar_count_plot", "class_imbalance"]},
+        {"key": "t02_basics", "title": "Основы графиков", "question": "Строишь графики через pandas и matplotlib?", "example": "зачем вообще графики, типы признаков, df.plot, matplotlib и seaborn", "concepts": ["viz_purpose", "feature_types", "viz_libraries", "df_plot"]},
+        {"key": "t02_distributions", "title": "Распределения", "question": "Смотришь на распределение одного признака?", "example": "hist, плотность, boxplot, violinplot, countplot, баланс классов", "concepts": ["histogram", "density_plot", "box_plot", "violin_plot", "bar_count_plot", "class_imbalance"]},
         {"key": "t02_relations", "title": "Связи признаков", "question": "Ищешь связи между признаками на графиках?", "example": "corr + heatmap, scatter, pairplot, hue, catplot, crosstab", "concepts": ["correlation_heatmap", "scatter_plot", "pairplot", "num_vs_cat", "catplot", "cat_vs_cat", "heatmap_pivot"]},
-        {"key": "t02_advanced", "title": "t-SNE, plotly и кейс", "question": "Знаешь t-SNE и интерактивные графики?", "example": "снижение размерности, TSNE, plotly Figure", "concepts": ["dim_reduction", "tsne", "plotly_interactive", "visual_eda_case"]}
+        {"key": "t02_advanced", "title": "t-SNE, plotly и кейс", "question": "Знаешь t-SNE и интерактивные графики?", "example": "снижение размерности, TSNE, plotly Figure, кейс оттока", "concepts": ["dim_reduction", "tsne", "plotly_interactive", "visual_eda_case"]}
       ],
-      "assumed_by_confident": ["t02_basics", "t02_distributions"],
+      "assumed_by_confident": ["t02_basics"],
       "foundation": ["t02_basics"]
     }
   },
@@ -43,7 +43,6 @@
     {"id": "visual_eda_case", "name": "Кейс: визуальный анализ оттока", "difficulty": 0.65, "description": "Что графики говорят об оттоке телеком-клиентов: звонки в поддержку, международный тариф, дневные минуты.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"}
   ],
   "edges": [
-    {"from_id": "viz_purpose", "to_id": "feature_types", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "visualization_basics", "to_id": "viz_libraries", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "pandas_dataframe", "to_id": "df_plot", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "viz_libraries", "to_id": "df_plot", "type": "requires", "hard": false, "weight": 0.5},
@@ -70,7 +69,6 @@
     {"from_id": "summary_tables", "to_id": "cat_vs_cat", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "correlation_heatmap", "to_id": "heatmap_pivot", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "summary_tables", "to_id": "heatmap_pivot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_purpose", "to_id": "dim_reduction", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "pairplot", "to_id": "dim_reduction", "type": "requires", "hard": false, "weight": 0.5},
     {"from_id": "dim_reduction", "to_id": "tsne", "type": "requires", "hard": true, "weight": 1.0},
     {"from_id": "scatter_plot", "to_id": "tsne", "type": "requires", "hard": false, "weight": 0.5},
@@ -134,7 +132,7 @@
     {"id": 2048, "prompt": "Снижение размерности без целевой переменной — задача какого типа?", "answer_type": "choice", "concept_weights": {"dim_reduction": 1.0}, "difficulty": 0.5, "options": ["Обучение с учителем", "Обучение без учителя", "Регрессия", "Классификация"], "answer": "1"},
     {"id": 2049, "prompt": "В чём главная идея t-SNE?", "answer_type": "choice", "concept_weights": {"tsne": 1.0}, "difficulty": 0.65, "options": ["Проецировать данные на оси с наибольшей дисперсией", "Выбрать два самых важных признака", "Отсортировать объекты по целевой переменной", "Близкие в исходном пространстве точки остаются близкими на плоскости"], "answer": "3"},
     {"id": 2050, "prompt": "Как называется класс scikit-learn для t-SNE? Напиши только имя класса.", "answer_type": "short", "concept_weights": {"tsne": 1.0}, "difficulty": 0.6, "options": [], "answer": "TSNE"},
-    {"id": 2051, "prompt": "Какой недостаток t-SNE отмечает статья модуля?", "answer_type": "choice", "concept_weights": {"tsne": 1.0}, "difficulty": 0.65, "options": ["Работает только с двумя признаками", "Требует целевую переменную", "Картинка сильно зависит от random seed — далеко идущих выводов не делают", "Не умеет строить проекцию на плоскость"], "answer": "2"},
+    {"id": 2051, "prompt": "Какое ограничение интерпретации t-SNE отмечает статья модуля?", "answer_type": "choice", "concept_weights": {"tsne": 1.0}, "difficulty": 0.65, "options": ["Работает только с двумя признаками", "Требует целевую переменную", "Картинка сильно зависит от random seed — далеко идущих выводов не делают", "Не умеет строить проекцию на плоскость"], "answer": "2"},
     {"id": 2052, "prompt": "Что делают в статье с бинарными признаками «Yes»/«No» перед t-SNE?", "answer_type": "choice", "concept_weights": {"tsne": 1.0, "apply_functions": 0.3}, "difficulty": 0.6, "options": ["Переводят в 1 и 0 через map", "Удаляют из данных", "Оставляют строками", "Заменяют средним по столбцу"], "answer": "0"},
     {"id": 2053, "prompt": "Как называется библиотека интерактивных графиков из статьи модуля? Напиши только имя библиотеки.", "answer_type": "short", "concept_weights": {"plotly_interactive": 1.0}, "difficulty": 0.45, "options": [], "answer": "plotly"},
     {"id": 2054, "prompt": "Из чего состоит объект Figure в plotly?", "answer_type": "choice", "concept_weights": {"plotly_interactive": 1.0}, "difficulty": 0.5, "options": ["Только из одного DataFrame", "Из данных (traces) и оформления (layout)", "Из осей и фигуры matplotlib", "Из HTML-шаблона и CSS"], "answer": "1"},
