@@ -32,6 +32,9 @@ _SEED_NAME_RE = re.compile(r"seed_topic(\d{2})(?:_\w+)?\.json")
 # В курс из data/ идут только файлы без суффикса: черновики и бэкапы
 # (seed_topic02_draft.json) рядом с модулем в него не попадают.
 _COURSE_NAME_RE = re.compile(r"seed_topic\d{2}\.json")
+# Номер модуля не из двух цифр (seed_topic2.json) — опечатка, а не черновик:
+# молча пропущенный модуль пропал бы из курса (24-L3).
+_MISNAMED_RE = re.compile(r"seed_topic(?!\d{2}(?:_\w+)?\.json)\d+(?:_\w+)?\.json")
 
 
 class Seed(BaseModel):
@@ -138,6 +141,13 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
                     f"Ребро {edge.from_id} -> {edge.to_id} в файле модуля {number} "
                     f"ведёт в тему чужого модуля {dst}"
                 )
+            # Не-requires рёбра в граф не идут, и CourseGraph их не видит:
+            # направление проверяем здесь для всех типов (24-L6).
+            if src > dst:
+                raise SeedError(
+                    f"Ребро {edge.from_id} -> {edge.to_id} ведёт вперёд: из модуля "
+                    f"{src} в модуль {dst}"
+                )
             if edge.type == "requires" and edge.hard and src < dst:
                 warnings.append(
                     f"Жёсткое межмодульное ребро {edge.from_id} -> {edge.to_id} "
@@ -173,7 +183,12 @@ def _parse_seed(path: str | Path) -> Seed:
         raise SeedError(
             f"{source.name}: в файле модуль {number}, а в имени — {int(match.group(1))}"
         )
-    # Модуль темы задаёт файл, а не поле темы: тема не «уедет» в чужой модуль.
+    return _stamp_topic(seed)
+
+
+def _stamp_topic(seed: Seed) -> Seed:
+    """Модуль темы задаёт файл, а не поле темы: тема не «уедет» в чужой модуль."""
+    number = seed.topic.number
     return seed.model_copy(
         update={"nodes": [node.model_copy(update={"topic_id": number}) for node in seed.nodes]}
     )
@@ -181,7 +196,9 @@ def _parse_seed(path: str | Path) -> Seed:
 
 def build_course(seeds: Sequence[Seed]) -> Course:
     """Склеивает модули и валидирует курс целиком (``SeedError`` на ошибке)."""
-    ordered = sorted(seeds, key=lambda seed: seed.topic.number)
+    # Модуль проставляется здесь, а не при чтении файла: так его получает и
+    # курс, собранный из ``Seed`` напрямую (24-L5).
+    ordered = sorted((_stamp_topic(seed) for seed in seeds), key=lambda seed: seed.topic.number)
     nodes = [node for seed in ordered for node in seed.nodes]
     edges = [edge for seed in ordered for edge in seed.edges]
     items = [item for seed in ordered for item in seed.items]
@@ -204,6 +221,11 @@ def build_course(seeds: Sequence[Seed]) -> Course:
 def course_paths(data_dir: Path | None = None) -> list[Path]:
     """Seed-файлы модулей курса (черновики и прочие файлы не берутся)."""
     folder = DATA_DIR if data_dir is None else data_dir
+    misnamed = sorted(
+        path.name for path in folder.glob("seed_topic*.json") if _MISNAMED_RE.fullmatch(path.name)
+    )
+    if misnamed:
+        raise SeedError(f"Номер модуля в имени — две цифры (seed_topic02.json): {misnamed}")
     return sorted(
         path for path in folder.glob("seed_topic*.json") if _COURSE_NAME_RE.fullmatch(path.name)
     )

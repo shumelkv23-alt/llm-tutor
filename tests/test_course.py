@@ -157,3 +157,42 @@ def test_topic01_survey_keys_never_change() -> None:
         "block_selection",
         "block_analysis",
     )
+
+
+# --- отложенное срезов 24 (problems.md, 24-L3, 24-L5, 24-L6) ---
+
+
+def test_misnamed_module_file_is_reported_not_skipped(tmp_path) -> None:
+    """24-L3: seed_topic2.json — не тихий пропуск, а внятная ошибка."""
+    for name in ("seed_topic01.json", "seed_topic2.json"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+
+    with pytest.raises(SeedError, match="seed_topic2.json"):
+        course_paths(tmp_path)
+
+
+def test_build_course_stamps_topic_of_each_node() -> None:
+    """24-L5: публичный build_course сам проставляет модуль темам по их файлу."""
+    from llm_tutor.course.seed import Seed, build_course
+
+    data = _mini()
+    for node in data["nodes"]:
+        node["topic_id"] = 7  # чужой номер в поле темы — файл главнее
+    seeds = [load_seed_data(DEFAULT_SEED_PATH), Seed.model_validate(data)]
+
+    course = build_course(seeds)
+
+    assert {node.topic_id for node in course.nodes if node.id.startswith("mini_")} == {2}
+
+
+def test_forward_edge_of_any_type_is_rejected(tmp_path) -> None:
+    """24-L6: ребро из будущего модуля назад запрещено и для не-requires типов."""
+    topic01 = json.loads(DEFAULT_SEED_PATH.read_text(encoding="utf-8"))
+    topic01["edges"].append(
+        {"from_id": "mini_plots", "to_id": "pandas_dataframe", "type": "leads_to", "hard": False}
+    )
+    first = tmp_path / "seed_topic01.json"
+    first.write_text(json.dumps(topic01, ensure_ascii=False), encoding="utf-8")
+
+    with pytest.raises((SeedError, CourseGraphError), match="вперёд"):
+        load_course_data([first, MINI_SEED_PATH])
