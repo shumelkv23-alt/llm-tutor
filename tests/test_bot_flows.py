@@ -720,6 +720,14 @@ def test_intro_is_two_sentences_without_reply_button() -> None:
     assert start.START_LABEL not in start.INTRO_TEXT
 
 
+def test_intro_promises_as_many_modules_as_course_has() -> None:
+    """Приветствие не обещает модулей, которых в курсе нет."""
+    from llm_tutor.course.seed import course_paths
+
+    assert f"{len(course_paths())} модулей" in start.INTRO_TEXT
+    assert "бустинг" not in start.INTRO_TEXT
+
+
 async def test_start_after_survey_does_not_call_model(conn, settings) -> None:
     """Вернувшемуся — «С возвращением» без LLM и без служебной метки модели."""
     load_seed(conn)
