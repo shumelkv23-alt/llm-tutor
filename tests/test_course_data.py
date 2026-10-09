@@ -62,3 +62,42 @@ def test_topic01_order_is_kept_in_whole_course(conn) -> None:
     load_course(conn)
 
     assert CourseGraph.load(conn).topic_nodes(1) == TOPIC01_ORDER
+
+
+# Модули 1 и 2 написаны до того, как появилось правило про длину вариантов: у них
+# верный вариант choice систематически самый длинный (53% и 79%). Долг описан в
+# problems.md и чинится отдельно; новый модуль в этот список попадать не должен.
+LENGTH_DEBT_TOPICS = frozenset({1, 2})
+
+MAX_LONGEST_ANSWER_SHARE = 0.25
+"""Верхняя граница доли заданий, где верный вариант — самый длинный.
+
+0.25 — это ровно вероятность случайного угадывания при четырёх вариантах: выше
+неё «выбирай самый длинный» начинает обыгрывать честный ответ.
+"""
+
+
+def test_choice_answer_is_not_systematically_the_longest(conn) -> None:
+    """Верный вариант не выдаёт себя длиной (правило контента §6.2)."""
+    load_course(conn)
+    graph = CourseGraph.load(conn)
+
+    longest_by_topic: dict[int, list[bool]] = {}
+    for item in repos.get_items(conn):
+        if item.answer_type != "choice":
+            continue
+        main = max(item.concept_weights, key=item.concept_weights.get)
+        lengths = [len(option) for option in item.options]
+        answer_len = lengths[int(item.answer)]
+        longest_by_topic.setdefault(graph.topic_of(main), []).append(
+            answer_len == max(lengths) and lengths.count(max(lengths)) == 1
+        )
+
+    for topic_id, longest in sorted(longest_by_topic.items()):
+        if topic_id in LENGTH_DEBT_TOPICS:
+            continue
+        share = sum(longest) / len(longest)
+        assert share <= MAX_LONGEST_ANSWER_SHARE, (
+            f"в модуле {topic_id} верный вариант — самый длинный "
+            f"в {share:.0%} заданий ({sum(longest)} из {len(longest)})"
+        )
