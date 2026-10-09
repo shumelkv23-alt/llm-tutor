@@ -17,7 +17,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -29,6 +29,9 @@ DATA_DIR = _PROJECT_ROOT / "data"
 DEFAULT_SEED_PATH = DATA_DIR / "seed_topic01.json"
 # Имя seed-файла модуля: seed_topicNN.json (суффикс — для тестовых модулей).
 _SEED_NAME_RE = re.compile(r"seed_topic(\d{2})(?:_\w+)?\.json")
+# В курс из data/ идут только файлы без суффикса: черновики и бэкапы
+# (seed_topic02_draft.json) рядом с модулем в него не попадают.
+_COURSE_NAME_RE = re.compile(r"seed_topic\d{2}\.json")
 
 
 class Seed(BaseModel):
@@ -124,8 +127,17 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
     warnings: list[str] = []
     for seed in seeds:
         number = seed.topic.number
+        if not seed.nodes:
+            raise SeedError(f"В модуле {number} нет тем")
         for edge in seed.edges:
             src, dst = topic_of[edge.from_id], topic_of[edge.to_id]
+            # Модуль отвечает только за входы в свои темы: иначе файл модуля 2
+            # мог бы поменять порядок и блокировки модуля 1.
+            if dst != number:
+                raise SeedError(
+                    f"Ребро {edge.from_id} -> {edge.to_id} в файле модуля {number} "
+                    f"ведёт в тему чужого модуля {dst}"
+                )
             if edge.type == "requires" and edge.hard and src < dst:
                 warnings.append(
                     f"Жёсткое межмодульное ребро {edge.from_id} -> {edge.to_id} "
@@ -150,7 +162,11 @@ def _parse_seed(path: str | Path) -> Seed:
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(f"Seed-файл не найден: {source}")
-    seed = Seed.model_validate(json.loads(source.read_text(encoding="utf-8")))
+    try:
+        seed = Seed.model_validate(json.loads(source.read_text(encoding="utf-8")))
+    except (json.JSONDecodeError, ValidationError) as error:
+        # Без имени файла автор искал бы опечатку во всех десяти модулях.
+        raise SeedError(f"{source.name}: {error}") from error
     number = seed.topic.number
     match = _SEED_NAME_RE.fullmatch(source.name)
     if match and int(match.group(1)) != number:
@@ -189,7 +205,7 @@ def course_paths(data_dir: Path | None = None) -> list[Path]:
     """Seed-файлы модулей курса (черновики и прочие файлы не берутся)."""
     folder = DATA_DIR if data_dir is None else data_dir
     return sorted(
-        path for path in folder.glob("seed_topic*.json") if _SEED_NAME_RE.fullmatch(path.name)
+        path for path in folder.glob("seed_topic*.json") if _COURSE_NAME_RE.fullmatch(path.name)
     )
 
 
@@ -284,12 +300,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--db",
-        default=os.environ.get("DB_PATH", "data/llm_tutor.sqlite3"),
+        default=None,
         help="путь к БД (по умолчанию DB_PATH или data/llm_tutor.sqlite3)",
     )
     args = parser.parse_args(argv)
+    if args.seed is not None and args.db is None:
+        # Один файл — весь курс: в рабочей БД погасли бы остальные модули.
+        parser.error("--seed гасит остальные модули — укажи отдельную БД через --db")
+    db = args.db or os.environ.get("DB_PATH", "data/llm_tutor.sqlite3")
 
-    conn = get_conn(args.db)
+    conn = get_conn(db)
     try:
         migrate(conn)
         course = load_course(conn, None if args.seed is None else [args.seed])

@@ -139,7 +139,8 @@ class SurveyBlock(BaseModel):
     title: str
     question: str
     example: str
-    concepts: tuple[str, ...]
+    # Блок без тем ничего не говорит о маршруте — это ошибка seed.
+    concepts: tuple[str, ...] = Field(min_length=1)
 
 
 class SurveyConfig(BaseModel):

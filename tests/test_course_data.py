@@ -53,3 +53,12 @@ def test_items_lean_only_on_earlier_modules(conn) -> None:
         assert all(
             graph.topic_of(node) <= graph.topic_of(main) for node in item.concept_weights
         ), item.id
+
+
+def test_topic01_order_is_kept_in_whole_course(conn) -> None:
+    """Порядок модуля 1 не сдвигают рёбра других модулей (аудит среза 24, M2)."""
+    from course_fixtures import TOPIC01_ORDER
+
+    load_course(conn)
+
+    assert CourseGraph.load(conn).topic_nodes(1) == TOPIC01_ORDER
