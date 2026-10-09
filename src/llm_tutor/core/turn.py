@@ -123,7 +123,8 @@ def _normalize_choice_answer(item: Item, text: str) -> str:
     засчитала бы верный ответ неверным.
     """
     stripped = text.strip()
-    if item.answer_type != "choice" or not stripped.isdigit():
+    if item.answer_type != "choice" or not stripped.isdigit() or stripped in item.options:
+        # Вариант-число («150») — это текст варианта, а не номер (F-1).
         return text
     number = int(stripped)
     if 1 <= number <= len(item.options):

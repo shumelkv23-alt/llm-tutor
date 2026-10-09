@@ -43,6 +43,22 @@ def test_choice_items_are_unambiguous(conn) -> None:
             assert len(set(item.options)) == len(item.options), item.id
 
 
+def test_every_choice_option_is_graded_by_its_own_text(conn) -> None:
+    """Кнопка с вариантом засчитывается ровно как этот вариант (F-1: «150»)."""
+    from llm_tutor.core.turn import _normalize_choice_answer
+    from llm_tutor.grader import autocheck
+
+    load_course(conn)
+
+    for item in repos.get_items(conn):
+        if item.answer_type != "choice":
+            continue
+        for index, option in enumerate(item.options):
+            given = _normalize_choice_answer(item, option)
+            expected = 1.0 if index == int(item.answer) else 0.0
+            assert autocheck.check(item, given).score == expected, (item.id, option)
+
+
 def test_items_lean_only_on_earlier_modules(conn) -> None:
     """Вторичный вес задания — на тему своего или прошлого модуля, не будущего."""
     load_course(conn)
