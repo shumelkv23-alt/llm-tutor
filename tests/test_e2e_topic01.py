@@ -20,7 +20,7 @@ from llm_tutor.bot.render import render_plan
 from llm_tutor.bot.survey import CLAIMED_NOTE, GO_DATA, start_survey
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.config import Settings
-from llm_tutor.core.turn import handle_turn
+from llm_tutor.core.turn import handle_turn, lesson_next_reply
 from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
@@ -98,7 +98,8 @@ async def test_provider_error_is_reported_and_turn_persisted() -> None:
             conn, client, "m", "как работает groupby?", now=1.0, settings=settings
         )
 
-        assert reply.text == LLM_FAILURE_REPLY
+        # Срез 28: вход в узел при сбое модели — описание темы и «Проверим».
+        assert reply.text != LLM_FAILURE_REPLY and reply.button is not None
         session_id = repos.get_open_session(conn)
         assert len(repos.get_messages(conn, session_id)) == 2
     finally:
@@ -226,8 +227,9 @@ async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> Non
 
     steps = next(text for text, _ in message.sent if "Ближайшие 5 шагов" in text)
     assert "1. " in steps
-    assert message.sent[-1][0]  # урок начался: первое задание
+    assert message.sent[-1][0]  # урок начался: первая часть темы
     assert not _is_closed(conn, "python_basics")  # до ответов узел не закрыт
+    _press_check(conn, settings)
 
     # Отвечаем верно на первый тест узла, за ним на второй — и узел закрывается.
     client = GradingTutor(conn, passed=True)
@@ -240,6 +242,13 @@ async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> Non
 
     assert _is_closed(conn, "python_basics")
     assert _state(conn).current_node_id != "python_basics"  # урок пошёл дальше
+
+
+def _press_check(conn, settings) -> None:
+    """Листает урок кнопкой до вопроса-проверки (срез 28)."""
+    while _state(conn).pending_item_id is None:
+        state = _state(conn)
+        lesson_next_reply(conn, state.current_node_id, state.lesson_part, settings=settings)
 
 
 def _is_closed(conn, node_id: str) -> bool:
@@ -287,4 +296,5 @@ async def test_confident_student_skips_known_blocks(conn, settings) -> None:
     assert "Начинаем с «" in steps  # урок, а не проверка: незаявленное есть
     current = _state(conn).current_node_id
     assert current not in survey.claimed_concepts(conn)
-    assert _state(conn).pending_item_id is not None  # урок начался с задания
+    # Срез 28: урок начался с первой части темы, задание — после «Проверим».
+    assert _state(conn).lesson_part == 1 and _state(conn).pending_item_id is None

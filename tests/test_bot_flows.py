@@ -456,11 +456,24 @@ async def test_free_text_goes_to_tutor_turn(conn, settings) -> None:
 
     await _named(router, "message", "on_text")(message, _fsm())
 
-    # Занятия ещё нет, поэтому реплика входит в узел (Срез 21): объяснение
-    # первым сообщением, задание по первому шагу — вторым.
+    # Занятия ещё нет, поэтому реплика входит в узел: урок частями (срез 28) —
+    # одно сообщение с кнопкой урока, задания пока нет.
     assert message.sent[0][0] == "ок"
-    assert message.sent[1][0]
+    button = message.sent[0][1].inline_keyboard[0][0]
+    assert button.callback_data.startswith("lesson:next:")
+    assert len(message.sent) == 1
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
+
+    # «Проверим» через бота выдаёт вопрос-проверку с вариантами.
+    await _named(router, "callback_query", "on_lesson_next")(
+        FakeCallback(button.callback_data, message), _fsm()
+    )
+    assert repos.get_session_state(conn, repos.get_open_session(conn)).pending_item_id
+    stale = FakeMessage()
+    await _named(router, "callback_query", "on_lesson_next")(
+        FakeCallback(button.callback_data, stale), _fsm()
+    )
+    assert "позади" in stale.last_text
 
 
 async def test_task_is_refused_during_flow(conn, settings) -> None:

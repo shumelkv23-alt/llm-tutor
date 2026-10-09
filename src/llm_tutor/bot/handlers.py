@@ -28,11 +28,12 @@ from llm_tutor.bot import start
 from llm_tutor.bot.chat_action import typing_action
 from llm_tutor.bot.survey import start_survey
 from llm_tutor.config import Settings
-from llm_tutor.core import verify
+from llm_tutor.core import lesson, verify
 from llm_tutor.core.turn import (
     STALE_ITEM_REPLY,
     TurnReply,
     handle_turn,
+    lesson_next_reply,
     resume_reply,
     skip_pending,
     start_practice_reply,
@@ -150,6 +151,14 @@ def _options_keyboard(
     )
 
 
+def _lesson_keyboard(button: tuple[str, str]) -> InlineKeyboardMarkup:
+    """Одна кнопка урока: «Дальше ▶️» или «Проверим ✅» (срез 28)."""
+    label, data = button
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=label, callback_data=data)]]
+    )
+
+
 async def _send_reply(
     conn: sqlite3.Connection, message: Message, reply: TurnReply
 ) -> None:
@@ -159,9 +168,12 @@ async def _send_reply(
     ``tail`` уходит двумя сообщениями; варианты ответа прикрепляются к тому из
     них, которое несёт задание.
     """
+    markup = None if reply.tail else _options_keyboard(conn, reply.options)
+    if markup is None and not reply.tail and reply.button is not None:
+        markup = _lesson_keyboard(reply.button)
     await message.answer(
         render.fit(render.escape(reply.text)),
-        reply_markup=None if reply.tail else _options_keyboard(conn, reply.options),
+        reply_markup=markup,
         parse_mode=render.PARSE_MODE,
     )
     if reply.tail:
@@ -354,6 +366,25 @@ def make_router(
             )
         await _send_reply(conn, callback.message, reply)
         await _offer_survey(callback.message, state)
+
+    @router.callback_query(F.data.startswith(f"{lesson.CALLBACK_PREFIX}:"))
+    async def on_lesson_next(callback: CallbackQuery, state: FSMContext | None = None) -> None:
+        """Кнопка урока: следующая часть темы или вопрос-проверка (срез 28)."""
+        await callback.answer()
+        if state is not None and await state.get_state() is not None:
+            await callback.message.answer(
+                render.fit(render.escape(BUSY_REPLY)), parse_mode=render.PARSE_MODE
+            )
+            return
+        # Данные колбэка подконтрольны клиенту: мусор — это «часть позади».
+        node_id, _, raw = (callback.data or "").removeprefix(f"{lesson.CALLBACK_PREFIX}:").rpartition(":")
+        part = int(raw) if raw.isascii() and raw.isdecimal() and len(raw) <= 3 else -1
+        try:
+            reply = lesson_next_reply(conn, node_id, part, settings=settings)
+        except Exception:  # noqa: BLE001 — кнопка не должна отвечать молчанием
+            logger.exception("Сбой кнопки урока")
+            reply = TurnReply(text=BOT_FAILURE_REPLY)
+        await _send_reply(conn, callback.message, reply)
 
     # Разбор действий из инлайн-списка меню. Регистрируется ПОСЛЕ on_answer:
     # тесты выбирают хендлер ответа по индексу callback_query[0].

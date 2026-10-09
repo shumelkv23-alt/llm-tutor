@@ -103,6 +103,8 @@ class TurnReply:
     text: str
     options: list[str] | None = None
     tail: str | None = None
+    # Кнопка урока (срез 28): подпись и callback_data «Дальше» / «Проверим».
+    button: tuple[str, str] | None = None
 
 
 def _render_item(item: Item) -> str:
@@ -130,15 +132,6 @@ def _normalize_choice_answer(item: Item, text: str) -> str:
     if 1 <= number <= len(item.options):
         return item.options[number - 1]
     return text
-
-
-def _looks_like_question(text: str) -> bool:
-    """Ученик спрашивает, а не отвечает.
-
-    Вопрос нельзя записывать в журнал как неверный ответ — иначе он теряется
-    безвозвратно вместе с висящим заданием.
-    """
-    return text.strip().endswith("?")
 
 
 def _feedback(item: Item, score: float) -> str:
@@ -522,6 +515,7 @@ async def handle_turn(
     # Второе сообщение хода — задание. Появится, если задание реально выдано:
     # отказ «заданий нет» остаётся в тексте, отдельным сообщением ему не быть.
     tail: str | None = None
+    button: tuple[str, str] | None = None
     answered_item_id = state.pending_item_id
 
     pending_item = (
@@ -653,6 +647,18 @@ async def handle_turn(
                     update={"current_node_id": node_id, "route": route}
                 )
 
+        if entering:
+            # Урок за ручку (срез 28): тема объясняется частями, задание — только
+            # после «Проверим». Ученик этого узла ещё не видел, поэтому ни «не
+            # понял», ни «закрой тему» к нему не относятся.
+            reply, new_state = await _start_lesson(
+                conn, client, model, session_id, state, graph, now=stamp, settings=s
+            )
+            button = lesson.button(new_state)
+            return _finish_turn(
+                conn, session_id, graph, user_text, reply, new_state, button=button,
+                now=stamp, settings=s,
+            )
         reply, events, mastery, new_state, wants_close = await _tutor_branch(
             conn,
             client,
@@ -663,13 +669,9 @@ async def handle_turn(
             graph,
             now=stamp,
             settings=s,
-            # Ученик этого узла ещё не видел: и «не понял», и «закрой тему» на
-            # ходу входа относятся не к нему, а узел выбрал код — так что ход
-            # остаётся обычным объяснением (§5.1).
-            force_stuck=force_stuck and not entering,
-            allow_stuck=not entering,
+            force_stuck=force_stuck,
         )
-        if wants_close and not entering:
+        if wants_close:
             # Модель заметила просьбу закрыть тему: реплика тьютора и слова
             # ученика уходят в проход, он же пишет ход — и в ответ, и в журнал.
             #
@@ -683,39 +685,14 @@ async def handle_turn(
             return verify.start_verification(
                 conn, now=stamp, settings=s, user_text=user_text, tutor_reply=reply
             )
-        # Ведём занятие дальше: на входе в узел — сразу после объяснения, на
-        # реплике без задания — по любой непустой реплике (§5.4). Кнопки
-        # «Продолжить» больше нет, её роль играет текст ученика.
-        moves_lesson = entering or (
-            state.pending_item_id is None
-            and not force_stuck
-            and not _looks_like_question(user_text)
-        )
-        # Сбой модели занятие не двигает: обещать задание после «не смог
-        # получить ответ» — значит выдать сбой за объяснение.
-        if (
-            moves_lesson
-            and new_state.current_node_id is not None
-            and reply != LLM_FAILURE_REPLY
-        ):
-            hint_level = new_state.hint_level
-            new_state, task_text, options = _issue_task(
-                conn, graph, new_state, now=stamp, settings=s
-            )
-            tail = task_text if new_state.pending_item_id is not None else None
-            if tail is None:
-                reply = f"{reply}\n\n{task_text}"
-            else:
-                # Объяснение и задание — один ход, поэтому уровень подсказки
-                # переносится в задание: `_issue_task` обнуляет лестницу
-                # (задание новое — помощи по нему не было), а обнуление стёрло
-                # бы подъём, и следующее «не понял» начинало бы лестницу
-                # заново — до разбора дело не дошло бы никогда.
-                new_state = new_state.model_copy(update={"hint_level": hint_level})
-        elif state.pending_item_id is not None and not force_stuck:
+        if state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
             # При «не понял» напоминание не нужно — его заменяет STUCK_NOTE.
             reply = f"{reply}\n\n{PENDING_ITEM_NOTE}"
+        else:
+            # Реплика посреди урока задание НЕ выдаёт (срез 28): ученик спросил —
+            # тьютор ответил, урок продолжается кнопкой с того же места.
+            button = lesson.button(new_state)
 
     # Маршрут пересчитывается на каждом ходу, но ученику сообщается только
     # о значимом изменении (§6.4 — «малые различия» не тревожат план).
@@ -737,7 +714,126 @@ async def handle_turn(
         mastery=mastery,
         now=stamp,
     )
-    return TurnReply(text=reply, options=options, tail=tail)
+    return TurnReply(text=reply, options=options, tail=tail, button=button)
+
+
+async def _start_lesson(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    session_id: int,
+    state: SessionState,
+    graph: CourseGraph,
+    *,
+    now: float,
+    settings: Settings,
+) -> tuple[str, SessionState]:
+    """Вход в узел ``state.current_node_id``: урок частями, первая часть — сразу.
+
+    Один вызов тьютора на тему; части лежат в состоянии, «Дальше» показывает
+    их без модели. Сбой модели урок не блокирует: первой частью идёт описание
+    темы из графа, а дальше — проверка.
+    """
+    node_id = state.current_node_id
+    assert node_id is not None
+    concept = graph.concept(node_id)
+    fresh = state.model_copy(
+        update={"lesson_parts": [], "lesson_part": 0, "check_misses": 0, "phase": "explain"}
+    )
+    reply, _, _, new_state, _ = await _tutor_branch(
+        conn,
+        client,
+        model,
+        session_id,
+        lesson.LESSON_KICKOFF.format(name=concept.name),
+        fresh,
+        graph,
+        now=now,
+        settings=settings,
+        allow_stuck=False,
+    )
+    if reply == LLM_FAILURE_REPLY:
+        logger.warning("Урок «%s» без модели: показываю описание темы", node_id)
+        parts = [f"📘 {concept.name}\n\n{concept.description or concept.name}"]
+    else:
+        parts = lesson.split_parts(reply)
+    new_state = new_state.model_copy(update={"lesson_parts": parts, "lesson_part": 1})
+    return parts[0], new_state
+
+
+def _finish_turn(
+    conn: sqlite3.Connection,
+    session_id: int,
+    graph: CourseGraph,
+    user_text: str,
+    reply: str,
+    state: SessionState,
+    *,
+    button: tuple[str, str] | None,
+    now: float,
+    settings: Settings,
+) -> TurnReply:
+    """Пересчёт маршрута, запись хода и ответ без задания (ход урока)."""
+    fresh_route, route_note = route_mod.refresh(conn, state, graph, now=now, settings=settings)
+    if route_note:
+        reply = f"{reply}\n\n{route_note}"
+    post_turn(
+        conn,
+        session_id,
+        user_text=user_text,
+        assistant_text=reply,
+        state=state.model_copy(update={"route": fresh_route}),
+        now=now,
+    )
+    return TurnReply(text=reply, button=button)
+
+
+def lesson_next_reply(
+    conn: sqlite3.Connection,
+    node_id: str,
+    part: int,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> TurnReply:
+    """Кнопка урока: следующая часть темы или, после последней, вопрос-проверка.
+
+    Без модели. Колбэк несёт тему и число показанных частей — старая или
+    повторная кнопка не совпадёт с состоянием и ничего не сдвинет.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    if (
+        state.current_node_id != node_id
+        or state.lesson_part != part
+        or state.pending_item_id is not None
+    ):
+        return TurnReply(text=lesson.STALE_PART_REPLY)
+    if part < len(state.lesson_parts):
+        new_state = state.model_copy(update={"lesson_part": part + 1, "last_activity": stamp})
+        text = state.lesson_parts[part]
+        post_turn(
+            conn,
+            session_id,
+            user_text=lesson.NEXT_KICKOFF_TEXT,
+            assistant_text=text,
+            state=new_state,
+            now=stamp,
+        )
+        return TurnReply(text=text, button=lesson.button(new_state))
+    graph = CourseGraph.load(conn)
+    new_state, task_text, options = _issue_task(conn, graph, state, now=stamp, settings=s)
+    post_turn(
+        conn,
+        session_id,
+        user_text=lesson.NEXT_KICKOFF_TEXT,
+        assistant_text=task_text,
+        state=new_state,
+        now=stamp,
+    )
+    return TurnReply(text=task_text, options=options)
 
 
 def _close_node_if_ready(
@@ -1082,48 +1178,23 @@ async def resume_reply(
         )
 
     if state.phase == "explain":
-        # Вход в узел (§5.1): тьютор объясняет, и в том же ходу выдаётся первый
-        # тест — ждать реплики ученика не нужно.
-        explaining = state.model_copy(update={"current_node_id": node_id})
-        reply, events, mastery, new_state, _ = await _tutor_branch(
-            conn,
-            client,
-            model,
-            session_id,
-            RESUME_KICKOFF_TEXT,
-            explaining,
-            graph,
-            now=stamp,
-            settings=s,
-        )
-        if reply == LLM_FAILURE_REPLY:
-            # Сбой модели не двигает занятие (см. `handle_turn`): фазу оставляем
-            # объяснением, задание выдаст следующая реплика ученика.
-            new_state = new_state.model_copy(update={"phase": "explain"})
-        else:
-            hint_level = new_state.hint_level
-            new_state, task_text, options = _issue_task(
-                conn, graph, new_state, now=stamp, settings=s
+        # Урок уже идёт — повторяем последнюю показанную часть, модель не зовём.
+        if state.current_node_id == node_id and 0 < state.lesson_part <= len(state.lesson_parts):
+            text = state.lesson_parts[state.lesson_part - 1]
+            return _finish_turn(
+                conn, session_id, graph, RESUME_KICKOFF_TEXT, text, state,
+                button=lesson.button(state), now=stamp, settings=s,
             )
-            tail = task_text if new_state.pending_item_id is not None else None
-            if tail is None:
-                reply = f"{reply}\n\n{task_text}"
-            else:
-                # См. `handle_turn`: объяснение и задание — один ход, лестницу
-                # подсказок обнулять нельзя.
-                new_state = new_state.model_copy(update={"hint_level": hint_level})
-        fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
-        post_turn(
-            conn,
-            session_id,
-            user_text=RESUME_KICKOFF_TEXT,
-            assistant_text=f"{reply}\n\n{tail}" if tail else reply,
-            state=new_state.model_copy(update={"route": fresh_route}),
-            events=events,
-            mastery=mastery,
-            now=stamp,
+        # Вход в узел: урок частями (срез 28), задание — после «Проверим».
+        reply, new_state = await _start_lesson(
+            conn, client, model, session_id,
+            state.model_copy(update={"current_node_id": node_id}), graph,
+            now=stamp, settings=s,
         )
-        return TurnReply(text=reply, options=options, tail=tail)
+        return _finish_turn(
+            conn, session_id, graph, RESUME_KICKOFF_TEXT, reply, new_state,
+            button=lesson.button(new_state), now=stamp, settings=s,
+        )
 
     return start_practice_reply(conn, now=stamp, settings=s)
 

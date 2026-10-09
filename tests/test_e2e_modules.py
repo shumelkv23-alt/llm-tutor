@@ -48,6 +48,7 @@ async def test_student_moves_from_module_one_to_module_two(conn, settings) -> No
 
     lesson = repos.get_session_state(conn, repos.get_open_session(conn))
     assert lesson.current_node_id == "mini_plots"
-    assert lesson.pending_item_id is not None and lesson.pending_item_id >= 2000
+    # Срез 28: урок модуля 2 начался с первой части, задание — после «Проверим».
+    assert lesson.lesson_parts and lesson.pending_item_id is None
     assert any(text.startswith("📋") for text, _ in intro.sent)
     assert survey.is_completed(conn, T2)

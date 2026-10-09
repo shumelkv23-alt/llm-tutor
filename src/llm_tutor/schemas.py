@@ -321,3 +321,8 @@ class SessionState(BaseModel):
     # задания идут по второму кругу (повтор — слабым свидетельством).
     lesson_item_ids: list[int] = Field(default_factory=list)
     last_activity: float | None = None
+    # Урок за ручку (срез 28): части объяснения текущей темы и сколько из них
+    # уже показано; ошибки на проверке темы (второй шанс, потом — дальше).
+    lesson_parts: list[str] = Field(default_factory=list)
+    lesson_part: int = 0
+    check_misses: int = 0

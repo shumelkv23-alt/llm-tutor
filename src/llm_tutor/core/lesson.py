@@ -3,10 +3,11 @@
 Чистые функции без БД и модели: проводка — в ``core/turn.py``.
 """
 
+import re
 from typing import Literal
 
 from llm_tutor.grader import autocheck
-from llm_tutor.schemas import Item
+from llm_tutor.schemas import Item, SessionState
 
 AnswerKind = Literal["answer", "chat"]
 
@@ -38,3 +39,44 @@ def answer_kind(item: Item, text: str) -> AnswerKind:
         return "answer" if is_short and not looks_question else "chat"
     # Открытое и код-задание — развёрнутый ответ: вопросом считаем только «?».
     return "chat" if stripped.endswith("?") else "answer"
+
+
+# --- части урока (срез 28) ---
+
+# Тема объясняется частями; разделитель — отдельная строка «---» в ответе тьютора.
+MAX_PARTS = 3
+_SEPARATOR = re.compile(r"^\s*---+\s*$", re.MULTILINE)
+
+LESSON_KICKOFF = (
+    "Объясни тему «{name}» по шагам: идея → пример кода → где это применяют. "
+    "Каждый шаг — 2–4 предложения, пример — короткий код. Раздели шаги "
+    "отдельной строкой ---. Вопросов в конце не задавай: проверку даст бот."
+)
+NEXT_KICKOFF_TEXT = "Дальше."
+NEXT_LABEL = "Дальше ▶️"
+CHECK_LABEL = "Проверим ✅"
+CALLBACK_PREFIX = "lesson:next"
+STALE_PART_REPLY = "Эта часть уже позади — продолжаем с последнего сообщения."
+
+
+def split_parts(text: str) -> list[str]:
+    """Части урока: режет по строке ``---``, пустые отбрасывает, лишние склеивает.
+
+    Модель не всегда ставит разделитель — тогда урок из одной части, это не сбой.
+    """
+    parts = [part.strip() for part in _SEPARATOR.split(text) if part.strip()]
+    if len(parts) > MAX_PARTS:
+        parts = [*parts[: MAX_PARTS - 1], "\n\n".join(parts[MAX_PARTS - 1 :])]
+    return parts or [text.strip()]
+
+
+def button(state: SessionState) -> tuple[str, str] | None:
+    """Кнопка урока: «Дальше» к следующей части или «Проверим» после последней.
+
+    В колбэк зашиты тема и число показанных частей: старая или повторная
+    кнопка не совпадёт с состоянием и ничего не сдвинет.
+    """
+    if state.current_node_id is None or state.pending_item_id is not None:
+        return None
+    label = NEXT_LABEL if state.lesson_part < len(state.lesson_parts) else CHECK_LABEL
+    return label, f"{CALLBACK_PREFIX}:{state.current_node_id}:{state.lesson_part}"

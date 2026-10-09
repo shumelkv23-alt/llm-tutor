@@ -780,10 +780,9 @@ async def test_resume_explains_first_then_gives_task(conn, settings) -> None:
     reply = await resume_reply(conn, client, "m", now=1.0, settings=settings)
 
     assert "groupby собирает строки" in reply.text  # объяснение без задания
-    assert reply.tail  # задание отдельным сообщением
-    assert _state(conn).phase == "practice"
-    assert _state(conn).pending_item_id is not None
-    assert reply.options is not None
+    # Срез 28: урок частями — задание только после «Проверим», не сразу.
+    assert reply.button is not None
+    assert _state(conn).pending_item_id is None
 
 
 async def test_resume_reports_finished_route(conn, settings) -> None:
@@ -822,9 +821,9 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     reply = await handle_turn(conn, client, "m", "давай учиться", now=1.0, settings=settings)
 
     assert reply.text == "Сейчас разберём Python"  # объяснение без задания
-    assert reply.tail  # задание отдельным сообщением
-    assert _state(conn).pending_item_id is not None
-    assert _state(conn).phase == "practice"
+    # Срез 28: вместо задания — кнопка урока «Проверим» (часть одна).
+    assert reply.button is not None
+    assert _state(conn).pending_item_id is None
 
 
 async def test_stuck_phrase_on_first_reply_starts_lesson_normally(conn, settings) -> None:
@@ -835,7 +834,7 @@ async def test_stuck_phrase_on_first_reply_starts_lesson_normally(conn, settings
 
     assert STUCK_NOTE not in reply.text  # «остаёмся на этом узле» здесь неуместно
     assert _state(conn).mode is None  # узел не ушёл в усиленный проход
-    assert reply.tail  # ученик получил объяснение первого узла и сразу задание
+    assert reply.button is not None  # урок первого узла начался (срез 28)
 
 
 async def test_close_flag_on_first_reply_starts_lesson(conn, settings) -> None:
@@ -847,7 +846,7 @@ async def test_close_flag_on_first_reply_starts_lesson(conn, settings) -> None:
         conn, client, "m", "давай закроем, я тут все знаю уже", now=1.0, settings=settings
     )
 
-    assert reply.tail  # урок начался
+    assert reply.button is not None  # урок начался (срез 28)
     assert _state(conn).current_node_id is not None
     assert _state(conn).mode is None  # проверочного прохода нет
 
@@ -881,8 +880,9 @@ async def test_plain_reply_moves_lesson_forward(conn, settings) -> None:
         conn, _FakeTutor(), "m", "ага, понятно", now=1.0, settings=settings
     )
 
-    assert reply.tail  # выдали следующее задание
-    assert _state(conn).pending_item_id is not None
+    # Срез 28: реплика задание не выдаёт — урок идёт кнопкой.
+    assert reply.tail is None and reply.button is not None
+    assert _state(conn).pending_item_id is None
 
 
 async def test_question_does_not_move_lesson(conn, settings) -> None:
