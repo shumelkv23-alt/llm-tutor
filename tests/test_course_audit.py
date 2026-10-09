@@ -111,19 +111,23 @@ def test_survey_block_without_topics_is_rejected(tmp_path) -> None:
 # выдаётся в уроке темы прошлого модуля.
 
 
-def _lesson_items(conn, node_id: str) -> list[int]:
+def _lesson_items(conn, node_id: str, settings) -> list[int]:
     from llm_tutor.student import diagnostic
 
     used: frozenset[int] = frozenset()
-    while (question := diagnostic.verification_item(conn, node_id, used_item_ids=used)) is not None:
+    while (
+        question := diagnostic.verification_item(
+            conn, node_id, used_item_ids=used, settings=settings
+        )
+    ) is not None:
         used = used | {question.item.id}
     return sorted(used)
 
 
-def test_lesson_of_earlier_module_skips_later_module_items(conn) -> None:
+def test_lesson_of_earlier_module_skips_later_module_items(conn, settings) -> None:
     load_two_modules(conn)
 
-    items = _lesson_items(conn, "describe_stats")
+    items = _lesson_items(conn, "describe_stats", settings)
 
     assert items and 2006 not in items
 
