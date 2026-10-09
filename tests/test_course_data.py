@@ -103,10 +103,27 @@ def test_choice_answer_is_not_systematically_the_longest(conn) -> None:
         )
 
 
+def test_every_module_has_short_items(conn) -> None:
+    """Типы заданий как в topic01: не только choice, но и short (§6.2, аудит 5-M3)."""
+    load_course(conn)
+    graph = CourseGraph.load(conn)
+
+    short_topics = {
+        graph.topic_of(max(item.concept_weights, key=item.concept_weights.get))
+        for item in repos.get_items(conn)
+        if item.answer_type == "short"
+    }
+
+    assert short_topics == set(graph.topic_ids)
+
+
 # Дистракторы, которые придумывались как ложные, а запуск кода показал, что
 # они верны (problems.md, раздел 4). Ученик, знающий sklearn, получал за них 0.
 TRUE_DISTRACTORS = {
     4037: "Модель перестаёт зависеть от значений входных признаков",
+    5013: "Чтобы ускорить обучение за счёт меньшего числа признаков",
+    5029: "Деревья обучают не на бутстрэп-выборках, а на всей выборке",
+    5044: "В сумме дают сто процентов по каждому дереву леса",
 }
 
 
