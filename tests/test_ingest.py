@@ -127,7 +127,7 @@ def test_cli_main_ingests_file(tmp_path, capsys) -> None:
     md = tmp_path / "m.md"
     md.write_text("# T\n\n## S\n\ncontent alpha\n", encoding="utf-8")
 
-    code = main([str(md), "--db", str(tmp_path / "t.db")])
+    code = main([str(md), "--topic", "1", "--db", str(tmp_path / "t.db")])
 
     assert code == 0
     assert "Загружено чанков" in capsys.readouterr().out
@@ -138,7 +138,7 @@ def test_cli_main_ingests_url(tmp_path, capsys) -> None:
     respx.get("http://course/u.md").mock(
         return_value=httpx.Response(200, text="# T\n\n## S\n\nbeta\n")
     )
-    code = main(["http://course/u.md", "--db", str(tmp_path / "t.db")])
+    code = main(["http://course/u.md", "--topic", "1", "--db", str(tmp_path / "t.db")])
     assert code == 0
     assert "Загружено чанков" in capsys.readouterr().out
 
@@ -225,3 +225,9 @@ def test_ingest_file_idempotent_across_path_forms(conn, tmp_path, monkeypatch) -
     ingest_file(conn, "m.md")  # относительный путь
 
     assert conn.execute("SELECT count(DISTINCT source_url) FROM chunks").fetchone()[0] == 1
+
+
+def test_ingest_text_marks_module(conn) -> None:
+    ingest_text(conn, "# T\n\n## S\n\nseaborn pairplot\n", "http://u", topic_id=2)
+
+    assert {r[0] for r in conn.execute("SELECT topic_id FROM chunks")} == {2}

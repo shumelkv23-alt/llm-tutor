@@ -8,7 +8,7 @@
 import re
 from typing import Literal, Mapping, Sequence
 
-from llm_tutor.schemas import Chunk, Criterion, GuidePhase, Route
+from llm_tutor.schemas import Chunk, Criterion, GuidePhase, Route, Topic
 from llm_tutor.student.hints import HINT_LEVEL_NAMES, MAX_HINT_LEVEL
 
 # Пока ответ не получен, ученик не должен получать молчание.
@@ -27,11 +27,10 @@ BUSY_REPLY = "Сначала закончим текущий шаг — анке
 BOT_FAILURE_REPLY = "Что-то пошло не так — попробуй ещё раз."
 
 TUTOR_SYSTEM_PROMPT = (
-    "Ты — тьютор по курсу машинного обучения mlcourse.ai, тема 1 «Pandas / EDA».\n"
     "Правила:\n"
     "1. Отвечай на русском, кратко и по-дружески.\n"
     "2. Опирайся только на фрагменты материалов курса, не выдумывай факты.\n"
-    "3. Где уместно — ссылайся на раздел (например, «в разделе Grouping»).\n"
+    "3. Где уместно — ссылайся на раздел материала по его заголовку.\n"
     "4. Если во фрагментах нет ответа — честно скажи, что этого в материалах не нашёл.\n"
 )
 
@@ -54,19 +53,27 @@ _NO_FRAGMENTS_RULES = (
 
 # Материал загружен, но по этим словам ничего не совпало.
 TUTOR_NO_MATCH_SYSTEM_PROMPT = (
-    "Ты — тьютор по курсу машинного обучения mlcourse.ai, тема 1 «Pandas / EDA».\n"
     "Материалы курса загружены, но по этому запросу ничего не нашлось. Правила:\n"
     f"{_NO_FRAGMENTS_RULES}"
     "5. Если вопрос похож на тему курса, попроси добавить слова из материала "
-    "(groupby, DataFrame, crosstab, loc/iloc) — поиск идёт по словам материала.\n"
+    "(названия функций, методов и терминов) — поиск идёт по словам материала.\n"
 )
 
 # Материалов курса нет вовсе (индекс пуст).
 TUTOR_NO_MATERIAL_SYSTEM_PROMPT = (
-    "Ты — тьютор по курсу машинного обучения mlcourse.ai, тема 1 «Pandas / EDA».\n"
     "Материалов курса сейчас нет. Правила:\n"
     f"{_NO_FRAGMENTS_RULES}"
 )
+
+
+def course_line(topic: Topic | None) -> str:
+    """Кто ты и какой модуль идёт — первая строка системного промпта."""
+    if topic is None:
+        return "Ты — тьютор по курсу машинного обучения mlcourse.ai."
+    return (
+        "Ты — тьютор по курсу машинного обучения mlcourse.ai, "
+        f"модуль {topic.number} «{topic.title}»."
+    )
 
 
 # Политика диалога и лестница подсказок (Срез 5; объяснение первым — Срез 21).
@@ -142,11 +149,12 @@ def tutor_system_prompt(
     material: MaterialState = "found",
     phase: GuidePhase | None = None,
     route_block: str | None = None,
+    topic: Topic | None = None,
 ) -> str:
-    """Системный промпт полного хода: правила, маршрут и фаза занятия."""
+    """Системный промпт полного хода: модуль, правила, маршрут и фаза занятия."""
     base = _MATERIAL_BASES[material]
     level_name = HINT_LEVEL_NAMES.get(hint_level, "без подсказки")
-    parts = [base, _BREVITY_RULES, _TUTOR_TURN_RULES, _GUIDE_RULES]
+    parts = [course_line(topic), base, _BREVITY_RULES, _TUTOR_TURN_RULES, _GUIDE_RULES]
     if route_block:
         parts.append(route_block)
     if phase is not None:

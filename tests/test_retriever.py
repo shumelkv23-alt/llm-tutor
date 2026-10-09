@@ -1,7 +1,9 @@
 """Тесты FTS5-ретривера (Срез 3.2)."""
 
 from llm_tutor.course.ingest import ingest_text
+from llm_tutor.db import repos
 from llm_tutor.rag.retriever import build_fts_query, retrieve
+from llm_tutor.schemas import Chunk
 
 
 # --- построение запроса ---
@@ -85,3 +87,17 @@ def test_retrieve_filters_by_concept(conn) -> None:
     results = retrieve(conn, "alpha", concept_id="c1")
     assert len(results) == 1
     assert results[0].concept_id == "c1"
+
+
+def test_retrieve_skips_future_modules(conn) -> None:
+    repos.replace_chunks(
+        conn, "u1", [Chunk(source_url="u1", content="gradient boosting basics", seq=0, topic_id=1)]
+    )
+    repos.replace_chunks(
+        conn, "u3", [Chunk(source_url="u3", content="gradient boosting trees", seq=0, topic_id=3)]
+    )
+
+    found = retrieve(conn, "gradient boosting", max_topic=2)
+
+    assert [chunk.source_url for chunk in found] == ["u1"]
+    assert found[0].topic_id == 1

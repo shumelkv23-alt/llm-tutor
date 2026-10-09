@@ -1,6 +1,8 @@
 """Тесты текстов промптов (правила, а не формулировки)."""
 
-from llm_tutor.schemas import Route, RouteStep
+from course_fixtures import T2
+
+from llm_tutor.schemas import Route, RouteStep, Topic
 
 from llm_tutor.llm.prompts import (
     TUTOR_NO_MATCH_SYSTEM_PROMPT,
@@ -118,3 +120,18 @@ def test_tutor_rules_tie_depth_to_self_assessment() -> None:
 def test_confident_rule_has_no_false_premise() -> None:
     """«Уверенно» в промпте не утверждает провал проверки — его могло и не быть."""
     assert "не подтвердил проверку" not in tutor_system_prompt(0)
+
+
+# --- модуль в промпте (срез 27) ---
+
+
+def test_prompt_bases_have_no_hardcoded_module() -> None:
+    for base in (TUTOR_SYSTEM_PROMPT, *NO_FRAGMENTS_PROMPTS):
+        assert "Pandas / EDA" not in base and "groupby" not in base
+
+
+def test_prompt_names_current_module() -> None:
+    topic = Topic(number=2, title="Визуальный анализ", intro="…", survey=T2)
+
+    assert "модуль 2 «Визуальный анализ»" in tutor_system_prompt(0, topic=topic)
+    assert "mlcourse.ai" in tutor_system_prompt(0)

@@ -5,7 +5,7 @@
 код-блоки: решётка ``#`` внутри ```- или ~~~-фенсов — это комментарий кода,
 а не заголовок, иначе код-комментарии ложно становятся разделами.
 
-CLI: ``python -m llm_tutor.course.ingest <url|file> [--db PATH]``.
+CLI: ``python -m llm_tutor.course.ingest <url|file> --topic N [--source-url URL] [--db PATH]``.
 """
 
 import os
@@ -232,10 +232,17 @@ def ingest_text(
     text: str,
     source_url: str,
     *,
+    topic_id: int = 1,
     max_chars: int = MAX_CHUNK_CHARS,
 ) -> int:
-    """Разбирает текст и записывает чанки (идемпотентно по ``source_url``)."""
-    chunks = chunk_markdown(to_markdown(text), source_url, max_chars=max_chars)
+    """Разбирает текст и записывает чанки (идемпотентно по ``source_url``).
+
+    ``topic_id`` — модуль материала: RAG не подмешивает будущие модули.
+    """
+    chunks = [
+        chunk.model_copy(update={"topic_id": topic_id})
+        for chunk in chunk_markdown(to_markdown(text), source_url, max_chars=max_chars)
+    ]
     return replace_chunks(conn, source_url, chunks)
 
 
@@ -247,10 +254,14 @@ def fetch_url(url: str, *, timeout: float = 30.0) -> str:
 
 
 def ingest_url(
-    conn: sqlite3.Connection, url: str, *, max_chars: int = MAX_CHUNK_CHARS
+    conn: sqlite3.Connection,
+    url: str,
+    *,
+    topic_id: int = 1,
+    max_chars: int = MAX_CHUNK_CHARS,
 ) -> int:
     """Скачивает страницу по URL и загружает её чанки."""
-    return ingest_text(conn, fetch_url(url), url, max_chars=max_chars)
+    return ingest_text(conn, fetch_url(url), url, topic_id=topic_id, max_chars=max_chars)
 
 
 def ingest_file(
@@ -258,6 +269,7 @@ def ingest_file(
     path: str | Path,
     *,
     source_url: str | None = None,
+    topic_id: int = 1,
     max_chars: int = MAX_CHUNK_CHARS,
 ) -> int:
     """Читает локальный файл и загружает его чанки.
@@ -267,7 +279,9 @@ def ingest_file(
     """
     resolved = Path(path).resolve()
     text = resolved.read_text(encoding="utf-8")
-    return ingest_text(conn, text, source_url or str(resolved), max_chars=max_chars)
+    return ingest_text(
+        conn, text, source_url or str(resolved), topic_id=topic_id, max_chars=max_chars
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -279,6 +293,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Загрузка материалов курса в БД.")
     parser.add_argument("source", help="URL или путь к локальному markdown/HTML-файлу")
     parser.add_argument(
+        "--topic", type=int, required=True, help="номер модуля материала (1–10)"
+    )
+    parser.add_argument(
+        "--source-url", default=None, help="URL страницы для цитат (для файла)"
+    )
+    parser.add_argument(
         "--db",
         default=os.environ.get("DB_PATH", "data/llm_tutor.sqlite3"),
         help="путь к БД (по умолчанию DB_PATH или data/llm_tutor.sqlite3)",
@@ -289,9 +309,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         migrate(conn)
         if args.source.startswith(("http://", "https://")):
-            count = ingest_url(conn, args.source)
+            count = ingest_url(conn, args.source, topic_id=args.topic)
         else:
-            count = ingest_file(conn, args.source)
+            count = ingest_file(
+                conn, args.source, source_url=args.source_url, topic_id=args.topic
+            )
     finally:
         conn.close()
 

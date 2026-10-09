@@ -32,8 +32,9 @@ from llm_tutor.llm.prompts import (
 )
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import retrieve
-from llm_tutor.schemas import Chunk, SessionState
+from llm_tutor.schemas import Chunk, SessionState, Topic
 from llm_tutor.student import beta, survey
+from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import MODE_LABELS
 
 # Грубая оценка объёма без токенизатора: ~4 символа на токен.
@@ -106,16 +107,16 @@ def _system_prompt(
     state: SessionState,
     graph: CourseGraph | None,
     *,
+    topic: Topic | None,
     material: MaterialState,
     now: float,
     settings: Settings,
 ) -> str:
     """Правила + профиль + состояние занятия + срез модели ученика."""
     # Профиль — самооценка из анкеты по блокам (срез 23). Раньше фильтр ждал
-    # ключи старой анкеты и молча отсекал всё.
-    # Пока анкета модуля 1 (задача 16 возьмёт модуль занятия).
+    # ключи старой анкеты и молча отсекал всё. С среза 27 — анкета модуля занятия.
     profile = format_profile_block(
-        survey.self_assessment(conn, cfg) if (cfg := survey.config_for(conn, 1)) else {}
+        survey.self_assessment(conn, topic.survey) if topic is not None else {}
     )
     node_name = None
     if graph is not None and state.current_node_id:
@@ -125,8 +126,10 @@ def _system_prompt(
             node_name = None
     route_block = None
     if state.route is not None and graph is not None:
+        # Маршрут в промпте — участок модуля, как на экранах: весь курс
+        # раздул бы промпт и сбил счёт «пройдено».
         route_block = format_route_block(
-            state.route,
+            route_mod.section_route(graph, state.route),
             names={node_id: graph.concept(node_id).name for node_id in graph.node_ids},
         )
     blocks = [
@@ -135,6 +138,7 @@ def _system_prompt(
             material=material,
             phase=state.phase,
             route_block=route_block,
+            topic=topic,
         ),
         profile,
         format_state_block(
@@ -204,7 +208,14 @@ def build_context(
 
     # top_k <= 0 не должен «выключать» RAG и бота — падаем на дефолт.
     effective_k = top_k if top_k > 0 else DEFAULT_RAG_TOP_K
-    chunks = retrieve(conn, user_message, k=effective_k)
+    # Модуль занятия: по нему профиль, маршрут в промпте и материалы (срез 27).
+    topic_id = (
+        route_mod.topic_for(graph, session_state)
+        if graph is not None and graph.node_ids
+        else None
+    )
+    topic = repos.get_topic(conn, topic_id) if topic_id is not None else None
+    chunks = retrieve(conn, user_message, k=effective_k, max_topic=topic_id)
 
     tail: list[ChatMessage] = []
     if dialog_tail > 0:
@@ -219,6 +230,7 @@ def build_context(
         conn,
         session_state,
         graph,
+        topic=topic,
         material=material_state,
         now=stamp,
         settings=s,

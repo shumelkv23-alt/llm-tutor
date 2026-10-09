@@ -1,5 +1,7 @@
 """Тесты сборки контекста (Срез 3.3, полный пакет — Срез 5)."""
 
+from course_fixtures import T2, finish_all_but, load_two_modules
+
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.ingest import ingest_text
@@ -7,6 +9,7 @@ from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import route as route_mod
+from llm_tutor.student import survey
 
 
 def test_context_includes_retrieved_chunk_and_section(conn, settings) -> None:
@@ -193,3 +196,27 @@ def test_search_miss_on_loaded_material_is_not_emptiness(conn, settings) -> None
 
     assert package.material_state == "no_match"
     assert "материалы курса загружены" in package.messages[0].content.lower()
+
+
+# --- модуль занятия (срез 27) ---
+
+
+def test_context_speaks_about_current_module(conn, settings) -> None:
+    load_two_modules(conn)
+    survey.apply_answers(conn, T2, {"t02_basics": 1, "t02_relations": 2}, settings=settings)
+    finish_all_but(conn, "mini_hist", topic_id=2, completed=(1,))
+    session_id = repos.get_open_session(conn)
+
+    package = build_context(
+        conn,
+        session_id,
+        "что такое bins?",
+        graph=CourseGraph.load(conn),
+        now=2.0,
+        settings=settings,
+    )
+
+    system = package.messages[0].content
+    assert "модуль 2" in system
+    assert "Простые графики" in system  # профиль — анкета модуля 2
+    assert "Группировки и EDA" not in system  # анкета модуля 1 в профиль не идёт
