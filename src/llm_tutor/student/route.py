@@ -272,8 +272,12 @@ def build_route(
             mark = closed_at
         else:
             mark = old.closed_at if old is not None else None
+        # «Слабая» держится, пока тема закрыта и владение не стало уверенным.
+        weak = old is not None and old.weak and status == "closed" and mode != "skip"
         steps.append(
-            RouteStep(concept_id=concept_id, mode=mode, status=status, closed_at=mark)
+            RouteStep(
+                concept_id=concept_id, mode=mode, status=status, closed_at=mark, weak=weak
+            )
         )
     route = Route(
         goal_concept_id=goal_concept_id,

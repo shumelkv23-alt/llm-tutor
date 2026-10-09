@@ -900,7 +900,7 @@ def _close_node_if_ready(
     route = route.model_copy(
         update={
             "steps": [
-                step.model_copy(update={"status": "closed", "closed_at": now})
+                step.model_copy(update={"status": "closed", "closed_at": now, "weak": force})
                 if step.concept_id == node_id
                 else step
                 for step in route.steps

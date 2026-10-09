@@ -204,3 +204,21 @@ async def test_second_miss_moves_on_to_next_topic(conn, settings) -> None:
     assert lesson.WEAK_NOTE in reply.text
     assert _closed(conn, node) and _state(conn).current_node_id != node
     assert reply.button is not None and _state(conn).pending_item_id is None
+
+
+async def test_weak_topic_is_marked_in_plan(conn, settings) -> None:
+    """28-D1: тема, закрытая после двух ошибок, видна в /plan как ⚠️ слабая."""
+    from llm_tutor.bot.render import render_plan
+    from llm_tutor.course.graph import CourseGraph
+
+    load_seed(conn)
+    node = await _at_check(conn, settings)
+    for ts in (3.0, 4.0):
+        await handle_turn(
+            conn, _FakeTutor("Разбор"), "m", _answer(conn, correct=False), now=ts,
+            settings=settings,
+        )
+
+    name = CourseGraph.load(conn).concept(node).name
+    plan = render_plan(conn, now=5.0, settings=settings)
+    assert f"⚠️ {name}" in plan

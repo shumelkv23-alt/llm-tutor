@@ -13,7 +13,7 @@ from llm_tutor.config import Settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY
-from llm_tutor.schemas import SessionState
+from llm_tutor.schemas import RouteStep, SessionState
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.hints import HINT_LEVEL_NAMES
 
@@ -51,6 +51,15 @@ def _first_state(conn: sqlite3.Connection) -> SessionState:
 
 PLAN_STEPS = 5
 _STEP_MARKS = {"closed": "[x] ", "current": "[>] ", "claimed": "🔍 ", "ahead": ""}
+# Закрыта без доказательства — после двух ошибок (срез 28): вернёмся позже.
+_WEAK_MARK = "⚠️ "
+
+
+def _step_mark(step: RouteStep) -> str:
+    """Пометка шага списка; закрытая «слабая» тема — ⚠️ вместо [x]."""
+    if step.status == "closed" and step.weak:
+        return _WEAK_MARK
+    return _STEP_MARKS[step.status]
 
 
 def render_steps(
@@ -70,7 +79,7 @@ def render_steps(
     if not shown:
         return "Пока нечего показывать — маршрут пуст."
     lines = [
-        f"{index}. {_STEP_MARKS[step.status] if marks else ''}"
+        f"{index}. {_step_mark(step) if marks else ''}"
         f"{escape(graph.concept(step.concept_id).name)}"
         for index, step in enumerate(shown, start=1)
     ]
