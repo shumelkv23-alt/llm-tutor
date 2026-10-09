@@ -16,7 +16,7 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
-from llm_tutor.core import intents
+from llm_tutor.core import intents, lesson
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -524,11 +524,19 @@ async def handle_turn(
     tail: str | None = None
     answered_item_id = state.pending_item_id
 
-    if (
-        state.pending_item_id is not None
-        and not force_stuck
-        and not _looks_like_question(user_text)
-    ):
+    pending_item = (
+        repos.get_item(conn, state.pending_item_id)
+        if state.pending_item_id is not None
+        else None
+    )
+    is_answer = state.pending_item_id is not None and (
+        # Нажатие кнопки (намерения выключены) — всегда ответ; задание
+        # пропало из банка — пусть ветка ответа скажет «неактуально».
+        not allow_intents
+        or pending_item is None
+        or lesson.answer_kind(pending_item, user_text) == "answer"
+    )
+    if is_answer and not force_stuck:
         reply, events, mastery, new_state, passed = await _answer_branch(
             conn, client, model, graph, user_text, state, now=stamp, settings=s
         )

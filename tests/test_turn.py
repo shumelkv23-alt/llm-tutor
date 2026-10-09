@@ -280,6 +280,21 @@ async def test_question_while_task_pending_keeps_task(conn, settings) -> None:
     assert repos.get_events(conn) == []  # свидетельство не записано
 
 
+async def test_side_question_without_mark_keeps_task(conn, settings) -> None:
+    """Посторонний вопрос без «?» — реплика тьютору, а не неверный ответ (срез 28)."""
+    load_seed(conn)
+    start_practice_reply(conn, now=1.0, settings=settings)
+    pending_before = _state(conn).pending_item_id
+
+    reply = await handle_turn(
+        conn, _FakeTutor("объясняю"), "m", "а что такое groupby", now=2.0, settings=settings
+    )
+
+    assert "объясняю" in reply.text
+    assert _state(conn).pending_item_id == pending_before
+    assert repos.get_events(conn) == []
+
+
 def test_skip_pending_clears_without_evidence(conn, settings) -> None:
     load_seed(conn)
     start_practice_reply(conn, now=1.0, settings=settings)
@@ -961,9 +976,14 @@ async def test_lesson_cycles_tests_when_exhausted(conn, settings) -> None:
     issued = {_state(conn).pending_item_id}
 
     for now in (2.0, 3.0, 4.0):
-        reply = await handle_turn(
-            conn, _FakeTutor(), "m", "мимо", now=now, settings=settings
+        item = repos.get_item(conn, _state(conn).pending_item_id)
+        # Неверный ответ — настоящий вариант: «мимо» теперь реплика (срез 28).
+        wrong = (
+            next(o for i, o in enumerate(item.options) if i != int(item.answer))
+            if item.answer_type == "choice"
+            else "мимо"
         )
+        reply = await handle_turn(conn, _FakeTutor(), "m", wrong, now=now, settings=settings)
         issued.add(_state(conn).pending_item_id)
 
     assert reply.tail  # задание есть всегда: узел не залипает
