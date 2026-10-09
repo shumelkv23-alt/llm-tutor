@@ -436,6 +436,7 @@ def _checking(state: SessionState, node_id: str) -> SessionState:
         update={
             "current_node_id": node_id,
             "mode": "verify",
+            "close_requested": False,
             "node_streak": 0,
             "hint_level": 0,
             "task_hinted": False,

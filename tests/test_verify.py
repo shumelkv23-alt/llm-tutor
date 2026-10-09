@@ -161,3 +161,22 @@ async def test_item_without_rubric_does_not_drop_the_pass(conn, settings) -> Non
 
     assert VERIFY_FAILED_NOTE not in reply.text
     assert _state(conn).mode == "verify"
+
+
+async def test_close_pass_needs_two_answers_by_default(conn, settings) -> None:
+    """28-D2: «закрой тему» — проверка из двух вопросов, хоть урок и из одного."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby")
+    verify.start_verification(conn, now=1.0, settings=settings)
+    client = GradingTutor(conn, passed=True)
+
+    first = await handle_turn(
+        conn, client, "m", "groupby группирует строки по ключу", now=2.0, settings=settings
+    )
+    assert "закрыт" not in first.text
+    assert _state(conn).mode == "verify"
+
+    second = await handle_turn(
+        conn, client, "m", "groupby группирует строки по ключу", now=3.0, settings=settings
+    )
+    assert "закрыт" in second.text

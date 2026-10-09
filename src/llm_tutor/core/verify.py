@@ -116,6 +116,7 @@ def start_verification(
     started = state.model_copy(
         update={
             "mode": "verify",
+            "close_requested": True,
             "node_streak": 0,
             "hint_level": 0,
             "task_hinted": False,
