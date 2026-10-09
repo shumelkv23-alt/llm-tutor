@@ -261,10 +261,50 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
             return None
         return topic
 
+    def _enter_module(graph: CourseGraph, topic_id: int) -> None:
+        """Прыжок в модуль: он становится модулем работы ещё до анкеты.
+
+        Иначе /start посреди анкеты или рестарт бота (FSM пуст) решали бы
+        «модуль работы» по старому снимку и открыли бы анкету модуля, откуда
+        ученик ушёл (ревью среза 26, 26-2). Текущая тема и висящее задание
+        прошлого модуля снимаются — как при обычном переходе к теме.
+        """
+        stamp = time.time()
+        session_id = repos.ensure_open_session(conn, stamp)
+        state = repos.get_session_state(conn, session_id)
+        route = state.route or route_mod.build_route(
+            conn,
+            graph,
+            goal_concept_id=route_mod.goal_for(conn, graph),
+            now=stamp,
+            settings=settings,
+        )
+        repos.update_session_state(
+            conn,
+            session_id,
+            state.model_copy(
+                update={
+                    "current_node_id": None,
+                    "pending_item_id": None,
+                    "mode": None,
+                    "phase": "explain",
+                    "node_streak": 0,
+                    "verify_item_ids": [],
+                    "lesson_item_ids": [],
+                    "route": route_mod.release_current(route).model_copy(
+                        update={"topic_id": topic_id}
+                    ),
+                    "last_activity": stamp,
+                }
+            ),
+        )
+
     async def _go(callback: CallbackQuery, state: FSMContext | None, node_id: str) -> None:
         """Переход к теме; в модуль с непройденной анкетой — через анкету."""
-        topic = _survey_first(CourseGraph.load(conn), node_id)
+        graph = CourseGraph.load(conn)
+        topic = _survey_first(graph, node_id)
         if topic is not None and state is not None:
+            _enter_module(graph, topic.number)
             await start_survey(callback.message, state, topic, then_node=node_id)
             return
         text = switch_node(conn, node_id, settings=settings)

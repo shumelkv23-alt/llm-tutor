@@ -1287,3 +1287,44 @@ async def test_answer_to_task_taken_before_module_survey_is_kept(conn, settings)
 
     assert repos.item_was_answered(conn, item.id)
     assert message.sent[-1][0].startswith("📘 Модуль 2")
+
+
+# --- регрессии ревью среза 26 (problems.md, 26-1 и 26-2) ---
+
+
+async def test_task_button_does_not_restart_running_survey(conn, settings) -> None:
+    """26-1: ответ кнопкой на задание посреди анкеты модуля не сбрасывает её."""
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    enter_module(conn, 2, completed=(1,))
+    router = make_router(conn, GradingTutor(conn, passed=True), "m", settings=settings)
+    survey_router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    await _named(router, "message", "on_task")(FakeMessage(), _fsm())
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    state = _fsm()
+    intro = await start_survey(FakeMessage(), state, repos.get_topic(conn, 2))
+    click = _named(survey_router, "callback_query", "on_survey_click")
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, T2.level_options[survey.LEVEL_SOME])
+    given_before = (await state.get_data())["given"]
+
+    await _named(router, "callback_query", "on_answer")(
+        FakeCallback(f"answer:{item.id}:{item.answer}", FakeMessage()), state
+    )
+
+    assert (await state.get_data())["given"] == given_before
+
+
+async def test_start_after_jump_keeps_jumped_module_survey(conn, settings) -> None:
+    """26-2: прыжок в модуль 2 из меню, потом /start — анкета модуля 2, а не 1."""
+    from llm_tutor.bot import themes
+
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    repos.ensure_open_session(conn, now=1.0)
+    themes_router = themes.make_themes_router(conn, settings)
+    await _named(themes_router, "callback_query", "on_theme")(
+        FakeCallback("theme:mini_plots", FakeMessage()), _fsm()
+    )
+
+    assert start.pending_survey_topic(conn).number == 2

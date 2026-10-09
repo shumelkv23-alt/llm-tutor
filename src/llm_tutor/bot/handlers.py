@@ -183,8 +183,12 @@ def make_router(
     router = Router()
 
     async def _offer_survey(message: Message, state: FSMContext | None) -> None:
-        """Ход перевёл в модуль с непройденной анкетой — сразу её приветствие (§5.2)."""
-        if state is None:
+        """Ход перевёл в модуль с непройденной анкетой — сразу её приветствие (§5.2).
+
+        Идущий поток (анкета, диагностика) не трогаем: иначе нажатие кнопки
+        задания посреди анкеты сбросило бы её ответы (ревью среза 26, 26-1).
+        """
+        if state is None or await state.get_state() is not None:
             return
         topic = start.pending_survey_topic(conn)
         if topic is not None:
