@@ -304,7 +304,7 @@ def make_router(
     @router.message(Command("themes"))
     async def on_themes(message: Message) -> None:
         try:
-            keyboard = themes.themes_keyboard(conn, settings=settings)
+            keyboard = themes.topics_keyboard(conn, settings=settings)
         except Exception:  # noqa: BLE001 — команда не должна отвечать молчанием
             logger.exception("Сбой списка тем")
             await message.answer(
@@ -366,7 +366,7 @@ def make_router(
                 await callback.message.answer(
                     themes.THEMES_PROMPT,
                     parse_mode=render.PARSE_MODE,
-                    reply_markup=themes.themes_keyboard(conn, settings=settings),
+                    reply_markup=themes.topics_keyboard(conn, settings=settings),
                 )
             elif action == "close":
                 # Посреди анкеты или подбора маршрута не начинаем: в состоянии

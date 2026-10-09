@@ -69,11 +69,11 @@ def test_themes_keyboard_has_button_per_node(conn, settings) -> None:
     load_seed(conn)
     graph = CourseGraph.load(conn)
 
-    kb = themes.themes_keyboard(conn, state=SessionState(), now=0.0, settings=settings)
+    kb = themes.themes_keyboard(conn, 1, state=SessionState(), now=0.0, settings=settings)
 
     callbacks = [b.callback_data for row in kb.inline_keyboard for b in row]
-    assert len(callbacks) == len(graph.node_ids)
-    assert all(cb.startswith("theme:") for cb in callbacks)
+    nodes = [cb for cb in callbacks if cb.startswith("theme:")]
+    assert len(nodes) == len(graph.node_ids)
 
 
 def test_node_status_reads_closure_from_route_snapshot(conn, settings) -> None:
@@ -304,7 +304,8 @@ def test_themes_keyboard_without_session_does_not_open_one(conn, settings) -> No
     """Список тем — чтение: сессию не заводит, даже если её ещё нет."""
     load_seed(conn)
 
-    themes.themes_keyboard(conn, now=0.0, settings=settings)
+    themes.themes_keyboard(conn, 1, now=0.0, settings=settings)
+    themes.topics_keyboard(conn, now=0.0, settings=settings)
 
     assert repos.get_open_session(conn) is None
 
@@ -410,3 +411,55 @@ async def test_jump_into_module_without_survey_starts_its_survey(conn, settings)
     data = await state.get_data()
     assert data["topic"] == 2 and data["then"] == "mini_plots"
     assert repos.get_session_state(conn, repos.get_open_session(conn)).current_node_id is None
+
+
+# --- двухуровневое меню (срез 27) ---
+
+
+def test_topics_keyboard_has_button_per_module(conn, settings) -> None:
+    load_two_modules(conn)
+
+    kb = themes.topics_keyboard(conn, state=SessionState(), now=0.0, settings=settings)
+
+    labels = [b.text for row in kb.inline_keyboard for b in row]
+    assert [b.callback_data for row in kb.inline_keyboard for b in row] == ["topic:1", "topic:2"]
+    assert labels[0].startswith("▶️") and labels[1].startswith("🔜")
+
+
+def test_module_keyboard_has_back_button(conn, settings) -> None:
+    load_two_modules(conn)
+
+    kb = themes.themes_keyboard(conn, 2, state=SessionState(), now=0.0, settings=settings)
+
+    data = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert data[-1] == themes.TOPICS_DATA
+    assert {d for d in data if d.startswith("theme:")} == {
+        "theme:mini_plots",
+        "theme:mini_hist",
+        "theme:mini_box",
+        "theme:mini_corr",
+    }
+
+
+async def test_topic_tap_opens_module_and_back_returns(conn, settings) -> None:
+    load_two_modules(conn)
+    router = themes.make_themes_router(conn, settings)
+    message = fakes.FakeMessage()
+
+    await _named(router, "callback_query", "on_topic")(fakes.FakeCallback("topic:2", message))
+    assert "Модуль 2" in message.edits[-1][0]
+
+    await _named(router, "callback_query", "on_topics")(
+        fakes.FakeCallback(themes.TOPICS_DATA, message)
+    )
+    assert message.edits[-1][0] == themes.THEMES_PROMPT
+
+
+async def test_unknown_topic_tap_is_answered(conn, settings) -> None:
+    load_two_modules(conn)
+    router = themes.make_themes_router(conn, settings)
+    callback = fakes.FakeCallback("topic:abc", fakes.FakeMessage())
+
+    await _named(router, "callback_query", "on_topic")(callback)
+
+    assert callback.answered is True

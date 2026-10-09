@@ -823,7 +823,7 @@ async def test_themes_command_reports_failure_instead_of_silence(
     load_seed(conn)
     router = make_router(conn, _TutorClient(), "m", settings=settings)
     monkeypatch.setattr(
-        "llm_tutor.bot.handlers.themes.themes_keyboard",
+        "llm_tutor.bot.handlers.themes.topics_keyboard",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("сбой")),
     )
     message = FakeMessage()

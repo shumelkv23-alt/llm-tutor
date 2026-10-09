@@ -1,4 +1,4 @@
-"""Навигация по узлам темы: список со статусами и переход к выбранному.
+"""Навигация по курсу: модули, внутри — темы со статусами (срез 27).
 
 Прыжок вперёд (не закрыты жёсткие пререквизиты) требует подтверждения —
 это предупреждение, а не запрет: ученик решает сам.
@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from llm_tutor.bot.render import PARSE_MODE, escape, fit
-from llm_tutor.bot.survey import start_survey
+from llm_tutor.bot.survey import safe_edit, start_survey
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core.turn import post_turn
 from llm_tutor.course.graph import CourseGraph
@@ -39,9 +39,15 @@ STATUS_ICONS: dict[str, str] = {
 
 THEMES_PROMPT = (
     "🎚 <b>Куда идём?</b>\n\n"
+    "Выбери модуль — внутри видно, что пройдено и что впереди."
+)
+MODULE_PROMPT = (
     "Можно вернуться к пройденному или заглянуть вперёд — "
     "про будущее предупрежу, там ещё не закрыты пререквизиты."
 )
+MODULE_ICONS: dict[str, str] = {"done": "✅", "current": "▶️", "ahead": "🔜"}
+TOPICS_DATA = "topics"
+TOPICS_BACK_LABEL = "← Модули"
 
 
 def _closed_from_route(state: SessionState) -> set[str]:
@@ -105,29 +111,69 @@ def node_status(
     return "ahead"
 
 
-def themes_keyboard(
+def _read_state(conn: sqlite3.Connection, state: SessionState | None) -> SessionState:
+    """Состояние для меню — чтение: сессию НЕ заводим (как в ``_pending_item``)."""
+    if state is not None:
+        return state
+    session_id = repos.get_open_session(conn)
+    return repos.get_session_state(conn, session_id) if session_id else SessionState()
+
+
+def topics_keyboard(
     conn: sqlite3.Connection,
     *,
     state: SessionState | None = None,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> InlineKeyboardMarkup:
-    """Инлайн-список всех узлов темы со статусами (по 2 в ряду)."""
+    """Список модулей со статусами: пройден, текущий, впереди."""
     s = settings or get_settings()
     graph = CourseGraph.load(conn)
-    # Это чтение, а не ход: сессию НЕ заводим (как в ``_pending_item``).
-    session_id = repos.get_open_session(conn)
-    session_state = state or (
-        repos.get_session_state(conn, session_id) if session_id else SessionState()
-    )
+    session_state = _read_state(conn, state)
+    current = route_mod.topic_for(graph, session_state)
+    rows = []
+    for topic in repos.get_topics(conn):
+        nodes = graph.topic_nodes(topic.number)
+        if nodes and all(
+            _is_closed(conn, node, session_state, now=now, settings=s) for node in nodes
+        ):
+            status = "done"
+        elif topic.number == current:
+            status = "current"
+        else:
+            status = "ahead"
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{MODULE_ICONS[status]} {topic.number}. {topic.title}",
+                    callback_data=f"topic:{topic.number}",
+                )
+            ]
+        )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def themes_keyboard(
+    conn: sqlite3.Connection,
+    topic_id: int,
+    *,
+    state: SessionState | None = None,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> InlineKeyboardMarkup:
+    """Инлайн-список тем модуля со статусами (по 2 в ряду) и «← Модули»."""
+    s = settings or get_settings()
+    graph = CourseGraph.load(conn)
+    session_state = _read_state(conn, state)
     buttons: list[InlineKeyboardButton] = []
-    for node_id in graph.topo_order():
+    for node_id in graph.topic_nodes(topic_id):
         status = node_status(conn, graph, node_id, session_state, now=now, settings=s)
         label = f"{STATUS_ICONS[status]} {graph.concept(node_id).name}"
         buttons.append(
             InlineKeyboardButton(text=label, callback_data=f"theme:{node_id}")
         )
     rows = [buttons[i : i + 2] for i in range(0, len(buttons), 2)]
+    rows.append([InlineKeyboardButton(text=TOPICS_BACK_LABEL, callback_data=TOPICS_DATA)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -223,6 +269,34 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
             return
         text = switch_node(conn, node_id, settings=settings)
         await callback.message.answer(text, parse_mode=PARSE_MODE)
+
+    @router.callback_query(F.data.startswith("topic:"))
+    async def on_topic(callback: CallbackQuery) -> None:
+        raw = (callback.data or "").split(":", 1)[1]
+        try:
+            topic = repos.get_topic(conn, int(raw)) if raw.isdigit() else None
+            if topic is None:
+                await callback.answer("Модуль недоступен")
+                return
+            text = f"📘 <b>Модуль {topic.number} · {escape(topic.title)}</b>\n\n{MODULE_PROMPT}"
+            await safe_edit(
+                callback.message, text, themes_keyboard(conn, topic.number, settings=settings)
+            )
+        except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
+            logger.exception("Сбой списка тем модуля: %s", raw)
+            await callback.message.answer(fit(escape(BOT_FAILURE_REPLY)), parse_mode=PARSE_MODE)
+        await callback.answer()
+
+    @router.callback_query(F.data == TOPICS_DATA)
+    async def on_topics(callback: CallbackQuery) -> None:
+        try:
+            await safe_edit(
+                callback.message, THEMES_PROMPT, topics_keyboard(conn, settings=settings)
+            )
+        except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
+            logger.exception("Сбой списка модулей")
+            await callback.message.answer(fit(escape(BOT_FAILURE_REPLY)), parse_mode=PARSE_MODE)
+        await callback.answer()
 
     @router.callback_query(F.data.startswith("theme_go:"))
     async def on_theme_go(callback: CallbackQuery, state: FSMContext | None = None) -> None:
