@@ -10,16 +10,19 @@ import time
 from typing import Literal
 
 from aiogram import F, Router
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from llm_tutor.bot.render import PARSE_MODE, escape, fit
+from llm_tutor.bot.survey import start_survey
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core.turn import post_turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
-from llm_tutor.schemas import SessionState
-from llm_tutor.student import beta, route as route_mod
+from llm_tutor.schemas import SessionState, Topic
+from llm_tutor.student import beta, survey
+from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
 logger = logging.getLogger(__name__)
@@ -205,8 +208,24 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
             and not _is_closed(conn, p, state, now=time.time(), settings=settings)
         ]
 
+    def _survey_first(graph: CourseGraph, node_id: str) -> Topic | None:
+        """Модуль темы, анкета которого не пройдена (§5.2), иначе ``None``."""
+        topic = repos.get_topic(conn, graph.topic_of(node_id))
+        if topic is None or survey.is_completed(conn, topic.survey):
+            return None
+        return topic
+
+    async def _go(callback: CallbackQuery, state: FSMContext | None, node_id: str) -> None:
+        """Переход к теме; в модуль с непройденной анкетой — через анкету."""
+        topic = _survey_first(CourseGraph.load(conn), node_id)
+        if topic is not None and state is not None:
+            await start_survey(callback.message, state, topic, then_node=node_id)
+            return
+        text = switch_node(conn, node_id, settings=settings)
+        await callback.message.answer(text, parse_mode=PARSE_MODE)
+
     @router.callback_query(F.data.startswith("theme_go:"))
-    async def on_theme_go(callback: CallbackQuery) -> None:
+    async def on_theme_go(callback: CallbackQuery, state: FSMContext | None = None) -> None:
         node_id = (callback.data or "").split(":", 1)[1]
         # Данные колбэка подконтрольны клиенту: неизвестный узел не должен
         # ронять хендлер до ответа на нажатие (иначе «часик» виснет).
@@ -214,8 +233,7 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
             if not CourseGraph.load(conn).has_node(node_id):
                 await callback.answer("Тема недоступна")
                 return
-            text = switch_node(conn, node_id, settings=settings)
-            await callback.message.answer(text, parse_mode=PARSE_MODE)
+            await _go(callback, state, node_id)
         except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
             logger.exception("Сбой перехода к теме: %s", node_id)
             await callback.message.answer(
@@ -224,7 +242,7 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
         await callback.answer()
 
     @router.callback_query(F.data.startswith("theme:"))
-    async def on_theme(callback: CallbackQuery) -> None:
+    async def on_theme(callback: CallbackQuery, state: FSMContext | None = None) -> None:
         node_id = (callback.data or "").split(":", 1)[1]
         try:
             graph = CourseGraph.load(conn)
@@ -234,13 +252,13 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
                 return
             # Это чтение, а не ход: сессию НЕ заводим (как в ``_pending_item``).
             session_id = repos.get_open_session(conn)
-            state = (
+            session_state = (
                 repos.get_session_state(conn, session_id) if session_id else SessionState()
             )
             now = time.time()
-            status = node_status(conn, graph, node_id, state, now=now, settings=settings)
+            status = node_status(conn, graph, node_id, session_state, now=now, settings=settings)
             if status == "ahead":
-                prereqs = ", ".join(_ahead_prereq_names(graph, node_id, state))
+                prereqs = ", ".join(_ahead_prereq_names(graph, node_id, session_state))
                 text = (
                     f"«{escape(graph.concept(node_id).name)}» — не закрыты "
                     f"пререквизиты ({escape(prereqs)}). Всё равно идём?"
@@ -255,8 +273,7 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
                 )
                 await callback.message.answer(text, parse_mode=PARSE_MODE, reply_markup=keyboard)
             else:
-                text = switch_node(conn, node_id, settings=settings)
-                await callback.message.answer(text, parse_mode=PARSE_MODE)
+                await _go(callback, state, node_id)
         except Exception:  # noqa: BLE001 — нажатие не должно отвечать молчанием
             logger.exception("Сбой выбора темы: %s", node_id)
             await callback.message.answer(

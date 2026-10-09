@@ -1,11 +1,15 @@
 """Тесты навигации по узлам темы."""
 
+from course_fixtures import T1, load_two_modules
+import fakes
+
 from llm_tutor.bot import themes
 from llm_tutor.bot.themes import switch_node
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
+from llm_tutor.student import survey
 
 
 def _state(conn) -> SessionState:
@@ -383,3 +387,26 @@ async def test_ahead_warning_does_not_list_claimed_prerequisite(conn, settings) 
     text, _ = message.sent[-1]
     assert graph.concept("read_csv").name in text
     assert graph.concept("pandas_dataframe").name not in text
+
+
+# --- прыжок в модуль из меню (срез 26) ---
+
+
+async def test_jump_into_module_without_survey_starts_its_survey(conn, settings) -> None:
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    repos.ensure_open_session(conn, now=1.0)
+    router = themes.make_themes_router(conn, settings)
+    state = fakes._fsm()
+    # Фейки из fakes.py: у локальных answer() не возвращает сообщение, а анкета
+    # привязывается к отправленному.
+    message = fakes.FakeMessage()
+
+    await _named(router, "callback_query", "on_theme")(
+        fakes.FakeCallback("theme:mini_plots", message), state
+    )
+
+    assert message.sent[-1][0].startswith("📘 Модуль 2")
+    data = await state.get_data()
+    assert data["topic"] == 2 and data["then"] == "mini_plots"
+    assert repos.get_session_state(conn, repos.get_open_session(conn)).current_node_id is None
