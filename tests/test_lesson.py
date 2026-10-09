@@ -128,3 +128,79 @@ async def test_model_failure_falls_back_to_description(conn, settings) -> None:
 
     assert reply.button is not None and reply.button[0] == lesson.CHECK_LABEL
     assert reply.text  # описание темы из графа, а не пустота
+
+
+# --- один вопрос, два шанса ---
+
+from llm_tutor.db import repos  # noqa: E402
+
+
+async def _at_check(conn, settings) -> str:
+    """Вход в тему и «Проверим»: висит вопрос-проверка. Возвращает тему."""
+    await handle_turn(conn, _FakeTutor("A"), "m", "Поехали", now=1.0, settings=settings)
+    node = _state(conn).current_node_id
+    lesson_next_reply(conn, node, 1, now=2.0, settings=settings)
+    assert _state(conn).pending_item_id is not None
+    return node
+
+
+def _answer(conn, *, correct: bool) -> str:
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    if item.answer_type == "choice":
+        right = int(item.answer)
+        index = right if correct else (right + 1) % len(item.options)
+        return item.options[index]
+    return str(item.answer) if correct else "мимо"
+
+
+def _closed(conn, node: str) -> bool:
+    return any(
+        step.concept_id == node and step.status == "closed" for step in _state(conn).route.steps
+    )
+
+
+async def test_correct_check_closes_topic_and_starts_next_lesson(conn, settings) -> None:
+    load_seed(conn)
+    node = await _at_check(conn, settings)
+
+    reply = await handle_turn(
+        conn, _FakeTutor("Следующая тема"), "m", _answer(conn, correct=True), now=3.0,
+        settings=settings,
+    )
+
+    assert _closed(conn, node) and _state(conn).current_node_id != node
+    assert "Следующая тема" in reply.text
+    assert reply.button is not None and _state(conn).pending_item_id is None
+
+
+async def test_first_miss_explains_and_gives_another_question(conn, settings) -> None:
+    load_seed(conn)
+    node = await _at_check(conn, settings)
+    first_item = _state(conn).pending_item_id
+
+    reply = await handle_turn(
+        conn, _FakeTutor("Разбор ошибки"), "m", _answer(conn, correct=False), now=3.0,
+        settings=settings,
+    )
+
+    assert "Разбор ошибки" in reply.text
+    assert _state(conn).check_misses == 1 and _state(conn).current_node_id == node
+    assert _state(conn).pending_item_id not in (None, first_item)
+
+
+async def test_second_miss_moves_on_to_next_topic(conn, settings) -> None:
+    load_seed(conn)
+    node = await _at_check(conn, settings)
+    await handle_turn(
+        conn, _FakeTutor("Разбор"), "m", _answer(conn, correct=False), now=3.0,
+        settings=settings,
+    )
+
+    reply = await handle_turn(
+        conn, _FakeTutor("Разбор"), "m", _answer(conn, correct=False), now=4.0,
+        settings=settings,
+    )
+
+    assert lesson.WEAK_NOTE in reply.text
+    assert _closed(conn, node) and _state(conn).current_node_id != node
+    assert reply.button is not None and _state(conn).pending_item_id is None

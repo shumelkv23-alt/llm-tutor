@@ -57,6 +57,9 @@ NEXT_LABEL = "Дальше ▶️"
 CHECK_LABEL = "Проверим ✅"
 CALLBACK_PREFIX = "lesson:next"
 STALE_PART_REPLY = "Эта часть уже позади — продолжаем с последнего сообщения."
+# Вторая ошибка на проверке темы: ведём дальше, тема — слабое место.
+WEAK_NOTE = "Тема пока слабое место — вернёмся к ней позже."
+MISTAKE_KICKOFF = "Я ответил «{given}», а верно «{correct}». Объясни коротко, почему так."
 
 
 def split_parts(text: str) -> list[str]:

@@ -32,7 +32,8 @@ async def test_closing_last_topic_of_module_moves_to_next(conn, settings) -> Non
     assert state.route.completed_topics == [1]
     assert state.route.topic_id == 2
     assert state.current_node_id == "mini_plots"
-    assert state.pending_item_id is not None and state.pending_item_id >= 2000
+    # Срез 28: урок модуля 2 начался частями, задание — после «Проверим».
+    assert state.lesson_parts and state.pending_item_id is None
 
 
 async def test_returning_to_completed_module_has_no_fanfare(conn, settings) -> None:

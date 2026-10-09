@@ -110,7 +110,10 @@ async def test_provider_error_is_reported_and_turn_persisted() -> None:
 @respx.mock
 async def test_full_topic01_scenario() -> None:
     settings = Settings(
-        _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
+        _env_file=None,
+        openrouter_api_key="test-key",
+        telegram_bot_token="test-token",
+        guide_success_streak=2,  # сценарий проверяет конвейер, а не правило закрытия
     )
     conn = get_conn(":memory:")
     migrate(conn)
@@ -233,7 +236,7 @@ async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> Non
 
     # Отвечаем верно на первый тест узла, за ним на второй — и узел закрывается.
     client = GradingTutor(conn, passed=True)
-    for now in (2.0, 3.0):
+    for now in (2.0,):  # срез 28: тема закрывается одним верным ответом
         item = repos.get_item(conn, _state(conn).pending_item_id)
         assert item is not None
         assert "python_basics" in item.concept_weights

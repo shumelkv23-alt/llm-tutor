@@ -99,7 +99,7 @@ class Settings(BaseSettings):
     # Сколько заданий подряд без подсказок закрывают узел (§6.1). В серию
     # идут только задания, отвеченные ВПЕРВЫЕ: повтор после показа ответа
     # независимым свидетельством не является.
-    guide_success_streak: int = Field(default=2, ge=1)
+    guide_success_streak: int = Field(default=1, ge=1)
     # Вес повторного ответа на уже отвеченное задание: знания могло и не
     # прибавиться, поэтому свидетельство слабее.
     repeat_evidence_weight: float = Field(default=0.3, ge=0.0, le=1.0)

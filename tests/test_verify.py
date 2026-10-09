@@ -99,6 +99,7 @@ def test_restarting_pass_drops_pending_item_without_evidence(conn, settings) -> 
 
 async def test_pass_closes_node_after_two_clean_answers(conn, settings) -> None:
     """Проход закрывает узел обычным критерием — серией чистых ответов."""
+    settings = settings.model_copy(update={"guide_success_streak": 2})  # серия как механизм
     load_seed(conn)
     _set_state(conn, current_node_id="groupby")
     verify.start_verification(conn, now=1.0, settings=settings)
