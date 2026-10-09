@@ -39,6 +39,8 @@ INTRO_TEXT = (
 
 LESSON_LEAD = "Начинаем с «{name}» — сейчас коротко объясню и покажу пример."
 CHECK_LEAD = "Всё отмечено знакомым — начнём с короткой проверки."
+# Первая тема знакома по анкете, но впереди есть и новое (прыжок из меню).
+CLAIMED_LEAD = "«{name}» в анкете отмечена знакомой — начнём с короткой проверки."
 
 # Вход в модуль 2–10: что за модуль и что сейчас будет (сырой текст).
 MODULE_INTRO_TEMPLATE = (
@@ -59,11 +61,15 @@ def welcome_back_text(conn: sqlite3.Connection) -> str:
     session_id = repos.get_open_session(conn)
     if session_id is None:
         return WELCOME_BACK_IDLE
-    node_id = repos.get_session_state(conn, session_id).current_node_id
+    state = repos.get_session_state(conn, session_id)
+    node_id = state.current_node_id
     graph = CourseGraph.load(conn)
     if node_id is None or not graph.has_node(node_id):
         return WELCOME_BACK_IDLE
-    topic = repos.get_topic(conn, graph.topic_of(node_id))
+    # Модуль — тот же, что в /plan: тема прошлого модуля бывает в участке
+    # текущего (финальное ревью ветки, F-4).
+    topic_id = route_mod.topic_for(graph, state)
+    topic = repos.get_topic(conn, topic_id) if topic_id is not None else None
     name = graph.concept(node_id).name
     if topic is None:
         return f"👋 С возвращением! Продолжаем «{name}»."
@@ -113,9 +119,12 @@ async def begin_lesson(
     ``start_node_id`` — тема, выбранная в меню до анкеты (прыжок в модуль).
     """
     await state.clear()
+    session_id = repos.get_open_session(conn)
+    if start_node_id is None and session_id is not None:
+        # FSM потерян (/start посреди анкеты, рестарт) — тема прыжка из сессии.
+        start_node_id = repos.get_session_state(conn, session_id).jump_node_id
     reset_lesson(conn, claimed=claimed)
     graph = CourseGraph.load(conn)
-    session_id = repos.get_open_session(conn)
     previous = repos.get_session_state(conn, session_id).route if session_id else None
     route = route_mod.build_route(
         conn,
@@ -153,7 +162,13 @@ async def begin_lesson(
         else "📋 Что впереди:"
     )
     name = render.escape(graph.concept(first).name)
-    lead = (CHECK_LEAD if upcoming[0].status == "claimed" else LESSON_LEAD).format(name=name)
+    if upcoming[0].status != "claimed":
+        lead = LESSON_LEAD.format(name=name)
+    elif all(step.status == "claimed" for step in upcoming):
+        lead = CHECK_LEAD
+    else:
+        # «Всё отмечено» было бы неправдой: впереди и незнакомое (F-5).
+        lead = CLAIMED_LEAD.format(name=name)
     await message.answer(
         f"{head}\n\n{render.render_steps(graph, upcoming)}\n\n{lead}",
         parse_mode=render.PARSE_MODE,

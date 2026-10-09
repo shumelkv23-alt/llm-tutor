@@ -234,3 +234,21 @@ def test_material_state_counts_only_reachable_modules(conn, settings) -> None:
     )
 
     assert package.material_state == "empty"
+
+
+def test_mastery_slice_skips_topics_of_future_modules(conn, settings) -> None:
+    """F-7: промпт урока модуля 1 не называет темы модулей впереди."""
+    from llm_tutor.core.context import _mastery_slice
+
+    load_two_modules(conn)
+    graph = CourseGraph.load(conn)
+
+    names = [
+        name
+        for name, _ in _mastery_slice(
+            conn, graph, SessionState(current_node_id="describe_stats"), now=1.0, settings=settings
+        )
+    ]
+
+    assert graph.concept("mini_box").name not in names
+    assert graph.concept("describe_stats").name in names

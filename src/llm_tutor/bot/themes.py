@@ -45,7 +45,8 @@ MODULE_PROMPT = (
     "Можно вернуться к пройденному или заглянуть вперёд — "
     "про будущее предупрежу, там ещё не закрыты пререквизиты."
 )
-MODULE_ICONS: dict[str, str] = {"done": "✅", "current": "▶️", "ahead": "🔜"}
+# «open» — модуль позади текущего, но не пройден целиком (прыжок вперёд).
+MODULE_ICONS: dict[str, str] = {"done": "✅", "current": "▶️", "open": "🟢", "ahead": "🔜"}
 TOPICS_DATA = "topics"
 TOPICS_BACK_LABEL = "← Модули"
 
@@ -140,6 +141,9 @@ def topics_keyboard(
             status = "done"
         elif topic.number == current:
             status = "current"
+        elif current is not None and topic.number < current:
+            # Позади текущего — не «впереди», хоть и не пройден (F-6).
+            status = "open"
         else:
             status = "ahead"
         rows.append(
@@ -220,10 +224,18 @@ def switch_node(
             # Переход на другую тему снимает проверочный проход (спека §5.2).
             "verify_item_ids": [],
             "last_activity": stamp,
+            # Тема выбрана напрямую — прыжок через анкету больше не ждёт.
+            "jump_node_id": None,
             **keep,
         }
     )
     fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
+    # Модуль работы с непройденной анкетой (прыжок туда и сразу назад) не
+    # должен удерживать тему из другого модуля: любая реплика снова открыла бы
+    # его анкету (финальное ревью ветки, F-2).
+    working = repos.get_topic(conn, fresh_route.topic_id) if fresh_route.topic_id else None
+    if working is not None and not survey.is_completed(conn, working.survey):
+        fresh_route = fresh_route.model_copy(update={"topic_id": graph.topic_of(node_id)})
     text = (
         f"Ок, тема — <b>{escape(name)}</b>. "
         "Спроси, что непонятно, — объясню."
@@ -261,13 +273,15 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
             return None
         return topic
 
-    def _enter_module(graph: CourseGraph, topic_id: int) -> None:
+    def _enter_module(graph: CourseGraph, topic_id: int, node_id: str) -> None:
         """Прыжок в модуль: он становится модулем работы ещё до анкеты.
 
         Иначе /start посреди анкеты или рестарт бота (FSM пуст) решали бы
         «модуль работы» по старому снимку и открыли бы анкету модуля, откуда
         ученик ушёл (ревью среза 26, 26-2). Текущая тема и висящее задание
-        прошлого модуля снимаются — как при обычном переходе к теме.
+        прошлого модуля снимаются — как при обычном переходе к теме. Саму
+        тему прыжка тоже запоминаем в сессии: без FSM урок после анкеты иначе
+        начался бы не с неё (финальное ревью ветки, F-3).
         """
         stamp = time.time()
         session_id = repos.ensure_open_session(conn, stamp)
@@ -295,6 +309,7 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
                         update={"topic_id": topic_id}
                     ),
                     "last_activity": stamp,
+                    "jump_node_id": node_id,
                 }
             ),
         )
@@ -304,9 +319,13 @@ def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:
         graph = CourseGraph.load(conn)
         topic = _survey_first(graph, node_id)
         if topic is not None and state is not None:
-            _enter_module(graph, topic.number)
+            _enter_module(graph, topic.number, node_id)
             await start_survey(callback.message, state, topic, then_node=node_id)
             return
+        # Явный выбор темы выводит из начатой анкеты другого модуля: иначе
+        # ученик остался бы в ней запертым (финальное ревью ветки, F-2).
+        if state is not None:
+            await state.clear()
         text = switch_node(conn, node_id, settings=settings)
         await callback.message.answer(text, parse_mode=PARSE_MODE)
 

@@ -202,3 +202,24 @@ async def test_welcome_back_names_module_and_topic(conn, settings) -> None:
 
     name = CourseGraph.load(conn).concept("groupby").name
     assert "Модуль 1" in text and f"«{name}»" in text
+
+
+async def test_welcome_back_names_working_module_like_plan(conn, settings) -> None:
+    """F-4: тема модуля 1 в участке модуля 2 — «С возвращением» и /plan про модуль 2."""
+    from course_fixtures import load_two_modules
+    from llm_tutor.schemas import Route, RouteStep
+
+    load_two_modules(conn)
+    graph = CourseGraph.load(conn)
+    steps = [RouteStep(concept_id=n, mode="full", status="ahead") for n in graph.topo_order()]
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.update_session_state(
+        conn,
+        session_id,
+        SessionState(current_node_id="pandas_series", route=Route(steps=steps, topic_id=2)),
+    )
+
+    text = start.welcome_back_text(conn)
+
+    assert "Модуль 2" in text
+    assert "Модуль 2/" in render_plan(conn, settings=settings)

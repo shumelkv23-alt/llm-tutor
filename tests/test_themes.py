@@ -426,6 +426,20 @@ def test_topics_keyboard_has_button_per_module(conn, settings) -> None:
     assert labels[0].startswith("▶️") and labels[1].startswith("🔜")
 
 
+def test_unfinished_module_behind_jump_is_not_shown_ahead(conn, settings) -> None:
+    """F-6: после прыжка в модуль 2 недопройденный модуль 1 — не «🔜 впереди»."""
+    load_two_modules(conn)
+    graph = CourseGraph.load(conn)
+    steps = [RouteStep(concept_id=n, mode="full", status="ahead") for n in graph.topo_order()]
+
+    kb = themes.topics_keyboard(
+        conn, state=SessionState(route=Route(steps=steps, topic_id=2)), now=0.0, settings=settings
+    )
+
+    labels = [b.text for row in kb.inline_keyboard for b in row]
+    assert labels[0].startswith(themes.MODULE_ICONS["open"]) and labels[1].startswith("▶️")
+
+
 def test_module_keyboard_has_back_button(conn, settings) -> None:
     load_two_modules(conn)
 

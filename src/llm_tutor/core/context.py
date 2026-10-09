@@ -75,10 +75,17 @@ def _mastery_slice(
     except KeyError:
         return []
 
+    # Зависимые из модулей впереди ученику ещё не встречались: их названия
+    # в промпте урока сбивали бы тьютора (финальное ревью ветки, F-7).
+    topic = graph.topic_of(state.current_node_id)
     neighbours = [
         state.current_node_id,
         *graph.prerequisites(state.current_node_id),
-        *graph.dependents(state.current_node_id),
+        *(
+            node_id
+            for node_id in graph.dependents(state.current_node_id)
+            if graph.topic_of(node_id) <= topic
+        ),
     ]
     return [
         (

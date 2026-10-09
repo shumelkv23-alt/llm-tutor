@@ -59,6 +59,25 @@ def test_every_choice_option_is_graded_by_its_own_text(conn) -> None:
             assert autocheck.check(item, given).score == expected, (item.id, option)
 
 
+def test_reference_answer_typed_as_text_is_answer_and_passes(conn) -> None:
+    """Эталон, набранный текстом, — ответ, а не реплика, и проходит автопроверку (F-8)."""
+    from course_fixtures import correct_answer
+
+    from llm_tutor.core import lesson
+    from llm_tutor.core.turn import _normalize_choice_answer
+    from llm_tutor.grader import autocheck
+
+    load_course(conn)
+
+    for item in repos.get_items(conn):
+        if item.answer_type not in ("choice", "short"):
+            continue
+        typed = correct_answer(item)
+        assert lesson.answer_kind(item, typed) == "answer", (item.id, typed)
+        given = _normalize_choice_answer(item, typed) if item.answer_type == "choice" else typed
+        assert autocheck.check(item, given).score == 1.0, (item.id, typed)
+
+
 def test_items_lean_only_on_earlier_modules(conn) -> None:
     """Вторичный вес задания — на тему своего или прошлого модуля, не будущего."""
     load_course(conn)

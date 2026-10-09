@@ -1349,3 +1349,75 @@ async def test_start_after_jump_keeps_jumped_module_survey(conn, settings) -> No
     )
 
     assert start.pending_survey_topic(conn).number == 2
+
+
+# --- регрессии финального ревью ветки (problems.md, F-2 и F-3) ---
+
+
+async def _jump(conn, settings, node_id: str, state) -> None:
+    """Прыжок к теме из меню: «Да» на предупреждении о пререквизитах."""
+    from llm_tutor.bot import themes
+
+    router = themes.make_themes_router(conn, settings)
+    await _named(router, "callback_query", "on_theme_go")(
+        FakeCallback(f"theme_go:{node_id}", FakeMessage()), state
+    )
+
+
+async def test_jump_back_to_module_one_leaves_module_two_survey(conn, settings) -> None:
+    """F-2: прыжок в модуль 2, затем к теме модуля 1 — анкета 2 снята, урок по теме 1."""
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    repos.ensure_open_session(conn, now=1.0)
+    state = _fsm()
+    await _jump(conn, settings, "mini_hist", state)
+    assert await state.get_state() == SurveyFlow.question.state
+
+    await _jump(conn, settings, "pandas_series", state)
+
+    assert await state.get_state() is None
+    assert start.pending_survey_topic(conn) is None
+    assert _state(conn).current_node_id == "pandas_series"
+    assert _state(conn).route.topic_id == 1
+
+
+async def test_jump_target_survives_start_mid_survey(conn, settings) -> None:
+    """F-3: прыжок к теме модуля 2, рестарт и /start — урок всё равно с неё."""
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    repos.ensure_open_session(conn, now=1.0)
+    await _jump(conn, settings, "mini_corr", _fsm())
+    # Рестарт бота: FSM пуст, /start открывает анкету модуля 2 — уже без then.
+    assert start.pending_survey_topic(conn).number == 2
+    survey_router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    state = _fsm()
+    intro = await start_survey(FakeMessage(), state, repos.get_topic(conn, 2))
+    click = _named(survey_router, "callback_query", "on_survey_click")
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, T2.level_options[survey.LEVEL_SOME])
+    await _press(click, intro, state, survey.SELF_LEVELS[1])
+    await _press(click, intro, state, survey.SELF_LEVELS[1])
+
+    assert _state(conn).current_node_id == "mini_corr"
+
+
+async def test_jump_to_claimed_topic_does_not_say_all_claimed(conn, settings) -> None:
+    """F-5: прыжок к знакомой теме — не «всё отмечено знакомым», если это не так."""
+    load_two_modules(conn)
+    survey.apply_answers(conn, T1, {b.key: 1 for b in T1.blocks}, settings=settings)
+    repos.ensure_open_session(conn, now=1.0)
+    await _jump(conn, settings, "mini_box", _fsm())
+    survey_router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
+    state = _fsm()
+    intro = await start_survey(FakeMessage(), state, repos.get_topic(conn, 2))
+    click = _named(survey_router, "callback_query", "on_survey_click")
+
+    await _press(click, intro, state, survey_bot.GO_LABEL)
+    await _press(click, intro, state, T2.level_options[survey.LEVEL_SOME])
+    await _press(click, intro, state, survey.SELF_LEVELS[1])
+    await _press(click, intro, state, survey.SELF_LEVELS[3])
+
+    plan = next(text for text, _ in intro.sent if text.startswith("📋"))
+    assert start.CHECK_LEAD not in plan
+    assert "проверк" in plan

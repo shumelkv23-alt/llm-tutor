@@ -384,6 +384,7 @@ def reset_lesson(
                 "verify_item_ids": [],
                 "lesson_item_ids": [],
                 "last_activity": stamp,
+                "jump_node_id": None,
             }
         ),
     )

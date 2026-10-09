@@ -326,3 +326,6 @@ class SessionState(BaseModel):
     lesson_parts: list[str] = Field(default_factory=list)
     lesson_part: int = 0
     check_misses: int = 0
+    # Тема, к которой ученик прыгнул из меню в модуль с непройденной анкетой:
+    # урок после анкеты начнётся с неё, даже если FSM потерян (/start, рестарт).
+    jump_node_id: str | None = None
