@@ -12,7 +12,7 @@ Beta обновляется, а успех слабо поднимает пря�
 
 import sqlite3
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
@@ -89,9 +89,35 @@ def _freshly_answered_items(
     }
 
 
-def _best_item(items: Iterable[Item], concept_id: str, target_difficulty: float) -> Item | None:
+def _concept_topics(conn: sqlite3.Connection) -> dict[str, int]:
+    """Модуль каждой темы курса (для отсева заданий будущих модулей)."""
+    return {concept.id: concept.topic_id for concept in repos.get_concepts(conn)}
+
+
+def _native(item: Item, concept_id: str, topics: Mapping[str, int]) -> bool:
+    """Задание годится для темы: его главная тема не из более позднего модуля.
+
+    Задание модуля N со вторичным весом на теме модуля N−1 живёт в уроках
+    модуля N: в уроке N−1 оно спросило бы то, чего ученик ещё не проходил, и
+    записало бы свидетельство по теме будущего модуля (аудит среза 24, M3).
+    """
+    main = max(item.concept_weights, key=item.concept_weights.get)
+    return topics.get(main, 1) <= topics.get(concept_id, 1)
+
+
+def _best_item(
+    items: Iterable[Item],
+    concept_id: str,
+    target_difficulty: float,
+    topics: Mapping[str, int] | None = None,
+) -> Item | None:
     """Самое информативное задание по узлу: сложность ближе всего к цели."""
-    candidates = [item for item in items if concept_id in item.concept_weights]
+    candidates = [
+        item
+        for item in items
+        if concept_id in item.concept_weights
+        and (topics is None or _native(item, concept_id, topics))
+    ]
     if not candidates:
         return None
     return min(candidates, key=lambda item: (abs(item.difficulty - target_difficulty), item.id))
@@ -133,8 +159,9 @@ def next_question(
         scored.append((uncertainty_priority(graph, concept_id, mastery), concept_id, mastery.mean))
     scored.sort(key=lambda triple: (-triple[0], triple[1]))
 
+    topics = _concept_topics(conn)
     for _, concept_id, mean in scored:
-        item = _best_item(items, concept_id, target_difficulty=mean)
+        item = _best_item(items, concept_id, target_difficulty=mean, topics=topics)
         if item is not None:
             return DiagnosticQuestion(item=item, concept_id=concept_id)
     return None
@@ -163,10 +190,13 @@ def verification_item(
     s = settings or get_settings()
     stamp = time.time() if now is None else now
 
+    topics = _concept_topics(conn)
     items = [
         item
         for item in _available_items(conn, include_rubric=include_rubric)
-        if item.id not in used_item_ids and node_id in item.concept_weights
+        if item.id not in used_item_ids
+        and node_id in item.concept_weights
+        and _native(item, node_id, topics)
     ]
     if not items:
         return None

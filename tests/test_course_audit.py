@@ -105,3 +105,36 @@ def test_survey_block_without_topics_is_rejected(tmp_path) -> None:
     )
     with pytest.raises((SeedError, ValueError)):
         _course_with(tmp_path, data)
+
+
+# M3 (решение пользователя: фильтр по модулю): задание будущего модуля не
+# выдаётся в уроке темы прошлого модуля.
+
+
+def _lesson_items(conn, node_id: str) -> list[int]:
+    from llm_tutor.student import diagnostic
+
+    used: frozenset[int] = frozenset()
+    while (question := diagnostic.verification_item(conn, node_id, used_item_ids=used)) is not None:
+        used = used | {question.item.id}
+    return sorted(used)
+
+
+def test_lesson_of_earlier_module_skips_later_module_items(conn) -> None:
+    load_two_modules(conn)
+
+    items = _lesson_items(conn, "describe_stats")
+
+    assert items and 2006 not in items
+
+
+def test_diagnostic_does_not_measure_earlier_topic_by_later_item(conn, settings) -> None:
+    from llm_tutor.course.graph import CourseGraph
+    from llm_tutor.student import diagnostic
+
+    load_two_modules(conn)
+    graph = CourseGraph.load(conn)
+    asked: frozenset[int] = frozenset()
+    while (q := diagnostic.next_question(conn, graph, asked_item_ids=asked, settings=settings)):
+        assert not (q.item.id >= 2000 and graph.topic_of(q.concept_id) == 1), q
+        asked = asked | {q.item.id}
