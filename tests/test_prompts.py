@@ -135,3 +135,11 @@ def test_prompt_names_current_module() -> None:
 
     assert "модуль 2 «Визуальный анализ»" in tutor_system_prompt(0, topic=topic)
     assert "mlcourse.ai" in tutor_system_prompt(0)
+
+
+def test_brevity_rules_leave_room_for_lesson_parts() -> None:
+    """28-D6: общая политика не спорит с уроком частями (LESSON_KICKOFF)."""
+    from llm_tutor.llm.prompts import _BREVITY_RULES
+
+    assert "---" in _BREVITY_RULES
+    assert "вопросов не задавай" in _BREVITY_RULES
