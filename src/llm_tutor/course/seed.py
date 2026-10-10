@@ -8,7 +8,6 @@ CLI: ``python -m llm_tutor.course.seed [--seed PATH] [--db PATH]``.
 """
 
 import json
-import os
 import sqlite3
 from pathlib import Path
 
