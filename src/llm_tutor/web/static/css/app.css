@@ -1336,14 +1336,14 @@ dialog p {
   }
 
   :root[data-sidebar="collapsed"] .brand-caption,
-  :root[data-sidebar="collapsed"] .nav-caption,
-  :root[data-sidebar="collapsed"] .session-info div {
+  :root[data-sidebar="collapsed"] .nav-caption {
     display: none;
   }
 
   /* Подписи прячем только визуально: у ссылок и кнопок остаётся имя. */
   :root[data-sidebar="collapsed"] .main-nav a span,
-  :root[data-sidebar="collapsed"] .sidebar-bottom .btn span {
+  :root[data-sidebar="collapsed"] .sidebar-bottom .btn span,
+  :root[data-sidebar="collapsed"] .session-info div {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -1583,6 +1583,11 @@ pre code .p {
 }
 
 /* Выбор темы занимает всю ширину карточки и делит её поровну. */
+.theme-picker,
+.theme-picker .segmented {
+  min-width: 0;
+}
+
 .theme-picker .segmented {
   display: flex;
 }
@@ -1625,5 +1630,26 @@ pre code .p {
 
   .topics-table .mastery {
     min-width: 0;
+  }
+}
+
+/* Экран входа тёмный всегда — и нативные элементы (прокрутка, автозаполнение) тоже. */
+:root.auth-page {
+  color-scheme: dark;
+}
+
+@media (max-width: 359px) {
+  .theme-picker .segmented .icon {
+    display: none;
+  }
+}
+
+/* В режиме принудительных цветов выбранный пункт отличим не только рамкой. */
+@media (forced-colors: active) {
+  .segmented button[aria-checked="true"],
+  .segmented button[aria-pressed="true"],
+  .segmented button[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
   }
 }

@@ -178,15 +178,23 @@ window.App = (() => {
     button.title = collapsed ? "Развернуть меню" : "Свернуть меню";
   }
 
-  function toggleSidebar() {
+  function applySidebar(collapsed) {
     const root = document.documentElement;
-    const collapsed = root.dataset.sidebar !== "collapsed";
     if (collapsed) root.dataset.sidebar = "collapsed";
     else delete root.dataset.sidebar;
-    store("llmTutor.sidebar", collapsed ? "collapsed" : "expanded");
     syncSidebarButton();
     // Ширина урока поменялась — пусть ползунок пересчитает пределы.
     window.dispatchEvent(new Event("resize"));
+  }
+
+  function toggleSidebar() {
+    const root = document.documentElement;
+    const collapsed = root.dataset.sidebar !== "collapsed";
+    applySidebar(collapsed);
+    // Совпало с умолчанием страницы — выбор забываем: иначе «развернул на главной»
+    // навсегда отменило бы свёрнутый сайдбар на занятии.
+    const byDefault = root.dataset.page === "lesson";
+    store("llmTutor.sidebar", collapsed === byDefault ? null : collapsed ? "collapsed" : "expanded");
   }
 
   /** Тема: "light", "dark" или "system" (как в системе). */
@@ -206,6 +214,17 @@ window.App = (() => {
     $("#logout")?.addEventListener("click", logout);
     $("#sidebar-toggle")?.addEventListener("click", toggleSidebar);
     syncSidebarButton();
+  });
+
+  // Настройки вида сменили в другой вкладке — применяем здесь без перезагрузки.
+  window.addEventListener("storage", (event) => {
+    const root = document.documentElement;
+    if (event.key === "llmTutor.theme") {
+      if (event.newValue === "light" || event.newValue === "dark") root.dataset.theme = event.newValue;
+      else delete root.dataset.theme;
+    } else if (event.key === "llmTutor.sidebar") {
+      applySidebar(event.newValue ? event.newValue === "collapsed" : root.dataset.page === "lesson");
+    }
   });
 
   return { $, icon, connection, notify, request, confirm, setTheme, currentTheme };

@@ -65,14 +65,22 @@
         if (button) pickTheme(button.dataset.themeChoice);
       });
       group.addEventListener("keydown", (event) => {
-        const moves = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
-        if (!(event.key in moves)) return;
-        event.preventDefault();
         const choices = ["light", "dark", "system"];
         const index = choices.indexOf(window.App.currentTheme());
-        pickTheme(choices[(index + moves[event.key] + choices.length) % choices.length], { focus: true });
+        const moves = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+        let next;
+        if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = choices.length - 1;
+        else if (event.key in moves) next = (index + moves[event.key] + choices.length) % choices.length;
+        else return;
+        event.preventDefault();
+        pickTheme(choices[next], { focus: true });
       });
       syncTheme();
+      // Тему сменили в другой вкладке — app.js уже применил её, сверяем переключатель.
+      window.addEventListener("storage", (event) => {
+        if (event.key === "llmTutor.theme") syncTheme();
+      });
     }
   });
 })();

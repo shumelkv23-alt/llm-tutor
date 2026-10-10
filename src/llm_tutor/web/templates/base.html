@@ -28,7 +28,7 @@
         {% endfor %}
       </nav>
       <div class="sidebar-bottom">
-        <button class="btn sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="true">{{ icon('sidebar') }}<span>Свернуть меню</span></button>
+        <button class="btn sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="{{ 'false' if active == 'lesson' else 'true' }}">{{ icon('sidebar') }}<span>{{ 'Развернуть меню' if active == 'lesson' else 'Свернуть меню' }}</span></button>
         {% if user %}
         <div class="session-info"><span class="avatar" aria-hidden="true">{{ user.initial }}</span><div><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div></div>
         <button class="btn" id="logout" type="button" title="Выйти">{{ icon('logout') }}<span>Выйти</span></button>
@@ -39,7 +39,7 @@
     </aside>
     <div class="workspace">
       <header class="topbar">
-        <span class="breadcrumb">llm·tutor<span class="sep">/</span><b>{% block breadcrumb %}{{ page_title }}{% endblock %}</b></span>
+        <span class="breadcrumb">llm·tutor<span class="sep" aria-hidden="true">/</span><b>{% block breadcrumb %}{{ page_title }}{% endblock %}</b></span>
         <span id="connection" class="connection" role="status">Подключение…</span>
       </header>
       <main id="main" tabindex="-1">

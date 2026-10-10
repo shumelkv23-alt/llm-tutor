@@ -115,3 +115,67 @@ async def test_system_dark_theme(browser, live_server) -> None:
         )
     finally:
         await context.close()
+
+
+# --- Аудит среза 48 ---
+
+
+async def test_profile_fits_320(browser, live_server) -> None:
+    context = await browser.new_context(viewport={"width": 320, "height": 800})
+    page = await context.new_page()
+    try:
+        await sign_up(page, live_server)
+        await page.goto(f"{live_server}/profile")
+        assert await page.evaluate("() => document.documentElement.scrollWidth") <= 320
+    finally:
+        await context.close()
+
+
+async def test_theme_picker_home_end(page, live_server) -> None:
+    await sign_up(page, live_server)
+    await page.goto(f"{live_server}/profile")
+    await page.locator("[data-theme-choice=system]").focus()
+
+    await page.keyboard.press("Home")
+    await expect(page.locator("html")).to_have_attribute("data-theme", "light")
+    await expect(page.locator("[data-theme-choice=light]")).to_be_focused()
+    await page.keyboard.press("End")
+    await expect(page.locator("[data-theme-choice=system]")).to_have_attribute(
+        "aria-checked", "true"
+    )
+
+
+async def test_prefs_sync_between_tabs(page, live_server) -> None:
+    await sign_up(page, live_server)
+    other = await page.context.new_page()
+    await other.goto(f"{live_server}/")
+    await page.goto(f"{live_server}/profile")
+
+    await page.locator("[data-theme-choice=dark]").click()
+    await expect(other.locator("html")).to_have_attribute("data-theme", "dark")
+    await other.locator("#sidebar-toggle").click()
+    await expect(page.locator("html")).to_have_attribute("data-sidebar", "collapsed")
+    await expect(page.locator("#sidebar-toggle")).to_have_attribute(
+        "aria-expanded", "false"
+    )
+
+
+async def test_expanding_on_home_keeps_lesson_default(page, live_server) -> None:
+    await sign_up(page, live_server)
+    await enroll(page, live_server)
+    await page.goto(f"{live_server}/")
+    toggle = page.locator("#sidebar-toggle")
+    await toggle.click()
+    await toggle.click()  # свернул и развернул обратно — как по умолчанию
+
+    await page.goto(f"{live_server}/lesson/mlcourse-topic01")
+    await expect(page.locator("html")).to_have_attribute("data-sidebar", "collapsed")
+
+
+async def test_collapsed_sidebar_keeps_user_name_accessible(page, live_server) -> None:
+    await sign_up(page, live_server)
+    await page.locator("#sidebar-toggle").click()
+
+    await expect(page.locator(".session-info strong")).to_have_text("Аня")
+    snapshot = await page.locator(".session-info").aria_snapshot()
+    assert "Аня" in snapshot
