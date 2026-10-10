@@ -52,9 +52,10 @@
     value = clamp(next);
     if (remember) wanted = value;
     lesson.style.setProperty("--split", `${value}%`);
-    const rounded = Math.round(value);
+    const maxRounded = Math.round(maxFor(split.getBoundingClientRect().width));
+    const rounded = Math.min(Math.round(value), maxRounded);
     handle.setAttribute("aria-valuenow", String(rounded));
-    handle.setAttribute("aria-valuemax", String(Math.round(maxFor(split.getBoundingClientRect().width))));
+    handle.setAttribute("aria-valuemax", String(maxRounded));
     handle.setAttribute("aria-valuetext", `Урок ${rounded}%, чат ${100 - rounded}%`);
   }
 

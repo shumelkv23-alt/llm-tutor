@@ -16,6 +16,12 @@
   const EMPTY_TEXT = "Здесь можно спросить тьютора о теме, попросить пример или подсказку.";
   const SURVEY_TEXT = "Чат откроется после анкеты — она слева.";
 
+  function escapeHtml(text) {
+    const box = document.createElement("div");
+    box.textContent = text;
+    return box.innerHTML;
+  }
+
   function nearBottom() {
     return log.scrollHeight - log.scrollTop - log.clientHeight < NEAR_BOTTOM;
   }
@@ -88,7 +94,11 @@
     input.value = "";
     autosize();
     const result = await window.Lesson.act("chat", { text: clean }, { echo: clean });
-    if (!result && !input.value) input.value = clean;
+    // Текст возвращаем, только если сервер реплику не принял: после «результат
+    // неизвестен» состояние перечитано, и реплика может быть уже в журнале.
+    const users = (window.Lesson.state?.messages || []).filter((message) => message.role === "user");
+    const delivered = Boolean(users.length && users[users.length - 1].html.includes(escapeHtml(clean)));
+    if (!result && !input.value && !delivered) input.value = clean;
     input.focus();
   }
 
@@ -118,6 +128,7 @@
     if (chip.dataset.action === "task") {
       window.Lesson.act("task", {}, { echo: "Дай задание" });
       window.Lesson.selectTab("practice");
+      window.Lesson.selectView("lesson");
     } else {
       send(chip.dataset.say);
     }

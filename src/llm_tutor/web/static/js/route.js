@@ -52,7 +52,10 @@
     }
     dialog.close();
     const data = await window.Lesson.act("switch", { node_id: row.dataset.node });
-    if (data) window.Lesson.selectTab("theory");
+    if (data) {
+      window.Lesson.selectTab("theory");
+      window.Lesson.selectView("lesson");
+    }
   });
 
   document.getElementById("route-open").addEventListener("click", () => {

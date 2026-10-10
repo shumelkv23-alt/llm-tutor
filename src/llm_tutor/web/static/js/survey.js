@@ -94,7 +94,12 @@
     begin.focus();
   }
 
-  async function step() {
+  /**
+   * Следующий шаг анкеты по текущим ответам. ``undo`` откатывает изменение
+   * ответов, которое сделал вызвавший (ответ или «Назад»), если сервер не
+   * ответил: ответы должны совпадать с вопросом на экране.
+   */
+  async function step(undo = () => {}) {
     if (loading) return;
     loading = true;
     box.setAttribute("aria-busy", "true");
@@ -110,7 +115,7 @@
       } else if (problem.status === 409) {
         await window.Lesson.load();
       } else {
-        answers.pop();
+        undo();
       }
     } finally {
       loading = false;
@@ -121,13 +126,13 @@
   function answer(index) {
     if (loading) return;
     answers.push(index);
-    step();
+    step(() => answers.pop());
   }
 
   function back() {
     if (loading || !answers.length) return;
-    answers.pop();
-    step();
+    const removed = answers.pop();
+    step(() => answers.push(removed));
   }
 
   async function finish() {

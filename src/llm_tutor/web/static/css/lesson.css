@@ -107,6 +107,15 @@
   outline: none;
 }
 
+/* Видимая полоса тонкая, зона захвата шире (20 px): дальше она закрыла бы
+   полосу прокрутки левой панели. */
+.splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  z-index: 1;
+}
+
 .splitter-grip {
   position: absolute;
   top: 50%;
@@ -360,14 +369,14 @@
 
 .chat-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 0 16px 8px;
-  overflow-x: auto;
   flex: none;
 }
 
 .chip {
-  min-height: 34px;
+  min-height: 44px;
   padding: 4px 12px;
   border: 1px solid var(--border);
   border-radius: 999px;

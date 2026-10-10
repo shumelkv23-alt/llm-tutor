@@ -18,6 +18,9 @@
   let closedNote = null;
   let previous = null;
   let selected = null;
+  // Недописанные ответы по заданиям: панель перерисовывается на каждом ходу,
+  // и без этого текст пропал бы от любого вопроса в чат или сбоя сети.
+  const drafts = new Map();
 
   function el(tag, className, text) {
     const element = document.createElement(tag);
@@ -38,6 +41,7 @@
 
   async function submit(item, answer) {
     const data = await window.Lesson.act("answer", { item_id: item.id, answer }, { echo: typeof answer === "number" ? item.options[answer] : answer });
+    if (data) drafts.delete(item.id);
     if (data?.verdict) {
       verdict = data.verdict;
       render(window.Lesson.state);
@@ -68,19 +72,32 @@
       const list = el("div", "practice-options");
       list.setAttribute("role", "radiogroup");
       list.setAttribute("aria-label", "Варианты ответа");
+      const choose = (index, { focus = false } = {}) => {
+        selected = index;
+        list.querySelectorAll("[role=radio]").forEach((other, otherIndex) => {
+          other.setAttribute("aria-checked", String(otherIndex === index));
+          other.tabIndex = otherIndex === index ? 0 : -1;
+          if (focus && otherIndex === index) other.focus();
+        });
+        form.querySelector("button[type=submit]").disabled = false;
+      };
+      // Радиогруппа по правилам ARIA: в неё входят Tab-ом, внутри — стрелками.
+      list.addEventListener("keydown", (event) => {
+        const moves = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 };
+        if (!(event.key in moves)) return;
+        event.preventDefault();
+        const count = item.options.length;
+        const current = selected === null ? (moves[event.key] > 0 ? -1 : 0) : selected;
+        choose((current + moves[event.key] + count) % count, { focus: true });
+      });
       item.options.forEach((label, index) => {
         const option = el("button", "practice-option");
         option.type = "button";
         option.setAttribute("role", "radio");
         option.setAttribute("aria-checked", String(selected === index));
+        option.tabIndex = (selected === null ? index === 0 : selected === index) ? 0 : -1;
         option.append(el("span", "option-mark", String.fromCharCode(65 + index)), el("span", "", label));
-        option.addEventListener("click", () => {
-          selected = index;
-          list.querySelectorAll("[role=radio]").forEach((other, otherIndex) => {
-            other.setAttribute("aria-checked", String(otherIndex === index));
-          });
-          form.querySelector("button[type=submit]").disabled = false;
-        });
+        option.addEventListener("click", () => choose(index));
         list.append(option);
       });
       form.append(list);
@@ -88,6 +105,8 @@
       const field = item.type === "short" ? el("input", "practice-input") : el("textarea", "practice-input");
       field.name = "answer";
       field.maxLength = 8000;
+      field.value = drafts.get(item.id) || "";
+      field.addEventListener("input", () => drafts.set(item.id, field.value));
       field.setAttribute("aria-label", "Ваш ответ");
       if (item.type === "short") {
         field.placeholder = "Короткий ответ";
@@ -185,7 +204,9 @@
     }
     panel.append(wrap);
     const practiceTab = document.getElementById("tab-btn-practice");
-    dot.hidden = !state.item || practiceTab.getAttribute("aria-selected") === "true";
+    // Точку прячем, только если практику действительно видно (на телефоне
+    // вкладка может быть выбрана, а на экране — чат).
+    dot.hidden = !state.item || (practiceTab.getAttribute("aria-selected") === "true" && panel.offsetParent !== null);
   }
 
   window.Lesson.onState((state) => {

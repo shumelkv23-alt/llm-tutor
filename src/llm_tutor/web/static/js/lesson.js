@@ -52,7 +52,9 @@ window.Lesson = (() => {
       meta.textContent = "Откройте маршрут и выберите тему.";
     }
     $("#route-open").disabled = Boolean(state.survey);
-    $("#verify-topic").disabled = Boolean(state.survey) || !state.node || busy;
+    // Во время хода кнопка не выключается (фокус ушёл бы на body): повтор
+    // отсекает act(), а вид «занято» даёт aria-disabled у [data-turn].
+    $("#verify-topic").disabled = Boolean(state.survey) || !state.node;
   }
 
   async function load() {
@@ -99,7 +101,9 @@ window.Lesson = (() => {
         notify(problem.message, { error: true });
         await load();
       } else {
-        pending?.fail(problem.message);
+        // Реплика не принята: убираем её из чата (текст вернётся в поле ввода),
+        // причину показывает уведомление.
+        pending?.remove();
         notify(problem.message, { error: true });
         if (problem.status === 409) await load();
       }

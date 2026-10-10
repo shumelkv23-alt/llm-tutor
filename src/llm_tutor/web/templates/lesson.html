@@ -40,7 +40,7 @@
     </div>
     <div class="lesson-actions">
       <button class="btn" type="button" id="route-open" aria-haspopup="dialog" disabled>{{ icon('route') }}<span>Маршрут</span></button>
-      <button class="btn" type="button" id="verify-topic" disabled>{{ icon('check') }}<span>Закрыть тему</span></button>
+      <button class="btn" type="button" id="verify-topic" data-turn disabled>{{ icon('check') }}<span>Закрыть тему</span></button>
     </div>
   </header>
 
@@ -50,7 +50,7 @@
   </div>
 
   <div class="split" id="split">
-    <section class="pane pane-left" id="pane-left" aria-label="Урок">
+    <section class="pane pane-left" id="pane-left" role="tabpanel" aria-labelledby="view-lesson">
       <div class="survey" id="survey" aria-live="polite"></div>
       <div class="tabs" role="tablist" aria-label="Разделы урока">
         <button type="button" role="tab" id="tab-btn-theory" aria-controls="tab-theory" aria-selected="true">{{ icon('book') }}Теория</button>
@@ -69,7 +69,7 @@
       <span class="splitter-grip" aria-hidden="true"></span>
     </div>
 
-    <section class="pane pane-chat" id="pane-chat" aria-label="Чат с тьютором">
+    <section class="pane pane-chat" id="pane-chat" role="tabpanel" aria-labelledby="view-chat">
       <header class="chat-head">
         <span class="avatar tutor-avatar" aria-hidden="true">{{ icon('spark') }}</span>
         <div><strong>Тьютор</strong><span>Объясняет, подсказывает, проверяет</span></div>
