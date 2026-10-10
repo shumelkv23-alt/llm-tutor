@@ -23,6 +23,7 @@ uv sync                     # установить зависимости
 uv run python -m llm_tutor.course.ingest data/raw/topic01_pandas_data_analysis.md
 
 uv run python -m llm_tutor.bot.main   # запустить бота
+uv run python -m llm_tutor.web        # веб-приложение (в разработке): http://127.0.0.1:8000
 ```
 
 Граф темы и банк заданий (`data/seed_topic01.json`) грузятся в БД автоматически

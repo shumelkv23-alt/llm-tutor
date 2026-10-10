@@ -9,15 +9,26 @@ from llm_tutor.bot.diagnostic import make_diagnostic_router
 from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.bot.themes import make_themes_router
-from llm_tutor.config import get_settings
+from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.seed import items_without_rubric, load_seed, nodes_without_items
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
 
 
+def require_telegram_token(settings: Settings) -> str:
+    """Токен бота или ясная ошибка: в настройках он необязателен — нужен только боту."""
+    if settings.telegram_bot_token is None:
+        raise RuntimeError(
+            "TELEGRAM_BOT_TOKEN пуст. Заполни его в .env (см. .env.example)"
+            " или запусти веб: uv run python -m llm_tutor.web"
+        )
+    return settings.telegram_bot_token.get_secret_value()
+
+
 async def main() -> None:
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
+    token = require_telegram_token(settings)
 
     conn = get_conn(settings.db_path)
     client = LLMClient(
@@ -43,7 +54,7 @@ async def main() -> None:
                 "Открытые задания без рубрики — проверить нечем, выдаваться не будут: %s",
                 without_rubric,
             )
-        bot = Bot(token=settings.telegram_bot_token.get_secret_value())
+        bot = Bot(token=token)
         dispatcher = Dispatcher()
         # FSM-потоки (анкета, диагностика) идут первыми: их шаги не должны
         # попадать в тьютор-путь.

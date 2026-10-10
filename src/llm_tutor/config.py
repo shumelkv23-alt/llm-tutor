@@ -46,10 +46,25 @@ class Settings(BaseSettings):
     llm_max_tokens: int = 2048
 
     # --- Telegram ---
-    telegram_bot_token: SecretStr
+    # Нужен только боту; веб запускается без него. Пустая строка из шаблона
+    # .env означает «бот не настроен» (см. валидатор ниже).
+    telegram_bot_token: SecretStr | None = None
 
     # --- Хранилище ---
     db_path: str = "data/llm_tutor.sqlite3"
+
+    # --- Веб-приложение, Срез 37 ---
+    web_host: str = "127.0.0.1"
+    web_port: int = Field(default=8000, ge=1, le=65535)
+    # Аккаунты, веб-сессии и записи на курсы — общая БД; у каждого ученика
+    # своя БД курса в users_dir (спека веба §5).
+    accounts_db_path: str = "data/accounts.sqlite3"
+    users_dir: str = "data/users"
+    # Материалы RAG — общие для всех учеников, копируются в БД ученика.
+    materials_db_path: str = "data/materials.sqlite3"
+    registration_open: bool = True
+    # За HTTPS (обратный прокси) — true: cookie сессии не уйдёт по HTTP.
+    cookie_secure: bool = False
 
     # --- Модель ученика (Beta-счётчики), Срез 4 ---
     beta_prior_alpha: float = 1.0
@@ -109,7 +124,7 @@ class Settings(BaseSettings):
     context_rag_top_k: int = DEFAULT_RAG_TOP_K
     context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS
 
-    @field_validator("openrouter_api_key", "telegram_bot_token")
+    @field_validator("openrouter_api_key")
     @classmethod
     def _secret_must_not_be_empty(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
         """Пустой секрет — сразу ясная ошибка, а не невнятный отказ провайдера."""
@@ -117,6 +132,14 @@ class Settings(BaseSettings):
             raise ValueError(
                 f"{info.field_name.upper()} пуст. Заполни его в .env (см. .env.example)."
             )
+        return v
+
+    @field_validator("telegram_bot_token")
+    @classmethod
+    def _empty_token_means_absent(cls, v: SecretStr | None) -> SecretStr | None:
+        """Пустой токен — бот не настроен; ошибку даст запуск бота, а не веба."""
+        if v is None or not v.get_secret_value().strip():
+            return None
         return v
 
 

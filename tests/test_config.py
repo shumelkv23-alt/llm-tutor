@@ -39,12 +39,28 @@ def test_empty_openrouter_key_raises_clear_error() -> None:
     assert "OPENROUTER_API_KEY" in str(exc_info.value)
 
 
-def test_empty_telegram_token_raises_clear_error() -> None:
-    """Пустой TELEGRAM_BOT_TOKEN падает с ясной ошибкой."""
-    with pytest.raises(ValidationError) as exc_info:
-        _settings(telegram_bot_token="")
+def test_telegram_token_is_optional() -> None:
+    """Вебу бот не нужен: без токена настройки читаются."""
+    settings = Settings(openrouter_api_key="sk-test", _env_file=None)
+
+    assert settings.telegram_bot_token is None
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_empty_telegram_token_means_not_configured(value: str) -> None:
+    """Пустая строка из шаблона .env — «бот не настроен», а не ошибка запуска веба."""
+    assert _settings(telegram_bot_token=value).telegram_bot_token is None
+
+
+def test_bot_requires_telegram_token() -> None:
+    """Бот без токена падает с ясной ошибкой, а не с отказом Telegram."""
+    from llm_tutor.bot.main import require_telegram_token
+
+    with pytest.raises(RuntimeError) as exc_info:
+        require_telegram_token(_settings(telegram_bot_token=""))
 
     assert "TELEGRAM_BOT_TOKEN" in str(exc_info.value)
+    assert require_telegram_token(_settings()) == "bot-test"
 
 
 def test_whitespace_only_key_raises() -> None:

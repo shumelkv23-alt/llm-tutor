@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru" data-icons="{{ static_url('icons.svg') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060b1a">
+  <link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
+  <title>{% block title %}{{ page_title }}{% endblock %} · llm·tutor</title>
+  <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ static_url('css/app.css') }}">
+  {% block styles %}{% endblock %}
+  <script src="{{ static_url('js/app.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main">К содержимому</a>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="llm·tutor — на главную">
+        <span class="wordmark">llm<span class="wordmark-dot">·</span>tutor</span>
+        <span class="brand-caption">ТЬЮТОР MLCOURSE.AI</span>
+      </a>
+      <span class="nav-caption">Обучение</span>
+      <nav class="main-nav" aria-label="Разделы">
+        {% for item in nav %}
+        <a href="{{ item.href }}" data-nav="{{ item.key }}"{% if item.key == active %} aria-current="page"{% endif %}>{{ icon(item.icon) }}<span>{{ item.label }}</span></a>
+        {% endfor %}
+      </nav>
+      <div class="sidebar-bottom">
+        {% if user %}
+        <div class="session-info"><span class="avatar" aria-hidden="true">{{ user.initial }}</span><div><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div></div>
+        <button class="btn" id="logout" type="button">{{ icon('logout') }}<span>Выйти</span></button>
+        {% endif %}
+      </div>
+    </aside>
+    <div class="workspace">
+      <header class="topbar">
+        <span class="breadcrumb">llm·tutor<span class="sep">/</span><b>{% block breadcrumb %}{{ page_title }}{% endblock %}</b></span>
+        <span id="connection" class="connection" role="status">Подключение…</span>
+      </header>
+      <main id="main" tabindex="-1">
+        {% block page_head %}
+        <div class="page-heading">
+          <div>
+            <p class="eyebrow">{% block eyebrow %}{% endblock %}</p>
+            <h1>{% block heading %}{{ page_title }}{% endblock %}</h1>
+            <p class="page-description">{% block description %}{% endblock %}</p>
+          </div>
+          <div class="heading-actions">{% block actions %}{% endblock %}</div>
+        </div>
+        {% endblock %}
+        <div id="page-error" class="notice error" role="alert" hidden></div>
+        {% block content %}{% endblock %}
+        {% block footer %}
+        <footer class="page-footer"><span>llm·tutor · по материалам mlcourse.ai</span><span>Модель объясняет, код проверяет.</span></footer>
+        {% endblock %}
+      </main>
+    </div>
+  </div>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title"></h2>
+      <p id="confirm-description"></p>
+      <div class="dialog-actions"><button class="btn" value="cancel" autofocus>Назад</button><button class="btn primary" value="confirm" id="confirm-submit">Подтвердить</button></div>
+    </form>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

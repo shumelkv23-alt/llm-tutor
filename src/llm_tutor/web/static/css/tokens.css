@@ -1,0 +1,110 @@
+/* Дизайн-токены llm·tutor.
+ *
+ * Основа — палитра панелей bar_order_bot (стилистика Azati): тёмно-синий
+ * сайдбар, бирюзовые действия, оранжевые акценты. Имена смысловые
+ * (--primary, а не --blue), чтобы тёмная тема меняла значения, а не правила.
+ */
+
+/* Manrope с кириллицей: вариативный шрифт, один файл на все начертания.
+ * Шрифты бара — латинские сабсеты, русский текст в них не рисуется. */
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("../fonts/manrope-cyrillic-wght-normal.woff2") format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+@font-face {
+  font-family: Manrope;
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url("../fonts/manrope-latin-wght-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Рабочее поле */
+  --bg: #f7f9fa;
+  --surface: #ffffff;
+  --surface-2: #eef3f4;
+  --text: #202b38;
+  --heading: #101d30;
+  --muted: #5b6976;
+  --border: #dfe6e9;
+  --interactive: #8795a0;
+
+  /* Действия и акценты */
+  --primary: #167271;
+  --primary-hover: #105f5e;
+  --primary-soft: #e5f2f1;
+  --primary-text: #167271;
+  --on-primary: #ffffff;
+  --accent: #ff6e20;
+  --accent-text: #b34a14;
+  --accent-soft: #fff0e8;
+
+  /* Состояния: цвет — только дополнительный сигнал к подписи */
+  --danger: #a33131;
+  --danger-soft: #fbecec;
+  --success: #236a56;
+  --success-soft: #e4f3ec;
+  --warning: #855000;
+  --warning-soft: #fff0d9;
+
+  /* Сайдбар — тёмный в обеих темах */
+  --nav-bg: #060b1a;
+  --nav-border: #1b2c40;
+  --nav-text: #b5c7d4;
+  --nav-caption: #8fa6ba;
+  --nav-hover: #132236;
+  --nav-active: #174c4e;
+  --nav-active-border: #2e8580;
+  --nav-active-icon: #60c4ba;
+
+  /* Геометрия и типографика */
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 2px 12px rgba(7, 23, 40, 0.04);
+  --shadow-lift: 0 18px 60px rgba(0, 0, 0, 0.18);
+  --font-text: Manrope, "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  --focus: #ff6e20;
+  --sidebar-width: 220px;
+}
+
+/* Тёмная тема рабочего поля (переключатель — срез 48). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0b1220;
+  --surface: #111c2d;
+  --surface-2: #17263a;
+  --text: #e3eaf1;
+  --heading: #ffffff;
+  --muted: #9fb0c0;
+  --border: #26374c;
+  --interactive: #526276;
+
+  --primary: #167271;
+  --primary-hover: #1d8786;
+  --primary-soft: #133b40;
+  --primary-text: #60c4ba;
+  --accent-text: #ff9a61;
+  --accent-soft: #3a2316;
+
+  --danger: #f08080;
+  --danger-soft: #3a1c1f;
+  --success: #6fcfa8;
+  --success-soft: #16312a;
+  --warning: #f0b45a;
+  --warning-soft: #352713;
+
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}

@@ -111,21 +111,21 @@ def test_help_mentions_text_exits_and_commands() -> None:
     assert "/status" in text
 
 
-def test_status_does_not_point_to_removed_buttons(conn) -> None:
+def test_status_does_not_point_to_removed_buttons(conn, settings) -> None:
     """Дашборд не отправляет к убранным кнопкам."""
     load_seed(conn)
 
-    text = render_status(conn)
+    text = render_status(conn, settings=settings)
 
     assert "⏭ Пропустить" not in text
     assert "🎯 Задание" not in text
 
 
-def test_render_steps_limit_shows_only_first_steps(conn) -> None:
+def test_render_steps_limit_shows_only_first_steps(conn, settings) -> None:
     """``limit`` оставляет только ближайшие шаги."""
     load_seed(conn)
     graph = CourseGraph.load(conn)
-    route = route_mod.build_route(conn, graph, now=1.0)
+    route = route_mod.build_route(conn, graph, now=1.0, settings=settings)
 
     text = render.render_steps(graph, route.steps, limit=2)
 
