@@ -65,6 +65,9 @@ class Settings(BaseSettings):
     registration_open: bool = True
     # За HTTPS (обратный прокси) — true: cookie сессии не уйдёт по HTTP.
     cookie_secure: bool = False
+    # Pyodide (Python в браузере) для вкладки «Код»: дистрибутив с pandas.
+    # Свой адрес — для зеркала или офлайн-копии; CSP разрешит именно его.
+    pyodide_index_url: str = "https://cdn.jsdelivr.net/pyodide/v0.27.8/full/"
 
     # --- Модель ученика (Beta-счётчики), Срез 4 ---
     beta_prior_alpha: float = 1.0

@@ -125,12 +125,19 @@ def message_view(role: str, text: str, *, ts: float | None = None) -> dict:
 
 
 def item_view(item: Item) -> dict:
-    return {
+    """Задание для «Практики». У задания с кодом — всё, что нужно браузеру для
+    запуска: заготовка, подготовка данных и проверки (они видны ученику в
+    исходниках страницы — цена проверки на его стороне, спека §8)."""
+    view = {
         "id": item.id,
         "type": item.answer_type,
         "prompt_html": str(markdown.render(item.prompt)),
         "options": list(item.options),
+        "runnable": item.runnable,
     }
+    if item.runnable:
+        view.update(starter=item.starter or "", setup=item.setup or "", tests=item.tests or "")
+    return view
 
 
 def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:

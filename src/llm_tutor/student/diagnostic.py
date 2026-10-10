@@ -46,12 +46,14 @@ def uncertainty_priority(
 
 
 def _available_items(
-    conn: sqlite3.Connection, *, include_rubric: bool
+    conn: sqlite3.Connection, *, include_rubric: bool, include_runnable: bool = False
 ) -> list[Item]:
     """Активные задания банка, пригодные для выдачи.
 
     ``include_rubric`` добавляет открытые и код-задания с рубрикой — их
     проверяет грейдер, поэтому диагностика (которая считает сама) их не берёт.
+    ``include_runnable`` добавляет код с тестами (его проверяют тесты в
+    браузере) — только для урока и прохода, диагностика бота его не умеет.
     """
     gradable_rubrics = (
         {
@@ -66,6 +68,10 @@ def _available_items(
     items = []
     for item in repos.get_items(conn):
         if item.answer_type in AUTO_CHECKABLE and item.answer is not None:
+            items.append(item)
+        elif include_runnable and item.runnable:
+            # Код с тестами проверяет код (тесты в браузере), а не модель: ему
+            # место и в уроке. Ответ текстом проверит рубрика задания.
             items.append(item)
         elif item.answer_type in RUBRIC_CHECKABLE and item.rubric_id in gradable_rubrics:
             # Задание без активных критериев выдать нельзя: проверить нечем.
@@ -165,7 +171,7 @@ def verification_item(
 
     items = [
         item
-        for item in _available_items(conn, include_rubric=include_rubric)
+        for item in _available_items(conn, include_rubric=include_rubric, include_runnable=True)
         if item.id not in used_item_ids and node_id in item.concept_weights
     ]
     if not items:

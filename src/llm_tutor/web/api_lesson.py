@@ -12,7 +12,7 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, StrictInt
+from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
 from llm_tutor.core import lesson, turn, verify
@@ -21,7 +21,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY, LLM_FAILURE_REPLY
-from llm_tutor.schemas import SessionState
+from llm_tutor.schemas import CriterionResult, GradeResult, SessionState
 from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
@@ -172,6 +172,14 @@ class AnswerBody(BaseModel):
     answer: StrictInt | str
 
 
+class CodeResultBody(BaseModel):
+    item_id: StrictInt
+    code: str = Field(min_length=1, max_length=20000)
+    passed: StrictBool
+    # Первая упавшая проверка или ошибка выполнения (пусто, если всё прошло).
+    report: str = Field(default="", max_length=4000)
+
+
 class SwitchBody(BaseModel):
     node_id: str = Field(max_length=200)
 
@@ -291,6 +299,55 @@ async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context))
         )
         response = turn_response(ctx, text, reply)
         # Вердикт — из журнала, а не из текста ответа: его посчитал код.
+        result = repos.item_result_after(ctx.conn, item.id, before)
+        response["verdict"] = {
+            "item_id": item.id,
+            "correct": None if result is None else result >= SUCCESS_SCORE,
+            "score": result,
+        }
+        return response
+
+
+NOT_RUNNABLE = "Это задание проверяется не запуском кода — ответьте во вкладке «Практика»."
+
+
+def code_message(code: str, passed: bool, report: str) -> str:
+    """Реплика ученика в журнале: код и итог тестов — тьютор увидит их в истории."""
+    verdict = "все проверки пройдены" if passed else f"не пройдено — {report or 'ошибка'}"
+    return f"```python\n{code.rstrip()}\n```\n\nРезультат проверки: {verdict}"
+
+
+@router.post("/courses/{course_id}/lesson/code-result")
+async def code_result(body: CodeResultBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Итог тестов задания с кодом, выполненных в браузере (Pyodide)."""
+    _require_survey(ctx)
+    async with ctx.lock:
+        session_id = repos.get_open_session(ctx.conn)
+        state = repos.get_session_state(ctx.conn, session_id) if session_id else SessionState()
+        item = repos.get_item(ctx.conn, state.pending_item_id) if state.pending_item_id else None
+        if item is None or item.id != body.item_id:
+            raise HTTPException(
+                status_code=STALE_ITEM_STATUS, detail={"message": turn.STALE_ITEM_REPLY}
+            )
+        if not item.runnable:
+            raise HTTPException(status_code=STALE_ITEM_STATUS, detail={"message": NOT_RUNNABLE})
+        report = body.report.strip()
+        grade = GradeResult(
+            criteria=[
+                CriterionResult(criterion="проверки задания", passed=body.passed, quote=report[:500])
+            ],
+            score=1.0 if body.passed else 0.0,
+            confidence=1.0,
+        )
+        text = code_message(body.code, body.passed, report)
+        before = repos.last_event_id(ctx.conn)
+        reply = await _safe(
+            turn.handle_turn(
+                ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings, grade=grade
+            ),
+            LLM_FAILURE_REPLY,
+        )
+        response = turn_response(ctx, text, reply)
         result = repos.item_result_after(ctx.conn, item.id, before)
         response["verdict"] = {
             "item_id": item.id,

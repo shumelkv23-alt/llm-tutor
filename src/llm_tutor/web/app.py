@@ -5,6 +5,7 @@
 """
 
 import hashlib
+from urllib.parse import urlparse
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -27,26 +28,33 @@ WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
 TEMPLATES_DIR = WEB_DIR / "templates"
 
-# Встроенные скрипты и стили запрещены: весь JS и CSS — в файлах. Внешние
-# источники (Pyodide, CodeMirror) добавляются сюда вместе с кодом, которому
-# они нужны.
-CONTENT_SECURITY_POLICY = "; ".join(
-    (
-        "default-src 'self'",
-        "script-src 'self'",
-        "style-src 'self'",
-        "img-src 'self' data:",
-        "font-src 'self'",
-        "connect-src 'self'",
-        "object-src 'none'",
-        "base-uri 'self'",
-        "form-action 'self'",
-        "frame-ancestors 'none'",
+def content_security_policy(pyodide_index_url: str) -> str:
+    """CSP: встроенные скрипты и стили запрещены, весь JS и CSS — в файлах.
+
+    Внешний источник один — дистрибутив Pyodide (Python в браузере): его
+    скрипт, WebAssembly и пакеты (pandas) грузит воркер вкладки «Код».
+    ``wasm-unsafe-eval`` разрешает компиляцию WebAssembly, но не ``eval`` JS.
+    """
+    parsed = urlparse(pyodide_index_url)
+    pyodide = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else ""
+    return "; ".join(
+        (
+            "default-src 'self'",
+            f"script-src 'self' 'wasm-unsafe-eval' {pyodide}".strip(),
+            "worker-src 'self'",
+            "style-src 'self'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            f"connect-src 'self' {pyodide}".strip(),
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        )
     )
-)
+
 
 _SECURITY_HEADERS = {
-    "Content-Security-Policy": CONTENT_SECURITY_POLICY,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
     "X-Frame-Options": "DENY",
@@ -129,6 +137,8 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.client = llm
     app.state.templates = make_templates()
+    app.state.templates.env.globals["pyodide_index_url"] = settings.pyodide_index_url
+    csp = content_security_policy(settings.pyodide_index_url)
     # Все эндпоинты — async def: соединения SQLite живут в потоке цикла
     # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
     app.state.accounts = accounts_db
@@ -144,6 +154,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         response = await call_next(request)
+        response.headers.setdefault("Content-Security-Policy", csp)
         for name, value in _SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
         return response

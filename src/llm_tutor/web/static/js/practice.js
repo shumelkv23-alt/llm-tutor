@@ -44,7 +44,24 @@
     }
   }
 
+  /** Задание с кодом и тестами решается в редакторе: там же и проверка. */
+  function codeActions() {
+    const box = el("div", "practice-actions");
+    box.append(
+      button("Решить в редакторе", "primary", () => window.Lesson.code?.open(), "code"),
+      button("Не понимаю", "ghost", () => window.Lesson.act("stuck", {}, { echo: "Не понял, давай подробнее." })),
+      button("Пропустить", "ghost", async () => {
+        const ok = await confirm("Пропустить задание?", "Ответ не запишется, к теме вернёмся позже.", { label: "Пропустить" });
+        if (ok) await window.Lesson.act("skip", {}, { echo: "Пропустить задание." });
+      })
+    );
+    const wrap = el("div", "practice-answer");
+    wrap.append(el("p", "form-hint", "Код запускается прямо в браузере: «Запустить» показывает вывод, «Проверить» прогоняет проверки задания."), box);
+    return wrap;
+  }
+
   function answerForm(item) {
+    if (item.runnable) return codeActions();
     const form = el("form", "practice-answer");
     form.noValidate = true;
     if (item.type === "choice") {

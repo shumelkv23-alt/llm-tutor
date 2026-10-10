@@ -94,3 +94,11 @@ async def test_mobile_switches_between_lesson_and_chat(lesson) -> None:
     for width in (390, 320):
         await lesson.set_viewport_size({"width": width, "height": 700})
         assert await lesson.evaluate("document.documentElement.scrollWidth") == width
+
+
+async def test_panes_fit_the_viewport(lesson) -> None:
+    """Длинный конспект прокручивается внутри панели, а не растягивает страницу."""
+    viewport = lesson.viewport_size["height"]
+    for selector in ("#pane-left", "#pane-chat", "#splitter"):
+        box = await lesson.locator(selector).bounding_box()
+        assert box["y"] + box["height"] <= viewport + 1, selector

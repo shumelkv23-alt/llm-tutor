@@ -518,7 +518,7 @@
     },
     {
       "id": 10,
-      "prompt": "Напиши код: посчитать среднее значение столбца age отдельно по каждому городу из столбца city в таблице df.",
+      "prompt": "Напиши код: посчитать среднее значение столбца age отдельно по каждому городу из столбца city в таблице df. Сохрани результат в переменную result.",
       "answer_type": "code",
       "concept_weights": {
         "groupby": 0.7,
@@ -527,7 +527,10 @@
       "difficulty": 0.6,
       "options": [],
       "answer": null,
-      "rubric_id": 2
+      "rubric_id": 2,
+      "starter": "# Средний возраст по каждому городу\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"city\": [\"Казань\", \"Москва\", \"Казань\", \"Сочи\", \"Москва\", \"Казань\"],\n    \"age\": [31, 45, 27, 52, 39, 23],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: город → средний возраст (выберите столбец age).\"\nexpected = _source.groupby(\"city\")[\"age\"].mean()\nassert sorted(result.index) == sorted(expected.index), \"В индексе должны быть все города, и только они.\"\nassert (result.sort_index().round(6) == expected.sort_index().round(6)).all(), \"Средние не совпадают: нужен mean по столбцу age.\"\n"
     },
     {
       "id": 11,
@@ -945,6 +948,112 @@
         "Оставляют строкой — модель поймёт"
       ],
       "answer": "1"
+    },
+    {
+      "id": 44,
+      "prompt": "Напиши код: отбери из df клиентов, которые ушли (Churn равен True) и при этом звонили в поддержку больше 3 раз. Сохрани получившуюся таблицу в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "boolean_indexing": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 3,
+      "starter": "# Ушедшие клиенты с 4+ звонками в поддержку\nresult = df\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame), а не столбец.\"\nexpected = _source[(_source[\"Churn\"]) & (_source[\"Customer service calls\"] > 3)]\nassert len(result) == len(expected), f\"Должно остаться строк: {len(expected)}, а не {len(result)}.\"\nassert sorted(result.index) == sorted(expected.index), \"Отобраны не те клиенты: проверьте оба условия.\"\n"
+    },
+    {
+      "id": 45,
+      "prompt": "Напиши код: отсортируй df по убыванию столбца Total day charge и сохрани в result первые три строки.",
+      "answer_type": "code",
+      "concept_weights": {
+        "sorting": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 4,
+      "starter": "# Три клиента с самой большой дневной платой\nresult = df\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert len(result) == 3, f\"Нужны ровно три строки, а получилось {len(result)}.\"\nexpected = _source.sort_values(\"Total day charge\", ascending=False).head(3)\nassert list(result.index) == list(expected.index), \"Строки не те или не в том порядке: сортируйте по убыванию.\"\n"
+    },
+    {
+      "id": 46,
+      "prompt": "Напиши код: посчитай, какая доля клиентов ушла, а какая осталась, — доли значений столбца Churn (в сумме 1). Сохрани результат в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "value_counts": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 5,
+      "starter": "# Доли ушедших и оставшихся\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: значение Churn → доля.\"\nassert abs(result.sum() - 1) < 1e-9, \"Доли должны давать в сумме 1: нужен normalize=True.\"\nexpected = _source[\"Churn\"].value_counts(normalize=True)\nassert abs(result[True] - expected[True]) < 1e-9, \"Доля ушедших не совпадает.\"\n"
+    },
+    {
+      "id": 47,
+      "prompt": "Напиши код: добавь в df столбец Total calls — сумму столбцов Total day calls, Total eve calls и Total night calls. Сохрани обновлённую таблицу в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "df_transformations": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 6,
+      "starter": "# Суммарное число звонков\nresult = df\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert \"Total calls\" in result.columns, \"В таблице нет столбца Total calls.\"\nexpected = _source[\"Total day calls\"] + _source[\"Total eve calls\"] + _source[\"Total night calls\"]\nassert (result[\"Total calls\"] == expected).all(), \"Total calls — это сумма дневных, вечерних и ночных звонков.\"\nassert len(result) == len(_source), \"Строк должно остаться столько же.\"\n"
+    },
+    {
+      "id": 48,
+      "prompt": "Напиши код: построй таблицу сопряжённости International plan × Churn с долями внутри каждой строки (normalize по строкам). Сохрани её в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "summary_tables": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 7,
+      "starter": "# Доли оттока по международному тарифу\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица: crosstab возвращает DataFrame.\"\nexpected = pd.crosstab(_source[\"International plan\"], _source[\"Churn\"], normalize=\"index\")\nassert sorted(result.index) == [\"No\", \"Yes\"], \"По строкам — значения International plan.\"\nassert all(abs(result.loc[row].sum() - 1) < 1e-9 for row in result.index), \"Каждая строка должна давать в сумме 1: normalize='index'.\"\nassert abs(result.loc[\"Yes\", True] - expected.loc[\"Yes\", True]) < 1e-9, \"Доля оттока с международным тарифом не совпадает.\"\n"
+    },
+    {
+      "id": 49,
+      "prompt": "Напиши код: преврати столбец Churn в целые числа 0 и 1 (True → 1, False → 0) прямо в таблице df. Сохрани этот столбец в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "dtype_conversion": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 8,
+      "starter": "# Churn → 0/1\nresult = df['Churn']\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается столбец (Series).\"\nassert pd.api.types.is_integer_dtype(result), f\"Тип должен быть целым, а сейчас {result.dtype}.\"\nassert pd.api.types.is_integer_dtype(df[\"Churn\"]), \"Замените столбец в самой таблице: df['Churn'] = ...\"\nassert list(result) == [int(value) for value in _source[\"Churn\"]], \"True должно стать 1, а False — 0.\"\n"
+    },
+    {
+      "id": 50,
+      "prompt": "Напиши код: найди медиану Total day minutes среди ушедших клиентов (Churn равен True). Сохрани число в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "describe_stats": 0.7,
+        "boolean_indexing": 0.3
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 9,
+      "starter": "# Медиана дневных минут у ушедших\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, (int, float)) and not isinstance(result, bool), \"Ожидается число.\"\nexpected = _source.loc[_source[\"Churn\"], \"Total day minutes\"].median()\nassert abs(result - expected) < 1e-9, \"Число не совпадает: медиана по ушедшим клиентам (не среднее и не по всем).\"\n"
     }
   ],
   "rubrics": [
@@ -955,6 +1064,34 @@
     {
       "id": 2,
       "name": "Код: агрегат по группам"
+    },
+    {
+      "id": 3,
+      "name": "Код: фильтр по двум условиям"
+    },
+    {
+      "id": 4,
+      "name": "Код: сортировка по убыванию"
+    },
+    {
+      "id": 5,
+      "name": "Код: доли значений"
+    },
+    {
+      "id": 6,
+      "name": "Код: вычисляемый столбец"
+    },
+    {
+      "id": 7,
+      "name": "Код: crosstab с долями"
+    },
+    {
+      "id": 8,
+      "name": "Код: приведение типа"
+    },
+    {
+      "id": 9,
+      "name": "Код: статистика по подвыборке"
     }
   ],
   "criteria": [
@@ -1005,6 +1142,134 @@
       "weight": 1.0,
       "positive_example": "df.groupby('city')['age'].mean()",
       "negative_example": "df.groupby('city').mean() без указания колонки"
+    },
+    {
+      "id": 7,
+      "rubric_id": 3,
+      "criterion": "Есть условие на столбец Churn",
+      "weight": 1.0,
+      "positive_example": "df['Churn'] == True",
+      "negative_example": "без упоминания Churn"
+    },
+    {
+      "id": 8,
+      "rubric_id": 3,
+      "criterion": "Есть условие «больше 3» на число звонков в поддержку",
+      "weight": 1.0,
+      "positive_example": "df['Customer service calls'] > 3",
+      "negative_example": ">= 3"
+    },
+    {
+      "id": 9,
+      "rubric_id": 3,
+      "criterion": "Условия объединены через &",
+      "weight": 1.0,
+      "positive_example": "(...) & (...)",
+      "negative_example": "and"
+    },
+    {
+      "id": 10,
+      "rubric_id": 4,
+      "criterion": "Используется sort_values по Total day charge (или nlargest)",
+      "weight": 1.0,
+      "positive_example": "sort_values('Total day charge'",
+      "negative_example": "sort_index()"
+    },
+    {
+      "id": 11,
+      "rubric_id": 4,
+      "criterion": "Порядок — по убыванию",
+      "weight": 1.0,
+      "positive_example": "ascending=False",
+      "negative_example": "по возрастанию"
+    },
+    {
+      "id": 12,
+      "rubric_id": 4,
+      "criterion": "Берутся первые три строки",
+      "weight": 1.0,
+      "positive_example": ".head(3)",
+      "negative_example": ".head()"
+    },
+    {
+      "id": 13,
+      "rubric_id": 5,
+      "criterion": "Используется value_counts по столбцу Churn",
+      "weight": 1.0,
+      "positive_example": "df['Churn'].value_counts(",
+      "negative_example": "df.value_counts()"
+    },
+    {
+      "id": 14,
+      "rubric_id": 5,
+      "criterion": "Считаются доли, а не количества",
+      "weight": 1.0,
+      "positive_example": "normalize=True",
+      "negative_example": "без normalize"
+    },
+    {
+      "id": 15,
+      "rubric_id": 6,
+      "criterion": "Создаётся столбец Total calls",
+      "weight": 1.0,
+      "positive_example": "df['Total calls'] =",
+      "negative_example": "df.Total_calls ="
+    },
+    {
+      "id": 16,
+      "rubric_id": 6,
+      "criterion": "Складываются все три столбца звонков",
+      "weight": 1.0,
+      "positive_example": "Total day calls + Total eve calls + Total night calls",
+      "negative_example": "только дневные звонки"
+    },
+    {
+      "id": 17,
+      "rubric_id": 7,
+      "criterion": "Используется pd.crosstab по International plan и Churn",
+      "weight": 1.0,
+      "positive_example": "pd.crosstab(df['International plan'], df['Churn']",
+      "negative_example": "groupby без crosstab"
+    },
+    {
+      "id": 18,
+      "rubric_id": 7,
+      "criterion": "Доли считаются по строкам",
+      "weight": 1.0,
+      "positive_example": "normalize='index'",
+      "negative_example": "normalize=True"
+    },
+    {
+      "id": 19,
+      "rubric_id": 8,
+      "criterion": "Тип меняется через astype (или map)",
+      "weight": 1.0,
+      "positive_example": "astype('int64')",
+      "negative_example": "без смены типа"
+    },
+    {
+      "id": 20,
+      "rubric_id": 8,
+      "criterion": "Результат записан обратно в df['Churn']",
+      "weight": 1.0,
+      "positive_example": "df['Churn'] = df['Churn'].astype",
+      "negative_example": "df['Churn'].astype(int) без присваивания"
+    },
+    {
+      "id": 21,
+      "rubric_id": 9,
+      "criterion": "Отбираются только ушедшие клиенты",
+      "weight": 1.0,
+      "positive_example": "df[df['Churn']]",
+      "negative_example": "по всей таблице"
+    },
+    {
+      "id": 22,
+      "rubric_id": 9,
+      "criterion": "Считается именно медиана",
+      "weight": 1.0,
+      "positive_example": ".median()",
+      "negative_example": ".mean()"
     }
   ]
 }

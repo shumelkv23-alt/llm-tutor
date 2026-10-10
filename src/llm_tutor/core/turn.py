@@ -25,7 +25,7 @@ from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
-from llm_tutor.schemas import Event, Item, Route, SessionState
+from llm_tutor.schemas import Event, GradeResult, Item, Route, SessionState
 from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
 
 logger = logging.getLogger(__name__)
@@ -190,8 +190,12 @@ async def _answer_branch(
     *,
     now: float,
     settings: Settings,
+    grade: GradeResult | None = None,
 ) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool | None]:
     """Ученик отвечает на выданное задание.
+
+    ``grade`` — готовый вердикт: задание с кодом проверили тестами в браузере
+    ученика. Тогда грейдер не зовём, а событие идёт с источником ``autotest``.
 
     ``choice``/``short`` проверяет код, ``open``/``code`` — рубричный грейдер
     (его вердикт идёт в журнал с ограниченным весом). Пятый элемент — был ли
@@ -214,7 +218,9 @@ async def _answer_branch(
         )
 
     try:
-        if item.answer_type in diagnostic.AUTO_CHECKABLE:
+        if grade is not None:
+            result = grade
+        elif item.answer_type in diagnostic.AUTO_CHECKABLE:
             result = autocheck.check(item, _normalize_choice_answer(item, user_text))
         elif item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
             result = await rubric.grade(
@@ -252,11 +258,18 @@ async def _answer_branch(
         item,
         measured,
         result.score,
-        source="checked" if item.answer_type in diagnostic.AUTO_CHECKABLE else "rubric",
+        source=(
+            "autotest"
+            if grade is not None
+            else "checked"
+            if item.answer_type in diagnostic.AUTO_CHECKABLE
+            else "rubric"
+        ),
+        # Тесты и автопроверка — код, им полный вес; вердикт модели — ограниченный.
         weight_scale=evidence_scale
         * (
             1.0
-            if item.answer_type in diagnostic.AUTO_CHECKABLE
+            if grade is not None or item.answer_type in diagnostic.AUTO_CHECKABLE
             else settings.rubric_evidence_weight
         ),
         now=now,
@@ -461,6 +474,7 @@ async def handle_turn(
     settings: Settings | None = None,
     allow_intents: bool = True,
     answer_mode: AnswerMode = "auto",
+    grade: GradeResult | None = None,
 ) -> TurnReply:
     """Один ход диалога: ответ на задание или реплика тьютору.
 
@@ -468,7 +482,12 @@ async def handle_turn(
     эвристика по тексту (бот: свободный текст и есть ответ), ``answer`` —
     интерфейс прислал ответ формой задания, ``tutor`` — реплика в чат, задание
     не трогаем (веб: для ответов есть «Практика»).
+
+    ``grade`` — готовый вердикт по висящему заданию (тесты кода в браузере):
+    ход идёт веткой ответа без грейдера и без разбора намерений.
     """
+    if grade is not None:
+        allow_intents, answer_mode = False, "answer"
     s = settings or get_settings()
     stamp = time.time() if now is None else now
     session_id = repos.ensure_open_session(conn, stamp)
@@ -500,7 +519,7 @@ async def handle_turn(
     )
     if state.pending_item_id is not None and not force_stuck and is_answer:
         reply, events, mastery, new_state, passed = await _answer_branch(
-            conn, client, model, graph, user_text, state, now=stamp, settings=s
+            conn, client, model, graph, user_text, state, now=stamp, settings=s, grade=grade
         )
         # Узел пройден? Только на ВЕРНОМ ответе: «не совсем верно» и «узёл
         # закрыт» в одном сообщении противоречат друг другу. Владение считаем
@@ -903,7 +922,9 @@ def _issue_task(
         header = VERIFY_STEP_TEMPLATE.format(
             name=graph.concept(node_id).name, step=len(state.verify_item_ids) + 1
         )
-        if question.item.answer_type in diagnostic.RUBRIC_CHECKABLE:
+        # «Объясни своими словами» — только к открытому вопросу: к заданию
+        # «напиши код» такая подводка противоречит самому заданию.
+        if question.item.answer_type == "open":
             text = f"{header}\n\n{VERIFY_EXPLAIN_PREFIX}\n{text}"
         else:
             text = f"{header}\n\n{text}"

@@ -58,6 +58,7 @@ def live_server(tmp_path):
         accounts_db_path=str(tmp_path / "accounts.sqlite3"),
         users_dir=str(tmp_path / "users"),
         materials_db_path=str(tmp_path / "materials.sqlite3"),
+        **({"pyodide_index_url": os.environ["PYODIDE_INDEX_URL"]} if os.environ.get("PYODIDE_INDEX_URL") else {}),
     )
     port = _free_port()
     server = uvicorn.Server(

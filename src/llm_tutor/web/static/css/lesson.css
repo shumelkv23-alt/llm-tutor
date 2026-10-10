@@ -7,6 +7,10 @@
 .lesson-body main {
   max-width: none;
   height: calc(100dvh - 64px);
+  /* main — элемент flex-колонки рабочей области: с ростом (flex: 1) он
+     растягивался бы по содержимому, и высота выше не действовала бы. */
+  flex: none;
+  min-height: 0;
   padding: 20px 24px 24px;
   display: flex;
   flex-direction: column;
@@ -74,6 +78,9 @@
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, var(--split)) 12px minmax(280px, 1fr);
+  /* Строка — по высоте контейнера: длинный конспект прокручивается в панели,
+     а не растягивает страницу (и ползунок не уезжает за экран). */
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .split.dragging {
@@ -985,4 +992,158 @@
   .code-tools {
     opacity: 1;
   }
+}
+
+/* --- Вкладка «Код» --- */
+
+.code-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.code-panel[hidden] {
+  display: none;
+}
+
+.code-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.code-title {
+  min-width: 0;
+  flex: 1 1 320px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.code-prompt {
+  color: var(--heading);
+}
+
+.code-prompt p {
+  margin: 0;
+}
+
+.code-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.code-editor {
+  min-height: 260px;
+  border: 1px solid #304157;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.code-editor .CodeMirror {
+  height: auto;
+  min-height: 260px;
+  padding: 8px 0;
+  background: #0b1424;
+  color: #e3eaf1;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.code-editor .CodeMirror-gutters {
+  border-right: 1px solid #1b2c40;
+  background: #0b1424;
+}
+
+.code-editor .CodeMirror-linenumber {
+  color: #5b6976;
+}
+
+.code-editor .CodeMirror-cursor {
+  border-left: 2px solid #ff9a61;
+}
+
+.code-editor .CodeMirror-selected,
+.code-editor .CodeMirror-focused .CodeMirror-selected {
+  background: #22344d;
+}
+
+.code-editor .CodeMirror-matchingbracket {
+  color: #ffffff !important;
+  background: #2e8580;
+}
+
+.code-editor .cm-keyword {
+  color: #ff9a61;
+}
+
+.code-editor .cm-string {
+  color: #9fe0b5;
+}
+
+.code-editor .cm-number {
+  color: #f0c674;
+}
+
+.code-editor .cm-comment {
+  color: #8895a7;
+  font-style: italic;
+}
+
+.code-editor .cm-def {
+  color: #8fd1ff;
+}
+
+.code-editor .cm-builtin {
+  color: #60c4ba;
+}
+
+.code-editor .cm-variable,
+.code-editor .cm-property {
+  color: #e3eaf1;
+}
+
+.code-editor .cm-operator {
+  color: #c9d4df;
+}
+
+.code-status {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.code-console {
+  min-height: 72px;
+  max-height: 280px;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code-console:empty::before {
+  content: "Здесь появится вывод программы.";
+  color: var(--muted);
+}
+
+.code-console.failed {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.code-console.passed {
+  border-color: var(--success);
+  background: var(--success-soft);
 }

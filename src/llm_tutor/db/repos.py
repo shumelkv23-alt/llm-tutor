@@ -267,12 +267,13 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
     conn.execute(
         "INSERT INTO items "
         "(id, concept_weights, difficulty, answer_type, prompt, options, answer,"
-        " rubric_id, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        " rubric_id, starter, setup, tests, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "concept_weights = excluded.concept_weights, difficulty = excluded.difficulty, "
         "answer_type = excluded.answer_type, prompt = excluded.prompt, "
         "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id, "
+        "starter = excluded.starter, setup = excluded.setup, tests = excluded.tests, "
         # Вернувшееся в seed задание снова активно.
         "active = 1",
         (
@@ -284,6 +285,9 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
             json.dumps(item.options, ensure_ascii=False),
             item.answer,
             item.rubric_id,
+            item.starter,
+            item.setup,
+            item.tests,
             int(item.active),
         ),
     )
@@ -364,7 +368,8 @@ def get_criteria(conn: sqlite3.Connection, rubric_id: int) -> list[Criterion]:
 
 
 _ITEM_COLUMNS = (
-    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id, active"
+    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id,"
+    " starter, setup, tests, active"
 )
 
 
@@ -378,6 +383,9 @@ def _row_to_item(row: sqlite3.Row) -> Item:
         options=json.loads(row["options"]),
         answer=row["answer"],
         rubric_id=row["rubric_id"],
+        starter=row["starter"],
+        setup=row["setup"],
+        tests=row["tests"],
         active=bool(row["active"]),
     )
 

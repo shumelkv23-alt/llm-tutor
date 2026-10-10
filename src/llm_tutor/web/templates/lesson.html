@@ -4,9 +4,16 @@
 {% block breadcrumb %}{{ course.title }}{% endblock %}
 {% block eyebrow %}{{ course.subtitle }}{% endblock %}
 {% block heading %}{{ course.title }}{% endblock %}
-{% block styles %}{% if course.enrolled %}<link rel="stylesheet" href="{{ static_url('css/lesson.css') }}">{% endif %}{% endblock %}
+{% block styles %}{% if course.enrolled %}
+<link rel="stylesheet" href="{{ static_url('vendor/codemirror-5.65.20/codemirror.css') }}">
+<link rel="stylesheet" href="{{ static_url('css/lesson.css') }}">
+{% endif %}{% endblock %}
 {% block scripts %}
 {% if course.enrolled %}
+<script src="{{ static_url('vendor/codemirror-5.65.20/codemirror.js') }}" defer></script>
+<script src="{{ static_url('vendor/codemirror-5.65.20/python.js') }}" defer></script>
+<script src="{{ static_url('vendor/codemirror-5.65.20/matchbrackets.js') }}" defer></script>
+<script src="{{ static_url('vendor/codemirror-5.65.20/closebrackets.js') }}" defer></script>
 <script src="{{ static_url('js/lesson.js') }}" defer></script>
 <script src="{{ static_url('js/split.js') }}" defer></script>
 <script src="{{ static_url('js/chat.js') }}" defer></script>
@@ -14,6 +21,7 @@
 <script src="{{ static_url('js/survey.js') }}" defer></script>
 <script src="{{ static_url('js/practice.js') }}" defer></script>
 <script src="{{ static_url('js/route.js') }}" defer></script>
+<script src="{{ static_url('js/code.js') }}" defer></script>
 {% else %}
 <script src="{{ static_url('js/courses.js') }}" defer></script>
 {% endif %}
@@ -22,7 +30,8 @@
 {% block footer %}{% if not course.enrolled %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
 {% if course.enrolled %}
-<div class="lesson" id="lesson" data-course="{{ course.id }}" data-view="lesson" aria-busy="true">
+<div class="lesson" id="lesson" data-course="{{ course.id }}" data-view="lesson" aria-busy="true"
+     data-pyodide="{{ pyodide_index_url }}" data-worker="{{ static_url('js/pyodide-worker.js') }}">
   <header class="lesson-head">
     <div class="lesson-title">
       <p class="eyebrow">{{ course.subtitle }}</p>
@@ -52,9 +61,7 @@
         <div class="skeleton"></div>
       </div>
       <div class="tab-panel" id="tab-practice" role="tabpanel" aria-labelledby="tab-btn-practice" tabindex="0" hidden></div>
-      <div class="tab-panel" id="tab-code" role="tabpanel" aria-labelledby="tab-btn-code" tabindex="0" hidden>
-        <div class="empty"><strong>Редактор кода</strong>Здесь можно будет запустить код на Python и pandas прямо в браузере.</div>
-      </div>
+      <div class="tab-panel code-panel" id="tab-code" role="tabpanel" aria-labelledby="tab-btn-code" tabindex="-1" hidden></div>
     </section>
 
     <div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical"
