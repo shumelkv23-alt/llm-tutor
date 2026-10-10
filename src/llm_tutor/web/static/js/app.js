@@ -86,21 +86,59 @@ window.App = (() => {
       }
       throw problem;
     }
-    return response.status === 204 ? null : response.json();
+    if (response.status === 204) return null;
+    try {
+      return await response.json();
+    } catch (cause) {
+      // Ответ пришёл, но тело не прочиталось (обрыв, таймаут, не JSON):
+      // изменение могло примениться — повторять вслепую нельзя.
+      const problem = new Error(
+        changing
+          ? "Ответ сервера не дочитан. Результат неизвестен — обновляем данные, прежде чем повторять."
+          : "Сервер ответил неожиданно. Попробуйте ещё раз."
+      );
+      problem.status = response.status;
+      problem.uncertain = changing;
+      problem.cause = cause;
+      throw problem;
+    }
   }
 
-  /** Подтверждение через общий <dialog>: resolve(true | false). */
+  /** Подтверждение через общий <dialog>: resolve(true | false).
+   *
+   * Диалог один на страницу. Новый вызов, пока открыт прежний, сначала
+   * отвечает прежнему «нет»: иначе одно нажатие подтвердило бы оба действия,
+   * а ученик видел бы текст только второго.
+   */
+  let pendingConfirm = null;
+
   function confirm(title, description, { label = "Подтвердить", danger = false } = {}) {
     const dialog = $("#confirm-dialog");
+    if (pendingConfirm) {
+      // Открытый диалог не закрываем: событие close асинхронное и досталось
+      // бы новому вызову. Прежнему — «нет», тексты — новые.
+      pendingConfirm(false);
+      pendingConfirm = null;
+    }
     $("#confirm-title").textContent = title;
     $("#confirm-description").textContent = description;
     const submit = $("#confirm-submit");
     submit.textContent = label;
     submit.className = danger ? "btn danger" : "btn primary";
     dialog.returnValue = "";
-    dialog.showModal();
+    if (!dialog.open) dialog.showModal();
     return new Promise((resolve) => {
-      dialog.addEventListener("close", () => resolve(dialog.returnValue === "confirm"), { once: true });
+      let done = false;
+      const finish = (value) => {
+        if (done) return;
+        done = true;
+        dialog.removeEventListener("close", onClose);
+        if (pendingConfirm === finish) pendingConfirm = null;
+        resolve(value);
+      };
+      const onClose = () => finish(dialog.returnValue === "confirm");
+      pendingConfirm = finish;
+      dialog.addEventListener("close", onClose);
     });
   }
 

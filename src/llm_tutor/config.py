@@ -143,7 +143,8 @@ class Settings(BaseSettings):
         """Пустой токен — бот не настроен; ошибку даст запуск бота, а не веба."""
         if v is None or not v.get_secret_value().strip():
             return None
-        return v
+        # Пробелы по краям из .env Telegram не примет.
+        return SecretStr(v.get_secret_value().strip())
 
 
 @lru_cache

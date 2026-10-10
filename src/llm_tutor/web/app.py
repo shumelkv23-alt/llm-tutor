@@ -15,7 +15,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request, Response
 from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
@@ -64,15 +64,24 @@ _SECURITY_HEADERS = {
 }
 
 
-@lru_cache(maxsize=256)
-def _content_version(relative: str) -> str:
-    """Короткий хеш содержимого файла статики (для сброса кэша браузера)."""
+@lru_cache(maxsize=512)
+def _content_version(relative: str, mtime_ns: int) -> str:
+    """Короткий хеш содержимого файла статики (ключ кэша — и время изменения)."""
     return hashlib.sha256((STATIC_DIR / relative).read_bytes()).hexdigest()[:10]
 
 
 def static_url(relative: str) -> str:
-    """URL статики с версией по содержимому: ``/static/css/app.css?v=…``."""
-    return f"/static/{relative}?v={_content_version(relative)}"
+    """URL статики с версией по содержимому: ``/static/css/app.css?v=…``.
+
+    Правка файла меняет версию без перезапуска (ключ кэша — время изменения).
+    Пропавший файл или путь за пределами статики — URL без версии и
+    предупреждение в лог, а не 500 на всей странице.
+    """
+    path = (STATIC_DIR / relative).resolve()
+    if not path.is_relative_to(STATIC_DIR.resolve()) or not path.is_file():
+        logger.warning("Нет файла статики: %s", relative)
+        return f"/static/{relative}"
+    return f"/static/{relative}?v={_content_version(relative, path.stat().st_mtime_ns)}"
 
 
 def icon(name: str) -> Markup:
@@ -169,8 +178,15 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     async def security_headers(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        except Exception:  # noqa: BLE001 — иначе 500 ушёл бы без заголовков ниже
+            logger.exception("Необработанная ошибка: %s %s", request.method, request.url.path)
+            response = PlainTextResponse("Внутренняя ошибка сервера.", status_code=500)
         response.headers.setdefault("Content-Security-Policy", csp)
+        # Версия в URL меняется вместе с файлом — такую статику можно кэшировать надолго.
+        if request.url.path.startswith("/static/") and "v=" in request.url.query:
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
         for name, value in _SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
         return response

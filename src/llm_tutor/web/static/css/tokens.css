@@ -38,7 +38,7 @@
   --heading: #101d30;
   --muted: #5b6976;
   --border: #dfe6e9;
-  --interactive: #8795a0;
+  --interactive: #7a8893;
 
   /* Действия и акценты */
   --primary: #167271;
@@ -75,7 +75,8 @@
   --shadow-lift: 0 18px 60px rgba(0, 0, 0, 0.18);
   --font-text: Manrope, "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
-  --focus: #ff6e20;
+  /* Контур фокуса: ≥ 4:1 и к светлому полю, и к тёмному сайдбару. */
+  --focus: #d4500a;
   --sidebar-width: 220px;
 }
 
@@ -90,10 +91,10 @@
   --heading: #ffffff;
   --muted: #9fb0c0;
   --border: #26374c;
-  --interactive: #526276;
+  --interactive: #5f7186;
 
   --primary: #167271;
-  --primary-hover: #1d8786;
+  --primary-hover: #105f5e;
   --primary-soft: #133b40;
   --primary-text: #60c4ba;
   --accent-text: #ff9a61;
