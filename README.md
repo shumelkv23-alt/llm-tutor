@@ -22,6 +22,7 @@ uv sync                     # установить зависимости
 
 # загрузить материалы темы в RAG-индекс (один раз; можно URL или файл):
 uv run python -m llm_tutor.course.ingest data/raw/topic01_pandas_data_analysis.md
+# (кладёт в MATERIALS_DB_PATH, data/materials.sqlite3 — оттуда их берёт веб)
 
 uv run python -m llm_tutor.web        # http://127.0.0.1:8000
 ```
@@ -125,4 +126,4 @@ uv run python -m llm_tutor.eval.grader_eval
 ответе. Это грубый фильтр, а не откалиброванная метрика: набор мал, разметка
 сделана одним человеком.
 
-Подробнее — `llm-tutor-architecture.md` и `llm-tutor-implementation-plan.md`.
+Подробнее — `llm-tutor-architecture.md`; перенос в браузер — `docs/superpowers/specs/2026-10-10-web-app-design.md` и одноимённый план. `llm-tutor-implementation-plan.md` — исторический план версии с Telegram-ботом.

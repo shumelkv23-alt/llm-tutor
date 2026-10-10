@@ -12,7 +12,7 @@ from web_fakes import ScriptedTutor
 from llm_tutor.core import lesson, turn, verify
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
+from llm_tutor.llm.prompts import FAILURE_REPLY
 from llm_tutor.student import survey
 from llm_tutor.web import accounts, views
 
@@ -67,7 +67,7 @@ async def test_lesson_failure_after_survey_is_reported(enrolled, web_app, monkey
     body = await _finish(enrolled)
 
     assert survey.is_completed(_db(web_app))  # анкета записана, урок продолжится ходом
-    assert BOT_FAILURE_REPLY.split(".")[0] in body["messages"][-1]["html"]
+    assert FAILURE_REPLY.split(".")[0] in body["messages"][-1]["html"]
 
 
 @pytest.mark.parametrize(
@@ -88,7 +88,7 @@ async def test_core_failure_on_action_is_a_reply(enrolled, monkeypatch, path, bo
     assert response.status_code == 200, response.text
     last = response.json()["messages"][-1]
     assert last["role"] == "assistant"
-    assert BOT_FAILURE_REPLY.split(".")[0] in last["html"]
+    assert FAILURE_REPLY.split(".")[0] in last["html"]
 
 
 # --- ответ на задание ---

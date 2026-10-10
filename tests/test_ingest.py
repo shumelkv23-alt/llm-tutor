@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import httpx
+import pytest
 import respx
 
 from llm_tutor.course.ingest import (
@@ -225,3 +226,27 @@ def test_ingest_file_idempotent_across_path_forms(conn, tmp_path, monkeypatch) -
     ingest_file(conn, "m.md")  # относительный путь
 
     assert conn.execute("SELECT count(DISTINCT source_url) FROM chunks").fetchone()[0] == 1
+
+
+def test_cli_default_db_is_web_materials(monkeypatch) -> None:
+    """Без --db материалы ложатся туда, откуда их берёт веб (аудит среза 49)."""
+    import llm_tutor.course.ingest as ingest_mod
+
+    opened: list[str] = []
+
+    class _Stop(Exception):
+        pass
+
+    def fake_get_conn(path, **kwargs):
+        opened.append(path)
+        raise _Stop
+
+    monkeypatch.setattr("llm_tutor.db.connection.get_conn", fake_get_conn)
+    monkeypatch.delenv("MATERIALS_DB_PATH", raising=False)
+    with pytest.raises(_Stop):
+        ingest_mod.main(["m.md"])
+    monkeypatch.setenv("MATERIALS_DB_PATH", "elsewhere.sqlite3")
+    with pytest.raises(_Stop):
+        ingest_mod.main(["m.md"])
+
+    assert opened == ["data/materials.sqlite3", "elsewhere.sqlite3"]

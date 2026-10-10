@@ -21,7 +21,7 @@ from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
-from llm_tutor.llm.prompts import BOT_FAILURE_REPLY, LLM_FAILURE_REPLY
+from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.schemas import CriterionResult, GradeResult, SessionState
 from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
@@ -229,7 +229,7 @@ async def survey_finish(body: SurveyBody, ctx: LessonContext = Depends(lesson_co
             )
         except Exception:  # noqa: BLE001 — анкета записана, урок продолжится ходом
             logger.exception("Сбой первого хода урока")
-            start, reply = None, TurnReply(text=BOT_FAILURE_REPLY)
+            start, reply = None, TurnReply(text=FAILURE_REPLY)
         response = turn_response(ctx, None, reply or TurnReply(text=ROUTE_DONE_REPLY))
     lead = _lesson_lead(ctx.conn, start) if start is not None else None
     if lead:
@@ -372,7 +372,7 @@ async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
         reply = await _safe(
-            _sync(turn.start_practice_reply, ctx.conn, settings=ctx.settings), BOT_FAILURE_REPLY
+            _sync(turn.start_practice_reply, ctx.conn, settings=ctx.settings), FAILURE_REPLY
         )
         return turn_response(ctx, turn.PRACTICE_KICKOFF_TEXT, reply)
 
@@ -385,7 +385,7 @@ async def skip(ctx: LessonContext = Depends(lesson_context)) -> dict:
             text = turn.skip_pending(ctx.conn, settings=ctx.settings)
         except Exception:  # noqa: BLE001
             logger.exception("Сбой пропуска задания")
-            text = BOT_FAILURE_REPLY
+            text = FAILURE_REPLY
         return turn_response(ctx, turn.SKIP_KICKOFF_TEXT, text)
 
 
@@ -416,7 +416,7 @@ async def verify_topic(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
         reply = await _safe(
-            _sync(verify.start_verification, ctx.conn, settings=ctx.settings), BOT_FAILURE_REPLY
+            _sync(verify.start_verification, ctx.conn, settings=ctx.settings), FAILURE_REPLY
         )
         return turn_response(ctx, verify.VERIFY_KICKOFF_TEXT, reply)
 
@@ -432,6 +432,6 @@ async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context))
             text = lesson.switch_node(ctx.conn, body.node_id, settings=ctx.settings)
         except Exception:  # noqa: BLE001
             logger.exception("Сбой перехода к теме")
-            text = BOT_FAILURE_REPLY
+            text = FAILURE_REPLY
         name = graph.concept(body.node_id).name
         return turn_response(ctx, f"Перейти к теме «{name}»", text)

@@ -274,14 +274,18 @@ def main(argv: list[str] | None = None) -> int:
     """CLI: загрузить материал из URL или локального файла в БД."""
     import argparse
 
+    from llm_tutor.config import Settings
     from llm_tutor.db.connection import get_conn, migrate
 
+    # По умолчанию — туда, откуда материалы берёт веб (их копия уходит в БД
+    # каждого ученика). Settings целиком не читаем: ключ модели здесь не нужен.
+    default_db = os.environ.get("MATERIALS_DB_PATH") or Settings.model_fields["materials_db_path"].default
     parser = argparse.ArgumentParser(description="Загрузка материалов курса в БД.")
     parser.add_argument("source", help="URL или путь к локальному markdown/HTML-файлу")
     parser.add_argument(
         "--db",
-        default=os.environ.get("DB_PATH", "data/llm_tutor.sqlite3"),
-        help="путь к БД (по умолчанию DB_PATH или data/llm_tutor.sqlite3)",
+        default=default_db,
+        help=f"путь к БД материалов (по умолчанию MATERIALS_DB_PATH или {default_db})",
     )
     args = parser.parse_args(argv)
 

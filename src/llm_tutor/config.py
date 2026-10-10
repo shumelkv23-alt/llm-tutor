@@ -17,12 +17,13 @@ DEFAULT_RAG_TOP_K = 4
 DEFAULT_CONTEXT_BUDGET_TOKENS = 8000
 
 
-# Переменные, которые приложение больше не читает (бот и его диагностика
-# удалены в срезе 49). В старом .env они остались — при «запретить лишнее»
+# Переменные, которые приложение больше не читает (бот, его диагностика и
+# его БД удалены в срезе 49). В старом .env они остались — при «запретить лишнее»
 # веб не запустился бы, поэтому их молча пропускаем. Опечатки по-прежнему падают.
 RETIRED_SETTINGS = frozenset(
     {
         "telegram_bot_token",
+        "db_path",
         "diagnostic_max_questions",
         "diagnostic_uncertainty_threshold",
         "diagnostic_first_pass",
@@ -59,9 +60,6 @@ class Settings(BaseSettings):
     llm_temperature: float = 0.4
     llm_max_retries: int = 1
     llm_max_tokens: int = 2048
-
-    # --- Хранилище ---
-    db_path: str = "data/llm_tutor.sqlite3"
 
     # --- Веб-приложение, Срез 37 ---
     web_host: str = "127.0.0.1"

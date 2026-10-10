@@ -162,8 +162,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", default=str(DEFAULT_SEED_PATH), help="путь к seed-файлу")
     parser.add_argument(
         "--db",
-        default=os.environ.get("DB_PATH", "data/llm_tutor.sqlite3"),
-        help="путь к БД (по умолчанию DB_PATH или data/llm_tutor.sqlite3)",
+        # Веб грузит seed в БД ученика сам; CLI — проверка seed (что без
+        # заданий, рубрик, конспектов) или загрузка в указанную БД.
+        default=":memory:",
+        help="путь к БД (по умолчанию — в памяти: только проверка seed)",
     )
     args = parser.parse_args(argv)
 
@@ -180,7 +182,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     missing = nodes_without_items(seed)
     if missing:
-        print(f"Без заданий (диагностика их не возьмёт): {', '.join(missing)}")
+        print(f"Без заданий (урок их не проверит): {', '.join(missing)}")
     without_rubric = items_without_rubric(seed)
     if without_rubric:
         print(f"Открытые задания без рубрики (проверить нечем): {without_rubric}")
