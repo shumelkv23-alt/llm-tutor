@@ -1,6 +1,40 @@
-/* Вкладка «Теория»: тема урока. Конспект (готовый HTML с сервера) — срез 44. */
+/* Вкладка «Теория»: конспект текущей темы (готовый HTML с сервера). */
 (() => {
   const panel = document.getElementById("tab-theory");
+
+  /** Блок кода: кнопки «Скопировать» и (если есть редактор) «Открыть в редакторе». */
+  function decorateCode(pre) {
+    const wrap = document.createElement("div");
+    wrap.className = "code-block";
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+    const tools = document.createElement("div");
+    tools.className = "code-tools";
+    const code = pre.textContent;
+    const copy = document.createElement("button");
+    copy.type = "button";
+    copy.textContent = "Скопировать";
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(code);
+        copy.textContent = "Скопировано";
+      } catch {
+        copy.textContent = "Не удалось";
+      }
+      setTimeout(() => {
+        copy.textContent = "Скопировать";
+      }, 1500);
+    });
+    tools.append(copy);
+    if (window.Lesson.code) {
+      const open = document.createElement("button");
+      open.type = "button";
+      open.textContent = "Открыть в редакторе";
+      open.addEventListener("click", () => window.Lesson.code.open(code));
+      tools.append(open);
+    }
+    wrap.append(tools);
+  }
 
   function render(state) {
     panel.replaceChildren();
@@ -27,7 +61,7 @@
     const heading = document.createElement("h2");
     heading.textContent = state.node.name;
     article.append(heading);
-    if (state.node.description) {
+    if (state.node.description && !state.node.theory_html) {
       const lead = document.createElement("p");
       lead.className = "theory-lead";
       lead.textContent = state.node.description;
@@ -38,6 +72,7 @@
       body.className = "theory-body";
       // Готовый HTML: конспект прошёл web.markdown.render на сервере.
       body.innerHTML = state.node.theory_html;
+      body.querySelectorAll("pre").forEach(decorateCode);
       article.append(body);
     } else {
       const note = document.createElement("p");

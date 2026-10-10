@@ -9,7 +9,11 @@
 from urllib.parse import urlparse
 
 from markdown_it import MarkdownIt
-from markupsafe import Markup
+from markupsafe import Markup, escape
+from pygments import highlight as pygments_highlight
+from pygments.formatters import HtmlFormatter
+from pygments.lexers import get_lexer_by_name
+from pygments.util import ClassNotFound
 
 _ALLOWED_SCHEMES = frozenset({"http", "https"})
 
@@ -19,8 +23,25 @@ def _validate_link(url: str) -> bool:
     return parsed.scheme.lower() in _ALLOWED_SCHEMES and bool(parsed.netloc)
 
 
+# Подсветка на сервере (Pygments): внешних скриптов и правок CSP не нужно.
+# Классы токенов — короткие (k, s, n…), цвета задаёт lesson.css.
+_FORMATTER = HtmlFormatter(nowrap=True)
+
+
+def _highlight(code: str, lang: str, attrs: str) -> str:
+    """HTML подсвеченного кода; незнакомый язык — просто экранированный текст."""
+    try:
+        lexer = get_lexer_by_name(lang or "python")
+    except ClassNotFound:
+        return str(escape(code))
+    return pygments_highlight(code, lexer, _FORMATTER)
+
+
 def _build() -> MarkdownIt:
-    md = MarkdownIt("commonmark", {"html": False, "linkify": False, "breaks": True})
+    md = MarkdownIt(
+        "commonmark",
+        {"html": False, "linkify": False, "breaks": True, "highlight": _highlight},
+    )
     md.enable("table")
     md.disable("image")
     md.validateLink = _validate_link

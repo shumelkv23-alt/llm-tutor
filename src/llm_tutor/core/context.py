@@ -28,6 +28,7 @@ from llm_tutor.llm.prompts import (
     format_profile_block,
     format_route_block,
     format_state_block,
+    format_theory_block,
     tutor_system_prompt,
 )
 from llm_tutor.llm.schemas import ChatMessage
@@ -146,6 +147,10 @@ def _system_prompt(
         ),
         format_mastery_block(
             _mastery_slice(conn, graph, state, now=now, settings=settings)
+        ),
+        format_theory_block(
+            node_name,
+            repos.get_theory(conn, state.current_node_id) if state.current_node_id else None,
         ),
     ]
     return "\n\n".join(block for block in blocks if block)

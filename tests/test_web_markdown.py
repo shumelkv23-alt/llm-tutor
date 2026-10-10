@@ -60,7 +60,22 @@ def test_code_blocks_lists_and_emphasis() -> None:
     assert "<code>df.head()</code>" in html
     assert "<li>раз</li>" in html
     assert '<code class="language-python">' in html
-    assert "df.groupby(&#39;city&#39;)" in html or "df.groupby('city')" in html
+    # Подсветка Pygments: токены в span, строки экранированы.
+    assert '<span class="n">groupby</span>' in html
+
+
+def test_code_inside_block_is_escaped() -> None:
+    html = render("```python\nx = '<script>alert(1)</script>'\n```")
+
+    assert "<script" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_unknown_language_is_plain_escaped_text() -> None:
+    html = render("```нетакогоязыка\n<b>x</b>\n```")
+
+    assert "<b>" not in html
+    assert "&lt;b&gt;" in html
 
 
 def test_tables_render() -> None:

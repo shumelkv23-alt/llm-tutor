@@ -10,8 +10,6 @@ from pathlib import Path
 
 from llm_tutor.course.seed import DEFAULT_SEED_PATH
 
-_DATA_DIR = Path(__file__).resolve().parents[3] / "data"
-
 
 @dataclass(frozen=True)
 class Course:
@@ -20,8 +18,8 @@ class Course:
     subtitle: str
     description: str
     source_url: str
+    # Конспекты лежат рядом: data/theory/<имя seed без «seed_»>/ (course.seed).
     seed_path: Path
-    theory_dir: Path
 
 
 COURSES: tuple[Course, ...] = (
@@ -35,7 +33,6 @@ COURSES: tuple[Course, ...] = (
         ),
         source_url="https://mlcourse.ai/book/topic01/topic01_intro.html",
         seed_path=DEFAULT_SEED_PATH,
-        theory_dir=_DATA_DIR / "theory" / "topic01",
     ),
 )
 

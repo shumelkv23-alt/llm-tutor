@@ -147,7 +147,13 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     node = None
     if state.current_node_id and graph.has_node(state.current_node_id):
         concept = graph.concept(state.current_node_id)
-        node = {"id": concept.id, "name": concept.name, "description": concept.description}
+        node = {
+            "id": concept.id,
+            "name": concept.name,
+            "description": concept.description,
+            "source_url": concept.source_url,
+            "theory_html": str(markdown.render(repos.get_theory(conn, concept.id) or "")),
+        }
     item = repos.get_item(conn, state.pending_item_id) if state.pending_item_id else None
     messages = repos.get_messages(conn, session_id)[-CHAT_HISTORY:] if session_id else []
     rows = topic_rows(conn, settings=settings)

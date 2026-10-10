@@ -32,6 +32,8 @@ class Seed(BaseModel):
     items: list[Item] = Field(default_factory=list)
     rubrics: list[Rubric] = Field(default_factory=list)
     criteria: list[Criterion] = Field(default_factory=list)
+    # Конспекты узлов: не из JSON, а из файлов data/theory/<тема>/<узел>.md.
+    theory: dict[str, str] = Field(default_factory=dict)
 
 
 class SeedError(ValueError):
@@ -76,8 +78,27 @@ def _check_references(seed: Seed) -> None:
             )
 
 
+def theory_dir_for(seed_path: str | Path) -> Path:
+    """Каталог конспектов seed-файла: ``seed_topic01.json`` → ``theory/topic01``."""
+    source = Path(seed_path)
+    return source.parent / "theory" / source.stem.removeprefix("seed_")
+
+
+def _read_theory(seed_path: Path, node_ids: list[str]) -> dict[str, str]:
+    """Конспекты узлов из файлов; файл без узла в графе не читается."""
+    directory = theory_dir_for(seed_path)
+    theory: dict[str, str] = {}
+    for node_id in node_ids:
+        path = directory / f"{node_id}.md"
+        if path.is_file():
+            text = path.read_text(encoding="utf-8").strip()
+            if text:
+                theory[node_id] = text
+    return theory
+
+
 def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
-    """Читает и валидирует seed-файл (без записи в БД)."""
+    """Читает и валидирует seed-файл с конспектами (без записи в БД)."""
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(f"Seed-файл не найден: {source}")
@@ -85,6 +106,7 @@ def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     seed = Seed.model_validate(raw)
     CourseGraph(seed.nodes, seed.edges)  # падает на цикле/дубле/битой ссылке
     _check_references(seed)
+    seed.theory = _read_theory(source, [node.id for node in seed.nodes])
     return seed
 
 
@@ -92,9 +114,14 @@ def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) ->
     """Идемпотентно приводит граф в БД к seed-файлу (истина — seed)."""
     seed = load_seed_data(path)
     repos.replace_seed(
-        conn, seed.nodes, seed.edges, seed.items, seed.rubrics, seed.criteria
+        conn, seed.nodes, seed.edges, seed.items, seed.rubrics, seed.criteria, seed.theory
     )
     return seed
+
+
+def nodes_without_theory(seed: Seed) -> list[str]:
+    """Узлы без конспекта — вкладка «Теория» у них пуста."""
+    return [node.id for node in seed.nodes if node.id not in seed.theory]
 
 
 def items_without_rubric(seed: Seed) -> list[int]:
