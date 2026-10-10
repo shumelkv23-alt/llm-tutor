@@ -48,7 +48,9 @@ def web_llm():
 
 @pytest.fixture
 def web_app(web_settings, web_llm):
-    return create_app(web_settings, client=web_llm)
+    app = create_app(web_settings, client=web_llm)
+    yield app
+    app.state.accounts.close()
 
 
 @pytest.fixture
@@ -57,3 +59,14 @@ async def web(web_app):
     transport = httpx.ASGITransport(app=web_app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client
+
+
+@pytest.fixture
+async def student(web):
+    """Клиент вошедшего ученика (регистрация через API)."""
+    response = await web.post(
+        "/api/auth/register",
+        json={"email": "ann@example.com", "name": "Аня", "password": "секретный-пароль"},
+    )
+    assert response.status_code == 201
+    return web

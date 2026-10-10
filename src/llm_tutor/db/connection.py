@@ -37,33 +37,43 @@ def get_conn(db_path: str) -> sqlite3.Connection:
     return conn
 
 
-def migrate(conn: sqlite3.Connection) -> None:
-    """Применяет миграции ``NNN_*.sql`` до ``SCHEMA_VERSION`` (идемпотентно).
+def migrate(
+    conn: sqlite3.Connection,
+    *,
+    migrations_dir: Path | None = None,
+    schema_version: int | None = None,
+) -> None:
+    """Применяет миграции ``NNN_*.sql`` до версии схемы (идемпотентно).
 
     Версия берётся из ``PRAGMA user_version``; применяются файлы с номером
-    строго больше текущей версии.
+    строго больше текущей версии. По умолчанию — схема ученика
+    (``MIGRATIONS_DIR``, ``SCHEMA_VERSION``); БД аккаунтов веба передаёт свои
+    каталог и версию. Дефолты читаются при вызове: тесты подменяют константы
+    модуля.
     """
+    directory = MIGRATIONS_DIR if migrations_dir is None else migrations_dir
+    target = SCHEMA_VERSION if schema_version is None else schema_version
     current = conn.execute("PRAGMA user_version").fetchone()[0]
 
-    if current > SCHEMA_VERSION:
+    if current > target:
         raise RuntimeError(
-            f"Схема БД новее приложения (user_version={current} > {SCHEMA_VERSION})."
+            f"Схема БД новее приложения (user_version={current} > {target})."
             " Обнови приложение или укажи другую БД."
         )
-    if current == SCHEMA_VERSION:
+    if current == target:
         return
-    if not MIGRATIONS_DIR.is_dir():
-        raise RuntimeError(f"Каталог миграций не найден: {MIGRATIONS_DIR}")
+    if not directory.is_dir():
+        raise RuntimeError(f"Каталог миграций не найден: {directory}")
 
-    for path in sorted(MIGRATIONS_DIR.glob("[0-9][0-9][0-9]_*.sql")):
+    for path in sorted(directory.glob("[0-9][0-9][0-9]_*.sql")):
         version = int(path.name[:3])
         if version <= current:
             continue
-        if version > SCHEMA_VERSION:
+        if version > target:
             # Иначе код сам переведёт БД в состояние новее своего и «окирпичит» её.
             raise RuntimeError(
                 f"Миграция {path.name} новее этой версии приложения "
-                f"(SCHEMA_VERSION={SCHEMA_VERSION}). Обнови приложение."
+                f"(SCHEMA_VERSION={target}). Обнови приложение."
             )
         script = path.read_text(encoding="utf-8")
         try:
@@ -75,8 +85,8 @@ def migrate(conn: sqlite3.Connection) -> None:
             raise RuntimeError(f"Миграция {path.name} не применилась: {exc}") from exc
         current = version
 
-    if current < SCHEMA_VERSION:
+    if current < target:
         raise RuntimeError(
-            f"Нет миграций до SCHEMA_VERSION={SCHEMA_VERSION} (применено до {current})."
-            f" Проверь {MIGRATIONS_DIR}."
+            f"Нет миграций до SCHEMA_VERSION={target} (применено до {current})."
+            f" Проверь {directory}."
         )

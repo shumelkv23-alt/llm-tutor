@@ -304,10 +304,16 @@ small {
   font-size: 13px;
 }
 
+.session-info > div {
+  min-width: 0;
+}
+
 .session-info strong,
 .session-info span:not(.avatar) {
   display: block;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-info span:not(.avatar) {
@@ -658,6 +664,125 @@ dialog p {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 24px;
+}
+
+/* --- Вход и регистрация: тёмная карточка, как у панелей бара --- */
+
+.auth-body {
+  background: var(--nav-bg);
+}
+
+.login-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px 16px;
+  max-width: none;
+  color: #f7f9fc;
+}
+
+.login-card {
+  width: 100%;
+  max-width: 460px;
+  padding: 32px;
+  border: 1px solid #304157;
+  border-radius: 16px;
+  background: #111c2d;
+  box-shadow: var(--shadow-lift);
+}
+
+.login-card .brand {
+  margin-bottom: 32px;
+  padding: 0;
+}
+
+.login-card h1 {
+  color: #ffffff;
+  font-size: 30px;
+}
+
+.login-card .eyebrow {
+  color: #ff9a61;
+}
+
+.login-lead,
+.auth-switch,
+.login-card .form-hint {
+  color: #bac9d8;
+}
+
+.login-lead {
+  margin: 12px 0 24px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+
+.auth-form label {
+  color: #eaf0f7;
+}
+
+.auth-form input {
+  background: #1c2b3e;
+  border-color: #526276;
+  color: #ffffff;
+}
+
+.auth-form input[aria-invalid="true"] {
+  border-color: #f08080;
+}
+
+.auth-form .field-error,
+.auth-form .form-error {
+  margin: -4px 0 0;
+  color: #f4a3a3;
+  font-size: 13px;
+}
+
+.auth-form .form-hint {
+  margin-top: -6px;
+  font-size: 12px;
+}
+
+.auth-form button[type="submit"] {
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.password-field {
+  position: relative;
+  display: block;
+}
+
+.password-field input {
+  padding-right: 52px;
+}
+
+.password-field .toggle-password {
+  position: absolute;
+  top: 0;
+  right: 0;
+  color: #bac9d8;
+}
+
+.password-field .toggle-password:hover {
+  background: transparent;
+  color: #ffffff;
+}
+
+.auth-switch {
+  margin-top: 24px;
+  font-size: 14px;
+}
+
+.auth-switch a {
+  color: #60c4ba;
+}
+
+.login-card .notice {
+  margin-top: 16px;
 }
 
 /* --- Адаптивность --- */

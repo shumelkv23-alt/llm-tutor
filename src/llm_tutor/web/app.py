@@ -11,12 +11,16 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markupsafe import Markup, escape
 
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.web import accounts, security
 
 WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
@@ -92,12 +96,14 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     """
     owns_client = client is None
     llm = _llm_client(settings) if client is None else client
+    accounts_db = accounts.open_accounts(settings.accounts_db_path)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            accounts_db.close()
             if owns_client:
                 await llm.aclose()
 
@@ -112,6 +118,14 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.client = llm
     app.state.templates = make_templates()
+    # Все эндпоинты — async def: соединения SQLite живут в потоке цикла
+    # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
+    app.state.accounts = accounts_db
+    app.state.login_limiter = security.LoginLimiter()
+
+    # Порядок важен: добавленный позже middleware — внешний. Заголовки
+    # безопасности должны лечь и на отказы api_guard.
+    app.middleware("http")(security.api_guard)
 
     @app.middleware("http")
     async def security_headers(
@@ -124,12 +138,29 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+    @app.exception_handler(security.LoginRequired)
+    async def login_required(request: Request, exc: security.LoginRequired) -> Response:
+        return RedirectResponse(security.login_url(exc.next_path), status_code=303)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> Response:
+        """Ошибка формы в API — одно сообщение и поле, а не стек pydantic."""
+        if not request.url.path.startswith("/api/"):
+            return await request_validation_exception_handler(request, exc)
+        errors = exc.errors()
+        location = errors[0].get("loc", ()) if errors else ()
+        field = str(location[-1]) if len(location) > 1 else None
+        return JSONResponse(
+            {"detail": {"field": field, "message": "Проверьте поля формы."}}, status_code=422
+        )
+
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    # Локальный импорт: pages берёт шаблоны из app.state, а не из модуля.
-    from llm_tutor.web import pages
+    # Локальный импорт: модули маршрутов берут зависимости из app.state.
+    from llm_tutor.web import api_auth, pages
 
+    app.include_router(api_auth.router)
     app.include_router(pages.router)
     return app

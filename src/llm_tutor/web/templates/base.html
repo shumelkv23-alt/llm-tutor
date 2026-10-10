@@ -30,6 +30,8 @@
         {% if user %}
         <div class="session-info"><span class="avatar" aria-hidden="true">{{ user.initial }}</span><div><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div></div>
         <button class="btn" id="logout" type="button">{{ icon('logout') }}<span>Выйти</span></button>
+        {% else %}
+        <a class="btn" href="/login">{{ icon('user') }}<span>Войти</span></a>
         {% endif %}
       </div>
     </aside>

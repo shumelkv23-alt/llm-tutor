@@ -46,13 +46,15 @@ window.App = (() => {
    */
   async function request(path, { method = "GET", body, timeout = 90000 } = {}) {
     const changing = method !== "GET";
+    // Изменяющий запрос всегда идёт JSON-ом: сервер отвергает остальное (CSRF).
+    const payload = body === undefined && changing ? {} : body;
     let response;
     try {
       response = await fetch(path, {
         method,
         credentials: "same-origin",
-        headers: body === undefined ? {} : { "Content-Type": "application/json" },
-        body: body === undefined ? undefined : JSON.stringify(body),
+        headers: payload === undefined ? {} : { "Content-Type": "application/json" },
+        body: payload === undefined ? undefined : JSON.stringify(payload),
         signal: AbortSignal.timeout(timeout),
       });
     } catch (cause) {
@@ -73,11 +75,13 @@ window.App = (() => {
       const problem = new Error(detail || `Сервер ответил ошибкой ${response.status}.`);
       problem.status = response.status;
       problem.detail = data.detail;
+      problem.field = data.detail?.field || null;
       problem.uncertain = changing && response.status >= 500;
       if (problem.uncertain) {
         problem.message = "Сервер вернул ошибку. Результат неизвестен — обновляем данные, прежде чем повторять.";
       }
-      if (response.status === 401 && !location.pathname.startsWith("/login")) {
+      const authPage = ["/login", "/register"].includes(location.pathname);
+      if (response.status === 401 && !authPage) {
         location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
       }
       throw problem;
@@ -108,7 +112,18 @@ window.App = (() => {
     }
   }
 
-  document.addEventListener("DOMContentLoaded", checkConnection);
+  async function logout() {
+    try {
+      await request("/api/auth/logout", { method: "POST", timeout: 10000 });
+    } finally {
+      location.assign("/");
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    checkConnection();
+    $("#logout")?.addEventListener("click", logout);
+  });
 
   return { $, icon, connection, notify, request, confirm };
 })();

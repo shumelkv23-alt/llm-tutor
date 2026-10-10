@@ -16,6 +16,10 @@ PAGES = [
     ("/profile", "profile"),
 ]
 
+# Все HTML-страницы, включая экраны входа (их смотрит гость).
+ALL_PAGES = [path for path, _ in PAGES]
+GUEST_PAGES = ["/", "/login", "/register"]
+
 # Внешние скрипты — только с CDN из спеки, и только с точной версией.
 ALLOWED_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com"}
 
@@ -63,8 +67,8 @@ async def test_static_files_are_served(web) -> None:
 
 
 @pytest.mark.parametrize(("path", "key"), PAGES)
-async def test_page_renders_with_current_nav_item(web, path: str, key: str) -> None:
-    response = await web.get(path)
+async def test_page_renders_with_current_nav_item(student, path: str, key: str) -> None:
+    response = await student.get(path)
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
@@ -72,16 +76,32 @@ async def test_page_renders_with_current_nav_item(web, path: str, key: str) -> N
     assert current == [key]
 
 
-@pytest.mark.parametrize(("path", "key"), PAGES)
-async def test_page_loads_only_allowed_external_resources(web, path: str, key: str) -> None:
-    html = (await web.get(path)).text
+async def _all_html(web) -> dict[str, str]:
+    """HTML всех страниц: гостевые — гостем, остальные — после входа."""
+    pages = {path: (await web.get(path)).text for path in GUEST_PAGES}
+    await web.post(
+        "/api/auth/register",
+        json={"email": "ann@example.com", "name": "Аня", "password": "секретный-пароль"},
+    )
+    for path in ALL_PAGES:
+        response = await web.get(path)
+        assert response.status_code == 200, path
+        pages[f"{path} (вошёл)"] = response.text
+    return pages
 
+
+async def test_pages_load_only_allowed_external_resources(web) -> None:
+    for path, html in (await _all_html(web)).items():
+        _check_resources(path, html)
+
+
+def _check_resources(path: str, html: str) -> None:
     for url in _RESOURCE_RE.findall(html):
         parsed = urlparse(url)
         if parsed.scheme in ("", None) and not url.startswith("//"):
             continue
-        assert parsed.scheme == "https", url
-        assert parsed.hostname in ALLOWED_HOSTS, url
+        assert parsed.scheme == "https", (path, url)
+        assert parsed.hostname in ALLOWED_HOSTS, (path, url)
         assert re.search(r"@?\d+\.\d+\.\d+", url), f"версия не закреплена: {url}"
 
 
@@ -109,8 +129,7 @@ async def test_security_headers(web) -> None:
 
 async def test_pages_have_no_inline_scripts_or_styles(web) -> None:
     """CSP запрещает встроенное — страница не должна на него полагаться."""
-    for path, _ in PAGES:
-        html = (await web.get(path)).text
+    for path, html in (await _all_html(web)).items():
         assert not re.search(r"<script(?![^>]*\bsrc=)[^>]*>", html), path
         assert " style=" not in html, path
         assert "<style" not in html, path
