@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru" class="auth-page" data-icons="{{ static_url('icons.svg') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#060b1a">
+  <link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
+  <title>{{ page_title }} · llm·tutor</title>
+  <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ static_url('css/app.css') }}">
+  <script src="{{ static_url('js/app.js') }}" defer></script>
+  <script src="{{ static_url('js/auth.js') }}" defer></script>
+</head>
+<body class="auth-body">
+  <main class="login-screen" id="main">
+    <section class="login-card" aria-labelledby="auth-title">
+      <a class="brand" href="/" aria-label="llm·tutor — на главную"><span class="wordmark">llm<span class="wordmark-dot">·</span>tutor</span></a>
+      {% block card %}{% endblock %}
+    </section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

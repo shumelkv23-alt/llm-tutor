@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block eyebrow %}Аккаунт{% endblock %}
+{% block description %}Данные аккаунта, итог анкеты и прогресс по темам.{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
+{% block content %}
+<div class="profile-grid">
+  <section class="panel" aria-labelledby="account-title">
+    <div class="panel-header"><h2 id="account-title">Аккаунт</h2></div>
+    <dl class="account-facts">
+      <div><dt>Email</dt><dd>{{ user.email }}</dd></div>
+      <div><dt>С нами с</dt><dd>{{ joined }}</dd></div>
+    </dl>
+    <div class="profile-form theme-picker">
+      <h3 id="theme-title">Тема оформления</h3>
+      <div class="segmented" role="radiogroup" aria-labelledby="theme-title">
+        <button type="button" role="radio" data-theme-choice="light" aria-checked="false">{{ icon('sun') }}Светлая</button>
+        <button type="button" role="radio" data-theme-choice="dark" aria-checked="false">{{ icon('moon') }}Тёмная</button>
+        <button type="button" role="radio" data-theme-choice="system" aria-checked="true">{{ icon('monitor') }}Системная</button>
+      </div>
+    </div>
+    <form class="profile-form" id="rename-form" data-endpoint="/api/me" novalidate>
+      <label>Имя<input name="name" type="text" value="{{ user.name }}" maxlength="60" required autocomplete="given-name"></label>
+      <p class="field-error" data-error-for="name" hidden></p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn" type="submit">Сохранить имя</button>
+    </form>
+    <form class="profile-form" id="password-form" data-endpoint="/api/me/password" novalidate>
+      <h3>Сменить пароль</h3>
+      <label>Текущий пароль<input name="current" type="password" autocomplete="current-password" required maxlength="256"></label>
+      <p class="field-error" data-error-for="current" hidden></p>
+      <label>Новый пароль<input name="new" type="password" autocomplete="new-password" required minlength="8" maxlength="256"></label>
+      <p class="field-error" data-error-for="new" hidden></p>
+      <p class="form-hint">Не меньше 8 символов. Остальные входы на других устройствах закроются.</p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn" type="submit">Сменить пароль</button>
+    </form>
+  </section>
+
+  {% for entry in courses %}
+  <section class="panel learning" aria-labelledby="learning-{{ entry.card.id }}">
+    <div class="panel-header">
+      <div><p class="eyebrow">{{ entry.card.subtitle }}</p><h2 id="learning-{{ entry.card.id }}">{{ entry.card.title }}</h2></div>
+      <a class="btn" href="{{ entry.card.href }}">К занятию{{ icon('arrow') }}</a>
+    </div>
+    {% if not entry.learning %}
+    <p class="notice error">Данные курса сейчас не открываются. Сообщите администратору.</p>
+    {% else %}
+    <div class="learning-summary">
+      <div class="stat"><span>Закрыто тем</span><strong>{{ entry.card.closed }} из {{ entry.card.topics }}</strong></div>
+      <div class="stat"><span>Решено заданий</span><strong>{{ entry.learning.solved }}</strong></div>
+    </div>
+    <h3>Итог анкеты</h3>
+    {% if entry.learning.self_assessment %}
+    <ul class="survey-summary compact">{% for row in entry.learning.self_assessment %}<li><span>{{ row.title }}</span><b>{{ row.answer }}</b></li>{% endfor %}</ul>
+    {% else %}
+    <p class="muted">Анкета ещё не пройдена — она откроется на странице занятия.</p>
+    {% endif %}
+    <h3>Темы</h3>
+    <div class="table-wrap">
+      <table class="topics-table">
+        <thead><tr><th scope="col">Тема</th><th scope="col">Статус</th><th scope="col">Владение</th></tr></thead>
+        <tbody>
+          {% for topic in entry.learning.topics %}
+          <tr class="{{ topic.status }}">
+            <th scope="row">{{ topic.name }}</th>
+            <td><span class="badge{% if topic.status == 'closed' %} success{% elif topic.status == 'current' %} primary{% elif topic.status == 'claimed' %} accent{% endif %}">{{ topic.label }}</span></td>
+            <td><div class="mastery" role="img" aria-label="Владение {{ topic.mastery }}%, {{ topic.confidence }}"><span class="progress-track"><span class="progress-fill" data-percent="{{ topic.mastery }}"></span></span><small>{{ topic.mastery }}% · {{ topic.confidence }}</small></div></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="panel"><div class="empty"><strong>Курсов пока нет</strong>Запишитесь на курс в разделе «Мои курсы» — здесь появится прогресс.</div></section>
+  {% endfor %}
+</div>
+{% endblock %}

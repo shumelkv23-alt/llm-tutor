@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr, ValidationInfo, field_validator
+from pydantic import Field, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Корень проекта (два уровня вверх от src/llm_tutor/config.py) — не зависит от cwd.
@@ -15,6 +15,22 @@ DEFAULT_RAG_TOP_K = 4
 # Бюджет пакета контекста в токенах (Срез 5). При нехватке режется материал,
 # затем хвост диалога; правила, профиль и состояние не режутся.
 DEFAULT_CONTEXT_BUDGET_TOKENS = 8000
+
+
+# Переменные, которые приложение больше не читает (бот, его диагностика и
+# его БД удалены в срезе 49). В старом .env они остались — при «запретить лишнее»
+# веб не запустился бы, поэтому их молча пропускаем. Опечатки по-прежнему падают.
+RETIRED_SETTINGS = frozenset(
+    {
+        "telegram_bot_token",
+        "db_path",
+        "diagnostic_max_questions",
+        "diagnostic_uncertainty_threshold",
+        "diagnostic_first_pass",
+        "diagnostic_followup",
+        "item_repeat_cooldown_days",
+    }
+)
 
 
 class Settings(BaseSettings):
@@ -45,11 +61,21 @@ class Settings(BaseSettings):
     llm_max_retries: int = 1
     llm_max_tokens: int = 2048
 
-    # --- Telegram ---
-    telegram_bot_token: SecretStr
-
-    # --- Хранилище ---
-    db_path: str = "data/llm_tutor.sqlite3"
+    # --- Веб-приложение, Срез 37 ---
+    web_host: str = "127.0.0.1"
+    web_port: int = Field(default=8000, ge=1, le=65535)
+    # Аккаунты, веб-сессии и записи на курсы — общая БД; у каждого ученика
+    # своя БД курса в users_dir (спека веба §5).
+    accounts_db_path: str = "data/accounts.sqlite3"
+    users_dir: str = "data/users"
+    # Материалы RAG — общие для всех учеников, копируются в БД ученика.
+    materials_db_path: str = "data/materials.sqlite3"
+    registration_open: bool = True
+    # За HTTPS (обратный прокси) — true: cookie сессии не уйдёт по HTTP.
+    cookie_secure: bool = False
+    # Pyodide (Python в браузере) для вкладки «Код»: дистрибутив с pandas.
+    # Свой адрес — для зеркала или офлайн-копии; CSP разрешит именно его.
+    pyodide_index_url: str = "https://cdn.jsdelivr.net/pyodide/v0.27.8/full/"
 
     # --- Модель ученика (Beta-счётчики), Срез 4 ---
     beta_prior_alpha: float = 1.0
@@ -69,17 +95,6 @@ class Settings(BaseSettings):
     mastery_skip_threshold: float = 0.90
     mastery_verify_threshold: float = 0.75
     mastery_compressed_threshold: float = 0.50
-
-    # --- Адаптивная диагностика, Срез 4.5 ---
-    diagnostic_max_questions: int = 20
-    diagnostic_uncertainty_threshold: float = 0.15
-    # Длина одного захода: первый заход шире, последующие короткие.
-    diagnostic_first_pass: int = 5
-    diagnostic_followup: int = 2
-    # Пауза перед повторным вопросом (дни). Она же — окно свежести
-    # свидетельства: отвеченное недавно не предлагается, иначе серию чистых
-    # ответов набирали бы переспрашиванием одного вопроса подряд.
-    item_repeat_cooldown_days: float = 1.0
 
     # --- Анкета холодного старта, Срез 4.5 ---
     # Вес самооценки (source='self') — слабое свидетельство. Границы важны:
@@ -109,7 +124,7 @@ class Settings(BaseSettings):
     context_rag_top_k: int = DEFAULT_RAG_TOP_K
     context_budget_tokens: int = DEFAULT_CONTEXT_BUDGET_TOKENS
 
-    @field_validator("openrouter_api_key", "telegram_bot_token")
+    @field_validator("openrouter_api_key")
     @classmethod
     def _secret_must_not_be_empty(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
         """Пустой секрет — сразу ясная ошибка, а не невнятный отказ провайдера."""
@@ -118,6 +133,14 @@ class Settings(BaseSettings):
                 f"{info.field_name.upper()} пуст. Заполни его в .env (см. .env.example)."
             )
         return v
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_retired(cls, data: object) -> object:
+        """Убирает выведенные из употребления переменные (``RETIRED_SETTINGS``)."""
+        if isinstance(data, dict):
+            return {key: value for key, value in data.items() if str(key).lower() not in RETIRED_SETTINGS}
+        return data
 
 
 @lru_cache

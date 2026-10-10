@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 # Повод прохода: в журнале он виден как просьба ученика, а не как молчание.
 VERIFY_KICKOFF_TEXT = "Закрой тему — я её уже знаю."
-VERIFY_NO_NODE_REPLY = "Сейчас нечего закрывать — выбери тему: 🎚 Темы"
+VERIFY_NO_NODE_REPLY = "Сейчас нечего закрывать — сначала выбери тему в маршруте."
 
 
 def _post_reply(
@@ -33,6 +33,7 @@ def _post_reply(
     tutor_reply: str | None,
     now: float,
     options: list[str] | None = None,
+    issued: bool = False,
 ) -> TurnReply:
     """Пишет ход прохода одним коммитом и отдаёт ответ.
 
@@ -47,9 +48,15 @@ def _post_reply(
         session_id,
         user_text=user_text,
         assistant_text=full,
+        task_text=text if issued and state.pending_item_id is not None else None,
         state=state,
         now=now,
     )
+    if issued and state.pending_item_id is not None:
+        # Задание выдано: см. инвариант TurnReply — задание в ``tail``.
+        return TurnReply(
+            text=tutor_reply or "", options=options, tail=text, item_id=state.pending_item_id
+        )
     return TurnReply(text=full, options=options)
 
 
@@ -137,4 +144,5 @@ def start_verification(
         tutor_reply=tutor_reply,
         now=stamp,
         options=options,
+        issued=True,
     )

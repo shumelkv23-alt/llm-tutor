@@ -222,7 +222,6 @@ def test_evidence_weight_is_bounded() -> None:
         Settings(
             _env_file=None,
             openrouter_api_key="k",
-            telegram_bot_token="t",
             rubric_evidence_weight=-0.5,
         )
 

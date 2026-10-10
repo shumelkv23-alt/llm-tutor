@@ -1,0 +1,17 @@
+{% extends "auth_base.html" %}
+{% block card %}
+<p class="eyebrow">Тьютор mlcourse.ai</p>
+<h1 id="auth-title">С возвращением</h1>
+<p class="login-lead">Войдите, чтобы продолжить занятие с того места, где остановились.</p>
+<form class="auth-form" data-endpoint="/api/auth/login" data-next="{{ next }}" novalidate>
+  <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" spellcheck="false"></label>
+  <p class="field-error" data-error-for="email" hidden></p>
+  <label>Пароль
+    <span class="password-field"><input name="password" type="password" autocomplete="current-password" required maxlength="256"><button class="btn ghost icon-only toggle-password" type="button" aria-label="Показать пароль" aria-pressed="false">{{ icon('eye') }}</button></span>
+  </label>
+  <p class="field-error" data-error-for="password" hidden></p>
+  <p class="form-error" role="alert" hidden></p>
+  <button class="btn primary" type="submit"><span>Войти</span>{{ icon('arrow') }}</button>
+</form>
+{% if registration_open %}<p class="auth-switch">Нет аккаунта? <a href="/register{% if next != '/' %}?next={{ next|urlencode }}{% endif %}">Зарегистрироваться</a></p>{% endif %}
+{% endblock %}

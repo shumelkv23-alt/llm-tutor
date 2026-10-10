@@ -1,19 +1,17 @@
-"""Тесты адаптивной диагностики (Срез 4.8)."""
+"""Выдача заданий по узлу и запись свидетельств (Срез 4.8).
+
+Адаптивная диагностика бота удалена в срезе 49; запись ответа здесь —
+та же последовательность, что в ядре: автопроверка, plan_evidence, запись.
+"""
 
 import pytest
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Edge, Event, Item, SessionState
 from llm_tutor.course.seed import load_seed
+from llm_tutor.db import repos
+from llm_tutor.grader import autocheck
+from llm_tutor.schemas import Concept, Edge, Event, Item, SessionState
 from llm_tutor.student import beta, diagnostic
-from llm_tutor.student.diagnostic import (
-    DiagnosticQuestion,
-    next_question,
-    questions_for_pass,
-    record_answer,
-    uncertainty_priority,
-)
 
 
 def _graph(concepts: list[str], edges: list[tuple[str, str]] = ()) -> CourseGraph:
@@ -49,86 +47,20 @@ def _item(
     return item
 
 
-# --- выбор узла ---
-
-
-def test_uncertainty_priority_grows_with_dependents() -> None:
-    graph = _graph(["a", "b", "c"], [("a", "b"), ("b", "c")])
-    mastery = beta.Mastery("a", 1.0, 1.0, 0.5, 0.28, None, None)
-
-    assert uncertainty_priority(graph, "a", mastery) > uncertainty_priority(graph, "c", mastery)
-
-
-def test_picks_node_with_highest_uncertainty(conn, settings) -> None:
-    for cid in ("a", "c"):
-        _concept(conn, cid)
-    graph = _graph(["a", "c"])
-    _item(conn, item_id=1, concept_id="a")
-    _item(conn, item_id=2, concept_id="c")
-    for _ in range(5):  # у c неопределённость падает ниже порога
-        beta.update(conn, "c", correct=1.0, now=0.0, settings=settings)
-
-    question = next_question(conn, graph, now=0.0, settings=settings)
-
-    assert question is not None
-    assert question.concept_id == "a"
-
-
-def test_skips_node_without_item(conn, settings) -> None:
-    """Важный узел без задания банка пропускаем — спрашиваем следующий."""
-    for cid in ("a", "b", "z"):
-        _concept(conn, cid)
-    graph = _graph(["a", "b", "z"], [("a", "z")])  # a важнее (есть зависимый z)
-    _item(conn, item_id=1, concept_id="b")
-
-    question = next_question(conn, graph, now=0.0, settings=settings)
-
-    assert question is not None
-    assert question.concept_id == "b"
-
-
-def test_stops_when_uncertainty_below_threshold(conn, settings) -> None:
-    _concept(conn, "a")
-    graph = _graph(["a"])
-    _item(conn, item_id=1, concept_id="a")
-    for _ in range(10):
-        beta.update(conn, "a", correct=1.0, now=0.0, settings=settings)
-
-    assert next_question(conn, graph, now=0.0, settings=settings) is None
-
-
-def test_stops_when_items_exhausted(conn, settings) -> None:
-    _concept(conn, "a")
-    graph = _graph(["a"])
-    item = _item(conn, item_id=1, concept_id="a")
-
-    result = next_question(
-        conn, graph, asked_item_ids=frozenset({item.id}), now=0.0, settings=settings
+def _record(conn, graph, item: Item, concept_id: str, answer: str, *, settings):
+    """Ответ на задание с автопроверкой — как его записывает ядро."""
+    result = autocheck.check(item, answer)
+    events, mastery = diagnostic.plan_evidence(
+        conn, graph, item, concept_id, result.score, now=0.0, settings=settings
     )
+    for event in events:
+        repos.add_event(conn, event, 0.0)
+    for change in mastery:
+        beta.write_update(conn, change)
+    return result
 
-    assert result is None
 
-
-def test_freshly_answered_item_is_not_asked_again(conn, settings) -> None:
-    """При включённой паузе повторный вопрос сразу после ответа не задаётся."""
-    cool = settings.model_copy(update={"item_repeat_cooldown_days": 1.0})
-    _concept(conn, "a")
-    graph = _graph(["a"])
-    item = _item(conn, item_id=1, concept_id="a", answer_type="short", answer="read_csv")
-    record_answer(
-        conn,
-        graph,
-        DiagnosticQuestion(item=item, concept_id="a"),
-        "read_csv",
-        now=0.0,
-        settings=cool,
-    )
-
-    soon = next_question(conn, graph, now=100.0, settings=cool)
-    day_later = next_question(conn, graph, now=2 * beta.SECONDS_PER_DAY, settings=cool)
-
-    assert soon is None  # кулдаун ещё идёт
-    assert day_later is not None  # через сутки вопрос снова осмыслен
+# --- банк заданий ---
 
 
 def test_rubric_item_without_criteria_is_not_offered(conn, settings) -> None:
@@ -143,23 +75,23 @@ def test_rubric_item_without_criteria_is_not_offered(conn, settings) -> None:
     assert 10 in ids
 
 
-def test_open_item_is_not_used_for_diagnostics(conn, settings) -> None:
-    """Рубричные задания диагностика не берёт — их проверяет LLM (Срез 6)."""
+def test_open_item_needs_rubric_mode(conn, settings) -> None:
+    """Открытое задание проверяет грейдер — без include_rubric его не выдают."""
     _concept(conn, "a")
-    graph = _graph(["a"])
     _item(conn, item_id=1, concept_id="a", answer_type="open", answer="эталон")
 
-    assert next_question(conn, graph, now=0.0, settings=settings) is None
+    assert diagnostic._available_items(conn, include_rubric=False) == []
 
 
 def test_prefers_item_closest_to_current_mastery(conn, settings) -> None:
     """Целевая сложность ≈ текущему владению — задание информативнее."""
     _concept(conn, "a")
-    graph = _graph(["a"])
     _item(conn, item_id=1, concept_id="a", difficulty=0.9)
     _item(conn, item_id=2, concept_id="a", difficulty=0.5)
 
-    question = next_question(conn, graph, now=0.0, settings=settings)
+    question = diagnostic.verification_item(
+        conn, "a", include_rubric=False, now=0.0, settings=settings
+    )
 
     assert question is not None
     assert question.item.id == 2  # априор 0.5 ближе к 0.5, чем 0.9
@@ -173,14 +105,7 @@ def test_record_correct_answer_updates_mastery_and_event(conn, settings) -> None
     graph = _graph(["a"])
     item = _item(conn, item_id=1, concept_id="a", answer_type="short", answer="read_csv")
 
-    result = record_answer(
-        conn,
-        graph,
-        DiagnosticQuestion(item=item, concept_id="a"),
-        "  READ_CSV ",
-        now=0.0,
-        settings=settings,
-    )
+    result = _record(conn, graph, item, "a", "  READ_CSV ", settings=settings)
 
     assert result.score == 1.0
     assert beta.estimate(conn, "a", now=0.0, settings=settings).mean > 0.5
@@ -193,10 +118,7 @@ def test_record_wrong_answer_lowers_mastery(conn, settings) -> None:
     graph = _graph(["a"])
     item = _item(conn, item_id=1, concept_id="a", answer_type="short", answer="read_csv")
 
-    result = record_answer(
-        conn, graph, DiagnosticQuestion(item=item, concept_id="a"), "read_excel",
-        now=0.0, settings=settings,
-    )
+    result = _record(conn, graph, item, "a", "read_excel", settings=settings)
 
     assert result.score == 0.0
     assert beta.estimate(conn, "a", now=0.0, settings=settings).mean < 0.5
@@ -208,10 +130,7 @@ def test_success_propagates_to_prerequisites(conn, settings) -> None:
     graph = _graph(["a", "b"], [("a", "b")])
     item = _item(conn, item_id=1, concept_id="b")
 
-    record_answer(
-        conn, graph, DiagnosticQuestion(item=item, concept_id="b"), "0",
-        now=0.0, settings=settings,
-    )
+    _record(conn, graph, item, "b", "0", settings=settings)
 
     prereq = repos.get_mastery(conn, "a")
     assert prereq["alpha"] == pytest.approx(1.0 + settings.beta_propagate_weight)
@@ -223,23 +142,9 @@ def test_failure_does_not_propagate(conn, settings) -> None:
     graph = _graph(["a", "b"], [("a", "b")])
     item = _item(conn, item_id=1, concept_id="b")
 
-    record_answer(
-        conn, graph, DiagnosticQuestion(item=item, concept_id="b"), "1",
-        now=0.0, settings=settings,
-    )
+    _record(conn, graph, item, "b", "1", settings=settings)
 
     assert repos.get_mastery(conn, "a") is None
-
-
-# --- длина захода ---
-
-
-def test_first_pass_is_longer_than_followup(conn, settings) -> None:
-    assert questions_for_pass(conn, settings=settings) == settings.diagnostic_first_pass
-
-    repos.add_event(conn, Event(source="checked", result=1.0, ts=0.0))
-
-    assert questions_for_pass(conn, settings=settings) == settings.diagnostic_followup
 
 
 # --- задание проверочного прохода (Срез 16) ---

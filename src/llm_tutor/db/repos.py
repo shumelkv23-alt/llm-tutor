@@ -9,7 +9,7 @@ import json
 import logging
 import sqlite3
 import time
-from typing import Sequence, get_args
+from typing import Mapping, Sequence, get_args
 
 from pydantic import ValidationError
 
@@ -267,12 +267,13 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
     conn.execute(
         "INSERT INTO items "
         "(id, concept_weights, difficulty, answer_type, prompt, options, answer,"
-        " rubric_id, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        " rubric_id, starter, setup, tests, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "concept_weights = excluded.concept_weights, difficulty = excluded.difficulty, "
         "answer_type = excluded.answer_type, prompt = excluded.prompt, "
         "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id, "
+        "starter = excluded.starter, setup = excluded.setup, tests = excluded.tests, "
         # Вернувшееся в seed задание снова активно.
         "active = 1",
         (
@@ -284,6 +285,9 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
             json.dumps(item.options, ensure_ascii=False),
             item.answer,
             item.rubric_id,
+            item.starter,
+            item.setup,
+            item.tests,
             int(item.active),
         ),
     )
@@ -364,7 +368,8 @@ def get_criteria(conn: sqlite3.Connection, rubric_id: int) -> list[Criterion]:
 
 
 _ITEM_COLUMNS = (
-    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id, active"
+    "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id,"
+    " starter, setup, tests, active"
 )
 
 
@@ -378,6 +383,9 @@ def _row_to_item(row: sqlite3.Row) -> Item:
         options=json.loads(row["options"]),
         answer=row["answer"],
         rubric_id=row["rubric_id"],
+        starter=row["starter"],
+        setup=row["setup"],
+        tests=row["tests"],
         active=bool(row["active"]),
     )
 
@@ -438,8 +446,12 @@ def replace_seed(
     items: Sequence[Item],
     rubrics: Sequence[Rubric] = (),
     criteria: Sequence[Criterion] = (),
+    theory: Mapping[str, str] | None = None,
 ) -> None:
     """Атомарно приводит содержимое seed в БД к нему самому.
+
+    ``theory`` — конспекты узлов (id → Markdown). Узел без конспекта в seed
+    получает ``NULL``: убранный файл не оставляет старый текст.
 
     Seed — источник истины: узлы, рёбра, задания и рубрики upsert-ятся, а всё,
     чего в нём больше нет, гасится (``active = 0``). Физически удалять нельзя:
@@ -453,6 +465,10 @@ def replace_seed(
     try:
         for concept in concepts:
             _write_concept(conn, concept)
+            conn.execute(
+                "UPDATE concepts SET theory = ? WHERE id = ?",
+                ((theory or {}).get(concept.id), concept.id),
+            )
         for edge in edges:
             _write_edge(conn, edge)
         for rubric in rubrics:
@@ -625,3 +641,34 @@ def replace_chunks(
         raise
     conn.commit()
     return len(chunks)
+
+
+def last_event_id(conn: sqlite3.Connection) -> int:
+    """Id последнего события журнала (0 — журнал пуст)."""
+    return int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM events").fetchone()[0])
+
+
+def item_result_after(conn: sqlite3.Connection, item_id: int, after_id: int) -> float | None:
+    """Результат ответа на задание, записанный после события ``after_id``.
+
+    Ответ на задание даёт событие по каждому затронутому концепту с одним и тем
+    же результатом — берём первое. ``None`` — ответ не записан (не проверен).
+    """
+    row = conn.execute(
+        "SELECT result FROM events WHERE item_id = ? AND id > ? ORDER BY id LIMIT 1",
+        (item_id, after_id),
+    ).fetchone()
+    return None if row is None else float(row["result"])
+
+
+def get_theory(conn: sqlite3.Connection, concept_id: str) -> str | None:
+    """Конспект узла (Markdown) или ``None``.
+
+    Отдельно от ``get_concepts``: граф грузится много раз за ход, а конспекты
+    весят десятки килобайт.
+    """
+    # Погашенный узел (убран из seed) свой старый конспект не показывает.
+    row = conn.execute(
+        "SELECT theory FROM concepts WHERE id = ? AND active = 1", (concept_id,)
+    ).fetchone()
+    return None if row is None else row["theory"]

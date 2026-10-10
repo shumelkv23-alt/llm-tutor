@@ -9,11 +9,13 @@
 лестницей подсказок.
 """
 
+import json
 import logging
 import sqlite3
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core import intents
@@ -24,18 +26,18 @@ from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
-from llm_tutor.schemas import Event, Item, Route, SessionState
+from llm_tutor.schemas import Event, GradeResult, Item, Route, SessionState
 from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
 
 logger = logging.getLogger(__name__)
 
 # Задание уже неактуально (пропало из банка или не проверяется кодом).
-STALE_ITEM_REPLY = "Это задание уже неактуально — жми /task, чтобы взять новое."
+STALE_ITEM_REPLY = "Это задание уже неактуально — возьми новое."
 # Реплика «дай задание» попадает в журнал как обычная просьба ученика.
 PRACTICE_KICKOFF_TEXT = "Давай задание по текущей теме."
 # Напоминание, что вопрос не сбросил выданное задание.
 PENDING_ITEM_NOTE = (
-    "Задание всё ещё ждёт ответа — ответь вариантом или пришли /skip."
+    "Задание всё ещё ждёт ответа — ответь на него или пропусти."
 )
 # Повод тьюторского хода при нажатии «Не понимаю».
 STUCK_KICKOFF_TEXT = "Не понял, давай подробнее по текущей теме."
@@ -46,17 +48,17 @@ SKIP_REPLY = (
 )
 NOTHING_TO_SKIP_REPLY = "Сейчас нет задания, которое нужно пропустить."
 GRADING_FAILED_REPLY = (
-    "Это задание не удалось проверить — снимаю его. Возьми новое: /task."
+    "Это задание не удалось проверить — снимаю его. Возьми новое."
 )
 # По текущему узлу заданий в банке нет — ведём диалогом, узел не рвём.
 NO_TASK_FOR_NODE_REPLY = (
     "По этому узлу новых заданий сейчас нет — свежие ты уже отвечал. "
-    "Возьми ещё раз то же: /task, или спрашивай — объясню."
+    "Можно взять задание ещё раз или спросить — объясню."
 )
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
 # Маршрут пройден до конца: заданий больше нет, и это не ошибка.
-ROUTE_DONE_REPLY = "Маршрут пройден до конца. Можно свериться: /plan."
+ROUTE_DONE_REPLY = "Маршрут пройден до конца — в маршруте видно, что закрыто."
 # Повод хода «Продолжить обучение» — в журнале виден как реплика ученика.
 RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 # Шапка шага проверочного прохода. Номер без общего числа: после неудачного
@@ -80,6 +82,9 @@ VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернём�
 CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — пара быстрых вопросов."
 
 
+AnswerMode = Literal["auto", "answer", "tutor"]
+
+
 @dataclass(frozen=True)
 class TurnReply:
     """Ответ хода: текст и, если задание вынесено отдельно, ``tail``.
@@ -87,11 +92,16 @@ class TurnReply:
     ``tail`` — второе сообщение хода (обычно задание): объяснение и тест в
     одном сообщении читаются стеной. ``options`` — подписи кнопок того
     сообщения, которое несёт задание: ``tail``, если он есть, иначе ``text``.
+
+    ``item_id`` — задание, выданное в этом ходе. Инвариант: если он задан,
+    текст задания лежит в ``tail``, а ``text`` — только пояснение к нему
+    (может быть пустым). Веб кладёт задание в «Практику», а в чат — пояснение.
     """
 
     text: str
     options: list[str] | None = None
     tail: str | None = None
+    item_id: int | None = None
 
 
 def _render_item(item: Item) -> str:
@@ -151,13 +161,24 @@ def post_turn(
     events: list[Event] | None = None,
     mastery: list[beta.MasteryUpdate] | None = None,
     now: float | None = None,
+    task_text: str | None = None,
 ) -> None:
-    """Пишет ход одним коммитом; при сбое откатывает всё."""
+    """Пишет ход одним коммитом; при сбое откатывает всё.
+
+    ``task_text`` — выданное в ходе задание, которым заканчивается
+    ``assistant_text``. Его длина ложится в ``meta`` реплики: модель видит ход
+    целиком, а веб в истории чата заменяет задание отметкой (оно в «Практике»).
+    """
     stamp = time.time() if now is None else now
+    meta = (
+        json.dumps({"task_chars": len(task_text)})
+        if task_text and assistant_text.endswith(task_text)
+        else None
+    )
     try:
         repos.add_message(conn, session_id, "user", user_text, ts=stamp, commit=False)
         repos.add_message(
-            conn, session_id, "assistant", assistant_text, ts=stamp, commit=False
+            conn, session_id, "assistant", assistant_text, ts=stamp, meta=meta, commit=False
         )
         for event in events or []:
             repos.add_event(conn, event, stamp, commit=False)
@@ -180,8 +201,12 @@ async def _answer_branch(
     *,
     now: float,
     settings: Settings,
+    grade: GradeResult | None = None,
 ) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool | None]:
     """Ученик отвечает на выданное задание.
+
+    ``grade`` — готовый вердикт: задание с кодом проверили тестами в браузере
+    ученика. Тогда грейдер не зовём, а событие идёт с источником ``autotest``.
 
     ``choice``/``short`` проверяет код, ``open``/``code`` — рубричный грейдер
     (его вердикт идёт в журнал с ограниченным весом). Пятый элемент — был ли
@@ -204,7 +229,9 @@ async def _answer_branch(
         )
 
     try:
-        if item.answer_type in diagnostic.AUTO_CHECKABLE:
+        if grade is not None:
+            result = grade
+        elif item.answer_type in diagnostic.AUTO_CHECKABLE:
             result = autocheck.check(item, _normalize_choice_answer(item, user_text))
         elif item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
             result = await rubric.grade(
@@ -222,7 +249,7 @@ async def _answer_branch(
             )
     except (rubric.RubricError, autocheck.AutoCheckError):
         # Задание нельзя проверить (рубрику убрали, эталон битый) — снимаем его,
-        # иначе оно залипнет и ученик не сможет выйти из него иначе как /skip.
+        # иначе оно залипнет и ученик не сможет выйти из него иначе как пропуском.
         logger.warning("Задание %s не проверяется, снимаю", item.id)
         return (
             GRADING_FAILED_REPLY,
@@ -242,11 +269,18 @@ async def _answer_branch(
         item,
         measured,
         result.score,
-        source="checked" if item.answer_type in diagnostic.AUTO_CHECKABLE else "rubric",
+        source=(
+            "autotest"
+            if grade is not None
+            else "checked"
+            if item.answer_type in diagnostic.AUTO_CHECKABLE
+            else "rubric"
+        ),
+        # Тесты и автопроверка — код, им полный вес; вердикт модели — ограниченный.
         weight_scale=evidence_scale
         * (
             1.0
-            if item.answer_type in diagnostic.AUTO_CHECKABLE
+            if grade is not None or item.answer_type in diagnostic.AUTO_CHECKABLE
             else settings.rubric_evidence_weight
         ),
         now=now,
@@ -345,8 +379,8 @@ async def _tutor_branch(
 def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
     """Урок с чистого листа: снимает узел, задание, режим и снимок маршрута.
 
-    Зовётся в конце анкеты. Всё, что ученик успел командами до неё (/task,
-    /resume), строилось без самооценки: снимок маршрута без заявленных узлов
+    Зовётся в конце анкеты. Всё, что ученик успел до неё (задание, продолжение
+    урока), строилось без самооценки: снимок маршрута без заявленных узлов
     отменил бы их навсегда (``build_route`` берёт заявленное из снимка).
     Свидетельства в журнале не трогаем — владение остаётся.
     """
@@ -430,10 +464,16 @@ def _enter_claimed(
         session_id,
         user_text=user_text,
         assistant_text=f"{text}\n\n{tail}" if tail else text,
+        task_text=tail,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=now,
     )
-    return TurnReply(text=text, options=options if tail else None, tail=tail)
+    return TurnReply(
+        text=text,
+        options=options if tail else None,
+        tail=tail,
+        item_id=new_state.pending_item_id if tail else None,
+    )
 
 
 async def handle_turn(
@@ -445,8 +485,21 @@ async def handle_turn(
     now: float | None = None,
     settings: Settings | None = None,
     allow_intents: bool = True,
+    answer_mode: AnswerMode = "auto",
+    grade: GradeResult | None = None,
 ) -> TurnReply:
-    """Один ход диалога: ответ на задание или реплика тьютору."""
+    """Один ход диалога: ответ на задание или реплика тьютору.
+
+    ``answer_mode`` — кто решает, ответ ли это на висящее задание: ``auto`` —
+    эвристика по тексту (бот: свободный текст и есть ответ), ``answer`` —
+    интерфейс прислал ответ формой задания, ``tutor`` — реплика в чат, задание
+    не трогаем (веб: для ответов есть «Практика»).
+
+    ``grade`` — готовый вердикт по висящему заданию (тесты кода в браузере):
+    ход идёт веткой ответа без грейдера и без разбора намерений.
+    """
+    if grade is not None:
+        allow_intents, answer_mode = False, "answer"
     s = settings or get_settings()
     stamp = time.time() if now is None else now
     session_id = repos.ensure_open_session(conn, stamp)
@@ -473,13 +526,12 @@ async def handle_turn(
     tail: str | None = None
     answered_item_id = state.pending_item_id
 
-    if (
-        state.pending_item_id is not None
-        and not force_stuck
-        and not _looks_like_question(user_text)
-    ):
+    is_answer = answer_mode == "answer" or (
+        answer_mode == "auto" and not _looks_like_question(user_text)
+    )
+    if state.pending_item_id is not None and not force_stuck and is_answer:
         reply, events, mastery, new_state, passed = await _answer_branch(
-            conn, client, model, graph, user_text, state, now=stamp, settings=s
+            conn, client, model, graph, user_text, state, now=stamp, settings=s, grade=grade
         )
         # Узел пройден? Только на ВЕРНОМ ответе: «не совсем верно» и «узёл
         # закрыт» в одном сообщении противоречат друг другу. Владение считаем
@@ -673,12 +725,18 @@ async def handle_turn(
         # из журнала, и задание модель должна видеть — иначе на следующем ходу
         # она не поймёт, на что отвечает ученик.
         assistant_text=f"{reply}\n\n{tail}" if tail else reply,
+        task_text=tail,
         state=new_state,
         events=events,
         mastery=mastery,
         now=stamp,
     )
-    return TurnReply(text=reply, options=options, tail=tail)
+    return TurnReply(
+        text=reply,
+        options=options,
+        tail=tail,
+        item_id=new_state.pending_item_id if tail else None,
+    )
 
 
 def _close_node_if_ready(
@@ -877,7 +935,9 @@ def _issue_task(
         header = VERIFY_STEP_TEMPLATE.format(
             name=graph.concept(node_id).name, step=len(state.verify_item_ids) + 1
         )
-        if question.item.answer_type in diagnostic.RUBRIC_CHECKABLE:
+        # «Объясни своими словами» — только к открытому вопросу: к заданию
+        # «напиши код» такая подводка противоречит самому заданию.
+        if question.item.answer_type == "open":
             text = f"{header}\n\n{VERIFY_EXPLAIN_PREFIX}\n{text}"
         else:
             text = f"{header}\n\n{text}"
@@ -908,10 +968,14 @@ def start_practice_reply(
         session_id,
         user_text=PRACTICE_KICKOFF_TEXT,
         assistant_text=text,
+        task_text=text if new_state.pending_item_id is not None else None,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=stamp,
     )
-    return TurnReply(text=text, options=options)
+    if new_state.pending_item_id is None:
+        # Задания нет (маршрут пройден, по узлу пусто) — это обычный ответ.
+        return TurnReply(text=text, options=options)
+    return TurnReply(text="", options=options, tail=text, item_id=new_state.pending_item_id)
 
 
 async def resume_reply(
@@ -925,7 +989,7 @@ async def resume_reply(
 ) -> TurnReply:
     """«Продолжить обучение»: занятие идёт с того места, где ученик остановился.
 
-    Висящее задание не затирается — в этом отличие от `/task`, который молча
+    Висящее задание не затирается — в этом отличие от «Дай задание», которое молча
     выдаёт новое. ``start_node_id`` — с какого узла начать, если текущего ещё
     нет (первый урок после анкеты: тот, что объявлен в списке шагов).
     """
@@ -1016,12 +1080,18 @@ async def resume_reply(
             session_id,
             user_text=RESUME_KICKOFF_TEXT,
             assistant_text=f"{reply}\n\n{tail}" if tail else reply,
+            task_text=tail,
             state=new_state.model_copy(update={"route": fresh_route}),
             events=events,
             mastery=mastery,
             now=stamp,
         )
-        return TurnReply(text=reply, options=options, tail=tail)
+        return TurnReply(
+            text=reply,
+            options=options,
+            tail=tail,
+            item_id=new_state.pending_item_id if tail else None,
+        )
 
     return start_practice_reply(conn, now=stamp, settings=s)
 
@@ -1102,7 +1172,7 @@ def _skip_turn(
 def skip_pending(
     conn: sqlite3.Connection, *, now: float | None = None, settings: Settings | None = None
 ) -> str:
-    """Явный выход из задания командой `/skip`.
+    """Явный выход из задания: кнопка «Пропустить».
 
     Снимает ожидание ответа, НЕ записывая свидетельство: без него единственным
     способом выйти было ответить (и получить неверный ответ в журнал).

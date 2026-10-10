@@ -79,8 +79,18 @@ class Item(BaseModel):
     options: list[str] = Field(default_factory=list)  # варианты для choice
     answer: str | None = None  # эталон: для choice — индекс варианта, иначе текст
     rubric_id: int | None = None
+    # Задание с кодом, который запускается в браузере (Pyodide): заготовка в
+    # редакторе, подготовка данных до решения и проверки assert после него.
+    starter: str | None = None
+    setup: str | None = None
+    tests: str | None = None
     # Убранное из seed задание не удаляется (на него ссылаются события), а гасится.
     active: bool = True
+
+    @property
+    def runnable(self) -> bool:
+        """Можно ли проверить задание запуском тестов."""
+        return self.answer_type == "code" and bool((self.tests or "").strip())
 
     @model_validator(mode="after")
     def _check_reference_answer(self) -> "Item":
@@ -100,6 +110,8 @@ class Item(BaseModel):
                 )
         elif self.answer_type == "short" and not (self.answer or "").strip():
             raise ValueError(f"у short-задания {self.id} должен быть непустой эталон")
+        if self.answer_type != "code" and (self.starter or self.setup or self.tests):
+            raise ValueError(f"starter/setup/tests — только у code-задания (задание {self.id})")
         return self
 
 

@@ -1,0 +1,24 @@
+{% extends "auth_base.html" %}
+{% block card %}
+<p class="eyebrow">Тьютор mlcourse.ai</p>
+<h1 id="auth-title">Создать аккаунт</h1>
+{% if registration_open %}
+<p class="login-lead">Короткая анкета — и тьютор подберёт, с чего начать.</p>
+<form class="auth-form" data-endpoint="/api/auth/register" data-next="{{ next }}" novalidate>
+  <label>Имя<input name="name" type="text" autocomplete="given-name" required maxlength="60"></label>
+  <p class="field-error" data-error-for="name" hidden></p>
+  <label>Email<input name="email" type="email" autocomplete="email" required maxlength="254" spellcheck="false"></label>
+  <p class="field-error" data-error-for="email" hidden></p>
+  <label>Пароль
+    <span class="password-field"><input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="256" aria-describedby="password-hint"><button class="btn ghost icon-only toggle-password" type="button" aria-label="Показать пароль" aria-pressed="false">{{ icon('eye') }}</button></span>
+  </label>
+  <p class="form-hint" id="password-hint">Не меньше 8 символов.</p>
+  <p class="field-error" data-error-for="password" hidden></p>
+  <p class="form-error" role="alert" hidden></p>
+  <button class="btn primary" type="submit"><span>Создать аккаунт</span>{{ icon('arrow') }}</button>
+</form>
+{% else %}
+<p class="notice">Регистрация закрыта. Обратитесь к администратору.</p>
+{% endif %}
+<p class="auth-switch">Уже есть аккаунт? <a href="/login{% if next != '/' %}?next={{ next|urlencode }}{% endif %}">Войти</a></p>
+{% endblock %}

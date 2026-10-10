@@ -31,7 +31,7 @@ def register_answer(
     передаёт ``hinted=False`` — серию считают верные ответы.
 
     Что ответ — не повтор только что заданного вопроса, следит выдача заданий:
-    отвеченное недавно она не предлагает (пауза ``item_repeat_cooldown_days``).
+    внутри захода задание не выдаётся дважды (``verification_item``).
     """
     clean_success = correct and not hinted
     return state.model_copy(
