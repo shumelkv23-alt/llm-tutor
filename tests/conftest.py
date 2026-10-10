@@ -24,7 +24,6 @@ def settings():
     return Settings(
         _env_file=None,
         openrouter_api_key="test-key",
-        telegram_bot_token="test-token",
     )
 
 

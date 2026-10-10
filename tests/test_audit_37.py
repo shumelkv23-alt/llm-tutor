@@ -76,7 +76,3 @@ async def test_versioned_static_is_cached_long(web) -> None:
     assert "immutable" in response.headers["cache-control"]
 
 
-def test_telegram_token_is_trimmed() -> None:
-    settings = Settings(_env_file=None, openrouter_api_key="k", telegram_bot_token="  abc  ")
-
-    assert settings.telegram_bot_token.get_secret_value() == "abc"

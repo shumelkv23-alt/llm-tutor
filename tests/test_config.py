@@ -10,7 +10,6 @@ def _settings(**overrides) -> Settings:
     """Настройки с заполненными секретами и отключённым чтением .env."""
     defaults = {
         "openrouter_api_key": "sk-test",
-        "telegram_bot_token": "bot-test",
         "_env_file": None,
     }
     defaults.update(overrides)
@@ -22,7 +21,6 @@ def test_defaults_load_with_explicit_keys() -> None:
     settings = _settings()
 
     assert settings.openrouter_api_key.get_secret_value() == "sk-test"
-    assert settings.telegram_bot_token.get_secret_value() == "bot-test"
     assert settings.openrouter_base_url == "https://openrouter.ai/api/v1"
     assert settings.tutor_model == "anthropic/claude-sonnet-4.5"
     assert settings.db_path == "data/llm_tutor.sqlite3"
@@ -39,28 +37,27 @@ def test_empty_openrouter_key_raises_clear_error() -> None:
     assert "OPENROUTER_API_KEY" in str(exc_info.value)
 
 
-def test_telegram_token_is_optional() -> None:
-    """Вебу бот не нужен: без токена настройки читаются."""
-    settings = Settings(openrouter_api_key="sk-test", _env_file=None)
+def test_retired_settings_from_old_env_are_ignored(tmp_path) -> None:
+    """Старый .env (с токеном бота и диагностикой) не мешает запуску веба (Срез 49)."""
+    env = tmp_path / ".env"
+    env.write_text(
+        "OPENROUTER_API_KEY=sk-test\nTELEGRAM_BOT_TOKEN=123:abc\nDIAGNOSTIC_FIRST_PASS=5\n"
+        "ITEM_REPEAT_COOLDOWN_DAYS=1.0\n",
+        encoding="utf-8",
+    )
 
-    assert settings.telegram_bot_token is None
+    settings = Settings(_env_file=env)
+
+    assert settings.openrouter_api_key.get_secret_value() == "sk-test"
+    assert not hasattr(settings, "telegram_bot_token")
 
 
-@pytest.mark.parametrize("value", ["", "   "])
-def test_empty_telegram_token_means_not_configured(value: str) -> None:
-    """Пустая строка из шаблона .env — «бот не настроен», а не ошибка запуска веба."""
-    assert _settings(telegram_bot_token=value).telegram_bot_token is None
+def test_typo_in_env_still_fails(tmp_path) -> None:
+    env = tmp_path / ".env"
+    env.write_text("OPENROUTER_API_KEY=sk-test\nTUTOR_MDOEL=x\n", encoding="utf-8")
 
-
-def test_bot_requires_telegram_token() -> None:
-    """Бот без токена падает с ясной ошибкой, а не с отказом Telegram."""
-    from llm_tutor.bot.main import require_telegram_token
-
-    with pytest.raises(RuntimeError) as exc_info:
-        require_telegram_token(_settings(telegram_bot_token=""))
-
-    assert "TELEGRAM_BOT_TOKEN" in str(exc_info.value)
-    assert require_telegram_token(_settings()) == "bot-test"
+    with pytest.raises(ValidationError):
+        Settings(_env_file=env)
 
 
 def test_whitespace_only_key_raises() -> None:
@@ -72,7 +69,6 @@ def test_whitespace_only_key_raises() -> None:
 def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     """get_settings() возвращает один и тот же объект (lru_cache)."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot-test")
     get_settings.cache_clear()
     try:
         first = get_settings()

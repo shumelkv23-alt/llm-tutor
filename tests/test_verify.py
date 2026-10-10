@@ -1,6 +1,6 @@
 """Тесты проверочного прохода по узлу (Срез 16)."""
 
-from fakes import GradingTutor
+from web_fakes import GradingTutor
 
 from llm_tutor.core import verify
 from llm_tutor.core.turn import VERIFY_FAILED_NOTE, VERIFY_NO_ITEMS_REPLY, handle_turn

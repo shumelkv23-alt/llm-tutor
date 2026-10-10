@@ -1,4 +1,4 @@
-"""Сквозной сценарий topic01 на моке OpenRouter (Срез 7.3).
+"""Сквозной сценарий topic01 на моке OpenRouter (Срез 7.3, без бота — Срез 49).
 
 Прогоняет весь путь через РЕАЛЬНЫЙ LLMClient: анкета → вопрос тьютору →
 задание с автопроверкой → задание с рубрикой → маршрут. Сеть замокана respx,
@@ -11,13 +11,10 @@ import json
 import httpx
 import pytest
 import respx
+from web_fakes import GradingTutor
 
-from fakes import FakeCallback, FakeMessage, GradingTutor, _fsm, _named
-
-from llm_tutor.bot.render import render_plan
-from llm_tutor.bot.survey import CLAIMED_NOTE, GO_DATA, start_survey
-from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.config import Settings
+from llm_tutor.core import lesson, overview
 from llm_tutor.core.turn import handle_turn
 from llm_tutor.course.ingest import ingest_text
 from llm_tutor.course.seed import load_seed
@@ -56,7 +53,7 @@ def _client(settings: Settings) -> LLMClient:
 async def test_offtopic_question_still_gets_an_answer() -> None:
     """Вопрос вне темы получает ответ с пометкой происхождения, а не отказ."""
     settings = Settings(
-        _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
+        _env_file=None, openrouter_api_key="test-key"
     )
     conn = get_conn(":memory:")
     migrate(conn)
@@ -83,7 +80,7 @@ async def test_offtopic_question_still_gets_an_answer() -> None:
 async def test_provider_error_is_reported_and_turn_persisted() -> None:
     """Сбой провайдера не оставляет ученика без ответа, ход записан."""
     settings = Settings(
-        _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
+        _env_file=None, openrouter_api_key="test-key"
     )
     conn = get_conn(":memory:")
     migrate(conn)
@@ -107,7 +104,7 @@ async def test_provider_error_is_reported_and_turn_persisted() -> None:
 @respx.mock
 async def test_full_topic01_scenario() -> None:
     settings = Settings(
-        _env_file=None, openrouter_api_key="test-key", telegram_bot_token="test-token"
+        _env_file=None, openrouter_api_key="test-key"
     )
     conn = get_conn(":memory:")
     migrate(conn)
@@ -186,11 +183,9 @@ async def test_full_topic01_scenario() -> None:
             for e in graded
         )
 
-        # 5. Маршрут считается и показывает путь списком
-        plan = render_plan(conn, now=3.0, settings=settings)
-        assert "<pre>" not in plan
-        assert "Маршрут" in plan
-        assert "1. " in plan
+        # 5. Маршрут считается: есть шаги, счётчик совпадает со списком
+        plan = overview.route_overview(conn, now=3.0, settings=settings)
+        assert plan.total == len(plan.steps) > 0
 
         # 6. Состояние сессии пережило все ходы и осталось согласованным
         state = repos.get_session_state(conn, session_id)
@@ -209,21 +204,24 @@ def _state(conn) -> SessionState:
     return repos.get_session_state(conn, repos.get_open_session(conn))
 
 
+async def _finish_survey(conn, settings, answers: list[int]):
+    """Анкета ответами ``answers`` и первый ход урока — как после «Начать урок»."""
+    progress = survey.Progress()
+    for index in answers:
+        progress = progress.answer(index)
+    assert progress.next_key() is None
+    survey.apply_answers(conn, progress.final_answers(), level=progress.level, settings=settings)
+    return await lesson.begin_lesson(conn, GradingTutor(conn, passed=True), "m", settings=settings)
+
+
 async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> None:
-    """/start → «Поехали» → «С нуля» → список шагов → объяснение → пара тестов → узел закрыт."""
+    """Анкета «С нуля» → шаги → объяснение → пара тестов → узел закрыт."""
     load_seed(conn)
     ingest_text(conn, "# T\n\n## Grouping\n\ngroupby aggregates rows\n", "u")
-    router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
-    state = _fsm()
-    message = await start_survey(FakeMessage(), state)
-    click = _named(router, "callback_query", "on_survey_click")
-    await click(FakeCallback(GO_DATA, message), state)
-    from_scratch = message.reply_markup.inline_keyboard[0][0].callback_data
-    await click(FakeCallback(from_scratch, message), state)
+    start, reply = await _finish_survey(conn, settings, [survey.LEVEL_FROM_SCRATCH])
 
-    steps = next(text for text, _ in message.sent if "Ближайшие 5 шагов" in text)
-    assert "1. " in steps
-    assert message.sent[-1][0]  # урок начался: первое задание
+    assert start.upcoming and reply is not None
+    assert _state(conn).pending_item_id is not None  # урок начался: первое задание
     assert not _is_closed(conn, "python_basics")  # до ответов узел не закрыт
 
     # Отвечаем верно на первый тест узла, за ним на второй — и узел закрывается.
@@ -258,30 +256,13 @@ def _is_closed(conn, node_id: str) -> bool:
 
 
 async def test_confident_student_skips_known_blocks(conn, settings) -> None:
-    """/start → «Уверенно работаю с pandas» → два ответа → урок не с азов."""
+    """«Уверенно работаю с pandas» → два ответа → урок не с азов и не с проверки."""
     load_seed(conn)
-    router = make_survey_router(conn, settings, GradingTutor(conn, passed=True), "m")
-    state = _fsm()
-    message = await start_survey(FakeMessage(), state)
-    click = _named(router, "callback_query", "on_survey_click")
+    start, reply = await _finish_survey(conn, settings, [survey.LEVEL_CONFIDENT, 1, 0])
 
-    def data_of(label: str) -> str:
-        return next(
-            button.callback_data
-            for row in message.reply_markup.inline_keyboard
-            for button in row
-            if button.text == label
-        )
-
-    await click(FakeCallback(GO_DATA, message), state)
-    await click(FakeCallback(data_of(survey.LEVEL_OPTIONS[survey.LEVEL_CONFIDENT]), message), state)
-    await click(FakeCallback(data_of(survey.SELF_LEVELS[1]), message), state)
-    await click(FakeCallback(data_of(survey.SELF_LEVELS[0]), message), state)
-
-    assert message.text.startswith("✅ Понял тебя")
-    steps = next(text for text, _ in message.sent if text.startswith("📋"))
-    assert CLAIMED_NOTE in message.text  # сводка обещает проверить знакомое
-    assert "Начинаем с «" in steps  # урок, а не проверка: незаявленное есть
+    assert reply is not None
+    assert not start.starts_with_check  # незаявленное есть — начинаем с урока
     current = _state(conn).current_node_id
+    assert current == start.first
     assert current not in survey.claimed_concepts(conn)
     assert _state(conn).pending_item_id is not None  # урок начался с задания

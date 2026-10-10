@@ -1,7 +1,8 @@
 # llm_tutor
 
-Telegram-бот-тьютор по курсу mlcourse.ai, тема 1 «Pandas / EDA». Один ученик на
-БД (`user_id` нигде нет).
+Веб-приложение — тьютор по курсу mlcourse.ai, тема 1 «Pandas / EDA». Несколько
+учеников со входом; у каждого ученика своя БД на курс (`user_id` в схеме курса
+нет — ученика задаёт файл БД).
 
 **Главный принцип:** LLM — интерфейс и генератор текста, а не источник истины.
 Состояние ученика, вердикты по заданиям, закрытие узлов считает код; журнал
@@ -9,25 +10,31 @@ Telegram-бот-тьютор по курсу mlcourse.ai, тема 1 «Pandas / 
 
 ## Стек и запуск
 
-Python 3.12, aiogram 3, OpenRouter (httpx), SQLite + FTS5, NetworkX, pydantic 2,
-менеджер — `uv`. Секреты — `.env` (шаблон `.env.example`).
+Python 3.12, FastAPI + Jinja2 (JS и CSS без сборки), OpenRouter (httpx),
+SQLite + FTS5, NetworkX, pydantic 2, менеджер — `uv`. Код ученика выполняется в
+браузере: Pyodide в Web Worker, редактор CodeMirror 5 (лежит в `static/vendor`).
+Секреты — `.env` (шаблон `.env.example`).
 
 ```bash
 uv sync
-uv run pytest -q                       # весь набор, ~10 с
-uv run python -m llm_tutor.bot.main    # бот (seed графа грузится сам)
+uv run pytest -q                       # весь набор без браузера, ~30 с
+uv run pytest -q -m e2e tests/e2e      # Playwright; Pyodide — из E2E_PYODIDE_DIR
+uv run python -m llm_tutor.web         # http://127.0.0.1:8000
 ```
 
 ## Где что
 
 | Слой | Модули |
 |---|---|
-| `bot/` | Telegram: `handlers` (команды, свободный текст), `survey` (анкета), `start` (вход, первый урок), `themes`, `menu`, `render` (HTML), `chat_action` («печатает…») |
-| `core/` | `turn` (ход диалога: ответ на задание / тьюторский путь, вход в узел, закрытие), `verify` (проверочный проход «закрой тему»), `context` (пакет промпта), `intents` |
-| `student/` | `survey` (адаптивная анкета, `Progress`), `route` (маршрут, статусы шагов), `planner` (приоритет, режимы), `beta` (модель владения), `guide` (критерий закрытия), `diagnostic` |
+| `web/` | `app` (сборка, CSP, статика с `?v=`), `accounts` + `api_auth` + `security` (вход, сессии, Origin), `userdb` (пул БД учеников), `api_lesson` (ходы занятия), `views` (данные для шаблонов и API), `pages`, `markdown` (рендер без HTML), `courses`, `cli` (`import-legacy`) |
+| `web/static/js` | `app` (оболочка, запросы, тема и сайдбар), `prefs` (вид до отрисовки), `lesson` (ход занятия, `act`), `split`, `chat`, `theory`, `practice`, `code` + `pyodide-worker`, `survey`, `route`, `profile`, `courses`, `auth` |
+| `core/` | `turn` (ход: ответ на задание / тьютор, вход в узел, закрытие), `verify` (проверочный проход), `lesson` (статусы тем, переход), `overview`, `context` (пакет промпта), `intents` |
+| `student/` | `survey` (адаптивная анкета, `Progress`), `route` (маршрут, статусы шагов), `planner` (приоритет, режимы), `beta` (модель владения), `guide` (критерий закрытия), `diagnostic` (выбор задания по узлу, запись свидетельств) |
 | `course/`, `rag/`, `grader/`, `llm/`, `db/` | граф и seed, поиск по материалам, автопроверка и рубрики, клиент и промпты, репозитории |
 
-Данные: `data/seed_topic01.json` — граф из 21 узла и банк заданий (≥ 2 на узел).
+Данные: `data/seed_topic01.json` — граф из 21 узла и банк заданий (≥ 2 на
+узел; задания с кодом несут `starter`/`setup`/`tests` и рубрику),
+`data/theory/topic01/*.md` — конспекты тем.
 
 ## Документы
 
@@ -36,9 +43,8 @@ uv run python -m llm_tutor.bot.main    # бот (seed графа грузитс�
 - `.superpowers/sdd/<план>/progress.md` — журнал исполнения плана: решения
   (`Ruling:`), находки ревью, отложенное. Папка в git не попадает.
 
-Последняя доработка — срезы 22–23 (`2026-10-08-adaptive-survey`): анкета в
-одном сообщении и её влияние на урок. Отложенные находки перечислены в конце её
-журнала.
+Последняя доработка — срезы 37–49 (`2026-10-10-web-app`): перенос из Telegram
+в браузер. Отложенное перечислено в конце её плана.
 
 ## Процесс
 
@@ -51,25 +57,32 @@ uv run python -m llm_tutor.bot.main    # бот (seed графа грузитс�
 
 - Комментарии, докстринги и коммиты пишутся по-русски. Формат коммита: `Срез N: …`,
   `Аудит среза N: …`.
-- Слои: `bot → core/student/db`. `core/*` и `student/*` не импортируют `bot/*`.
-- Вывод: `core.*` и тексты в `bot/start.py` отдают **сырой** текст, хендлер
-  экранирует его через `render.fit(render.escape(...))`. `bot/render.*`, а также
-  `survey.question_view` и `summary_text` отдают **готовый HTML**, повторно не
-  экранировать.
-- Схема БД меняется только миграциями (`migrations/`). Новые поля состояния
-  кладутся в `SessionState` (JSON) с дефолтами.
-- Тесты асинхронные без декоратора (`asyncio_mode=auto`). Фейки Telegram лежат
-  в `tests/fakes.py`, хендлер ищется по имени через `_named(router, kind, name)`.
+- Слои: `web → core/student/db`. `core/*` и `student/*` не импортируют `web/*`.
+- Вывод: `core.*` отдаёт **сырой** текст (Markdown). В веб он попадает через
+  `web.markdown.render` (HTML запрещён, ссылки только http(s)) или как
+  `textContent` в JS. `innerHTML` — только для HTML, отрендеренного сервером.
+- CSP без `unsafe-inline`: никаких встроенных `<script>` и `style=""`; ширины и
+  проценты ставит JS через CSSOM. Новые внешние адреса — только через
+  `content_security_policy`.
+- Схема БД меняется только миграциями (`migrations/` — БД ученика,
+  `migrations_accounts/` — аккаунты). Новые поля состояния кладутся в
+  `SessionState` (JSON) с дефолтами.
+- Тесты асинхронные без декоратора (`asyncio_mode=auto`). Веб — через
+  фикстуры `web`/`student` (`tests/conftest.py`), подставной тьютор — в
+  `tests/web_fakes.py`. Браузерные — с маркером `e2e`, шаги в `tests/e2e/helpers.py`.
 
 ## Подводные камни
 
-- **Атомарность анкеты** держится на `MemoryStorage`. Всё в хендлере
-  `survey:*` до первого сетевого `await` выполняется без переключений, а апдейты
-  идут параллельно (`handle_as_tasks`). Если сменить хранилище FSM, это нужно
-  пересмотреть.
+- **Атомарность хода** держится на `asyncio.Lock` ученика (`userdb`): всё
+  внутри `async with ctx.lock` выполняется без чужих ходов этого ученика.
+  Замок живёт в процессе — запускать один воркер uvicorn.
 - Подпись `"Уверенно"` в `student/survey.SELF_LEVELS` **не менять**. По ней
   узлы получают статус маршрута `claimed` (🔍): знакомое по анкете, его
   проверяют в конце.
+- SQLite в вебе открывается с `check_same_thread=False`: соединение из пула
+  используется не в том потоке, где открыто.
+- Тёмные токены в `tokens.css` записаны дважды (выбранная тема и системная) —
+  правятся парно, `tests/test_audit_48.py` сверяет копии.
 - Windows: вставка многострочного Python через heredoc в stdin путает `\n` в
   строковых литералах. Точечные правки делай инструментом Edit.
 - Агента типа `fork` в окружении может не быть. Тогда ревью делает

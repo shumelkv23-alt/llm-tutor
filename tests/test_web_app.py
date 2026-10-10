@@ -28,8 +28,7 @@ ALLOWED_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com"}
 _RESOURCE_RE = re.compile(r'(?:\bsrc="([^"]+)"|<link\b[^>]*\bhref="([^"]+)")')
 
 
-async def test_app_builds_without_telegram_token(web) -> None:
-    """Вебу токен бота не нужен: фикстура его не задаёт."""
+async def test_healthz(web) -> None:
     response = await web.get("/healthz")
 
     assert response.status_code == 200
@@ -175,7 +174,6 @@ def test_every_font_in_css_exists() -> None:
 def test_settings_web_defaults() -> None:
     settings = Settings(_env_file=None, openrouter_api_key="k")
 
-    assert settings.telegram_bot_token is None
     assert settings.web_host == "127.0.0.1"
     assert settings.web_port == 8000
     assert settings.accounts_db_path == "data/accounts.sqlite3"
