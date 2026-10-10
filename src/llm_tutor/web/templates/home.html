@@ -2,9 +2,9 @@
 {% block styles %}{% endblock %}
 {% block scripts %}<script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
 {% block page_head %}{% if user %}{{ super() }}{% endif %}{% endblock %}
-{% block eyebrow %}С возвращением{% endblock %}
+{% block eyebrow %}{% if courses %}С возвращением{% else %}Добро пожаловать{% endif %}{% endblock %}
 {% block heading %}{% if user %}Привет, {{ user.name }}!{% else %}Главная{% endif %}{% endblock %}
-{% block description %}{% if user %}Продолжим с того места, где вы остановились.{% endif %}{% endblock %}
+{% block description %}{% if user %}{% if not courses %}Выберите курс — и начнём.{% elif courses[0].card.status == 'survey' %}Начнём с короткой анкеты: по ней тьютор построит маршрут.{% else %}Продолжим с того места, где вы остановились.{% endif %}{% endif %}{% endblock %}
 {% block content %}
 {% if not user %}
 <section class="hero">
@@ -60,9 +60,10 @@
   </section>
   {% if main.learning %}
   <section class="panel stats-card" aria-label="Итоги">
-    <div class="stat"><span>Закрыто тем</span><strong>{{ main.card.closed }}</strong></div>
+    {# «Закрыто тем» уже есть в карточке курса — здесь то, чего там нет. #}
     <div class="stat"><span>Решено заданий</span><strong>{{ main.learning.solved }}</strong></div>
-    <div class="stat"><span>Всего тем</span><strong>{{ main.card.topics }}</strong></div>
+    <div class="stat"><span>Тем впереди</span><strong>{{ main.card.topics - main.card.closed }}</strong></div>
+    <div class="stat"><span>Знакомых на проверку</span><strong>{{ main.learning.topics | selectattr('status', 'equalto', 'claimed') | list | length }}</strong></div>
   </section>
   <section class="panel next-card" aria-labelledby="next-title">
     <h2 id="next-title" class="section-title">Ближайшие шаги</h2>

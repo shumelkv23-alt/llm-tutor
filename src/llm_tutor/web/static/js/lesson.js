@@ -12,6 +12,7 @@ window.Lesson = (() => {
   const listeners = [];
   let state = null;
   let busy = false;
+  let idleWaiters = [];
 
   const STATUS_LABELS = {
     closed: "закрыта",
@@ -71,6 +72,11 @@ window.Lesson = (() => {
 
   function setBusy(value) {
     busy = value;
+    if (!value) {
+      const waiters = idleWaiters;
+      idleWaiters = [];
+      waiters.forEach((resolve) => resolve());
+    }
     root.classList.toggle("busy", value);
     // Не трогаем disabled: у кнопок своя логика (например, «Ответить» без
     // выбранного варианта). Повторный ход и так отсекает проверка в act().
@@ -173,10 +179,16 @@ window.Lesson = (() => {
     load();
   });
 
+  /** Дождаться конца текущего хода (сразу, если хода нет). */
+  function whenIdle() {
+    return busy ? new Promise((resolve) => idleWaiters.push(resolve)) : Promise.resolve();
+  }
+
   return {
     course,
     base,
     act,
+    whenIdle,
     load,
     onState,
     selectTab,

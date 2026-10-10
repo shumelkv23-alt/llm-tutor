@@ -12,6 +12,8 @@
   const lesson = $("#lesson");
   const indexURL = lesson.dataset.pyodide;
   const TIMEOUT_MS = 10000;
+  // Загрузка Python с CDN: первый раз до минуты, дальше — из кэша браузера.
+  const LOAD_TIMEOUT_MS = 90000;
   const DRAFT_KEY = `llmTutor.code.${window.Lesson.course}`;
   const SANDBOX_TEXT = "import pandas as pd\n\ndf = pd.DataFrame({\"city\": [\"Казань\", \"Москва\", \"Казань\"], \"age\": [31, 45, 27]})\nprint(df.groupby(\"city\")[\"age\"].mean())\n";
 
@@ -144,9 +146,18 @@
     if (!worker) {
       worker = new Worker(lesson.dataset.worker);
       worker.onmessage = onMessage;
-      worker.onerror = () => finish({ ok: false, error: "Воркер Python упал. Попробуйте ещё раз." });
+      worker.onerror = () => {
+        dropWorker();
+        finish({ ok: false, stage: "worker", error: "Воркер Python упал. Попробуйте ещё раз." });
+      };
     }
     return worker;
+  }
+
+  /** Зависший или упавший воркер не остановить изнутри — только уничтожить. */
+  function dropWorker() {
+    worker?.terminate();
+    worker = null;
   }
 
   function setRunning(value) {
@@ -161,8 +172,13 @@
       return;
     }
     if (check && !item) return;
+    if (check && window.Lesson.busy) {
+      notify("Дождитесь ответа тьютора и проверьте ещё раз.");
+      return;
+    }
     runId += 1;
-    running = { id: runId, check, code: editor.getValue(), timer: null };
+    // Задание запоминаем на старте: пока код выполняется, текущее может смениться.
+    running = { id: runId, check, code: editor.getValue(), task: item, timer: setTimeout(loadTimeout, LOAD_TIMEOUT_MS) };
     setRunning(true);
     consoleBox.textContent = "";
     consoleBox.classList.remove("failed", "passed");
@@ -183,23 +199,30 @@
       status.textContent = message.text;
     } else if (message.type === "fatal") {
       fatal = `${message.text}. Без Python код можно отправить тьютору.`;
-      finish({ ok: false, error: fatal });
-      worker.terminate();
-      worker = null;
+      dropWorker();
+      finish({ ok: false, stage: "load", error: fatal });
     } else if (!running || message.id !== running.id) {
       return;
     } else if (message.type === "started") {
       status.textContent = "Выполняется…";
+      clearTimeout(running.timer);
       running.timer = setTimeout(timeout, TIMEOUT_MS);
     } else if (message.type === "result") {
       finish(message);
     }
   }
 
+  function loadTimeout() {
+    dropWorker();
+    finish({
+      ok: false,
+      stage: "load",
+      error: "Python не загрузился за полторы минуты. Проверьте интернет и попробуйте ещё раз — или покажите код тьютору.",
+    });
+  }
+
   function timeout() {
-    // Зависший код не остановить изнутри — только уничтожить воркер.
-    worker?.terminate();
-    worker = null;
+    dropWorker();
     finish({
       ok: false,
       stage: "code",
@@ -212,11 +235,15 @@
     code: "Ошибка в коде",
     tests: "Проверка не пройдена",
     packages: "Не удалось загрузить библиотеки",
+    load: "Python недоступен",
+    worker: "Сбой Python",
   };
+  // Сбой среды — не ответ ученика: на сервер не отправляем.
+  const INFRA_STAGES = new Set(["packages", "load", "worker"]);
 
   function finish(result) {
     if (!running) return;
-    const { check, code } = running;
+    const { check, code, task } = running;
     clearTimeout(running.timer);
     running = null;
     setRunning(false);
@@ -229,15 +256,21 @@
     consoleBox.classList.toggle("passed", Boolean(result.ok && check));
     status.textContent = result.ok ? "Готово." : "";
     // Ошибка самого кода — тоже результат проверки: ученик отвечал, ответ неверен.
-    if (check && item && result.stage !== "packages" && !fatal) submit(code, result);
+    if (check && task && !INFRA_STAGES.has(result.stage)) submit(task, code, result);
   }
 
-  async function submit(code, result) {
+  async function submit(task, code, result) {
     const passed = Boolean(result.ok && result.passed);
     const report = passed ? "" : `${STAGE_LABELS[result.stage] || "Ошибка"}: ${result.error}`;
+    // Идёт ход (ученик написал в чат во время проверки) — отправим после него.
+    await window.Lesson.whenIdle();
+    if (item?.id !== task.id) {
+      notify("Задание сменилось, пока шла проверка, — результат не отправлен.");
+      return;
+    }
     const data = await window.Lesson.act(
       "code-result",
-      { item_id: item.id, code, passed, report: report.slice(0, 4000) },
+      { item_id: task.id, code, passed, report: report.slice(0, 4000) },
       { echo: passed ? "Проверил код — все проверки пройдены." : "Проверил код — есть ошибки." }
     );
     if (data?.verdict) {

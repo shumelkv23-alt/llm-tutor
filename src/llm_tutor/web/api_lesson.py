@@ -7,6 +7,7 @@
 
 import asyncio
 import logging
+import re
 import sqlite3
 from collections.abc import Awaitable
 from dataclasses import dataclass
@@ -320,7 +321,10 @@ NOT_RUNNABLE = "Это задание проверяется не запуско
 def code_message(code: str, passed: bool, report: str) -> str:
     """Реплика ученика в журнале: код и итог тестов — тьютор увидит их в истории."""
     verdict = "все проверки пройдены" if passed else f"не пройдено — {report or 'ошибка'}"
-    return f"```python\n{code.rstrip()}\n```\n\nРезультат проверки: {verdict}"
+    # Ограждение длиннее любой серии ` в коде: иначе ``` внутри кода закроет блок раньше.
+    longest = max((len(run) for run in re.findall(r"`+", code)), default=0)
+    fence = "`" * max(3, longest + 1)
+    return f"{fence}python\n{code.rstrip()}\n{fence}\n\nРезультат проверки: {verdict}"
 
 
 @router.post("/courses/{course_id}/lesson/code-result")

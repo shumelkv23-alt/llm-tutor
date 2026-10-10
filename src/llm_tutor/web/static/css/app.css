@@ -1593,3 +1593,37 @@ pre code .p {
   min-width: 0;
   padding: 6px 8px;
 }
+
+/* Темы профиля на телефоне: строка таблицы — карточка (название, ниже статус и владение). */
+@media (max-width: 599px) {
+  .topics-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+  }
+
+  .topics-table tr {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .topics-table th,
+  .topics-table td {
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .topics-table tbody th {
+    grid-column: 1 / -1;
+  }
+
+  .topics-table .mastery {
+    min-width: 0;
+  }
+}

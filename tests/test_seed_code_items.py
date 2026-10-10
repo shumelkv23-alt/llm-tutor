@@ -25,6 +25,31 @@ SOLUTIONS = {
     50: "result = df.loc[df['Churn'], 'Total day minutes'].median()",
 }
 
+# Неверные решения, которые на данных задания совпадали с верным (аудит среза 46).
+WRONG = {
+    10: "result = df.groupby('city')['age'].median()",
+    44: "result = df[df['Customer service calls'] > 3]",
+    45: (
+        "result = df.head(3).copy()\n"
+        "result['Total day charge'] = df['Total day charge'].sort_values(ascending=False).head(3).values"
+    ),
+    46: "result = pd.Series({True: 0.375, 'мусор': 0.625})",
+}
+
+# Верные альтернативы, которые проверки отвергали.
+ALTERNATIVES = [
+    (
+        45,
+        "result = df.sort_values('Total day charge', ascending=False).head(3).reset_index(drop=True)",
+    ),
+    (46, "result = df['Churn'].astype(int).value_counts(normalize=True)"),
+    (
+        48,
+        "result = pd.crosstab(df['International plan'], df['Churn'].astype(int), normalize='index')",
+    ),
+    (10, "result = df.groupby('city')['age'].agg('mean')"),
+]
+
 ITEMS = {item.id: item for item in load_seed_data().items if item.answer_type == "code"}
 
 
@@ -49,6 +74,18 @@ def test_solution_passes(item_id: int) -> None:
     _run(ITEMS[item_id], SOLUTIONS[item_id])
 
 
+@pytest.mark.parametrize("item_id", sorted(WRONG))
+def test_wrong_solution_fails(item_id: int) -> None:
+    with pytest.raises(AssertionError) as exc_info:
+        _run(ITEMS[item_id], WRONG[item_id])
+    assert str(exc_info.value)
+
+
+@pytest.mark.parametrize(("item_id", "code"), ALTERNATIVES)
+def test_correct_alternative_passes(item_id: int, code: str) -> None:
+    _run(ITEMS[item_id], code)
+
+
 @pytest.mark.parametrize("item_id", sorted(SOLUTIONS))
 def test_starter_fails_with_hint(item_id: int) -> None:
     item = ITEMS[item_id]
@@ -69,10 +106,14 @@ def test_runnable_items_reach_lessons_but_not_bot_diagnostic(conn) -> None:
     from llm_tutor.student import diagnostic
 
     load_seed(conn)
-    plain = {item.id for item in diagnostic._available_items(conn, include_rubric=False)}
+    plain = {
+        item.id for item in diagnostic._available_items(conn, include_rubric=False)
+    }
     lesson = {
         item.id
-        for item in diagnostic._available_items(conn, include_rubric=False, include_runnable=True)
+        for item in diagnostic._available_items(
+            conn, include_rubric=False, include_runnable=True
+        )
     }
 
     assert not plain & set(SOLUTIONS)
