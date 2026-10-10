@@ -174,8 +174,13 @@ def create_user(
     name: str,
     password: str,
     now: float | None = None,
+    password_hash: str | None = None,
 ) -> User:
-    """Регистрирует ученика. Ошибка ввода — ``AccountError`` с полем формы."""
+    """Регистрирует ученика. Ошибка ввода — ``AccountError`` с полем формы.
+
+    ``password_hash`` — уже посчитанный хеш ``password``: веб считает scrypt
+    в потоке, чтобы не держать цикл событий.
+    """
     clean_email = normalize_email(email)
     clean_name = _clean_name(name)
     _check_password(password, field="password")
@@ -183,7 +188,7 @@ def create_user(
     try:
         cur = conn.execute(
             "INSERT INTO users (email, name, password_hash, created_at) VALUES (?, ?, ?, ?)",
-            (clean_email, clean_name, hash_password(password), stamp),
+            (clean_email, clean_name, password_hash or hash_password(password), stamp),
         )
     except sqlite3.IntegrityError as exc:
         conn.rollback()
@@ -199,31 +204,37 @@ def get_user(conn: sqlite3.Connection, user_id: int) -> User | None:
     return None if row is None else _user(row)
 
 
-def authenticate(conn: sqlite3.Connection, email: str, password: str) -> User | None:
-    """Ученик по email и паролю или ``None``.
+def credentials(conn: sqlite3.Connection, email: str) -> tuple[User | None, str]:
+    """Ученик по email и хеш, с которым сверять пароль.
 
-    Неизвестный email сверяется с фиктивным хешем: по времени ответа нельзя
-    узнать, зарегистрирован ли адрес.
+    Неизвестный или некорректный email получает фиктивный хеш: сверка идёт
+    так же долго, и по времени ответа нельзя узнать, зарегистрирован ли адрес.
     """
-    if len(password) > MAX_PASSWORD:
-        return None
     try:
         clean_email = normalize_email(email)
     except AccountError:
-        clean_email = None
-    row = (
-        conn.execute(
-            "SELECT id, email, name, created_at, password_hash FROM users WHERE email = ?",
-            (clean_email,),
-        ).fetchone()
-        if clean_email is not None
-        else None
-    )
-    stored = row["password_hash"] if row is not None else _dummy_hash()
-    matches = verify_password(password, stored)
-    if row is None or not matches:
+        return None, _dummy_hash()
+    row = conn.execute(
+        "SELECT id, email, name, created_at, password_hash FROM users WHERE email = ?",
+        (clean_email,),
+    ).fetchone()
+    if row is None:
+        return None, _dummy_hash()
+    return _user(row), row["password_hash"]
+
+
+def authenticate(conn: sqlite3.Connection, email: str, password: str) -> User | None:
+    """Ученик по email и паролю или ``None`` (синхронно: CLI и тесты)."""
+    if len(password) > MAX_PASSWORD:
         return None
-    return _user(row)
+    user, stored = credentials(conn, email)
+    matches = verify_password(password, stored)
+    return user if user is not None and matches else None
+
+
+def check_password(password: str, *, field: str = "password") -> None:
+    """Проверка длины пароля до хеширования (``AccountError`` с полем)."""
+    _check_password(password, field=field)
 
 
 def rename(conn: sqlite3.Connection, user_id: int, name: str) -> User:
@@ -236,6 +247,29 @@ def rename(conn: sqlite3.Connection, user_id: int, name: str) -> User:
     return user
 
 
+def password_hash_of(conn: sqlite3.Connection, user_id: int) -> str:
+    """Хеш пароля ученика (фиктивный, если ученика нет)."""
+    row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+    return row["password_hash"] if row is not None else _dummy_hash()
+
+
+def set_password(
+    conn: sqlite3.Connection, user_id: int, password_hash: str, *, keep_token: str | None
+) -> None:
+    """Записывает новый хеш и закрывает прочие сессии.
+
+    Смена пароля — обычно реакция на утечку: чужой вход с другого устройства
+    должен перестать работать. Сессия ``keep_token`` (та, из которой меняют)
+    остаётся.
+    """
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+    keep = _token_hash(keep_token) if keep_token else ""
+    conn.execute(
+        "DELETE FROM web_sessions WHERE user_id = ? AND token_hash != ?", (user_id, keep)
+    )
+    conn.commit()
+
+
 def change_password(
     conn: sqlite3.Connection,
     user_id: int,
@@ -244,24 +278,11 @@ def change_password(
     new: str,
     keep_token: str | None,
 ) -> None:
-    """Меняет пароль после проверки текущего и закрывает прочие сессии.
-
-    Смена пароля — обычно реакция на утечку: чужой вход с другого устройства
-    должен перестать работать. Сессия ``keep_token`` (та, из которой меняют)
-    остаётся.
-    """
-    row = conn.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
-    if row is None or not verify_password(current, row["password_hash"]):
+    """Меняет пароль после проверки текущего (синхронно: CLI и тесты)."""
+    if not verify_password(current, password_hash_of(conn, user_id)):
         raise AccountError("current", CURRENT_PASSWORD_WRONG)
     _check_password(new, field="new")
-    conn.execute(
-        "UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new), user_id)
-    )
-    keep = _token_hash(keep_token) if keep_token else ""
-    conn.execute(
-        "DELETE FROM web_sessions WHERE user_id = ? AND token_hash != ?", (user_id, keep)
-    )
-    conn.commit()
+    set_password(conn, user_id, hash_password(new), keep_token=keep_token)
 
 
 # --- Веб-сессии ---
@@ -285,12 +306,12 @@ def create_session(conn: sqlite3.Connection, user_id: int, *, now: float | None 
     return token
 
 
-def resolve_session(
+def resolve_session_info(
     conn: sqlite3.Connection, token: str, *, now: float | None = None
-) -> User | None:
-    """Ученик по токену сессии или ``None`` (нет, протухла, мусор)."""
+) -> tuple[User | None, bool]:
+    """Ученик по токену и признак «срок продлён» (тогда продлить и cookie)."""
     if not token or len(token) > _MAX_TOKEN:
-        return None
+        return None, False
     stamp = time.time() if now is None else now
     digest = _token_hash(token)
     row = conn.execute(
@@ -299,18 +320,26 @@ def resolve_session(
         (digest,),
     ).fetchone()
     if row is None:
-        return None
+        return None, False
     if row["expires_at"] <= stamp:
         conn.execute("DELETE FROM web_sessions WHERE token_hash = ?", (digest,))
         conn.commit()
-        return None
-    if row["expires_at"] - stamp < SESSION_TTL / 2:
+        return None, False
+    extended = row["expires_at"] - stamp < SESSION_TTL / 2
+    if extended:
         conn.execute(
             "UPDATE web_sessions SET expires_at = ? WHERE token_hash = ?",
             (stamp + SESSION_TTL, digest),
         )
         conn.commit()
-    return _user(row)
+    return _user(row), extended
+
+
+def resolve_session(
+    conn: sqlite3.Connection, token: str, *, now: float | None = None
+) -> User | None:
+    """Ученик по токену сессии или ``None`` (нет, протухла, мусор)."""
+    return resolve_session_info(conn, token, now=now)[0]
 
 
 def delete_session(conn: sqlite3.Connection, token: str) -> None:

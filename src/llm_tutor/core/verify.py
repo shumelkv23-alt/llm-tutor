@@ -48,6 +48,7 @@ def _post_reply(
         session_id,
         user_text=user_text,
         assistant_text=full,
+        task_text=text if issued and state.pending_item_id is not None else None,
         state=state,
         now=now,
     )

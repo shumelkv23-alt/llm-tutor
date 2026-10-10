@@ -80,10 +80,11 @@ async def enroll(course_id: str, request: Request, user: User = Depends(require_
 
 STALE_ITEM_STATUS = 409
 NOT_ENROLLED = "Сначала запишитесь на курс."
+COURSE_DB_BROKEN = "Данные курса сейчас не открываются. Сообщите администратору — прогресс не потерян, его можно восстановить."
 SURVEY_DONE = "Анкета уже пройдена."
 SURVEY_NOT_DONE = "Сначала пройдите анкету."
 SURVEY_INVALID = "Ответы анкеты не сходятся с вопросами — начните её заново."
-NEW_TASK_NOTE = "📝 Задание — во вкладке «Практика»."
+NEW_TASK_NOTE = views.NEW_TASK_NOTE
 
 
 @dataclass
@@ -109,10 +110,15 @@ async def lesson_context(
     if course.id not in accounts.enrolled_courses(accounts_db(request), user.id):
         raise HTTPException(status_code=403, detail={"message": NOT_ENROLLED})
     pool = request.app.state.userdbs
+    try:
+        conn = pool.open(user.id, course.id)
+    except (sqlite3.DatabaseError, RuntimeError) as exc:
+        logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
+        raise HTTPException(status_code=503, detail={"message": COURSE_DB_BROKEN}) from exc
     return LessonContext(
         user=user,
         course=course,
-        conn=pool.open(user.id, course.id),
+        conn=conn,
         lock=pool.lock(user.id, course.id),
         settings=request.app.state.settings,
         client=request.app.state.client,

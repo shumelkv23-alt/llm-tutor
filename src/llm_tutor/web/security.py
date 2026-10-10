@@ -72,9 +72,12 @@ def optional_user(request: Request) -> User | None:
     """Вошедший ученик или ``None`` (результат кэшируется на запрос)."""
     if not hasattr(request.state, "user"):
         token = session_token(request)
-        request.state.user = (
-            accounts.resolve_session(accounts_db(request), token) if token else None
+        user, extended = (
+            accounts.resolve_session_info(accounts_db(request), token) if token else (None, False)
         )
+        request.state.user = user
+        # Срок на сервере продлён — продлим и cookie (см. session_refresh).
+        request.state.session_extended = extended
     return request.state.user
 
 
@@ -187,9 +190,39 @@ class LoginLimiter:
     def blocked(self, email: str) -> bool:
         return len(self._recent(email)) >= self.limit
 
+    # Сколько email держать, прежде чем вычистить всех, чьё окно истекло.
+    PRUNE_AT = 10_000
+
     def failure(self, email: str) -> None:
         self._recent(email)
+        if len(self._failures) >= self.PRUNE_AT:
+            self._prune()
         self._failures.setdefault(self._key(email), deque()).append(self.clock())
+
+    def _prune(self) -> None:
+        """Убирает email, у которых все неудачи старше окна (память не растёт)."""
+        now = self.clock()
+        stale = [key for key, times in self._failures.items() if not times or now - times[-1] >= self.window]
+        for key in stale:
+            del self._failures[key]
 
     def reset(self, email: str) -> None:
         self._failures.pop(self._key(email), None)
+
+
+async def session_refresh(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Middleware: продлённую на сервере сессию продлеваем и в браузере.
+
+    Иначе cookie с фиксированным ``max_age`` истёк бы через 30 дней после
+    входа, хотя ученик заходит каждый день.
+    """
+    response = await call_next(request)
+    token = session_token(request)
+    already_set = any(
+        name.lower() == b"set-cookie" for name, _ in response.raw_headers
+    )
+    if token and getattr(request.state, "session_extended", False) and not already_set:
+        set_session_cookie(response, token, request.app.state.settings)
+    return response

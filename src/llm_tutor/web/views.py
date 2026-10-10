@@ -3,6 +3,8 @@
 HTML здесь появляется только из ``web.markdown.render`` (безопасный).
 """
 
+import json
+import logging
 import sqlite3
 
 from llm_tutor.config import Settings
@@ -12,10 +14,13 @@ from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState
 from llm_tutor.student import survey
 from llm_tutor.web import markdown
+
+logger = logging.getLogger(__name__)
 from llm_tutor.web.courses import Course
 from llm_tutor.web.userdb import UserDBPool
 
 STATUS_LABELS = {
+    "error": "Недоступен",
     "available": "Не начат",
     "survey": "Анкета",
     "in_progress": "В процессе",
@@ -46,7 +51,14 @@ def course_card(
         "status": "available",
     }
     if enrolled:
-        progress = course_progress(pool.open(user_id, course.id), settings=settings)
+        try:
+            progress = course_progress(pool.open(user_id, course.id), settings=settings)
+        except (sqlite3.DatabaseError, RuntimeError):
+            # Одна битая БД не должна ронять каталог: курс помечается недоступным.
+            logger.exception("БД ученика %s по курсу %s не открывается", user_id, course.id)
+            card.update(status="error", status_label=STATUS_LABELS["error"], percent=0)
+            card["topics"] = _topic_count(course)
+            return card
         card.update(topics=progress.total, closed=progress.closed, current_topic=progress.current_name)
         if not progress.survey_done:
             card["status"] = "survey"
@@ -140,6 +152,22 @@ def item_view(item: Item) -> dict:
     return view
 
 
+# Отметка вместо задания в чате: само задание — в «Практике».
+NEW_TASK_NOTE = "📝 Задание — во вкладке «Практика»."
+
+
+def _without_task(content: str, meta: str | None) -> str:
+    """Реплика тьютора для истории чата: задание в конце заменено отметкой."""
+    try:
+        chars = int(json.loads(meta).get("task_chars", 0)) if meta else 0
+    except (ValueError, TypeError, AttributeError):
+        chars = 0
+    if not 0 < chars <= len(content):
+        return content
+    lead = content[:-chars].rstrip()
+    return f"{lead}\n\n{NEW_TASK_NOTE}" if lead else NEW_TASK_NOTE
+
+
 def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """Состояние занятия для страницы: всё, что рисуется слева и в чате.
 
@@ -172,10 +200,11 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
         "phase": state.phase,
         "streak": state.node_streak,
         "streak_target": settings.guide_success_streak,
-        "closed": sum(1 for row in rows if row.status == "closed"),
+        # Как в карточке курса: текущая тема тоже может быть закрытой.
+        "closed": course_progress(conn, settings=settings).closed,
         "topics": [{"id": row.id, "name": row.name, "status": row.status} for row in rows],
         "messages": [
-            message_view(message.role, message.content, ts=message.ts)
+            message_view(message.role, _without_task(message.content, message.meta), ts=message.ts)
             for message in messages
             if message.role in ("user", "assistant")
         ],

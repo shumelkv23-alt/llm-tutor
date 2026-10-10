@@ -1,7 +1,7 @@
 <article class="course-card" data-course="{{ card.id }}">
   <div class="course-card-head">
     <p class="eyebrow">{{ card.subtitle }}</p>
-    <span class="badge{% if card.status == 'done' %} success{% elif card.status in ('survey', 'in_progress') %} primary{% endif %}">{{ card.status_label }}</span>
+    <span class="badge{% if card.status == 'done' %} success{% elif card.status == 'error' %} danger{% elif card.status in ('survey', 'in_progress') %} primary{% endif %}">{{ card.status_label }}</span>
   </div>
   <h2>{{ card.title }}</h2>
   <p class="course-description">{{ card.description }}</p>

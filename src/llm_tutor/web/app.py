@@ -162,6 +162,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
 
     # Порядок важен: добавленный позже middleware — внешний. Заголовки
     # безопасности должны лечь и на отказы api_guard.
+    app.middleware("http")(security.session_refresh)
     app.middleware("http")(security.api_guard)
 
     @app.middleware("http")

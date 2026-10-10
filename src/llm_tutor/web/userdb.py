@@ -24,10 +24,16 @@ _CHUNK_COLUMNS = "concept_id, source_url, section, seq, content"
 
 
 def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
-    """Отпечаток чанков: совпал — копировать нечего."""
+    """Отпечаток чанков: совпал — копировать нечего.
+
+    ``concept_id`` нормализуется так же, как при копировании (узла нет в графе
+    ученика — ``NULL``): иначе такие чанки перезаливались бы при каждом
+    открытии.
+    """
     digest = hashlib.sha256()
     for row in conn.execute(
-        f"SELECT {_CHUNK_COLUMNS} FROM {schema}.chunks ORDER BY source_url, seq, id"
+        "SELECT CASE WHEN concept_id IN (SELECT id FROM main.concepts) THEN concept_id END,"
+        f" source_url, section, seq, content FROM {schema}.chunks ORDER BY source_url, seq, id"
     ):
         digest.update(repr(tuple(row)).encode("utf-8"))
     return digest.hexdigest()

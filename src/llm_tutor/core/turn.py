@@ -9,6 +9,7 @@
 лестницей подсказок.
 """
 
+import json
 import logging
 import sqlite3
 import time
@@ -161,13 +162,24 @@ def post_turn(
     events: list[Event] | None = None,
     mastery: list[beta.MasteryUpdate] | None = None,
     now: float | None = None,
+    task_text: str | None = None,
 ) -> None:
-    """Пишет ход одним коммитом; при сбое откатывает всё."""
+    """Пишет ход одним коммитом; при сбое откатывает всё.
+
+    ``task_text`` — выданное в ходе задание, которым заканчивается
+    ``assistant_text``. Его длина ложится в ``meta`` реплики: модель видит ход
+    целиком, а веб в истории чата заменяет задание отметкой (оно в «Практике»).
+    """
     stamp = time.time() if now is None else now
+    meta = (
+        json.dumps({"task_chars": len(task_text)})
+        if task_text and assistant_text.endswith(task_text)
+        else None
+    )
     try:
         repos.add_message(conn, session_id, "user", user_text, ts=stamp, commit=False)
         repos.add_message(
-            conn, session_id, "assistant", assistant_text, ts=stamp, commit=False
+            conn, session_id, "assistant", assistant_text, ts=stamp, meta=meta, commit=False
         )
         for event in events or []:
             repos.add_event(conn, event, stamp, commit=False)
@@ -453,6 +465,7 @@ def _enter_claimed(
         session_id,
         user_text=user_text,
         assistant_text=f"{text}\n\n{tail}" if tail else text,
+        task_text=tail,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=now,
     )
@@ -713,6 +726,7 @@ async def handle_turn(
         # из журнала, и задание модель должна видеть — иначе на следующем ходу
         # она не поймёт, на что отвечает ученик.
         assistant_text=f"{reply}\n\n{tail}" if tail else reply,
+        task_text=tail,
         state=new_state,
         events=events,
         mastery=mastery,
@@ -955,6 +969,7 @@ def start_practice_reply(
         session_id,
         user_text=PRACTICE_KICKOFF_TEXT,
         assistant_text=text,
+        task_text=text if new_state.pending_item_id is not None else None,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=stamp,
     )
@@ -1066,6 +1081,7 @@ async def resume_reply(
             session_id,
             user_text=RESUME_KICKOFF_TEXT,
             assistant_text=f"{reply}\n\n{tail}" if tail else reply,
+            task_text=tail,
             state=new_state.model_copy(update={"route": fresh_route}),
             events=events,
             mastery=mastery,

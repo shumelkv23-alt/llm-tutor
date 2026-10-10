@@ -7,11 +7,12 @@
 """
 
 import argparse
+import os
 import sqlite3
 from pathlib import Path
 
 from llm_tutor.config import Settings, get_settings
-from llm_tutor.db.connection import get_conn
+from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.web import accounts
 from llm_tutor.web.app import _project_path
 from llm_tutor.web.courses import COURSES, get_course
@@ -35,15 +36,31 @@ def import_legacy(settings: Settings, email: str, db_path: str, course_id: str) 
         if target.exists():
             raise RuntimeError(f"У ученика уже есть БД курса: {target}. Перенос не перезаписывает её")
         target.parent.mkdir(parents=True, exist_ok=True)
-        # backup, а не копия файла: в режиме WAL часть данных живёт в -wal.
-        src = sqlite3.connect(f"file:{source}?mode=ro", uri=True)
-        dst = get_conn(str(target))
+        # Копия — во временный файл рядом; на место он встаёт, только когда
+        # открылся и довёлся до текущей схемы. Сбой не оставит ученику
+        # недоделанную БД, которая заблокирует повторный перенос.
+        temporary = target.with_name(f".{target.name}.import")
         try:
-            src.backup(dst)
+            # backup, а не копия файла: в режиме WAL часть данных живёт в -wal.
+            # as_uri: «#» и «?» в пути иначе обрезали бы имя файла.
+            src = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
+            dst = sqlite3.connect(temporary)
+            try:
+                src.backup(dst)
+            finally:
+                src.close()
+                dst.close()
+            check = get_conn(str(temporary))
+            try:
+                migrate(check)
+            finally:
+                check.close()
+            os.replace(temporary, target)
+        except (sqlite3.Error, RuntimeError) as exc:
+            raise RuntimeError(f"Не удалось перенести {source}: {exc}") from exc
         finally:
-            src.close()
-            dst.close()
-        # Открытие доводит схему и seed до текущих — как при обычном входе.
+            temporary.unlink(missing_ok=True)
+        # Открытие доводит seed и материалы до текущих — как при обычном входе.
         pool.open(user.id, course_id)
         pool.close_all()
         accounts.enroll(db, user.id, course_id)

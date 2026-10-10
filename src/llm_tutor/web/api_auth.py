@@ -4,6 +4,8 @@
 показывает сообщение рядом с полем.
 """
 
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
@@ -64,7 +66,13 @@ async def register(body: RegisterBody, request: Request, response: Response) -> 
         raise HTTPException(status_code=403, detail={"message": REGISTRATION_CLOSED})
     db = accounts_db(request)
     try:
-        user = accounts.create_user(db, email=body.email, name=body.name, password=body.password)
+        accounts.normalize_email(body.email)
+        accounts.check_password(body.password)
+        # scrypt — в потоке: цикл событий обслуживает ходы всех учеников.
+        password_hash = await asyncio.to_thread(accounts.hash_password, body.password)
+        user = accounts.create_user(
+            db, email=body.email, name=body.name, password=body.password, password_hash=password_hash
+        )
     except EmailTaken as error:
         raise _field_error(error, 409) from error
     except AccountError as error:
@@ -79,7 +87,11 @@ async def login(body: LoginBody, request: Request, response: Response) -> dict:
     if limiter.blocked(body.email):
         raise HTTPException(status_code=429, detail={"message": TOO_MANY_ATTEMPTS})
     db = accounts_db(request)
-    user = accounts.authenticate(db, body.email, body.password)
+    user = None
+    if len(body.password) <= accounts.MAX_PASSWORD:
+        candidate, stored = accounts.credentials(db, body.email)
+        if await asyncio.to_thread(accounts.verify_password, body.password, stored):
+            user = candidate
     if user is None:
         limiter.failure(body.email)
         raise HTTPException(
@@ -117,14 +129,23 @@ async def rename(body: RenameBody, request: Request, user: User = Depends(requir
 async def change_password(
     body: PasswordBody, request: Request, user: User = Depends(require_user)
 ) -> dict:
-    try:
-        accounts.change_password(
-            accounts_db(request),
-            user.id,
-            current=body.current,
-            new=body.new,
-            keep_token=session_token(request),
+    # Перехваченная сессия не должна позволять подбирать текущий пароль.
+    limiter = request.app.state.login_limiter
+    if limiter.blocked(user.email):
+        raise HTTPException(status_code=429, detail={"message": TOO_MANY_ATTEMPTS})
+    db = accounts_db(request)
+    stored = accounts.password_hash_of(db, user.id)
+    if not await asyncio.to_thread(accounts.verify_password, body.current, stored):
+        limiter.failure(user.email)
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "current", "message": accounts.CURRENT_PASSWORD_WRONG},
         )
+    try:
+        accounts.check_password(body.new, field="new")
     except AccountError as error:
         raise _field_error(error) from error
+    password_hash = await asyncio.to_thread(accounts.hash_password, body.new)
+    accounts.set_password(db, user.id, password_hash, keep_token=session_token(request))
+    limiter.reset(user.email)
     return {"ok": True}

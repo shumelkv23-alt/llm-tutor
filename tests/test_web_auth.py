@@ -308,3 +308,52 @@ async def test_logged_in_user_with_foreign_next_goes_home(web) -> None:
     response = await web.get("/login?next=https://evil.example")
 
     assert response.headers["location"] == "/"
+
+
+async def test_sliding_session_refreshes_cookie(web, web_app) -> None:
+    """Сервер продлил сессию — браузер получает новый cookie на полный срок."""
+    from llm_tutor.web import accounts
+
+    await _register(web)
+    db = web_app.state.accounts
+    db.execute("UPDATE web_sessions SET expires_at = expires_at - ?", (accounts.SESSION_TTL * 0.6,))
+    db.commit()
+
+    response = await web.get("/api/me")
+
+    assert response.status_code == 200
+    cookie = response.headers.get("set-cookie", "")
+    assert cookie.startswith(f"{SESSION_COOKIE}=")
+    assert f"Max-Age={int(accounts.SESSION_TTL)}" in cookie
+    assert "set-cookie" not in (await web.get("/api/me")).headers
+
+
+async def test_password_change_is_rate_limited(web, web_app) -> None:
+    await _register(web)
+    web_app.state.login_limiter.clock = lambda: 1000.0
+
+    for _ in range(5):
+        wrong = await web.post("/api/me/password", json={"current": "не тот", "new": "новый-пароль"})
+        assert wrong.status_code == 422
+    blocked = await web.post("/api/me/password", json={"current": ANN["password"], "new": "новый-пароль"})
+
+    assert blocked.status_code == 429
+
+
+async def test_login_does_not_block_the_event_loop(web) -> None:
+    """scrypt считается в потоке: параллельные входы не останавливают другие запросы."""
+    import asyncio
+    import time
+
+    async def attempt(index: int):
+        return await web.post("/api/auth/login", json={"email": f"x{index}@e.io", "password": "пароль-123"})
+
+    started = time.perf_counter()
+    logins = [asyncio.create_task(attempt(i)) for i in range(12)]
+    await asyncio.sleep(0.01)
+    health = await web.get("/healthz")
+    health_latency = time.perf_counter() - started
+    await asyncio.gather(*logins)
+
+    assert health.status_code == 200
+    assert health_latency < 0.3
