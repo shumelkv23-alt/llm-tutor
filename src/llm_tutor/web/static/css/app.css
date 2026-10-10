@@ -607,7 +607,10 @@ textarea::placeholder {
 }
 
 .segmented button {
-  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
   padding: 6px 14px;
   border: 1px solid transparent;
   border-radius: 6px;
@@ -618,7 +621,8 @@ textarea::placeholder {
 }
 
 .segmented button[aria-pressed="true"],
-.segmented button[aria-selected="true"] {
+.segmented button[aria-selected="true"],
+.segmented button[aria-checked="true"] {
   background: var(--surface);
   border-color: var(--border);
   color: var(--primary-text);
@@ -1292,6 +1296,88 @@ dialog p {
   margin-top: 16px;
 }
 
+/* --- Свёрнутый сайдбар (только на широком экране) --- */
+
+.sidebar-toggle {
+  margin-top: 4px;
+}
+
+@media (min-width: 900px) {
+  :root[data-sidebar="collapsed"] {
+    --sidebar-width: 76px;
+  }
+
+  :root[data-sidebar="collapsed"] .sidebar {
+    padding: 24px 10px;
+  }
+
+  :root[data-sidebar="collapsed"] .brand {
+    padding: 0;
+    text-align: center;
+  }
+
+  :root[data-sidebar="collapsed"] .wordmark {
+    font-size: 0;
+  }
+
+  /* Вместо «llm·tutor» — монограмма «l·t» той же гарнитуры. */
+  :root[data-sidebar="collapsed"] .wordmark::before,
+  :root[data-sidebar="collapsed"] .wordmark::after,
+  :root[data-sidebar="collapsed"] .wordmark-dot {
+    font-size: 24px;
+  }
+
+  :root[data-sidebar="collapsed"] .wordmark::before {
+    content: "l";
+  }
+
+  :root[data-sidebar="collapsed"] .wordmark::after {
+    content: "t";
+  }
+
+  :root[data-sidebar="collapsed"] .brand-caption,
+  :root[data-sidebar="collapsed"] .nav-caption,
+  :root[data-sidebar="collapsed"] .session-info div {
+    display: none;
+  }
+
+  /* Подписи прячем только визуально: у ссылок и кнопок остаётся имя. */
+  :root[data-sidebar="collapsed"] .main-nav a span,
+  :root[data-sidebar="collapsed"] .sidebar-bottom .btn span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  :root[data-sidebar="collapsed"] .main-nav {
+    margin-top: 40px;
+  }
+
+  :root[data-sidebar="collapsed"] .main-nav a,
+  :root[data-sidebar="collapsed"] .sidebar-bottom .btn {
+    justify-content: center;
+    padding: 10px;
+  }
+
+  :root[data-sidebar="collapsed"] .session-info {
+    justify-content: center;
+    padding: 16px 0 8px;
+  }
+
+  :root[data-sidebar="collapsed"] .sidebar-toggle .icon {
+    transform: scaleX(-1);
+  }
+}
+
+@media (max-width: 899px) {
+  .sidebar-toggle {
+    display: none !important;
+  }
+}
+
 /* --- Адаптивность --- */
 
 @media (max-width: 1199px) {
@@ -1494,4 +1580,16 @@ pre code .bp {
 pre code .o,
 pre code .p {
   color: #c9d4df;
+}
+
+/* Выбор темы занимает всю ширину карточки и делит её поровну. */
+.theme-picker .segmented {
+  display: flex;
+}
+
+.theme-picker .segmented button {
+  flex: 1 1 0;
+  justify-content: center;
+  min-width: 0;
+  padding: 6px 8px;
 }

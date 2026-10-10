@@ -158,10 +158,55 @@ window.App = (() => {
     }
   }
 
+  /* --- Вид: сайдбар и тема (начальное состояние ставит prefs.js) --- */
+
+  function store(key, value) {
+    try {
+      if (value === null) localStorage.removeItem(key);
+      else localStorage.setItem(key, value);
+    } catch {
+      /* без хранилища настройка живёт до перезагрузки */
+    }
+  }
+
+  function syncSidebarButton() {
+    const button = $("#sidebar-toggle");
+    if (!button) return;
+    const collapsed = document.documentElement.dataset.sidebar === "collapsed";
+    button.setAttribute("aria-expanded", String(!collapsed));
+    button.querySelector("span").textContent = collapsed ? "Развернуть меню" : "Свернуть меню";
+    button.title = collapsed ? "Развернуть меню" : "Свернуть меню";
+  }
+
+  function toggleSidebar() {
+    const root = document.documentElement;
+    const collapsed = root.dataset.sidebar !== "collapsed";
+    if (collapsed) root.dataset.sidebar = "collapsed";
+    else delete root.dataset.sidebar;
+    store("llmTutor.sidebar", collapsed ? "collapsed" : "expanded");
+    syncSidebarButton();
+    // Ширина урока поменялась — пусть ползунок пересчитает пределы.
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  /** Тема: "light", "dark" или "system" (как в системе). */
+  function setTheme(theme) {
+    const root = document.documentElement;
+    if (theme === "light" || theme === "dark") root.dataset.theme = theme;
+    else delete root.dataset.theme;
+    store("llmTutor.theme", theme === "system" ? null : theme);
+  }
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme || "system";
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     checkConnection();
     $("#logout")?.addEventListener("click", logout);
+    $("#sidebar-toggle")?.addEventListener("click", toggleSidebar);
+    syncSidebarButton();
   });
 
-  return { $, icon, connection, notify, request, confirm };
+  return { $, icon, connection, notify, request, confirm, setTheme, currentTheme };
 })();

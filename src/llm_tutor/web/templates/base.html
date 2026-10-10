@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="ru" data-icons="{{ static_url('icons.svg') }}">
+<html lang="ru" data-icons="{{ static_url('icons.svg') }}" data-page="{{ active }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#060b1a">
   <link rel="icon" href="{{ static_url('favicon.svg') }}" type="image/svg+xml">
   <title>{% block title %}{{ page_title }}{% endblock %} · llm·tutor</title>
+  <script src="{{ static_url('js/prefs.js') }}"></script>
   <link rel="stylesheet" href="{{ static_url('css/tokens.css') }}">
   <link rel="stylesheet" href="{{ static_url('css/app.css') }}">
   {% block styles %}{% endblock %}
@@ -15,7 +16,7 @@
 <body class="{% block body_class %}{% endblock %}">
   <a class="skip-link" href="#main">К содержимому</a>
   <div class="app-shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
       <a class="brand" href="/" aria-label="llm·tutor — на главную">
         <span class="wordmark">llm<span class="wordmark-dot">·</span>tutor</span>
         <span class="brand-caption">ТЬЮТОР MLCOURSE.AI</span>
@@ -23,13 +24,14 @@
       <span class="nav-caption">Обучение</span>
       <nav class="main-nav" aria-label="Разделы">
         {% for item in nav %}
-        <a href="{{ item.href }}" data-nav="{{ item.key }}"{% if item.key == active %} aria-current="page"{% endif %}>{{ icon(item.icon) }}<span>{{ item.label }}</span></a>
+        <a href="{{ item.href }}" title="{{ item.label }}" data-nav="{{ item.key }}"{% if item.key == active %} aria-current="page"{% endif %}>{{ icon(item.icon) }}<span>{{ item.label }}</span></a>
         {% endfor %}
       </nav>
       <div class="sidebar-bottom">
+        <button class="btn sidebar-toggle" id="sidebar-toggle" type="button" aria-controls="sidebar" aria-expanded="true">{{ icon('sidebar') }}<span>Свернуть меню</span></button>
         {% if user %}
         <div class="session-info"><span class="avatar" aria-hidden="true">{{ user.initial }}</span><div><strong>{{ user.name }}</strong><span>{{ user.email }}</span></div></div>
-        <button class="btn" id="logout" type="button">{{ icon('logout') }}<span>Выйти</span></button>
+        <button class="btn" id="logout" type="button" title="Выйти">{{ icon('logout') }}<span>Выйти</span></button>
         {% else %}
         <a class="btn" href="/login">{{ icon('user') }}<span>Войти</span></a>
         {% endif %}

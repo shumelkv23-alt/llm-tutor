@@ -80,7 +80,7 @@
   --sidebar-width: 220px;
 }
 
-/* Тёмная тема рабочего поля (переключатель — срез 48). */
+/* Тёмная тема рабочего поля: выбрана в профиле или (по умолчанию) системная. */
 :root[data-theme="dark"] {
   color-scheme: dark;
 
@@ -108,4 +108,35 @@
   --warning-soft: #352713;
 
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --bg: #0b1220;
+    --surface: #111c2d;
+    --surface-2: #17263a;
+    --text: #e3eaf1;
+    --heading: #ffffff;
+    --muted: #9fb0c0;
+    --border: #26374c;
+    --interactive: #5f7186;
+
+    --primary: #167271;
+    --primary-hover: #105f5e;
+    --primary-soft: #133b40;
+    --primary-text: #60c4ba;
+    --accent-text: #ff9a61;
+    --accent-soft: #3a2316;
+
+    --danger: #f08080;
+    --danger-soft: #3a1c1f;
+    --success: #6fcfa8;
+    --success-soft: #16312a;
+    --warning: #f0b45a;
+    --warning-soft: #352713;
+
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+  }
 }

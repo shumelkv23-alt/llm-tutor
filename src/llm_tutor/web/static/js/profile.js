@@ -41,7 +41,38 @@
     }
   }
 
+  function syncTheme() {
+    const current = window.App.currentTheme();
+    document.querySelectorAll("[data-theme-choice]").forEach((button) => {
+      const checked = button.dataset.themeChoice === current;
+      button.setAttribute("aria-checked", String(checked));
+      button.tabIndex = checked ? 0 : -1;
+    });
+  }
+
+  function pickTheme(choice, { focus = false } = {}) {
+    window.App.setTheme(choice);
+    syncTheme();
+    if (focus) document.querySelector(`[data-theme-choice="${choice}"]`)?.focus();
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll(".profile-form").forEach((form) => form.addEventListener("submit", submit));
+    document.querySelectorAll("form.profile-form").forEach((form) => form.addEventListener("submit", submit));
+    const group = document.querySelector(".theme-picker [role=radiogroup]");
+    if (group) {
+      group.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-theme-choice]");
+        if (button) pickTheme(button.dataset.themeChoice);
+      });
+      group.addEventListener("keydown", (event) => {
+        const moves = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+        if (!(event.key in moves)) return;
+        event.preventDefault();
+        const choices = ["light", "dark", "system"];
+        const index = choices.indexOf(window.App.currentTheme());
+        pickTheme(choices[(index + moves[event.key] + choices.length) % choices.length], { focus: true });
+      });
+      syncTheme();
+    }
   });
 })();
