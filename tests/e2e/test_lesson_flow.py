@@ -3,7 +3,7 @@
 import pytest
 from playwright.async_api import expect
 
-from helpers import enroll, sign_up
+from helpers import enroll, sign_up, take_or_skip
 
 pytestmark = pytest.mark.e2e
 
@@ -58,12 +58,7 @@ async def test_practice_choice_verdict(enrolled) -> None:
     for _ in range(12):
         if await page.locator(".practice-option").count():
             break
-        if await page.locator("text=Взять задание").count():
-            await page.click("text=Взять задание")
-        else:
-            await page.click("text=Пропустить")
-            await page.click("#confirm-submit")
-        await page.wait_for_selector("#lesson:not(.busy)")
+        await take_or_skip(page)
     assert await page.locator(".practice-option").count()
 
     send = page.locator(".practice-answer button[type=submit]")

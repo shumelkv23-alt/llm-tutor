@@ -3,7 +3,7 @@
 import pytest
 from playwright.async_api import expect
 
-from helpers import enroll, finish_survey_via_api, sign_up
+from helpers import enroll, finish_survey_via_api, sign_up, take_or_skip
 
 pytestmark = pytest.mark.e2e
 
@@ -46,12 +46,7 @@ async def _short_task(page):
     for _ in range(15):
         if await page.locator("input.practice-input").count():
             return
-        if await page.locator("text=Взять задание").count():
-            await page.click("text=Взять задание")
-        else:
-            await page.click("text=Пропустить")
-            await page.click("#confirm-submit")
-        await page.wait_for_selector("#lesson:not(.busy)")
+        await take_or_skip(page)
     pytest.skip("не выпало задание с коротким ответом")
 
 
@@ -75,12 +70,7 @@ async def test_choice_options_follow_arrow_keys(enrolled) -> None:
     for _ in range(15):
         if await page.locator(".practice-option").count():
             break
-        if await page.locator("text=Взять задание").count():
-            await page.click("text=Взять задание")
-        else:
-            await page.click("text=Пропустить")
-            await page.click("#confirm-submit")
-        await page.wait_for_selector("#lesson:not(.busy)")
+        await take_or_skip(page)
     options = page.locator(".practice-option")
     await options.first.focus()
 

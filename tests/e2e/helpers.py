@@ -44,3 +44,19 @@ async def finish_survey_via_api(page) -> None:
 
 async def split_value(page) -> int:
     return int(await page.get_attribute("#splitter", "aria-valuenow"))
+
+
+async def take_or_skip(page) -> None:
+    """Один шаг к нужному заданию: взять задание или пропустить висящее.
+
+    Ждём ответа сервера, а не только снятия «занято»: подтверждение пропуска
+    запускает ход асинхронно, и проверка «не занято» могла пройти до его начала.
+    """
+    if await page.locator(".practice .empty button:has-text('Взять задание')").count():
+        async with page.expect_response("**/lesson/task"):
+            await page.click(".practice .empty button:has-text('Взять задание')")
+    else:
+        await page.click(".practice-actions button:has-text('Пропустить')")
+        async with page.expect_response("**/lesson/skip"):
+            await page.click("#confirm-submit")
+    await page.wait_for_selector("#lesson:not(.busy)")
