@@ -11,6 +11,9 @@
 <script src="{{ static_url('js/split.js') }}" defer></script>
 <script src="{{ static_url('js/chat.js') }}" defer></script>
 <script src="{{ static_url('js/theory.js') }}" defer></script>
+<script src="{{ static_url('js/survey.js') }}" defer></script>
+<script src="{{ static_url('js/practice.js') }}" defer></script>
+<script src="{{ static_url('js/route.js') }}" defer></script>
 {% else %}
 <script src="{{ static_url('js/courses.js') }}" defer></script>
 {% endif %}
@@ -39,6 +42,7 @@
 
   <div class="split" id="split">
     <section class="pane pane-left" id="pane-left" aria-label="Урок">
+      <div class="survey" id="survey" aria-live="polite"></div>
       <div class="tabs" role="tablist" aria-label="Разделы урока">
         <button type="button" role="tab" id="tab-btn-theory" aria-controls="tab-theory" aria-selected="true">{{ icon('book') }}Теория</button>
         <button type="button" role="tab" id="tab-btn-practice" aria-controls="tab-practice" aria-selected="false" tabindex="-1">{{ icon('check') }}Практика<span class="tab-dot" id="practice-dot" hidden></span></button>
@@ -78,6 +82,14 @@
     </section>
   </div>
 </div>
+<dialog class="route-dialog" id="route-dialog" aria-labelledby="route-title">
+  <div class="route-head">
+    <div><h2 id="route-title">Маршрут</h2><p class="muted" id="route-summary"></p></div>
+    <button class="btn ghost icon-only" type="button" id="route-close" aria-label="Закрыть">{{ icon('close') }}</button>
+  </div>
+  <p class="route-hint">Можно вернуться к пройденному или заглянуть вперёд — там могут быть не закрыты пререквизиты.</p>
+  <ol class="route-list" id="route-list"></ol>
+</dialog>
 {% else %}
 <section class="panel enroll-panel">
   <div class="empty"><strong>Вы ещё не записаны на этот курс</strong>{{ course.description }}</div>

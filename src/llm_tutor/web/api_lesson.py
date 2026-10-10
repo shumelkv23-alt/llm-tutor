@@ -23,6 +23,7 @@ from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import survey
+from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
 from llm_tutor.web.accounts import User
 from llm_tutor.web.courses import COURSES, Course, get_course
@@ -275,6 +276,7 @@ async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context))
                 raise HTTPException(
                     status_code=422, detail={"field": "answer", "message": "Пустой ответ."}
                 )
+        before = repos.last_event_id(ctx.conn)
         reply = await _safe(
             turn.handle_turn(
                 ctx.conn,
@@ -287,7 +289,15 @@ async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context))
             ),
             LLM_FAILURE_REPLY,
         )
-        return turn_response(ctx, text, reply)
+        response = turn_response(ctx, text, reply)
+        # Вердикт — из журнала, а не из текста ответа: его посчитал код.
+        result = repos.item_result_after(ctx.conn, item.id, before)
+        response["verdict"] = {
+            "item_id": item.id,
+            "correct": None if result is None else result >= SUCCESS_SCORE,
+            "score": result,
+        }
+        return response
 
 
 @router.post("/courses/{course_id}/lesson/task")

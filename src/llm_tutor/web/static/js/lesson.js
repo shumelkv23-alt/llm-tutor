@@ -70,8 +70,10 @@ window.Lesson = (() => {
   function setBusy(value) {
     busy = value;
     root.classList.toggle("busy", value);
+    // Не трогаем disabled: у кнопок своя логика (например, «Ответить» без
+    // выбранного варианта). Повторный ход и так отсекает проверка в act().
     document.querySelectorAll("[data-turn]").forEach((element) => {
-      element.disabled = value;
+      element.setAttribute("aria-disabled", String(value));
     });
     if (state) renderHead();
     window.Lesson.chat?.typing(value);

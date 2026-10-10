@@ -235,6 +235,17 @@ async def test_choice_answer_by_index(enrolled, web_app) -> None:
 
     assert body["messages"][0]["html"].startswith("<p>")
     assert any(event.item_id == item.id for event in repos.get_events(_user_db(web_app)))
+    assert body["verdict"] == {"item_id": item.id, "correct": True, "score": 1.0}
+
+
+async def test_wrong_answer_verdict(enrolled, web_app) -> None:
+    await _finish(enrolled)
+    item = await _pending_choice(enrolled, web_app)
+    wrong = next(index for index in range(len(item.options)) if str(index) != item.answer)
+
+    body = (await enrolled.post(f"{BASE}/answer", json={"item_id": item.id, "answer": wrong})).json()
+
+    assert body["verdict"]["correct"] is False
 
 
 async def test_choice_index_out_of_range(enrolled, web_app) -> None:

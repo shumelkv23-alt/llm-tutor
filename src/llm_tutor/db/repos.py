@@ -625,3 +625,21 @@ def replace_chunks(
         raise
     conn.commit()
     return len(chunks)
+
+
+def last_event_id(conn: sqlite3.Connection) -> int:
+    """Id последнего события журнала (0 — журнал пуст)."""
+    return int(conn.execute("SELECT COALESCE(MAX(id), 0) FROM events").fetchone()[0])
+
+
+def item_result_after(conn: sqlite3.Connection, item_id: int, after_id: int) -> float | None:
+    """Результат ответа на задание, записанный после события ``after_id``.
+
+    Ответ на задание даёт событие по каждому затронутому концепту с одним и тем
+    же результатом — берём первое. ``None`` — ответ не записан (не проверен).
+    """
+    row = conn.execute(
+        "SELECT result FROM events WHERE item_id = ? AND id > ? ORDER BY id LIMIT 1",
+        (item_id, after_id),
+    ).fetchone()
+    return None if row is None else float(row["result"])
