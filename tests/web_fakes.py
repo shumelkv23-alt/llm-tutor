@@ -19,3 +19,30 @@ class SilentLLM:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class ScriptedTutor:
+    """Тьютор с заготовленными ответами (по одному на ход, последний повторяется).
+
+    Отвечает только на тьюторский ход (схема с полем ``reply``): рубричный
+    грейдер и прочие вызовы — ошибка теста.
+    """
+
+    def __init__(self, *replies: str, **flags) -> None:
+        self.replies = list(replies) or ["Ответ тьютора"]
+        self.flags = flags
+        self.calls: list[list] = []
+        self.closed = False
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        if "reply" not in schema.model_fields:
+            raise AssertionError(f"Неожиданный структурный вызов: {schema.__name__}")
+        self.calls.append(list(messages))
+        reply = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
+        return schema(reply=reply, **self.flags)
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        raise AssertionError("тьюторский ход идёт через chat_structured")
+
+    async def aclose(self) -> None:
+        self.closed = True

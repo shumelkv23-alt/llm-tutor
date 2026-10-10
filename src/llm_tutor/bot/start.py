@@ -34,8 +34,8 @@ INTRO_TEXT = (
     "Пара коротких вопросов — и подберу, с чего начать."
 )
 
-LESSON_LEAD = "Начинаем с «{name}» — сейчас коротко объясню и покажу пример."
-CHECK_LEAD = "Всё отмечено знакомым — начнём с короткой проверки."
+LESSON_LEAD = lesson.LESSON_LEAD
+CHECK_LEAD = lesson.CHECK_LEAD
 
 WELCOME_BACK_TEMPLATE = "👋 С возвращением! Продолжаем «{name}»."
 WELCOME_BACK_IDLE = "👋 С возвращением! Напиши что угодно — продолжим."

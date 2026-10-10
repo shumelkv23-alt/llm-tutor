@@ -137,7 +137,7 @@ def switch_node(
     post_turn(
         conn,
         session_id,
-        user_text=f"Перейти к теме: {node_id}",
+        user_text=f"Перейти к теме «{name}»",
         assistant_text=text,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=stamp,
@@ -147,6 +147,10 @@ def switch_node(
 
 # Сколько ближайших шагов показывать перед первым уроком.
 UPCOMING_STEPS = 5
+
+# Подводка к первому уроку: что сейчас будет (имя подставит вызывающий код).
+LESSON_LEAD = "Начинаем с «{name}» — сейчас коротко объясню и покажу пример."
+CHECK_LEAD = "Всё отмечено знакомым — начнём с короткой проверки."
 
 
 @dataclass(frozen=True)
