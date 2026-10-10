@@ -58,9 +58,12 @@
     }
     const article = document.createElement("article");
     article.className = "theory";
-    const heading = document.createElement("h2");
-    heading.textContent = state.node.name;
-    article.append(heading);
+    // Конспект начинается со своего заголовка — второй не рисуем.
+    if (!state.node.theory_html) {
+      const heading = document.createElement("h2");
+      heading.textContent = state.node.name;
+      article.append(heading);
+    }
     if (state.node.description && !state.node.theory_html) {
       const lead = document.createElement("p");
       lead.className = "theory-lead";

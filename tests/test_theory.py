@@ -103,3 +103,39 @@ def test_long_theory_is_trimmed_in_prompt(conn, tmp_path, settings) -> None:
     package = build_context(conn, session_id, "объясни", now=1.0, settings=settings)
 
     assert len(package.messages[0].content) < 12000
+
+
+def test_removed_node_does_not_keep_theory(conn, tmp_path) -> None:
+    seed = _seed_with_theory(tmp_path, {"a": "текст А", "b": "текст Б"})
+    load_seed(conn, seed)
+    raw = json.loads(seed.read_text(encoding="utf-8"))
+    raw["nodes"] = [node for node in raw["nodes"] if node["id"] != "b"]
+    raw["edges"] = []
+    seed.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+
+    load_seed(conn, seed)
+
+    assert repos.get_theory(conn, "b") is None
+
+
+def test_theory_block_is_course_material_even_without_chunks(conn, tmp_path, settings) -> None:
+    """Пустые материалы RAG не делают конспект «не из курса»."""
+    seed = _seed_with_theory(tmp_path, {"a": "Фраза конспекта."})
+    load_seed(conn, seed)
+    session_id = repos.ensure_open_session(conn, 1.0)
+    state = repos.get_session_state(conn, session_id).model_copy(update={"current_node_id": "a"})
+    repos.update_session_state(conn, session_id, state)
+
+    system = build_context(conn, session_id, "объясни", now=1.0, settings=settings).messages[0].content
+
+    assert "материал курса" in system
+    assert "«Теория»" not in system
+
+
+def test_seed_cli_warns_about_missing_theory(tmp_path, capsys) -> None:
+    from llm_tutor.course.seed import main
+
+    seed = _seed_with_theory(tmp_path, {"a": "текст"})
+    main(["--seed", str(seed), "--db", str(tmp_path / "x.sqlite3")])
+
+    assert "Без конспекта" in capsys.readouterr().out

@@ -667,5 +667,8 @@ def get_theory(conn: sqlite3.Connection, concept_id: str) -> str | None:
     Отдельно от ``get_concepts``: граф грузится много раз за ход, а конспекты
     весят десятки килобайт.
     """
-    row = conn.execute("SELECT theory FROM concepts WHERE id = ?", (concept_id,)).fetchone()
+    # Погашенный узел (убран из seed) свой старый конспект не показывает.
+    row = conn.execute(
+        "SELECT theory FROM concepts WHERE id = ? AND active = 1", (concept_id,)
+    ).fetchone()
     return None if row is None else row["theory"]

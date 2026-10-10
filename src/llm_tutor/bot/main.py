@@ -10,7 +10,12 @@ from llm_tutor.bot.handlers import make_router
 from llm_tutor.bot.survey import make_survey_router
 from llm_tutor.bot.themes import make_themes_router
 from llm_tutor.config import Settings, get_settings
-from llm_tutor.course.seed import items_without_rubric, load_seed, nodes_without_items
+from llm_tutor.course.seed import (
+    items_without_rubric,
+    load_seed,
+    nodes_without_items,
+    nodes_without_theory,
+)
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
 
@@ -48,6 +53,9 @@ async def main() -> None:
             logging.warning(
                 "Узлы без заданий — диагностика их не проверит: %s", ", ".join(missing)
             )
+        no_theory = nodes_without_theory(seed)
+        if no_theory:
+            logging.warning("Узлы без конспекта: %s", ", ".join(no_theory))
         without_rubric = items_without_rubric(seed)
         if without_rubric:
             logging.warning(

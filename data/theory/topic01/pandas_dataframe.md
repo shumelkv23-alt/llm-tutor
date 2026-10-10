@@ -31,7 +31,7 @@ df["hours"] = df["minutes"] / 60          # вычисляемый столбе�
 print(df[["client", "hours"]].round(1))
 
 df = df.set_index("client")               # client — теперь индекс строк
-print(df.loc["a2", "tariff"])             # pro
+print(df.loc["a2", "tariff"])             # pro — выбор по метке, подробнее в теме «loc и iloc»
 print(df.T)                               # строки и столбцы поменялись местами
 ```
 

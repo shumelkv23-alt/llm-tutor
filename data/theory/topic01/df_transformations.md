@@ -10,7 +10,8 @@
 - **`df.insert(позиция, "имя", значения)`** вставляет столбец в нужное место. Меняет таблицу на месте.
 - **`df.assign(new=...)`** возвращает **новую** таблицу с добавленными столбцами. Удобно в цепочках вызовов.
 - **`df.drop(columns=[...])`** удаляет столбцы, **`df.drop(index=[...])`** — строки. Возвращает новую таблицу.
-- **`df.rename(columns={"старое": "новое"})`** переименовывает столбцы.
+- **`df.rename(columns={"старое": "новое"})`** переименовывает выбранные столбцы, а присваивание `df.columns = [...]` заменяет все имена сразу (список должен быть той же длины).
+- **`pd.get_dummies(df["col"])`** превращает категориальный столбец в набор столбцов-флагов 0/1 — **one-hot кодирование**, которое понадобится моделям.
 - Признак-флаг получают из условия: `df["many_calls"] = df["calls"] > 3`.
 
 ## Пример
@@ -32,7 +33,7 @@ print(df.columns.tolist())
 
 df["many_service_calls"] = df["Customer service calls"] > 3
 df = df.drop(columns=["Area code"])
-print(df)
+print(df[["Total calls", "many_service_calls"]])
 
 renamed = df.assign(day_share=lambda d: d["Total day calls"] / d["Total calls"]).rename(
     columns={"Customer service calls": "service_calls"}

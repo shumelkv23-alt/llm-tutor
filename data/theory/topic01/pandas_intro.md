@@ -36,6 +36,9 @@ print(df.columns.tolist())  # ['name', 'city', 'age']
 Двойные скобки возвращают таблицу, одинарные — столбец:
 
 ```python
+import pandas as pd
+
+df = pd.DataFrame({"name": ["Аня", "Борис", "Вера"], "age": [31, 45, 27]})
 print(df[["name", "age"]].shape)  # (3, 2) — DataFrame
 print(df["age"].shape)            # (3,) — Series
 ```

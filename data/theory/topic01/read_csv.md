@@ -40,6 +40,10 @@ print(df.head(2))
 Точка с запятой, десятичная запятая и только нужные столбцы:
 
 ```python
+import io
+
+import pandas as pd
+
 ru_text = "город;выручка;заказы\nКазань;1520,5;12\nМосква;980,0;7\n"
 sales = pd.read_csv(io.StringIO(ru_text), sep=";", decimal=",", usecols=["город", "выручка"])
 print(sales)

@@ -30,8 +30,8 @@ df = pd.DataFrame({
 })
 
 print(df.groupby("International plan")["Churn"].mean())
-# No     0.000
-# Yes    0.667 — с международным тарифом уходят заметно чаще
+# No     0.000000
+# Yes    0.666667 — с международным тарифом уходят заметно чаще
 
 print(df.groupby("International plan")["Total day minutes"].mean().round(1))
 print(df.groupby("International plan").size())   # No 5, Yes 3

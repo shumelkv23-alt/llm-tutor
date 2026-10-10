@@ -184,6 +184,9 @@ def main(argv: list[str] | None = None) -> int:
     without_rubric = items_without_rubric(seed)
     if without_rubric:
         print(f"Открытые задания без рубрики (проверить нечем): {without_rubric}")
+    no_theory = nodes_without_theory(seed)
+    if no_theory:
+        print(f"Без конспекта (вкладка «Теория» пуста): {', '.join(no_theory)}")
     return 0
 
 

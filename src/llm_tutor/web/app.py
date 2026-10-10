@@ -5,6 +5,7 @@
 """
 
 import hashlib
+import logging
 from urllib.parse import urlparse
 from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -23,6 +24,8 @@ from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.web import accounts, security
 from llm_tutor.web.userdb import UserDBPool
+
+logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
@@ -91,6 +94,17 @@ def _project_path(path: str) -> Path:
     return candidate if candidate.is_absolute() else WEB_DIR.parents[2] / candidate
 
 
+def _warn_about_content() -> None:
+    """Предупреждения о контенте курсов при старте: чего не хватает ученику."""
+    from llm_tutor.course.seed import load_seed_data, nodes_without_theory
+    from llm_tutor.web.courses import COURSES
+
+    for course in COURSES:
+        missing = nodes_without_theory(load_seed_data(course.seed_path))
+        if missing:
+            logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
+
+
 def _llm_client(settings: Settings) -> LLMClient:
     return LLMClient(
         base_url=settings.openrouter_base_url,
@@ -118,6 +132,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        _warn_about_content()
         try:
             yield
         finally:
