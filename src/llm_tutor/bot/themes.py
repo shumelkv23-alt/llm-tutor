@@ -12,15 +12,14 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 from llm_tutor.bot.render import PARSE_MODE, escape, fit
 from llm_tutor.config import Settings, get_settings
+from llm_tutor.core import lesson
 from llm_tutor.core.lesson import NodeStatus, node_status
 from llm_tutor.core.lesson import claimed_from_route as _claimed_from_route
 from llm_tutor.core.lesson import is_closed as _is_closed
-from llm_tutor.core.turn import post_turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
 from llm_tutor.schemas import SessionState
-from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
 
@@ -74,59 +73,8 @@ def switch_node(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Переход к узлу: смена текущей темы, снятие висящего задания."""
-    s = settings or get_settings()
-    stamp = time.time() if now is None else now
-    session_id = repos.ensure_open_session(conn, stamp)
-    state = repos.get_session_state(conn, session_id)
-    graph = CourseGraph.load(conn)
-    name = graph.concept(node_id).name
-
-    # Повторный выбор той же темы (ученик вернулся в список и ткнул в текущую)
-    # не должен молча стирать набранную серию, лестницу подсказок и висящее
-    # задание: тема та же, прогресс по ней никуда не делся.
-    if state.current_node_id == node_id:
-        keep = {
-            "phase": state.phase,
-            "node_streak": state.node_streak,
-            "hint_level": state.hint_level,
-            "pending_item_id": state.pending_item_id,
-            "lesson_item_ids": state.lesson_item_ids,
-        }
-    else:
-        keep = {
-            "phase": "explain",
-            "node_streak": 0,
-            "hint_level": 0,
-            "pending_item_id": None,
-            # Список выданного в уроке — про узел: на новой теме он начинает
-            # заход заново (спека §5.3).
-            "lesson_item_ids": [],
-        }
-    new_state = state.model_copy(
-        update={
-            "current_node_id": node_id,
-            "mode": None,
-            # Переход на другую тему снимает проверочный проход (спека §5.2).
-            "verify_item_ids": [],
-            "last_activity": stamp,
-            **keep,
-        }
-    )
-    fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
-    text = (
-        f"Ок, тема — <b>{escape(name)}</b>. "
-        "Спроси, что непонятно, — объясню."
-    )
-    post_turn(
-        conn,
-        session_id,
-        user_text=f"Перейти к теме: {node_id}",
-        assistant_text=text,
-        state=new_state.model_copy(update={"route": fresh_route}),
-        now=stamp,
-    )
-    return text
+    """Переход к узлу (логика — ``core.lesson.switch_node``), ответ — готовый HTML."""
+    return escape(lesson.switch_node(conn, node_id, now=now, settings=settings))
 
 
 def make_themes_router(conn: sqlite3.Connection, settings: Settings) -> Router:

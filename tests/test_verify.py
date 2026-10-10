@@ -27,7 +27,7 @@ def test_start_verification_marks_node_and_issues_task(conn, settings) -> None:
 
     reply = verify.start_verification(conn, now=1.0, settings=settings)
 
-    assert "Проверка" in reply.text
+    assert "Проверка" in reply.tail
     assert _state(conn).mode == "verify"
     assert _state(conn).pending_item_id is not None
     assert _state(conn).node_streak == 0

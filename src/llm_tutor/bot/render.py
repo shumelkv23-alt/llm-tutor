@@ -10,6 +10,7 @@ import sqlite3
 
 from llm_tutor.bot import menu
 from llm_tutor.config import Settings
+from llm_tutor.core.overview import route_overview
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY
@@ -89,21 +90,14 @@ def render_plan(
     if not graph.node_ids:
         return EMPTY_GRAPH_REPLY
 
-    session_state = state or _first_state(conn)
-    route = route_mod.build_route(
-        conn,
-        graph,
-        goal_concept_id=route_mod.goal_for(conn, graph),
-        current_node_id=session_state.current_node_id,
-        previous=session_state.route,
-        now=now,
-        settings=settings,
+    route = route_overview(
+        conn, state=state or _first_state(conn), now=now, settings=settings
     )
     if not route.steps:
         return EMPTY_GRAPH_REPLY
-    if route.closed_count == len(route.steps):
+    if route.closed == route.total:
         return "Всё доступное уже освоено — можно двигаться дальше или взять цель посложнее."
-    header = f"🗺 <b>Маршрут</b> — пройдено {route.closed_count} из {len(route.steps)}"
+    header = f"🗺 <b>Маршрут</b> — пройдено {route.closed} из {route.total}"
     return f"{header}\n{render_steps(graph, route.steps)}"
 
 

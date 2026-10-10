@@ -14,12 +14,12 @@ from aiogram.types import Message
 from llm_tutor.bot import menu, render
 from llm_tutor.bot.chat_action import typing_action
 from llm_tutor.config import Settings
-from llm_tutor.core.turn import TurnReply, reset_lesson, resume_reply
+from llm_tutor.core import lesson
+from llm_tutor.core.turn import TurnReply, resume_reply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
-from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +70,9 @@ async def begin_lesson(
     начинаем первую тему. FSM-состояние анкеты снимаем: дальше занятие.
     """
     await state.clear()
-    reset_lesson(conn)
+    start_plan = lesson.prepare_lesson(conn, settings=settings, limit=render.PLAN_STEPS)
+    first, upcoming = start_plan.first, start_plan.upcoming
     graph = CourseGraph.load(conn)
-    route = route_mod.build_route(
-        conn,
-        graph,
-        goal_concept_id=route_mod.goal_for(conn, graph),
-        settings=settings,
-    )
-    # Первый шаг списка — ровно тот узел, с которого начнётся урок: его же
-    # передаём в resume_reply, иначе планировщик мог бы выбрать другой.
-    first = route_mod.next_node_id(conn, graph, route, settings=settings)
-    upcoming = route_mod.upcoming(route, first, limit=render.PLAN_STEPS)
     if not upcoming:
         await message.answer(
             "Всё доступное уже освоено — можно свериться: /plan.",
@@ -95,7 +86,7 @@ async def begin_lesson(
         else "📋 Что впереди:"
     )
     name = render.escape(graph.concept(first).name)
-    lead = (CHECK_LEAD if upcoming[0].status == "claimed" else LESSON_LEAD).format(name=name)
+    lead = (CHECK_LEAD if start_plan.starts_with_check else LESSON_LEAD).format(name=name)
     await message.answer(
         f"{head}\n\n{render.render_steps(graph, upcoming)}\n\n{lead}",
         parse_mode=render.PARSE_MODE,

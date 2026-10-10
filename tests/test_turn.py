@@ -178,7 +178,7 @@ async def test_answer_is_checked_without_llm(conn, settings) -> None:
     item = repos.get_item(conn, _state(conn).pending_item_id)
     reply = await handle_turn(conn, client, "m", item.options[0], now=2.0, settings=settings)
 
-    assert reply_.text  # задание выдано
+    assert reply_.tail and reply_.item_id == item.id  # задание выдано
     assert "Верно" in reply.text
     assert client.calls == []  # проверял код, не модель
     assert _state(conn).pending_item_id != item.id  # отвеченное задание снято
@@ -216,7 +216,7 @@ async def test_start_practice_sets_pending_item(conn, settings) -> None:
     assert state.pending_item_id is not None
     assert state.current_node_id
     assert state.hint_level == 0
-    assert reply_.text
+    assert reply_.tail and reply_.item_id is not None
 
 
 def test_start_practice_without_graph_hints_seed(conn, settings) -> None:
@@ -595,9 +595,9 @@ async def test_verify_mode_asks_explanation_first(conn, settings) -> None:
 
     reply = start_practice_reply(conn, now=1.0, settings=settings)
 
-    assert "Проверка" in reply.text
-    assert "шаг 1" in reply.text
-    assert VERIFY_EXPLAIN_PREFIX in reply.text
+    assert "Проверка" in reply.tail
+    assert "шаг 1" in reply.tail
+    assert VERIFY_EXPLAIN_PREFIX in reply.tail
     assert _state(conn).verify_item_ids == [_state(conn).pending_item_id]
 
 
@@ -611,7 +611,7 @@ async def test_verify_mode_does_not_repeat_item_in_one_pass(conn, settings) -> N
     reply = start_practice_reply(conn, now=1.0, settings=settings)
 
     assert _state(conn).pending_item_id != 9
-    assert "шаг 2" in reply.text
+    assert "шаг 2" in reply.tail
 
 
 async def test_verify_mode_reports_exhausted_pass(conn, settings) -> None:
@@ -657,7 +657,7 @@ async def test_close_phrase_starts_verification_with_pending_item(conn, settings
 
     reply = await handle_turn(conn, _FakeTutor(), "m", "закрой тему", now=1.0, settings=settings)
 
-    assert "Проверка" in reply.text
+    assert "Проверка" in reply.tail
     assert _state(conn).mode == "verify"
     assert not any(event.source == "checked" for event in repos.get_events(conn))
 
@@ -674,7 +674,7 @@ async def test_model_flag_starts_verification(conn, settings) -> None:
     )
 
     assert _state(conn).mode == "verify"
-    assert "Проверка" in reply.text
+    assert "Проверка" in reply.tail
 
 
 async def test_close_flag_starts_pass_from_clean_state(conn, settings) -> None:
@@ -725,7 +725,7 @@ async def test_close_flag_journals_tutor_reply(conn, settings) -> None:
 
     messages = repos.get_messages(conn, repos.get_open_session(conn))
     assert messages[-2].content == "давай закроем, я тут всё знаю уже"
-    assert reply.text == messages[-1].content
+    assert f"{reply.text}\n\n{reply.tail}" == messages[-1].content
     assert "Держишь тему уверенно" in messages[-1].content
     assert "Проверка" in messages[-1].content
 

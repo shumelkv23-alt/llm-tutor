@@ -160,11 +160,13 @@ async def _send_reply(
     ``tail`` уходит двумя сообщениями; варианты ответа прикрепляются к тому из
     них, которое несёт задание.
     """
-    await message.answer(
-        render.fit(render.escape(reply.text)),
-        reply_markup=None if reply.tail else _options_keyboard(conn, reply.options),
-        parse_mode=render.PARSE_MODE,
-    )
+    # Пустой текст — ход состоит из одного задания (см. инвариант TurnReply).
+    if reply.text or not reply.tail:
+        await message.answer(
+            render.fit(render.escape(reply.text)),
+            reply_markup=None if reply.tail else _options_keyboard(conn, reply.options),
+            parse_mode=render.PARSE_MODE,
+        )
     if reply.tail:
         await message.answer(
             render.fit(render.escape(reply.tail)),

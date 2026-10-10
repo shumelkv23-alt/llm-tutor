@@ -30,12 +30,12 @@ from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
 logger = logging.getLogger(__name__)
 
 # Задание уже неактуально (пропало из банка или не проверяется кодом).
-STALE_ITEM_REPLY = "Это задание уже неактуально — жми /task, чтобы взять новое."
+STALE_ITEM_REPLY = "Это задание уже неактуально — возьми новое."
 # Реплика «дай задание» попадает в журнал как обычная просьба ученика.
 PRACTICE_KICKOFF_TEXT = "Давай задание по текущей теме."
 # Напоминание, что вопрос не сбросил выданное задание.
 PENDING_ITEM_NOTE = (
-    "Задание всё ещё ждёт ответа — ответь вариантом или пришли /skip."
+    "Задание всё ещё ждёт ответа — ответь на него или пропусти."
 )
 # Повод тьюторского хода при нажатии «Не понимаю».
 STUCK_KICKOFF_TEXT = "Не понял, давай подробнее по текущей теме."
@@ -46,17 +46,17 @@ SKIP_REPLY = (
 )
 NOTHING_TO_SKIP_REPLY = "Сейчас нет задания, которое нужно пропустить."
 GRADING_FAILED_REPLY = (
-    "Это задание не удалось проверить — снимаю его. Возьми новое: /task."
+    "Это задание не удалось проверить — снимаю его. Возьми новое."
 )
 # По текущему узлу заданий в банке нет — ведём диалогом, узел не рвём.
 NO_TASK_FOR_NODE_REPLY = (
     "По этому узлу новых заданий сейчас нет — свежие ты уже отвечал. "
-    "Возьми ещё раз то же: /task, или спрашивай — объясню."
+    "Можно взять задание ещё раз или спросить — объясню."
 )
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
 # Маршрут пройден до конца: заданий больше нет, и это не ошибка.
-ROUTE_DONE_REPLY = "Маршрут пройден до конца. Можно свериться: /plan."
+ROUTE_DONE_REPLY = "Маршрут пройден до конца — в маршруте видно, что закрыто."
 # Повод хода «Продолжить обучение» — в журнале виден как реплика ученика.
 RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 # Шапка шага проверочного прохода. Номер без общего числа: после неудачного
@@ -87,11 +87,17 @@ class TurnReply:
     ``tail`` — второе сообщение хода (обычно задание): объяснение и тест в
     одном сообщении читаются стеной. ``options`` — подписи кнопок того
     сообщения, которое несёт задание: ``tail``, если он есть, иначе ``text``.
+
+    ``item_id`` — задание, выданное в этом ходе. Инвариант: если он задан,
+    текст задания лежит в ``tail``, а ``text`` — только пояснение к нему
+    (может быть пустым). Бот шлёт оба сообщения, веб кладёт задание в
+    «Практику», а в чат — пояснение.
     """
 
     text: str
     options: list[str] | None = None
     tail: str | None = None
+    item_id: int | None = None
 
 
 def _render_item(item: Item) -> str:
@@ -433,7 +439,12 @@ def _enter_claimed(
         state=new_state.model_copy(update={"route": fresh_route}),
         now=now,
     )
-    return TurnReply(text=text, options=options if tail else None, tail=tail)
+    return TurnReply(
+        text=text,
+        options=options if tail else None,
+        tail=tail,
+        item_id=new_state.pending_item_id if tail else None,
+    )
 
 
 async def handle_turn(
@@ -678,7 +689,12 @@ async def handle_turn(
         mastery=mastery,
         now=stamp,
     )
-    return TurnReply(text=reply, options=options, tail=tail)
+    return TurnReply(
+        text=reply,
+        options=options,
+        tail=tail,
+        item_id=new_state.pending_item_id if tail else None,
+    )
 
 
 def _close_node_if_ready(
@@ -911,7 +927,10 @@ def start_practice_reply(
         state=new_state.model_copy(update={"route": fresh_route}),
         now=stamp,
     )
-    return TurnReply(text=text, options=options)
+    if new_state.pending_item_id is None:
+        # Задания нет (маршрут пройден, по узлу пусто) — это обычный ответ.
+        return TurnReply(text=text, options=options)
+    return TurnReply(text="", options=options, tail=text, item_id=new_state.pending_item_id)
 
 
 async def resume_reply(
@@ -1021,7 +1040,12 @@ async def resume_reply(
             mastery=mastery,
             now=stamp,
         )
-        return TurnReply(text=reply, options=options, tail=tail)
+        return TurnReply(
+            text=reply,
+            options=options,
+            tail=tail,
+            item_id=new_state.pending_item_id if tail else None,
+        )
 
     return start_practice_reply(conn, now=stamp, settings=s)
 
