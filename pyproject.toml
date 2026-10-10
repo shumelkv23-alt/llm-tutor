@@ -24,6 +24,7 @@ dev = [
     "pytest-asyncio>=1.0,<2.0",
     "respx>=0.22,<0.23",
     "pytest-cov>=5.0,<8.0",
+    "playwright>=1.48,<2",
 ]
 
 [build-system]
@@ -37,3 +38,8 @@ packages = ["src/llm_tutor"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
+# Браузерные тесты медленнее и требуют Chromium: uv run pytest -m e2e
+addopts = "-m 'not e2e'"
+markers = [
+    "e2e: сценарии в настоящем браузере (Playwright)",
+]

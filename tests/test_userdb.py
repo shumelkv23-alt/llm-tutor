@@ -130,3 +130,18 @@ async def test_lock_serializes_one_student(pool) -> None:
 def test_locks_are_per_student(pool) -> None:
     assert pool.lock(1, COURSE) is pool.lock(1, COURSE)
     assert pool.lock(1, COURSE) is not pool.lock(2, COURSE)
+
+
+def test_connection_works_from_another_thread(pool) -> None:
+    """Фабрика открывает БД в своём потоке, запросы идут из потока цикла событий."""
+    import threading
+
+    conn = pool.open(1, COURSE)
+    result: list[int] = []
+    worker = threading.Thread(
+        target=lambda: result.append(conn.execute("SELECT COUNT(*) FROM concepts").fetchone()[0])
+    )
+    worker.start()
+    worker.join()
+
+    assert result == [21]

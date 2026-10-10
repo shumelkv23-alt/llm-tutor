@@ -84,7 +84,7 @@ class User:
 
 def open_accounts(path: str) -> sqlite3.Connection:
     """Соединение с БД аккаунтов, схема доведена до текущей версии."""
-    conn = get_conn(path)
+    conn = get_conn(path, check_same_thread=False)
     migrate(conn, migrations_dir=MIGRATIONS_DIR, schema_version=SCHEMA_VERSION)
     return conn
 

@@ -12,11 +12,14 @@ MIGRATIONS_DIR = _PROJECT_ROOT / "migrations"
 SCHEMA_VERSION = 3
 
 
-def get_conn(db_path: str) -> sqlite3.Connection:
+def get_conn(db_path: str, *, check_same_thread: bool = True) -> sqlite3.Connection:
     """Открывает соединение с нужными pragma.
 
     ``db_path`` == ``":memory:"`` — БД в памяти (тесты). Относительный путь
     резолвится от корня проекта (не от cwd), родительский каталог создаётся.
+    ``check_same_thread=False`` — для веба: соединение открывает фабрика
+    приложения, а запросы обслуживает поток цикла событий (обращения всё
+    равно идут из одного потока, по очереди).
     """
     if db_path == ":memory:":
         target = db_path
@@ -27,7 +30,7 @@ def get_conn(db_path: str) -> sqlite3.Connection:
         path.parent.mkdir(parents=True, exist_ok=True)
         target = str(path)
 
-    conn = sqlite3.connect(target)
+    conn = sqlite3.connect(target, check_same_thread=check_same_thread)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")

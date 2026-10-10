@@ -96,7 +96,7 @@ class UserDBPool:
             return conn
         course = get_course(course_id)
         assert course is not None  # проверено в _key
-        conn = get_conn(str(self.path(user_id, course_id)))
+        conn = get_conn(str(self.path(user_id, course_id)), check_same_thread=False)
         try:
             migrate(conn)
             load_seed(conn, course.seed_path)

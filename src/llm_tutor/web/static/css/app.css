@@ -364,6 +364,10 @@ small {
 }
 
 .breadcrumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 13px;
 }
@@ -379,6 +383,8 @@ small {
 }
 
 .connection {
+  flex: none;
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 8px;
