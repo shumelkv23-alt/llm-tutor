@@ -244,7 +244,10 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
         raise HTTPException(status_code=422, detail={"field": "text", "message": "Пустое сообщение."})
     async with ctx.lock:
         reply = await _safe(
-            turn.handle_turn(ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings),
+            # Чат — всегда к тьютору: ответы на задание идут формой «Практики».
+            turn.handle_turn(
+                ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings, answer_mode="tutor"
+            ),
             LLM_FAILURE_REPLY,
         )
         return turn_response(ctx, text, reply)
@@ -274,7 +277,13 @@ async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context))
                 )
         reply = await _safe(
             turn.handle_turn(
-                ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings, allow_intents=False
+                ctx.conn,
+                ctx.client,
+                ctx.model,
+                text,
+                settings=ctx.settings,
+                allow_intents=False,
+                answer_mode="answer",
             ),
             LLM_FAILURE_REPLY,
         )

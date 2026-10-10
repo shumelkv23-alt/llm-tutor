@@ -324,3 +324,16 @@ async def test_closing_a_node_end_to_end(enrolled, web_app) -> None:
             break
 
     assert state is not None and state["closed"] > closed_before
+
+
+async def test_chat_while_task_pending_goes_to_tutor(enrolled, web_app, web_llm) -> None:
+    """В вебе чат не отвечает на задание: «0» в чате — реплика тьютору."""
+    await _finish(enrolled)
+    item = await _pending_choice(enrolled, web_app)
+    calls = len(web_llm.calls)
+
+    body = (await enrolled.post(f"{BASE}/chat", json={"text": "0"})).json()
+
+    assert len(web_llm.calls) == calls + 1
+    assert body["state"]["item"]["id"] == item.id
+    assert not [e for e in repos.get_events(_user_db(web_app)) if e.item_id == item.id]

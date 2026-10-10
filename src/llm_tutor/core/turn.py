@@ -14,6 +14,7 @@ import sqlite3
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core import intents
@@ -78,6 +79,9 @@ VERIFY_NO_ITEMS_REPLY = (
 VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к теме и разберёмся."
 # Вход в заявленный в анкете узел: самооценку подтверждаем проходом (срез 23).
 CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — пара быстрых вопросов."
+
+
+AnswerMode = Literal["auto", "answer", "tutor"]
 
 
 @dataclass(frozen=True)
@@ -456,8 +460,15 @@ async def handle_turn(
     now: float | None = None,
     settings: Settings | None = None,
     allow_intents: bool = True,
+    answer_mode: AnswerMode = "auto",
 ) -> TurnReply:
-    """Один ход диалога: ответ на задание или реплика тьютору."""
+    """Один ход диалога: ответ на задание или реплика тьютору.
+
+    ``answer_mode`` — кто решает, ответ ли это на висящее задание: ``auto`` —
+    эвристика по тексту (бот: свободный текст и есть ответ), ``answer`` —
+    интерфейс прислал ответ формой задания, ``tutor`` — реплика в чат, задание
+    не трогаем (веб: для ответов есть «Практика»).
+    """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
     session_id = repos.ensure_open_session(conn, stamp)
@@ -484,11 +495,10 @@ async def handle_turn(
     tail: str | None = None
     answered_item_id = state.pending_item_id
 
-    if (
-        state.pending_item_id is not None
-        and not force_stuck
-        and not _looks_like_question(user_text)
-    ):
+    is_answer = answer_mode == "answer" or (
+        answer_mode == "auto" and not _looks_like_question(user_text)
+    )
+    if state.pending_item_id is not None and not force_stuck and is_answer:
         reply, events, mastery, new_state, passed = await _answer_branch(
             conn, client, model, graph, user_text, state, now=stamp, settings=s
         )

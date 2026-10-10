@@ -1112,3 +1112,35 @@ async def test_failed_claimed_check_explains_before_next_task(conn, settings) ->
     assert len(tutor.calls) == 1
     assert "Разбираем тему" in reply.text
     assert reply.tail is not None  # и задание урока следом
+
+
+async def test_tutor_mode_leaves_pending_item(conn, settings) -> None:
+    """Реплика в чат веба не засчитывается ответом на висящее задание."""
+    load_seed(conn)
+    client = _FakeTutor("Привет! Задание ждёт.")
+    start_practice_reply(conn, now=1.0, settings=settings)
+    pending = _state(conn).pending_item_id
+
+    reply = await handle_turn(
+        conn, client, "m", "0", now=2.0, settings=settings, answer_mode="tutor"
+    )
+
+    assert client.calls
+    assert _state(conn).pending_item_id == pending
+    assert not [e for e in repos.get_events(conn) if e.item_id == pending]
+    assert PENDING_ITEM_NOTE in reply.text
+
+
+async def test_answer_mode_grades_question_like_text(conn, settings) -> None:
+    """Ответ формой проверяется, даже если похож на вопрос."""
+    load_seed(conn)
+    client = _FakeTutor("тьютор не должен вызываться")
+    start_practice_reply(conn, now=1.0, settings=settings)
+    pending = _state(conn).pending_item_id
+
+    await handle_turn(
+        conn, client, "m", "может, groupby?", now=2.0, settings=settings,
+        allow_intents=False, answer_mode="answer",
+    )
+
+    assert [e for e in repos.get_events(conn) if e.item_id == pending]
