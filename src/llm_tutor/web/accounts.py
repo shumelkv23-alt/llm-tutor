@@ -316,3 +316,39 @@ def resolve_session(
 def delete_session(conn: sqlite3.Connection, token: str) -> None:
     conn.execute("DELETE FROM web_sessions WHERE token_hash = ?", (_token_hash(token),))
     conn.commit()
+
+
+# --- Записи на курсы ---
+
+
+def enroll(
+    conn: sqlite3.Connection, user_id: int, course_id: str, *, now: float | None = None
+) -> None:
+    """Записывает ученика на курс (повторная запись ничего не меняет)."""
+    stamp = time.time() if now is None else now
+    conn.execute(
+        "INSERT OR IGNORE INTO enrollments (user_id, course_id, enrolled_at) VALUES (?, ?, ?)",
+        (user_id, course_id, stamp),
+    )
+    conn.commit()
+
+
+def enrolled_courses(conn: sqlite3.Connection, user_id: int) -> list[str]:
+    """Курсы ученика, последний записанный — первым."""
+    rows = conn.execute(
+        "SELECT course_id FROM enrollments WHERE user_id = ? ORDER BY enrolled_at DESC, course_id",
+        (user_id,),
+    ).fetchall()
+    return [row["course_id"] for row in rows]
+
+
+def find_user(conn: sqlite3.Connection, email: str) -> User | None:
+    """Ученик по email (для CLI); некорректный email — ``None``."""
+    try:
+        clean = normalize_email(email)
+    except AccountError:
+        return None
+    row = conn.execute(
+        "SELECT id, email, name, created_at FROM users WHERE email = ?", (clean,)
+    ).fetchone()
+    return None if row is None else _user(row)

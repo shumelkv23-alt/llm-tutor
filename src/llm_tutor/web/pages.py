@@ -8,11 +8,15 @@
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
+from llm_tutor.web import accounts
 from llm_tutor.web.accounts import User
-from llm_tutor.web.security import optional_user, page_user, safe_next
+from llm_tutor.web.api_lesson import cards_for
+from llm_tutor.web.courses import get_course
+from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
+from llm_tutor.web.views import course_card
 
 router = APIRouter()
 
@@ -60,12 +64,42 @@ async def home(request: Request) -> HTMLResponse:
 
 @router.get("/courses", response_class=HTMLResponse)
 async def courses(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
-    return render(request, "courses.html", "courses", user=user)
+    cards = cards_for(request, user)
+    return render(
+        request,
+        "courses.html",
+        "courses",
+        user=user,
+        mine=[card for card in cards if card["enrolled"]],
+        available=[card for card in cards if not card["enrolled"]],
+    )
 
 
-@router.get("/lesson", response_class=HTMLResponse)
-async def lesson(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
-    return render(request, "lesson.html", "lesson", user=user)
+@router.get("/lesson")
+async def lesson(request: Request, user: User = Depends(page_user)) -> Response:
+    """«Занятие» в меню — последний курс ученика или каталог, если курсов нет."""
+    enrolled = accounts.enrolled_courses(accounts_db(request), user.id)
+    known = [course_id for course_id in enrolled if get_course(course_id) is not None]
+    target = f"/lesson/{known[0]}" if known else "/courses"
+    return RedirectResponse(target, status_code=303)
+
+
+@router.get("/lesson/{course_id}", response_class=HTMLResponse)
+async def lesson_page(
+    course_id: str, request: Request, user: User = Depends(page_user)
+) -> HTMLResponse:
+    course = get_course(course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Такого курса нет.")
+    enrolled = course_id in accounts.enrolled_courses(accounts_db(request), user.id)
+    card = course_card(
+        course,
+        user_id=user.id,
+        enrolled=enrolled,
+        pool=request.app.state.userdbs,
+        settings=request.app.state.settings,
+    )
+    return render(request, "lesson.html", "lesson", user=user, course=card)
 
 
 @router.get("/profile", response_class=HTMLResponse)

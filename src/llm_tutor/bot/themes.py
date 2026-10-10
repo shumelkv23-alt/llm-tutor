@@ -7,24 +7,24 @@
 import logging
 import sqlite3
 import time
-from typing import Literal
-
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from llm_tutor.bot.render import PARSE_MODE, escape, fit
 from llm_tutor.config import Settings, get_settings
+from llm_tutor.core.lesson import NodeStatus, node_status
+from llm_tutor.core.lesson import claimed_from_route as _claimed_from_route
+from llm_tutor.core.lesson import is_closed as _is_closed
 from llm_tutor.core.turn import post_turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import BOT_FAILURE_REPLY
 from llm_tutor.schemas import SessionState
-from llm_tutor.student import beta, route as route_mod
-from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
+from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
 
-NodeStatus = Literal["closed", "current", "claimed", "available", "ahead"]
+__all__ = ["NodeStatus", "STATUS_ICONS", "node_status", "switch_node", "themes_keyboard"]
 
 STATUS_ICONS: dict[str, str] = {
     "closed": "✅",
@@ -39,67 +39,6 @@ THEMES_PROMPT = (
     "Можно вернуться к пройденному или заглянуть вперёд — "
     "про будущее предупрежу, там ещё не закрыты пререквизиты."
 )
-
-
-def _closed_from_route(state: SessionState) -> set[str]:
-    """Узлы, закрытые в снимке маршрута сессии — запись тьютора о закрытии.
-
-    Ученик закрывает узел серией чистых ответов ИЛИ уверенным владением;
-    снимок маршрута хранит оба случая, поэтому он — источник правды.
-    """
-    if state.route is None:
-        return set()
-    return {step.concept_id for step in state.route.steps if step.status == "closed"}
-
-
-def _claimed_from_route(state: SessionState) -> set[str]:
-    """Узлы, заявленные в анкете и ещё не подтверждённые (снимок маршрута)."""
-    if state.route is None:
-        return set()
-    return {step.concept_id for step in state.route.steps if step.status == "claimed"}
-
-
-def _is_closed(
-    conn: sqlite3.Connection,
-    node_id: str,
-    state: SessionState,
-    *,
-    now: float | None,
-    settings: Settings,
-) -> bool:
-    if node_id in _closed_from_route(state):
-        return True
-    mastery = beta.estimate(conn, node_id, now=now, settings=settings)
-    return (
-        mastery.mean >= settings.mastery_skip_threshold
-        and mastery.uncertainty <= CONFIDENT_UNCERTAINTY
-    )
-
-
-def node_status(
-    conn: sqlite3.Connection,
-    graph: CourseGraph,
-    node_id: str,
-    state: SessionState,
-    *,
-    now: float | None,
-    settings: Settings,
-) -> NodeStatus:
-    """Статус узла для списка тем."""
-    if node_id == state.current_node_id:
-        return "current"
-    if _is_closed(conn, node_id, state, now=now, settings=settings):
-        return "closed"
-    claimed = _claimed_from_route(state)
-    if node_id in claimed:
-        return "claimed"
-    prereqs = graph.hard_prerequisites(node_id)
-    if all(
-        prereq in claimed or _is_closed(conn, prereq, state, now=now, settings=settings)
-        for prereq in prereqs
-    ):
-        return "available"
-    return "ahead"
 
 
 def themes_keyboard(

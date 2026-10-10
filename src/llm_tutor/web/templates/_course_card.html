@@ -1,0 +1,25 @@
+<article class="course-card" data-course="{{ card.id }}">
+  <div class="course-card-head">
+    <p class="eyebrow">{{ card.subtitle }}</p>
+    <span class="badge{% if card.status == 'done' %} success{% elif card.status in ('survey', 'in_progress') %} primary{% endif %}">{{ card.status_label }}</span>
+  </div>
+  <h2>{{ card.title }}</h2>
+  <p class="course-description">{{ card.description }}</p>
+  {% if card.enrolled %}
+  <div class="progress" role="img" aria-label="Закрыто тем: {{ card.closed }} из {{ card.topics }}">
+    <div class="progress-label"><span>Закрыто тем</span><b>{{ card.closed }} из {{ card.topics }}</b></div>
+    <div class="progress-track"><span class="progress-fill" data-percent="{{ card.percent }}"></span></div>
+  </div>
+  {% if card.current_topic %}<p class="course-current">Сейчас: <b>{{ card.current_topic }}</b></p>{% endif %}
+  {% else %}
+  <p class="course-meta">{{ icon('book') }}<span>{{ card.topics }} тем · теория, практика и проверка кода</span></p>
+  {% endif %}
+  <div class="course-actions">
+    {% if card.enrolled %}
+    <a class="btn primary" href="{{ card.href }}">{% if card.status == 'survey' %}Начать{% else %}Продолжить{% endif %}{{ icon('arrow') }}</a>
+    {% else %}
+    <button class="btn primary enroll" type="button" data-course="{{ card.id }}">Записаться{{ icon('arrow') }}</button>
+    {% endif %}
+    <a class="btn ghost" href="{{ card.source_url }}" rel="noopener noreferrer" target="_blank">Материалы курса</a>
+  </div>
+</article>

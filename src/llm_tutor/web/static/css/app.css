@@ -666,6 +666,108 @@ dialog p {
   margin-top: 24px;
 }
 
+/* --- Курсы --- */
+
+.section-title {
+  margin-bottom: 16px;
+  font-size: 18px;
+}
+
+.course-section + .course-section {
+  margin-top: 36px;
+}
+
+.course-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: 20px;
+}
+
+.course-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.course-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.course-card .eyebrow {
+  margin: 0;
+}
+
+.course-description,
+.course-meta,
+.course-current {
+  color: var(--muted);
+}
+
+.course-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.course-meta .icon {
+  color: var(--primary-text);
+}
+
+.course-current b {
+  color: var(--heading);
+}
+
+.course-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.course-actions.centered {
+  justify-content: center;
+  padding-bottom: 24px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.progress-label b {
+  color: var(--primary-text);
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.progress-fill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 0.6s ease;
+}
+
 /* --- Вход и регистрация: тёмная карточка, как у панелей бара --- */
 
 .auth-body {

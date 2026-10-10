@@ -218,7 +218,7 @@ async def test_get_api_is_not_blocked_by_content_type(web) -> None:
 # --- Страницы ---
 
 
-@pytest.mark.parametrize("path", ["/courses", "/lesson", "/profile"])
+@pytest.mark.parametrize("path", ["/courses", "/lesson", "/lesson/mlcourse-topic01", "/profile"])
 async def test_private_pages_redirect_guest_to_login(web, path: str) -> None:
     response = await web.get(path)
 

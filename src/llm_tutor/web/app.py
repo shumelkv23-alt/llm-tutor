@@ -21,6 +21,7 @@ from markupsafe import Markup, escape
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.web import accounts, security
+from llm_tutor.web.userdb import UserDBPool
 
 WEB_DIR = Path(__file__).resolve().parent
 STATIC_DIR = WEB_DIR / "static"
@@ -76,6 +77,12 @@ def make_templates() -> Jinja2Templates:
     return templates
 
 
+def _project_path(path: str) -> Path:
+    """Относительный путь из настроек — от корня проекта, как у ``get_conn``."""
+    candidate = Path(path)
+    return candidate if candidate.is_absolute() else WEB_DIR.parents[2] / candidate
+
+
 def _llm_client(settings: Settings) -> LLMClient:
     return LLMClient(
         base_url=settings.openrouter_base_url,
@@ -97,12 +104,16 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     owns_client = client is None
     llm = _llm_client(settings) if client is None else client
     accounts_db = accounts.open_accounts(settings.accounts_db_path)
+    userdbs = UserDBPool(
+        _project_path(settings.users_dir), _project_path(settings.materials_db_path)
+    )
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         try:
             yield
         finally:
+            userdbs.close_all()
             accounts_db.close()
             if owns_client:
                 await llm.aclose()
@@ -122,6 +133,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
     app.state.accounts = accounts_db
     app.state.login_limiter = security.LoginLimiter()
+    app.state.userdbs = userdbs
 
     # Порядок важен: добавленный позже middleware — внешний. Заголовки
     # безопасности должны лечь и на отказы api_guard.
@@ -159,8 +171,9 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         return {"status": "ok"}
 
     # Локальный импорт: модули маршрутов берут зависимости из app.state.
-    from llm_tutor.web import api_auth, pages
+    from llm_tutor.web import api_auth, api_lesson, pages
 
     app.include_router(api_auth.router)
+    app.include_router(api_lesson.router)
     app.include_router(pages.router)
     return app

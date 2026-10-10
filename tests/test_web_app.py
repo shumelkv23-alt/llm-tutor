@@ -12,7 +12,7 @@ from llm_tutor.web.app import STATIC_DIR, TEMPLATES_DIR, create_app
 PAGES = [
     ("/", "home"),
     ("/courses", "courses"),
-    ("/lesson", "lesson"),
+    ("/lesson/mlcourse-topic01", "lesson"),
     ("/profile", "profile"),
 ]
 
@@ -23,7 +23,9 @@ GUEST_PAGES = ["/", "/login", "/register"]
 # Внешние скрипты — только с CDN из спеки, и только с точной версией.
 ALLOWED_HOSTS = {"cdn.jsdelivr.net", "cdnjs.cloudflare.com"}
 
-_RESOURCE_RE = re.compile(r'(?:src|href)="([^"]+)"')
+# Загружаемые ресурсы: src любого тега и href у <link>. Обычные ссылки <a> —
+# не ресурсы: на внешний сайт материалов вести можно.
+_RESOURCE_RE = re.compile(r'(?:\bsrc="([^"]+)"|<link\b[^>]*\bhref="([^"]+)")')
 
 
 async def test_app_builds_without_telegram_token(web) -> None:
@@ -96,7 +98,8 @@ async def test_pages_load_only_allowed_external_resources(web) -> None:
 
 
 def _check_resources(path: str, html: str) -> None:
-    for url in _RESOURCE_RE.findall(html):
+    for groups in _RESOURCE_RE.findall(html):
+        url = next(part for part in groups if part)
         parsed = urlparse(url)
         if parsed.scheme in ("", None) and not url.startswith("//"):
             continue

@@ -1,8 +1,17 @@
 {% extends "base.html" %}
-{% block eyebrow %}Занятие{% endblock %}
-{% block description %}Слева теория и практика по теме, справа — чат с тьютором.{% endblock %}
+{% block breadcrumb %}{{ course.title }}{% endblock %}
+{% block eyebrow %}{{ course.subtitle }}{% endblock %}
+{% block heading %}{{ course.title }}{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
 {% block content %}
+{% if course.enrolled %}
 <section class="panel">
-  <div class="empty"><strong>Страница занятия в работе</strong>Сначала запишитесь на курс в разделе «Мои курсы».</div>
+  <div class="empty"><strong>Страница занятия в работе</strong>Скоро здесь будут теория и практика по теме и чат с тьютором.</div>
 </section>
+{% else %}
+<section class="panel enroll-panel">
+  <div class="empty"><strong>Вы ещё не записаны на этот курс</strong>{{ course.description }}</div>
+  <div class="course-actions centered"><button class="btn primary enroll" type="button" data-course="{{ course.id }}">Записаться{{ icon('arrow') }}</button></div>
+</section>
+{% endif %}
 {% endblock %}
