@@ -774,6 +774,405 @@ dialog p {
   transition: width 0.6s ease;
 }
 
+/* --- Главная --- */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 40px;
+  align-items: center;
+  padding: 40px;
+  margin-bottom: 36px;
+  border-radius: 20px;
+  background: var(--nav-bg);
+  color: #f6f8fb;
+  overflow: hidden;
+}
+
+.hero h1 {
+  color: #ffffff;
+  font-size: 40px;
+  line-height: 1.15;
+}
+
+.hero .eyebrow {
+  color: #ff9a61;
+}
+
+.hero-lead {
+  margin: 16px 0 28px;
+  max-width: 56ch;
+  color: #bac9d8;
+  font-size: 17px;
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hero-actions .btn:not(.primary) {
+  border-color: #526276;
+  color: #ffffff;
+}
+
+.hero-actions .btn:not(.primary):hover {
+  background: var(--nav-hover);
+}
+
+.hero-window {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #304157;
+  border-radius: 14px;
+  background: #0b1424;
+}
+
+.hero-pane,
+.hero-chat {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-height: 220px;
+  padding: 14px;
+  border-radius: 10px;
+  background: #111c2d;
+}
+
+.hero-tag {
+  color: #60c4ba;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hero-line {
+  height: 8px;
+  border-radius: 4px;
+  background: #22344d;
+}
+
+.hero-line.w80 {
+  width: 80%;
+}
+
+.hero-line.w60 {
+  width: 60%;
+}
+
+.hero-code {
+  padding: 10px;
+  border-radius: 8px;
+  background: #060b1a;
+  color: #9fe0b5;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.hero-check {
+  color: #6fcfa8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hero-bubble {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.hero-bubble.tutor {
+  background: #22344d;
+  color: #e3eaf1;
+}
+
+.steps {
+  margin-bottom: 36px;
+}
+
+.steps-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps-list li {
+  display: flex;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.steps-list p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.step-number {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 800;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 20px;
+}
+
+.continue-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  border-top: 3px solid var(--accent);
+}
+
+.continue-card .eyebrow {
+  margin: 0;
+}
+
+.continue-card .btn {
+  justify-self: start;
+}
+
+.continue-topic {
+  color: var(--muted);
+}
+
+.continue-topic b {
+  color: var(--heading);
+}
+
+.stats-card {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-content: center;
+  gap: 12px;
+}
+
+.stat {
+  display: grid;
+  gap: 4px;
+}
+
+.stat span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stat strong {
+  color: var(--primary-text);
+  font-size: 28px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.next-card {
+  grid-column: 1 / -1;
+}
+
+.next-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.next-steps li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  counter-increment: step;
+}
+
+.next-steps li:first-child {
+  border-top: 0;
+}
+
+.next-name::before {
+  content: counter(step) ". ";
+  color: var(--muted);
+}
+
+/* --- Профиль --- */
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.profile-grid > .learning,
+.profile-grid > .panel:only-child {
+  min-width: 0;
+}
+
+.profile-grid > .panel:nth-child(n + 3) {
+  grid-column: 2;
+}
+
+.account-facts {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+
+.account-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.account-facts dt {
+  color: var(--muted);
+}
+
+.account-facts dd {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.profile-form {
+  display: grid;
+  gap: 10px;
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.profile-form .btn {
+  justify-self: start;
+}
+
+.profile-form .form-error {
+  color: var(--danger);
+}
+
+.learning h3 {
+  margin: 24px 0 10px;
+}
+
+.learning-summary {
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+}
+
+.survey-summary.compact {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.survey-summary.compact li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+}
+
+.survey-summary.compact li + li {
+  border-top: 1px solid var(--border);
+}
+
+.survey-summary.compact b {
+  color: var(--primary-text);
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.topics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.topics-table th,
+.topics-table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.topics-table thead th {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.topics-table tbody th {
+  font-weight: 600;
+}
+
+.mastery {
+  display: grid;
+  gap: 4px;
+  min-width: 140px;
+}
+
+@media (max-width: 1199px) {
+  .hero {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-visual {
+    display: none;
+  }
+
+  .steps-list {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-grid > .panel:nth-child(n + 3) {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 599px) {
+  .hero {
+    padding: 24px;
+  }
+
+  .hero h1 {
+    font-size: 28px;
+  }
+
+  .home-grid,
+  .stats-card {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* --- Вход и регистрация: тёмная карточка, как у панелей бара --- */
 
 .auth-body {

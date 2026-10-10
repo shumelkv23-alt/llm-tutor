@@ -1,9 +1,82 @@
 {% extends "base.html" %}
-{% block eyebrow %}Добро пожаловать{% endblock %}
-{% block heading %}Учимся понимать данные{% endblock %}
-{% block description %}Тьютор по курсу mlcourse.ai: теория и практика по теме, чат с тьютором и проверка кода прямо в браузере.{% endblock %}
+{% block styles %}{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
+{% block page_head %}{% if user %}{{ super() }}{% endif %}{% endblock %}
+{% block eyebrow %}С возвращением{% endblock %}
+{% block heading %}{% if user %}Привет, {{ user.name }}!{% else %}Главная{% endif %}{% endblock %}
+{% block description %}{% if user %}Продолжим с того места, где вы остановились.{% endif %}{% endblock %}
 {% block content %}
-<section class="panel">
-  <div class="empty"><strong>Главная страница в работе</strong>Здесь появятся продолжение занятия, ближайшие шаги и прогресс.</div>
+{% if not user %}
+<section class="hero">
+  <div class="hero-copy">
+    <p class="eyebrow">Тьютор по курсу mlcourse.ai</p>
+    <h1>Разбирайтесь в данных с тьютором, который проверяет, а не угадывает</h1>
+    <p class="hero-lead">Теория и практика по теме слева, тьютор в чате справа. Ответы проверяет код, а не модель: тесты к заданиям запускаются прямо в браузере.</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="/register">Начать учиться{{ icon('arrow') }}</a>
+      <a class="btn" href="/login">Войти</a>
+    </div>
+  </div>
+  <div class="hero-visual" aria-hidden="true">
+    <div class="hero-window">
+      <div class="hero-pane"><span class="hero-tag">Теория · Практика · Код</span><span class="hero-line w80"></span><span class="hero-line w60"></span><span class="hero-code">df.groupby("city")["age"].mean()</span><span class="hero-check">✓ Все проверки пройдены</span></div>
+      <div class="hero-chat"><span class="hero-bubble">Почему после groupby нужен агрегат?</span><span class="hero-bubble tutor">Группировка только делит строки — агрегат сворачивает каждую группу в число…</span></div>
+    </div>
+  </div>
 </section>
+<section class="steps" aria-labelledby="how-title">
+  <h2 id="how-title" class="section-title">Как это работает</h2>
+  <ol class="steps-list">
+    <li><span class="step-number">1</span><div><strong>Короткая анкета</strong><p>Пара вопросов об опыте — и тьютор строит маршрут: знакомое проверит, новое объяснит.</p></div></li>
+    <li><span class="step-number">2</span><div><strong>Урок: теория и практика</strong><p>Конспект темы и задания рядом. Тема закрывается, когда код засчитал два верных ответа подряд.</p></div></li>
+    <li><span class="step-number">3</span><div><strong>Тьютор и проверка кода</strong><p>Спросите в чате, если непонятно. Код запускается в браузере и проверяется тестами задания.</p></div></li>
+  </ol>
+</section>
+<section class="course-section" aria-labelledby="catalog-title">
+  <h2 id="catalog-title" class="section-title">Курс</h2>
+  <div class="course-grid">{% for card in cards %}{% include "_course_card.html" %}{% endfor %}</div>
+</section>
+{% elif not courses %}
+<section class="panel empty-start">
+  <div class="empty"><strong>Выберите курс, чтобы начать</strong>Пока доступен один курс — «Pandas и разведочный анализ данных».</div>
+  <div class="course-actions centered"><a class="btn primary" href="/courses">К курсам{{ icon('arrow') }}</a></div>
+</section>
+{% else %}
+{% set main = courses[0] %}
+<div class="home-grid">
+  <section class="panel continue-card" aria-labelledby="continue-title">
+    <p class="eyebrow">{{ main.card.subtitle }}</p>
+    <h2 id="continue-title">{{ main.card.title }}</h2>
+    {% if main.card.status == 'error' %}
+    <p class="notice error">Данные курса сейчас не открываются. Сообщите администратору.</p>
+    {% else %}
+    {% if main.card.current_topic %}<p class="continue-topic">Сейчас: <b>{{ main.card.current_topic }}</b></p>{% endif %}
+    <div class="progress" role="img" aria-label="Закрыто тем: {{ main.card.closed }} из {{ main.card.topics }}">
+      <div class="progress-label"><span>Закрыто тем</span><b>{{ main.card.closed }} из {{ main.card.topics }}</b></div>
+      <div class="progress-track"><span class="progress-fill" data-percent="{{ main.card.percent }}"></span></div>
+    </div>
+    <a class="btn primary" href="{{ main.card.href }}">{% if main.card.status == 'survey' %}Начать с анкеты{% else %}Продолжить занятие{% endif %}{{ icon('arrow') }}</a>
+    {% endif %}
+  </section>
+  {% if main.learning %}
+  <section class="panel stats-card" aria-label="Итоги">
+    <div class="stat"><span>Закрыто тем</span><strong>{{ main.card.closed }}</strong></div>
+    <div class="stat"><span>Решено заданий</span><strong>{{ main.learning.solved }}</strong></div>
+    <div class="stat"><span>Всего тем</span><strong>{{ main.card.topics }}</strong></div>
+  </section>
+  <section class="panel next-card" aria-labelledby="next-title">
+    <h2 id="next-title" class="section-title">Ближайшие шаги</h2>
+    {% if main.learning.next_steps %}
+    <ol class="next-steps">
+      {% for step in main.learning.next_steps %}
+      <li class="{{ step.status }}"><span class="next-name">{{ step.name }}</span><span class="badge{% if step.status == 'current' %} primary{% elif step.status == 'claimed' %} accent{% endif %}">{{ step.label }}</span></li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted">{% if main.learning.survey_done %}Всё доступное пройдено — можно свериться в профиле.{% else %}Маршрут появится после анкеты.{% endif %}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+{% endif %}
 {% endblock %}

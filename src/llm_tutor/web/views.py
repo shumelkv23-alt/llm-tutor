@@ -8,7 +8,7 @@ import logging
 import sqlite3
 
 from llm_tutor.config import Settings
-from llm_tutor.core.overview import course_progress, topic_rows
+from llm_tutor.core.overview import course_progress, route_overview, topic_rows
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState
@@ -208,4 +208,68 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             for message in messages
             if message.role in ("user", "assistant")
         ],
+    }
+
+
+# --- Главная и профиль ---
+
+# Сколько ближайших шагов маршрута показывать.
+NEXT_STEPS = 5
+
+TOPIC_STATUS_LABELS = {
+    "closed": "Закрыта",
+    "current": "Текущая",
+    "claimed": "Знакомая — проверим",
+    "available": "Доступна",
+    "ahead": "Впереди",
+}
+
+
+def solved_items(conn: sqlite3.Connection) -> int:
+    """Сколько разных заданий решено верно (по журналу, а не по словам модели)."""
+    row = conn.execute(
+        "SELECT COUNT(DISTINCT item_id) FROM events WHERE item_id IS NOT NULL AND result >= 0.5"
+    ).fetchone()
+    return int(row[0])
+
+
+def next_steps(conn: sqlite3.Connection, *, settings: Settings) -> list[dict]:
+    """Ближайшие незакрытые шаги маршрута (текущий — первым)."""
+    graph = CourseGraph.load(conn)
+    route = route_overview(conn, settings=settings)
+    pending = [step for step in route.steps if step.status != "closed"]
+    pending.sort(key=lambda step: step.status != "current")
+    return [
+        {
+            "id": step.concept_id,
+            "name": graph.concept(step.concept_id).name,
+            "status": step.status,
+            "label": TOPIC_STATUS_LABELS.get(step.status, ""),
+        }
+        for step in pending[:NEXT_STEPS]
+    ]
+
+
+def learning_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
+    """Обучение по курсу для главной и профиля: анкета, темы, шаги, итоги."""
+    rows = topic_rows(conn, settings=settings)
+    return {
+        "survey_done": survey.is_completed(conn),
+        "self_assessment": [
+            {"title": title, "answer": answer}
+            for title, answer in survey.self_assessment(conn).items()
+        ],
+        "topics": [
+            {
+                "id": row.id,
+                "name": row.name,
+                "status": row.status,
+                "label": TOPIC_STATUS_LABELS.get(row.status, ""),
+                "mastery": round(row.mastery * 100),
+                "confidence": "уверенно" if row.confident else "мало данных",
+            }
+            for row in rows
+        ],
+        "next_steps": next_steps(conn, settings=settings),
+        "solved": solved_items(conn),
     }

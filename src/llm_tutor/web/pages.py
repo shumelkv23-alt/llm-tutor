@@ -6,6 +6,7 @@
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -16,7 +17,7 @@ from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
 from llm_tutor.web.courses import get_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
-from llm_tutor.web.views import course_card
+from llm_tutor.web.views import course_card, learning_view
 
 router = APIRouter()
 
@@ -57,9 +58,36 @@ def render(
     )
 
 
+def _learning(request: Request, user: User) -> list[dict]:
+    """Курсы ученика с карточкой и обучением (последний записанный — первым)."""
+    pool = request.app.state.userdbs
+    settings = request.app.state.settings
+    result = []
+    for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
+        course = get_course(course_id)
+        if course is None:
+            continue
+        card = course_card(course, user_id=user.id, enrolled=True, pool=pool, settings=settings)
+        learning = None
+        if card["status"] != "error":
+            learning = learning_view(pool.open(user.id, course.id), settings=settings)
+        result.append({"card": card, "learning": learning})
+    return result
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
-    return render(request, "home.html", "home", user=optional_user(request))
+    user = optional_user(request)
+    if user is None:
+        from llm_tutor.web.courses import COURSES
+
+        settings = request.app.state.settings
+        cards = [
+            course_card(course, user_id=0, enrolled=False, pool=request.app.state.userdbs, settings=settings)
+            for course in COURSES
+        ]
+        return render(request, "home.html", "home", user=None, cards=cards)
+    return render(request, "home.html", "home", user=user, courses=_learning(request, user))
 
 
 @router.get("/courses", response_class=HTMLResponse)
@@ -104,7 +132,10 @@ async def lesson_page(
 
 @router.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
-    return render(request, "profile.html", "profile", user=user)
+    joined = datetime.fromtimestamp(user.created_at).strftime("%d.%m.%Y")
+    return render(
+        request, "profile.html", "profile", user=user, joined=joined, courses=_learning(request, user)
+    )
 
 
 def _auth_page(request: Request, template: str, active: str, next: str | None) -> Response:
