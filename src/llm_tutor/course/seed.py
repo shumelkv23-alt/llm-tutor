@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field, ValidationError
 
 from llm_tutor.course.graph import CourseGraph
@@ -149,7 +150,8 @@ def _read_theory(seed_path: Path, node_ids: list[str]) -> dict[str, str]:
     for node_id in node_ids:
         path = directory / f"{node_id}.md"
         if path.is_file():
-            text = path.read_text(encoding="utf-8").strip()
+            # utf-8-sig: BOM от Блокнота иначе спрятал бы первый заголовок (аудит 53, L1).
+            text = path.read_text(encoding="utf-8-sig").strip()
             if text:
                 theory[node_id] = text
     return theory
@@ -219,19 +221,24 @@ def main_concept(item: Item) -> str | None:
     return max(item.concept_weights, key=item.concept_weights.__getitem__)
 
 
-_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+# Тот же разбор CommonMark, что рендерит конспект в вебе: заголовок для
+# валидатора — ровно то, что ученик увидит заголовком (аудит среза 53, L1).
+_MARKDOWN = MarkdownIt("commonmark")
+
+
+def _h2(text: str) -> list[tuple[str, int]]:
+    """Заголовки второго уровня: (текст, номер первой строки)."""
+    tokens = _MARKDOWN.parse(text)
+    return [
+        (tokens[index + 1].content.strip(), token.map[0] if token.map else 0)
+        for index, token in enumerate(tokens)
+        if token.type == "heading_open" and token.tag == "h2"
+    ]
 
 
 def theory_headings(text: str) -> list[str]:
-    """Заголовки второго уровня конспекта (``## …``) вне блоков кода."""
-    headings: list[str] = []
-    fenced = False
-    for line in text.splitlines():
-        if _FENCE_RE.match(line):
-            fenced = not fenced
-        elif not fenced and line.startswith("## "):
-            headings.append(line[3:].strip())
-    return headings
+    """Заголовки второго уровня конспекта (вне блоков кода, по CommonMark)."""
+    return [title for title, _ in _h2(text)]
 
 
 def _check_theory_sections(node: Concept, text: str) -> None:
@@ -251,7 +258,8 @@ def _check_theory_sections(node: Concept, text: str) -> None:
 def _section_items(items: Sequence[Item]) -> dict[tuple[str, str], int]:
     """Сколько заданий у каждого раздела: (занятие, раздел) → число."""
     counts: dict[tuple[str, str], int] = {}
-    for item in items:
+    # Погашенное задание не выдаётся — в разделе его нет (аудит среза 53, M1).
+    for item in (item for item in items if item.active):
         concept = main_concept(item)
         if concept is not None and item.section is not None:
             counts[(concept, item.section)] = counts.get((concept, item.section), 0) + 1
@@ -285,6 +293,10 @@ def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> None:
                     f"а нужно от {MIN_SECTIONS} до {MAX_SECTIONS}"
                 )
             _check_unique(f"разделов занятия {node.id}", [s.id for s in node.sections])
+            # По названию раздел ищется в конспекте: дубль сделал бы это неоднозначным.
+            _check_unique(
+                f"(названия) разделов занятия {node.id}", [s.title for s in node.sections]
+            )
 
     for item in items:
         concept = main_concept(item)
@@ -307,7 +319,7 @@ def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> None:
             )
 
     counts = _section_items(items)
-    finals = {main_concept(item) for item in items if item.final}
+    finals = {main_concept(item) for item in items if item.final and item.active}
     for seed in seeds:
         if not seed.topic.published:
             continue
@@ -330,7 +342,13 @@ def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> None:
 def _merge_legacy(
     seeds: Sequence[Seed], nodes: Sequence[Concept]
 ) -> dict[str, LegacyTarget | None]:
-    """Таблицы переноса модулей в одну; цели проверены, старые id не живые."""
+    """Таблицы переноса модулей в одну; цели проверены, старые id не живые.
+
+    Запись лежит в файле модуля, куда тема переезжает: так один файл модуля
+    проверяется и грузится сам по себе (``--seed``, ``load_seed``; аудит
+    среза 53, L3). Тема, убранная без замены (``null``), — в файле модуля,
+    где она жила.
+    """
     by_id = {node.id: node for node in nodes}
     legacy: dict[str, LegacyTarget | None] = {}
     for seed in seeds:
@@ -344,6 +362,12 @@ def _merge_legacy(
                 if node is None:
                     raise SeedError(
                         f"Старая тема {old} переносится в неизвестное занятие {target.node}"
+                    )
+                if node.topic_id != seed.topic.number:
+                    raise SeedError(
+                        f"Старая тема {old} переносится в занятие {target.node} модуля "
+                        f"{node.topic_id}: запись — в файле этого модуля, а не "
+                        f"{seed.topic.number}"
                     )
                 if target.section not in {section.id for section in node.sections}:
                     raise SeedError(
@@ -521,7 +545,7 @@ def thin_sections(course: Seed | Course) -> list[str]:
 
 def lessons_without_final(course: Seed | Course) -> list[str]:
     """Занятия с разделами без итогового задания."""
-    finals = {main_concept(item) for item in course.items if item.final}
+    finals = {main_concept(item) for item in course.items if item.final and item.active}
     return [node.id for node in course.nodes if node.sections and node.id not in finals]
 
 

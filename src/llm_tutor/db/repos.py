@@ -566,19 +566,26 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
         "SELECT id, name, difficulty, description, source_url, topic_id, sections, active "
         "FROM concepts WHERE active = 1 ORDER BY id"
     ).fetchall()
-    return [
-        Concept(
-            id=r["id"],
-            name=r["name"],
-            difficulty=r["difficulty"],
-            description=r["description"],
-            source_url=r["source_url"],
-            topic_id=r["topic_id"],
-            sections=json.loads(r["sections"]),
-            active=bool(r["active"]),
-        )
-        for r in rows
-    ]
+    concepts: list[Concept] = []
+    for r in rows:
+        try:
+            concepts.append(
+                Concept(
+                    id=r["id"],
+                    name=r["name"],
+                    difficulty=r["difficulty"],
+                    description=r["description"],
+                    source_url=r["source_url"],
+                    topic_id=r["topic_id"],
+                    sections=json.loads(r["sections"]),
+                    active=bool(r["active"]),
+                )
+            )
+        except (ValueError, ValidationError):
+            # Как с заданиями: из-за одной битой строки курс не должен падать
+            # целиком (аудит среза 53, L4). JSONDecodeError — подкласс ValueError.
+            logger.warning("Узел %s повреждён и пропущен", r["id"])
+    return concepts
 
 
 def get_edges(conn: sqlite3.Connection) -> list[Edge]:

@@ -363,7 +363,7 @@ def test_theory_headings_skip_fenced_code() -> None:
         ({"l1_frames": {"node": "l1_group", "section": "groupby"}}, "живой узел курса"),
         ({"old_x": {"node": "nope", "section": "groupby"}}, "неизвестное занятие nope"),
         ({"old_x": {"node": "l1_group", "section": "nope"}}, "неизвестный раздел l1_group/nope"),
-        ({"old_hist": {"node": "l2_hist", "section": "kde"}}, "нескольких модулей"),
+        ({"old_hist": {"node": "l1_group", "section": "groupby"}}, "нескольких модулей"),
     ],
 )
 def test_legacy_rules(tmp_path, entry: dict, message: str) -> None:
@@ -374,11 +374,19 @@ def test_legacy_rules(tmp_path, entry: dict, message: str) -> None:
         _load(tmp_path, mutate)
 
 
-def test_legacy_may_point_to_lesson_of_other_module(tmp_path) -> None:
-    def mutate(m1, m2):
+def test_legacy_entry_lives_in_file_of_target_module(tmp_path) -> None:
+    """Тема модуля 1 переезжает в модуль 2: запись — в файле модуля 2 (аудит 53, L3)."""
+
+    def in_target(m1, m2):
+        m2["legacy"]["visualization_basics"] = {"node": "l2_hist", "section": "hist"}
+
+    assert _load(tmp_path / "ok", in_target).legacy["visualization_basics"].node == "l2_hist"
+
+    def in_source(m1, m2):
         m1["legacy"]["visualization_basics"] = {"node": "l2_hist", "section": "hist"}
 
-    assert _load(tmp_path, mutate).legacy["visualization_basics"].node == "l2_hist"
+    with pytest.raises(SeedError, match="запись — в файле этого модуля"):
+        _load(tmp_path / "bad", in_source)
 
 
 def test_seed_with_legacy_null_round_trips(conn: sqlite3.Connection) -> None:

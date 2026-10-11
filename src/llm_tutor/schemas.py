@@ -36,7 +36,9 @@ class Section(BaseModel):
     Своих рёбер и владения у раздела нет — это не узел графа.
     """
 
-    model_config = ConfigDict(frozen=True)
+    # Пробелы по краям снимаются: «Series » иначе не нашлось бы в конспекте
+    # заголовком «## Series» (аудит среза 53, L2).
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
 
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
