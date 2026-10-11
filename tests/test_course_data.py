@@ -78,9 +78,9 @@ def test_legacy_covers_all_103_old_topics() -> None:
 
 
 def test_modules_are_published_in_order() -> None:
-    """Модули открываются по порядку срезов 57–61; остальные — «скоро» (срез 58: 1 и 2)."""
+    """Модули открываются по порядку срезов 57–61; остальные — «скоро» (срез 59: 1–3)."""
     assert [topic.published for topic in load_course_data().topics] == [
-        True, True, False, False, False
+        True, True, True, False, False
     ]
 
 

@@ -246,10 +246,11 @@ def test_stale_pending_item_is_dropped(conn, settings) -> None:
     assert _state(conn).pending_item_id is None
 
 
-# --- БД бота с прогрессом в модуле 3 через import-legacy ---
+# --- БД бота с прогрессом в модуле 3/4 через import-legacy ---
 
 
-async def test_bot_db_with_module3_progress_via_import_legacy(web_settings, tmp_path) -> None:
+def _import_bot_db(web_settings, tmp_path, *, closed, current, mastery):
+    """БД бота с прогрессом → import-legacy → открытая БД ученика (и пул)."""
     from llm_tutor.db.connection import get_conn, migrate
     from llm_tutor.web import accounts
     from llm_tutor.web.cli import main as cli_main
@@ -261,26 +262,32 @@ async def test_bot_db_with_module3_progress_via_import_legacy(web_settings, tmp_
     bot = tmp_path / "bot.sqlite3"
     conn = get_conn(str(bot))
     migrate(conn)
-    module3 = ["ml_task_types", "supervised_learning", "accuracy_metric",
-               "decision_tree_idea", "entropy", "information_gain", "gini_impurity"]
-    _old_db(conn, closed=MODULE1_OLD + module3, current="greedy_tree_building")
-    repos.upsert_mastery(conn, "entropy", alpha=30.0, beta=2.0, last_seen=NOW)
+    _old_db(conn, closed=MODULE1_OLD + closed, current=current)
+    repos.upsert_mastery(conn, mastery, alpha=30.0, beta=2.0, last_seen=NOW)
     conn.close()
 
     args = ["import-legacy", "--email", "ann@example.com", "--db", str(bot)]
     assert cli_main(args, settings=web_settings) == 0
     pool = UserDBPool(tmp_path / "users", tmp_path / "materials.sqlite3", settings=web_settings)
-    student = pool.open(user.id, "mlcourse")
+    return pool.open(user.id, "mlcourse"), pool
+
+
+async def test_bot_db_with_module4_progress_via_import_legacy(web_settings, tmp_path) -> None:
+    module4 = ["linear_regression", "ols_mse", "normal_equation",
+               "gauss_markov", "maximum_likelihood", "mle_normal_mse"]
+    student, pool = _import_bot_db(
+        web_settings, tmp_path, closed=module4, current="multicollinearity", mastery="gauss_markov"
+    )
 
     state = repos.get_session_state(student, repos.get_open_session(student))
-    # Модуль 3 пока «скоро»: его занятие не может быть текущим…
+    # Модуль 4 пока «скоро»: его занятие не может быть текущим…
     assert state.current_node_id is None
-    assert repos.get_mastery(student, "tree_criteria") is not None
+    assert repos.get_mastery(student, "linreg_stats") is not None
     # …а пройденное в нём (и закрытое целиком) ждёт в факте, пока модуль не откроют.
-    assert legacy_mod.legacy_passed(student, "ml_basics") == (
-        ["task_types", "supervised", "accuracy"], []
+    assert legacy_mod.legacy_passed(student, "linreg") == (["model", "ols", "normal_eq"], [])
+    assert legacy_mod.legacy_passed(student, "linreg_stats") == (
+        ["gauss_markov", "likelihood"], []
     )
-    assert legacy_mod.legacy_passed(student, "tree_criteria") == (["idea", "entropy", "gini"], [])
     assert repos.get_fact(student, legacy_mod.LAYOUT_FACT) == legacy_mod.LAYOUT_VERSION
     # Модуль 1 закрыт по-прежнему (кроме занятий с разделами «нов.»).
     closed = {s.concept_id for s in state.route.steps if s.status == "closed"}
@@ -288,4 +295,21 @@ async def test_bot_db_with_module3_progress_via_import_legacy(web_settings, tmp_
     # «Продолжить» не падает на узле вне графа.
     reply = await resume_reply(student, _FakeTutor("Часть"), "m", now=NOW + 1, settings=web_settings)
     assert reply.text
+    pool.close_all()
+
+
+async def test_bot_db_with_module3_progress_continues_in_module_3(web_settings, tmp_path) -> None:
+    """Модуль 3 открыт (срез 59): текущее занятие бота становится текущим в вебе."""
+    module3 = ["ml_task_types", "supervised_learning", "accuracy_metric",
+               "decision_tree_idea", "entropy", "information_gain", "gini_impurity"]
+    student, pool = _import_bot_db(
+        web_settings, tmp_path, closed=module3, current="greedy_tree_building", mastery="entropy"
+    )
+
+    state = repos.get_session_state(student, repos.get_open_session(student))
+    assert state.current_node_id == "tree_building"
+    assert repos.get_mastery(student, "tree_criteria") is not None
+    closed = {s.concept_id for s in state.route.steps if s.status == "closed"}
+    assert "pandas_structures" in closed
+    assert "ml_basics" not in closed  # итоговое задание занятия ещё впереди
     pool.close_all()

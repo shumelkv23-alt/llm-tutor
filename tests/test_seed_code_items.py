@@ -351,6 +351,452 @@ ALTERNATIVES = [
     ),
 ]
 
+# Модуль 3 (срез 59): задания внутри занятий (3111–3117) и итоговые (3121–3127).
+_ENTROPY = (
+    "import numpy as np\n"
+    "def entropy(labels):\n"
+    "    _, counts = np.unique(labels, return_counts=True)\n"
+    "    p = counts / counts.sum()\n"
+    "    return float((p * np.log2(1 / p)).sum())\n"
+)
+
+SOLUTIONS.update({
+    3111: (
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "a, b, c, d = train_test_split(X, y, test_size=0.25, random_state=17, stratify=y)\n"
+        "model = DecisionTreeClassifier(max_depth=2, random_state=17).fit(a, c)\n"
+        "result = model.score(b, d)"
+    ),
+    3112: _ENTROPY.replace("float((p", "float(-(p").replace("np.log2(1 / p)", "np.log2(p)")
+    + "result = entropy(y)",
+    3113: (
+        "order = np.argsort(ages)\n"
+        "a, c = ages[order], churn[order]\n"
+        "result = [float((a[i] + a[i + 1]) / 2) for i in range(len(a) - 1) if c[i] != c[i + 1]]"
+    ),
+    3114: (
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(max_depth=3, min_samples_leaf=5, random_state=17)"
+        ".fit(X_train, y_train)"
+    ),
+    3115: (
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import StandardScaler\n"
+        "model = make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=3, weights='distance'))\n"
+        "result = model.fit(X_train, y_train).score(X_test, y_test)"
+    ),
+    3116: (
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = cross_val_score(DecisionTreeClassifier(max_depth=3, random_state=17), X, y, cv=5).mean()"
+    ),
+    3117: (
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(random_state=17).fit(X, y).get_n_leaves()"
+    ),
+    3121: (
+        "from sklearn.dummy import DummyClassifier\n"
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "a, b, c, d = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n"
+        "result = {\n"
+        "    'baseline': DummyClassifier(strategy='most_frequent').fit(a, c).score(b, d),\n"
+        "    'tree': DecisionTreeClassifier(max_depth=3, random_state=17).fit(a, c).score(b, d),\n"
+        "}"
+    ),
+    3122: (
+        _ENTROPY
+        + "def information_gain(parent, groups):\n"
+        "    n = len(parent)\n"
+        "    return entropy(parent) - sum(len(g) / n * entropy(g) for g in groups)\n"
+        "gains = {\n"
+        "    name: information_gain(y, [y[(features[name] == v).values] for v in (0, 1)])\n"
+        "    for name in features.columns\n"
+        "}\n"
+        "result = max(gains, key=gains.get)"
+    ),
+    3123: (
+        _ENTROPY
+        + "def best_threshold(x, y):\n"
+        "    x, y = np.asarray(x), np.asarray(y)\n"
+        "    order = np.argsort(x, kind='stable')\n"
+        "    x, y = x[order], y[order]\n"
+        "    best, best_gain = None, -1.0\n"
+        "    for i in range(len(x) - 1):\n"
+        "        if y[i] == y[i + 1]:\n"
+        "            continue\n"
+        "        t = (x[i] + x[i + 1]) / 2\n"
+        "        left, right = y[x <= t], y[x > t]\n"
+        "        gain = entropy(y) - len(left) / len(y) * entropy(left) - len(right) / len(y) * entropy(right)\n"
+        "        if gain > best_gain:\n"
+        "            best, best_gain = t, gain\n"
+        "    return best\n"
+        "result = best_threshold(ages, churn)"
+    ),
+    3124: (
+        "import pandas as pd\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "rows = []\n"
+        "for depth in range(1, 9):\n"
+        "    m = DecisionTreeClassifier(max_depth=depth, random_state=17).fit(X_train, y_train)\n"
+        "    rows.append({'depth': depth, 'train': m.score(X_train, y_train), 'test': m.score(X_test, y_test)})\n"
+        "result = pd.DataFrame(rows)\n"
+        "best = int(result.loc[result['test'].idxmax(), 'depth'])"
+    ),
+    3125: (
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import StandardScaler\n"
+        "result = {\n"
+        "    k: cross_val_score(make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=k)), X, y, cv=5).mean()\n"
+        "    for k in [1, 3, 5, 9, 15]\n"
+        "}\n"
+        "best_k = max(result, key=lambda k: (result[k], -k))"
+    ),
+    3126: (
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "grid = GridSearchCV(DecisionTreeClassifier(random_state=17),\n"
+        "                    {'max_depth': [1, 2, 3, 4, 5], 'min_samples_leaf': [1, 5, 10]}, cv=5)\n"
+        "grid.fit(X_train, y_train)\n"
+        "result = {'best_params': grid.best_params_, 'test_score': grid.score(X_test, y_test)}"
+    ),
+    3127: (
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "tree = cross_val_score(DecisionTreeClassifier(max_depth=8, random_state=17), X, y, cv=5).mean()\n"
+        "knn = cross_val_score(KNeighborsClassifier(n_neighbors=3), X, y, cv=5).mean()\n"
+        "result = {'tree': tree, 'knn': knn, 'winner': 'knn' if knn > tree else 'tree'}"
+    ),
+})
+
+WRONG.update({
+    3111: (
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "a, b, c, d = train_test_split(X, y, test_size=0.25, random_state=17, stratify=y)\n"
+        "model = DecisionTreeClassifier(max_depth=2, random_state=17).fit(a, c)\n"
+        "result = model.score(a, c)"
+    ),
+    3112: _ENTROPY.replace("float((p * np.log2(1 / p))", "float((p * np.log(1 / p))") + "result = entropy(y)",
+    3113: (
+        "a, c = ages, churn\n"
+        "result = [float((a[i] + a[i + 1]) / 2) for i in range(len(a) - 1) if c[i] != c[i + 1]]"
+    ),
+    3114: (
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(max_depth=3, min_samples_split=5, random_state=17)"
+        ".fit(X_train, y_train)"
+    ),
+    3115: (
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "model = KNeighborsClassifier(n_neighbors=3, weights='distance')\n"
+        "result = model.fit(X_train, y_train).score(X_test, y_test)"
+    ),
+    3116: (
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = cross_val_score(DecisionTreeClassifier(max_depth=3, random_state=17), X, y, cv=3).mean()"
+    ),
+    3117: (
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(max_depth=3, random_state=17).fit(X, y).get_n_leaves()"
+    ),
+    3121: (
+        "from sklearn.dummy import DummyClassifier\n"
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "a, b, c, d = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n"
+        "result = {\n"
+        "    'baseline': DummyClassifier(strategy='most_frequent').fit(a, c).score(a, c),\n"
+        "    'tree': DecisionTreeClassifier(max_depth=3, random_state=17).fit(a, c).score(b, d),\n"
+        "}"
+    ),
+    3122: (
+        _ENTROPY
+        + "def information_gain(parent, groups):\n"
+        "    return entropy(parent) - sum(entropy(g) for g in groups) / len(groups)\n"
+        "gains = {\n"
+        "    name: information_gain(y, [y[(features[name] == v).values] for v in (0, 1)])\n"
+        "    for name in features.columns\n"
+        "}\n"
+        "result = max(gains, key=gains.get)"
+    ),
+    3123: (
+        _ENTROPY
+        + "def best_threshold(x, y):\n"
+        "    x, y = np.asarray(x), np.asarray(y)\n"
+        "    order = np.argsort(x, kind='stable')\n"
+        "    x, y = x[order], y[order]\n"
+        "    for i in range(len(x) - 1):\n"
+        "        if y[i] != y[i + 1]:\n"
+        "            return (x[i] + x[i + 1]) / 2\n"
+        "result = best_threshold(ages, churn)"
+    ),
+    3124: (
+        "import pandas as pd\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "rows = []\n"
+        "for depth in range(1, 8):\n"
+        "    m = DecisionTreeClassifier(max_depth=depth, random_state=17).fit(X_train, y_train)\n"
+        "    rows.append({'depth': depth, 'train': m.score(X_train, y_train), 'test': m.score(X_test, y_test)})\n"
+        "result = pd.DataFrame(rows)\n"
+        "best = int(result.loc[result['test'].idxmax(), 'depth'])"
+    ),
+    3125: (
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.preprocessing import StandardScaler\n"
+        "Z = StandardScaler().fit_transform(X)\n"
+        "result = {k: cross_val_score(KNeighborsClassifier(n_neighbors=k), Z, y, cv=5).mean() for k in [1, 3, 5, 9, 15]}\n"
+        "best_k = max(result, key=lambda k: (result[k], -k))"
+    ),
+    3126: (
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "grid = GridSearchCV(DecisionTreeClassifier(random_state=17),\n"
+        "                    {'max_depth': [1, 2, 3, 4, 5], 'min_samples_leaf': [1, 5, 10]}, cv=3)\n"
+        "grid.fit(X_train, y_train)\n"
+        "result = {'best_params': grid.best_params_, 'test_score': grid.score(X_test, y_test)}"
+    ),
+    3127: (
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "tree = cross_val_score(DecisionTreeClassifier(random_state=17), X, y, cv=5).mean()\n"
+        "knn = cross_val_score(KNeighborsClassifier(n_neighbors=3), X, y, cv=5).mean()\n"
+        "result = {'tree': tree, 'knn': knn, 'winner': 'knn' if knn > tree else 'tree'}"
+    ),
+})
+
+MORE_WRONG += [
+    (
+        3111,
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "a, b, c, d = train_test_split(X, y, test_size=0.25, random_state=17)\n"
+        "result = DecisionTreeClassifier(max_depth=2, random_state=17).fit(a, c).score(b, d)",
+    ),
+    (
+        3112,
+        "import numpy as np\n"
+        "def entropy(labels):\n"
+        "    _, counts = np.unique(labels, return_counts=True)\n"
+        "    p = counts / counts.sum()\n"
+        "    return float(1 - (p ** 2).sum())\n"
+        "result = entropy(y)",
+    ),
+    (
+        3113,
+        "order = np.argsort(ages)\n"
+        "a = ages[order]\n"
+        "result = [float((a[i] + a[i + 1]) / 2) for i in range(len(a) - 1)]",
+    ),
+    (
+        3114,
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(max_depth=3, min_samples_leaf=5, random_state=17).fit(X, y)",
+    ),
+    (
+        3115,
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import StandardScaler\n"
+        "model = make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=3))\n"
+        "result = model.fit(X_train, y_train).score(X_train, y_train)",
+    ),
+    (
+        3116,
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(max_depth=3, random_state=17).fit(X, y).score(X, y)",
+    ),
+    (3117, "result = 2"),
+    (
+        3121,
+        "from sklearn.dummy import DummyClassifier\n"
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "a, b, c, d = train_test_split(X, y, test_size=0.3, random_state=17)\n"
+        "result = {\n"
+        "    'baseline': DummyClassifier(strategy='most_frequent').fit(a, c).score(b, d),\n"
+        "    'tree': DecisionTreeClassifier(max_depth=3, random_state=17).fit(a, c).score(b, d),\n"
+        "}",
+    ),
+    (
+        3122,
+        _ENTROPY
+        + "def information_gain(parent, groups):\n"
+        "    n = len(parent)\n"
+        "    return entropy(parent) - sum(len(g) / n * entropy(g) for g in groups)\n"
+        "gains = {\n"
+        "    name: information_gain(y, [y[(features[name] == v).values] for v in (0, 1)])\n"
+        "    for name in features.columns\n"
+        "}\n"
+        "result = min(gains, key=gains.get)",
+    ),
+    (
+        3123,
+        _ENTROPY
+        + "def best_threshold(x, y):\n"
+        "    x, y = np.asarray(x), np.asarray(y)\n"
+        "    order = np.argsort(x, kind='stable')\n"
+        "    x, y = x[order], y[order]\n"
+        "    best, best_gain = None, -1.0\n"
+        "    for i in range(len(x) - 1):\n"
+        "        if y[i] == y[i + 1]:\n"
+        "            continue\n"
+        "        t = (x[i] + x[i + 1]) / 2\n"
+        "        left, right = y[x <= t], y[x > t]\n"
+        "        gain = entropy(y) - (entropy(left) + entropy(right)) / 2\n"
+        "        if gain > best_gain:\n"
+        "            best, best_gain = t, gain\n"
+        "    return best\n"
+        "result = best_threshold(ages, churn)",
+    ),
+    (
+        3124,
+        "import pandas as pd\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "rows = []\n"
+        "for depth in range(1, 9):\n"
+        "    m = DecisionTreeClassifier(max_depth=depth, random_state=17).fit(X_train, y_train)\n"
+        "    rows.append({'depth': depth, 'train': m.score(X_train, y_train), 'test': m.score(X_test, y_test)})\n"
+        "result = pd.DataFrame(rows)\n"
+        "best = int(result.loc[result['train'].idxmax(), 'depth'])",
+    ),
+    (
+        3125,
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "result = {k: cross_val_score(KNeighborsClassifier(n_neighbors=k), X, y, cv=5).mean() for k in [1, 3, 5, 9, 15]}\n"
+        "best_k = max(result, key=lambda k: (result[k], -k))",
+    ),
+    (
+        3126,
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "grid = GridSearchCV(DecisionTreeClassifier(random_state=17),\n"
+        "                    {'max_depth': [3, 4, 5], 'min_samples_leaf': [1, 5, 10]}, cv=5)\n"
+        "grid.fit(X_train, y_train)\n"
+        "result = {'best_params': grid.best_params_, 'test_score': grid.score(X_test, y_test)}",
+    ),
+    (
+        3127,
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "tree = cross_val_score(DecisionTreeClassifier(max_depth=8, random_state=17), X, y, cv=5).mean()\n"
+        "knn = cross_val_score(KNeighborsClassifier(n_neighbors=3), X, y, cv=5).mean()\n"
+        "result = {'tree': tree, 'knn': knn, 'winner': 'tree'}",
+    ),
+]
+
+ALTERNATIVES += [
+    (
+        3111,
+        "from sklearn.metrics import accuracy_score\n"
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.25, random_state=17, stratify=y)\n"
+        "model = DecisionTreeClassifier(max_depth=2, random_state=17)\n"
+        "model.fit(X_tr, y_tr)\n"
+        "result = accuracy_score(y_te, model.predict(X_te))",
+    ),
+    (
+        3112,
+        "import math\n"
+        "def entropy(labels):\n"
+        "    labels = list(labels)\n"
+        "    total = 0.0\n"
+        "    for c in set(labels):\n"
+        "        p = labels.count(c) / len(labels)\n"
+        "        total -= p * math.log2(p)\n"
+        "    return total\n"
+        "result = entropy(y)",
+    ),
+    (
+        3113,
+        "pairs = sorted(zip(ages.tolist(), churn.tolist()))\n"
+        "result = [(pairs[i][0] + pairs[i + 1][0]) / 2 for i in range(len(pairs) - 1)"
+        " if pairs[i][1] != pairs[i + 1][1]]",
+    ),
+    (
+        3114,
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "result = DecisionTreeClassifier(random_state=17)\n"
+        "result.set_params(max_depth=3, min_samples_leaf=5)\n"
+        "result.fit(X_train, y_train)",
+    ),
+    (
+        3115,
+        "from sklearn.neighbors import KNeighborsClassifier\n"
+        "from sklearn.pipeline import Pipeline\n"
+        "from sklearn.preprocessing import StandardScaler\n"
+        "pipe = Pipeline([('scale', StandardScaler()), ('knn', KNeighborsClassifier(n_neighbors=3, weights='distance'))])\n"
+        "pipe.fit(X_train, y_train)\n"
+        "result = (pipe.predict(X_test) == y_test).mean()",
+    ),
+    (
+        3116,
+        "from sklearn.model_selection import StratifiedKFold, cross_val_score\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "scores = cross_val_score(DecisionTreeClassifier(max_depth=3, random_state=17), X, y,\n"
+        "                         cv=StratifiedKFold(n_splits=5))\n"
+        "result = sum(scores) / len(scores)",
+    ),
+    (
+        3117,
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "tree = DecisionTreeClassifier(random_state=17).fit(X, y)\n"
+        "result = int((tree.tree_.children_left == -1).sum())",
+    ),
+    (
+        3121,
+        "from sklearn.dummy import DummyClassifier\n"
+        "from sklearn.metrics import accuracy_score\n"
+        "from sklearn.model_selection import train_test_split\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "X_tr, X_te, y_tr, y_te = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n"
+        "dummy = DummyClassifier(strategy='most_frequent').fit(X_tr, y_tr)\n"
+        "tree = DecisionTreeClassifier(max_depth=3, random_state=17).fit(X_tr, y_tr)\n"
+        "result = {'baseline': accuracy_score(y_te, dummy.predict(X_te)),\n"
+        "          'tree': accuracy_score(y_te, tree.predict(X_te))}",
+    ),
+    (
+        3122,
+        "import numpy as np\n"
+        "def entropy(labels):\n"
+        "    counts = np.bincount(np.asarray(labels))\n"
+        "    p = counts[counts > 0] / len(labels)\n"
+        "    return float(-np.sum(p * np.log2(p)))\n"
+        "def information_gain(parent, groups):\n"
+        "    sizes = [len(g) for g in groups]\n"
+        "    return entropy(parent) - float(np.average([entropy(g) for g in groups], weights=sizes))\n"
+        "best, best_gain = None, -1\n"
+        "for name in features.columns:\n"
+        "    mask = (features[name] == 1).values\n"
+        "    gain = information_gain(y, [y[~mask], y[mask]])\n"
+        "    if gain > best_gain:\n"
+        "        best, best_gain = name, gain\n"
+        "result = best",
+    ),
+    (
+        3126,
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "search = GridSearchCV(DecisionTreeClassifier(random_state=17),\n"
+        "                      param_grid={'min_samples_leaf': [1, 5, 10], 'max_depth': list(range(1, 6))},\n"
+        "                      cv=5, refit=True)\n"
+        "search.fit(X_train, y_train)\n"
+        "result = {'best_params': search.best_params_,\n"
+        "          'test_score': search.best_estimator_.score(X_test, y_test)}",
+    ),
+]
+
 ITEMS = {item.id: item for item in load_course_data().items if item.answer_type == "code"}
 
 

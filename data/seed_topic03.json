@@ -61,7 +61,7 @@
         "t03_basics"
       ]
     },
-    "published": false
+    "published": true
   },
   "nodes": [
     {
@@ -1169,12 +1169,343 @@
       "answer": null,
       "rubric_id": 301,
       "section": "params"
+    },
+    {
+      "id": 3101,
+      "prompt": "Признаки — яркости 64 пикселей картинок 8×8, все в одной шкале, нужно распознать цифру. Какой из двух методов модуля подойдёт лучше, по материалам курса?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "trees_knn_practice": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Дерево решений: пиксели удобно сравнивать с порогами",
+        "Ни один: для картинок подходят только нейросети",
+        "Любой, разницы между методами нет",
+        "kNN: расстояние между векторами пикселей отражает сходство цифр"
+      ],
+      "answer": "3",
+      "section": "when_which"
+    },
+    {
+      "id": 3102,
+      "prompt": "Для банка нужно объяснять клиенту причину каждого решения. Признаки разнородные: числа, категории, бинарные флаги. Что выбрать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "trees_knn_practice": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Неглубокое дерево решений: его правила можно прочитать",
+        "kNN: чем больше соседей, тем подробнее объяснение",
+        "kNN без масштабирования признаков",
+        "Дерево без ограничения глубины: оно самое точное на обучении"
+      ],
+      "answer": "0",
+      "section": "when_which"
+    },
+    {
+      "id": 3103,
+      "prompt": "Сервис должен отвечать за миллисекунды, а обучающая выборка содержит миллионы объектов. Что сильнее всего мешает здесь kNN?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "trees_knn_practice": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Метод нельзя использовать для классификации",
+        "Нужно заранее обучать модель много часов",
+        "Метод запрещает масштабирование признаков",
+        "Каждый прогноз требует поиска соседей среди всех обучающих объектов"
+      ],
+      "answer": "3",
+      "section": "when_which"
+    },
+    {
+      "id": 3111,
+      "prompt": "Напиши код: разбей `X`, `y` на обучающую и тестовую части (`test_size=0.25`, `random_state=17`, `stratify=y`), обучи `DecisionTreeClassifier(max_depth=2, random_state=17)` на обучающей части и сохрани в result его долю правильных ответов на тестовой части.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ml_basics": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 302,
+      "starter": "from sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Разбиение, обучение, точность на тесте\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n",
+      "tests": "from sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\na, b, c, d = train_test_split(X, y, test_size=0.25, random_state=17, stratify=y)\nexpected = DecisionTreeClassifier(max_depth=2, random_state=17).fit(a, c).score(b, d)\nassert abs(float(result) - expected) < 1e-9, \"Точность считается на тестовой части, модель обучена на обучающей; разбиение: test_size=0.25, random_state=17, stratify=y.\"\n",
+      "section": "supervised"
+    },
+    {
+      "id": 3112,
+      "prompt": "Напиши код: определи функцию `entropy(labels)` — энтропию Шеннона списка меток по логарифму с основанием 2. Сохрани в result энтропию списка `y`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 303,
+      "starter": "import numpy as np\n\n\ndef entropy(labels):\n    ...\n\n\nresult = None\n",
+      "setup": "y = [0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0]\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert abs(entropy([0, 0, 0, 0])) < 1e-9, \"Энтропия группы одного класса равна 0.\"\nassert abs(entropy([0, 1, 0, 1]) - 1) < 1e-9, \"Два класса поровну: энтропия 1 (логарифм по основанию 2).\"\nassert abs(entropy([0, 0, 1, 1, 2, 2]) - np.log2(3)) < 1e-9, \"Классов может быть больше двух: суммируйте по всем.\"\np = np.bincount(y) / len(y)\nassert abs(float(result) - float(-(p * np.log2(p)).sum())) < 1e-9, \"result = entropy(y).\"\n",
+      "section": "entropy"
+    },
+    {
+      "id": 3113,
+      "prompt": "Напиши код: `ages` и `churn` — возраст клиентов и признак ухода (порядок произвольный). Найди все пороги-кандидаты, которые проверит дерево: середины между соседними (по возрасту) значениями, у которых метки различаются. Сохрани список порогов по возрастанию в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 304,
+      "starter": "# Пороги-кандидаты по возрасту\nresult = None\n",
+      "setup": "import numpy as np\n\nages = np.array([51, 27, 33, 45, 29, 62, 40, 37])\nchurn = np.array([1, 0, 0, 1, 0, 1, 0, 1])\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert [round(float(v), 6) for v in result] == [35.0, 38.5, 42.5], \"Сначала отсортируйте по возрасту, затем берите середины только там, где меняется метка.\"\n",
+      "section": "thresholds"
+    },
+    {
+      "id": 3114,
+      "prompt": "Напиши код: обучи на `X_train`, `y_train` дерево `DecisionTreeClassifier` с глубиной не больше 3 и не менее чем 5 объектами в каждом листе (`random_state=17`). Сохрани обученную модель в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 305,
+      "starter": "from sklearn.tree import DecisionTreeClassifier\n\n# Ограниченное дерево\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n\nfrom sklearn.model_selection import train_test_split\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "from sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and result is not None, \"Сохраните модель в переменную result.\"\nassert isinstance(result, DecisionTreeClassifier), \"Ожидается DecisionTreeClassifier.\"\nassert hasattr(result, \"tree_\"), \"Модель нужно обучить: fit(X_train, y_train).\"\nparams = result.get_params()\nassert params[\"max_depth\"] == 3, \"Глубину ограничивает max_depth=3.\"\nassert params[\"min_samples_leaf\"] == 5, \"Минимум объектов в листе задаёт min_samples_leaf=5.\"\ntree = result.tree_\nassert tree.n_node_samples[0] == len(X_train), \"Модель обучается на X_train, y_train.\"\nleaves = tree.children_left == -1\nassert (tree.n_node_samples[leaves] >= 5).all(), \"В каждом листе должно быть не меньше 5 объектов.\"\n",
+      "section": "params"
+    },
+    {
+      "id": 3115,
+      "prompt": "Напиши код: собери `Pipeline` из `StandardScaler` и `KNeighborsClassifier(n_neighbors=3, weights='distance')`, обучи его на `X_train`, `y_train` и сохрани в result долю правильных ответов на `X_test`, `y_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "knn": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 306,
+      "starter": "from sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\n# kNN с масштабированием\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(10)\nn = 160\nminutes = rng.normal(180, 50, n)\ncalls = rng.integers(0, 8, n).astype(float)\ny = (calls + rng.normal(0, 1.0, n) > 4).astype(int)\nX = np.column_stack([minutes, calls])\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "from sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nmodel = make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=3, weights=\"distance\"))\nexpected = model.fit(X_train, y_train).score(X_test, y_test)\nassert abs(float(result) - expected) < 1e-9, \"Нужны масштабирование (StandardScaler), n_neighbors=3, weights='distance' и точность на тесте.\"\n",
+      "section": "params"
+    },
+    {
+      "id": 3116,
+      "prompt": "Напиши код: оцени `DecisionTreeClassifier(max_depth=3, random_state=17)` на `X`, `y` 5-кратной кросс-валидацией и сохрани в result среднюю долю правильных ответов по фолдам.",
+      "answer_type": "code",
+      "concept_weights": {
+        "validation": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 307,
+      "starter": "from sklearn.model_selection import cross_val_score\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Среднее по 5 фолдам\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n",
+      "tests": "from sklearn.model_selection import cross_val_score\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nexpected = cross_val_score(DecisionTreeClassifier(max_depth=3, random_state=17), X, y, cv=5).mean()\nassert abs(float(result) - expected) < 1e-9, \"Нужно среднее по 5 фолдам: cross_val_score(model, X, y, cv=5).mean().\"\n",
+      "section": "cv"
+    },
+    {
+      "id": 3117,
+      "prompt": "Напиши код: классы в `X`, `y` разделены диагональю (`x₁ > x₂`). Обучи `DecisionTreeClassifier(random_state=17)` без ограничений на всех данных и сохрани в result число его листьев.",
+      "answer_type": "code",
+      "concept_weights": {
+        "trees_knn_practice": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 308,
+      "starter": "from sklearn.tree import DecisionTreeClassifier\n\n# Сколько листьев нужно дереву для диагонали\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(15)\nX = rng.uniform(0, 1, size=(300, 2))\ny = (X[:, 0] > X[:, 1]).astype(int)\n",
+      "tests": "from sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nexpected = DecisionTreeClassifier(random_state=17).fit(X, y).get_n_leaves()\nassert int(result) == expected, \"Нужно число листьев: get_n_leaves() у дерева без ограничений, обученного на всех данных.\"\nassert expected > 2, \"внутренняя ошибка задания\"\n",
+      "section": "cases"
+    },
+    {
+      "id": 3121,
+      "prompt": "Итоговое задание. Разбей `X`, `y` на обучающую и тестовую части (`test_size=0.3`, `random_state=17`, `stratify=y`). Сохрани в result словарь с двумя числами — долей правильных ответов на тесте: `baseline` — тривиальной модели «всегда самый частый класс» (`DummyClassifier`), `tree` — дерева `DecisionTreeClassifier(max_depth=3, random_state=17)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ml_basics": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 309,
+      "starter": "from sklearn.dummy import DummyClassifier\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Базовый уровень и дерево\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n",
+      "tests": "from sklearn.dummy import DummyClassifier\nfrom sklearn.model_selection import train_test_split\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами baseline и tree.\"\nassert {\"baseline\", \"tree\"} <= set(result), \"Нужны ключи baseline и tree.\"\na, b, c, d = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\nbaseline = DummyClassifier(strategy=\"most_frequent\").fit(a, c).score(b, d)\ntree = DecisionTreeClassifier(max_depth=3, random_state=17).fit(a, c).score(b, d)\nassert abs(float(result[\"baseline\"]) - baseline) < 1e-9, \"baseline: DummyClassifier(strategy='most_frequent'), точность на тесте.\"\nassert abs(float(result[\"tree\"]) - tree) < 1e-9, \"tree: дерево глубины 3, обученное на обучающей части, точность на тесте.\"\n",
+      "final": true
+    },
+    {
+      "id": 3122,
+      "prompt": "Итоговое задание. Определи `entropy(labels)` и `information_gain(parent, groups)` — прирост информации от разбиения `parent` на список групп `groups` (энтропия по основанию 2, группы взвешиваются по размеру). В `features` три бинарных признака клиентов, в `y` — уход. Сохрани в result название признака, разбиение по которому даёт наибольший прирост.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": null,
+      "rubric_id": 310,
+      "starter": "import numpy as np\n\n\ndef entropy(labels):\n    ...\n\n\ndef information_gain(parent, groups):\n    ...\n\n\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nfeatures = pd.DataFrame({\n    \"intl_plan\":  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],\n    \"many_calls\": [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],\n    \"vmail\":      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],\n})\ny = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert abs(entropy([0, 0, 0, 0])) < 1e-9 and abs(entropy([0, 1, 0, 1]) - 1) < 1e-9, \"entropy: 0 для чистой группы и 1 для двух классов поровну.\"\nparent = [0, 0, 1, 1]\nassert abs(information_gain(parent, [[0, 0], [1, 1]]) - 1) < 1e-9, \"Идеальное разбиение даёт прирост, равный энтропии родителя.\"\nassert abs(information_gain(parent, [[0, 1], [0, 1]])) < 1e-9, \"Разбиение, не меняющее доли классов, не даёт прироста.\"\ndef _h(v):\n    v = np.asarray(v)\n    q = np.bincount(v, minlength=2) / len(v)\n    q = q[q > 0]\n    return float((q * np.log2(1 / q)).sum())\n\n\nuneven = np.array([0, 0, 0, 0, 0, 0, 1, 0])\ngot = information_gain(list(uneven), [list(uneven[:6]), list(uneven[6:])])\nwant = _h(uneven) - 6 / 8 * _h(uneven[:6]) - 2 / 8 * _h(uneven[6:])\nassert abs(got - want) < 1e-9, \"Энтропия групп взвешивается по размеру группы: Nᵢ / N.\"\ngains = {\n    name: _h(y) - sum((features[name] == v).sum() / len(y) * _h(y[(features[name] == v).values]) for v in (0, 1))\n    for name in features.columns\n}\nbest = max(gains, key=gains.get)\nassert result == best, \"Для каждого признака разбейте y на группы по значению 0/1 и сравните приросты информации.\"\n",
+      "final": true
+    },
+    {
+      "id": 3123,
+      "prompt": "Итоговое задание. Определи функцию `best_threshold(x, y)`: среди порогов-кандидатов (середины между соседними по `x` значениями с разными метками) она возвращает тот, при котором прирост информации (энтропия по основанию 2, группы `x ≤ порог` и `x > порог`) наибольший. Сохрани в result `best_threshold(ages, churn)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.75,
+      "options": [],
+      "answer": null,
+      "rubric_id": 311,
+      "starter": "import numpy as np\n\n\ndef best_threshold(x, y):\n    ...\n\n\nresult = None\n",
+      "setup": "import numpy as np\n\nages = np.array([22, 25, 31, 38, 41, 49, 53, 60, 64])\nchurn = np.array([0, 0, 0, 1, 1, 0, 1, 1, 1])\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\n\n\ndef _h(v):\n    v = np.asarray(v)\n    if len(v) == 0:\n        return 0.0\n    q = np.bincount(v) / len(v)\n    q = q[q > 0]\n    return float((q * np.log2(1 / q)).sum())\n\n\ndef _best(x, y):\n    x, y = np.asarray(x), np.asarray(y)\n    order = np.argsort(x, kind=\"stable\")\n    x, y = x[order], y[order]\n    best, best_gain = None, -1.0\n    for i in range(len(x) - 1):\n        if y[i] == y[i + 1]:\n            continue\n        t = (x[i] + x[i + 1]) / 2\n        left, right = y[x <= t], y[x > t]\n        gain = _h(y) - len(left) / len(y) * _h(left) - len(right) / len(y) * _h(right)\n        if gain > best_gain:\n            best, best_gain = t, gain\n    return best\n\n\ncases = [\n    (ages, churn),\n    ([10, 20, 30, 40, 50, 60], [0, 0, 0, 1, 1, 1]),\n    ([5, 1, 9, 3, 7, 2, 8], [1, 0, 1, 0, 1, 0, 1]),\n    ([1, 2, 3, 4, 5, 6, 7, 8], [0, 1, 0, 0, 0, 0, 1, 1]),\n    ([4, 2, 0, 3, 5, 1, 9, 10, 11, 7, 6, 8], [0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]),\n]\nfor x, y in cases:\n    assert abs(best_threshold(x, y) - _best(x, y)) < 1e-9, f\"best_threshold({list(x)}, {list(y)}) должен вернуть {_best(x, y)}.\"\nassert abs(float(result) - _best(ages, churn)) < 1e-9, \"result = best_threshold(ages, churn).\"\n",
+      "final": true
+    },
+    {
+      "id": 3124,
+      "prompt": "Итоговое задание. Для глубин `max_depth` от 1 до 8 включительно обучи `DecisionTreeClassifier(max_depth=…, random_state=17)` на `X_train`, `y_train`. Сохрани в result таблицу из 8 строк со столбцами `depth`, `train` и `test` (точность на обучающей и тестовой частях), а в `best` — глубину с наибольшей точностью на тесте (при равенстве — меньшую).",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 312,
+      "starter": "import pandas as pd\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Кривая «глубина — точность»\nresult = None\nbest = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n\nfrom sklearn.model_selection import train_test_split\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "import numpy as np\nimport pandas as pd\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, pd.DataFrame), \"result — таблица (DataFrame).\"\nassert {\"depth\", \"train\", \"test\"} <= set(result.columns), \"Нужны столбцы depth, train и test.\"\nassert result[\"depth\"].tolist() == list(range(1, 9)), \"Глубины от 1 до 8 включительно, по порядку.\"\nrows = []\nfor depth in range(1, 9):\n    model = DecisionTreeClassifier(max_depth=depth, random_state=17).fit(X_train, y_train)\n    rows.append((model.score(X_train, y_train), model.score(X_test, y_test)))\ntrain = np.array([r[0] for r in rows])\ntest = np.array([r[1] for r in rows])\nassert np.allclose(result[\"train\"].astype(float).values, train), \"train — точность на обучающей части.\"\nassert np.allclose(result[\"test\"].astype(float).values, test), \"test — точность на тестовой части.\"\nassert best == int(np.argmax(test)) + 1, \"best — глубина с наибольшей точностью на тесте (при равенстве — меньшая).\"\n",
+      "final": true
+    },
+    {
+      "id": 3125,
+      "prompt": "Итоговое задание. Для `k` из `[1, 3, 5, 9, 15]` оцени 5-кратной кросс-валидацией на `X`, `y` пайплайн `StandardScaler` → `KNeighborsClassifier(n_neighbors=k)`. Сохрани в result словарь `{k: средняя точность}`, а в `best_k` — `k` с наибольшей средней точностью (при равенстве — меньшее).",
+      "answer_type": "code",
+      "concept_weights": {
+        "knn": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 313,
+      "starter": "from sklearn.model_selection import cross_val_score\nfrom sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\n\n# Выбор k\nresult = None\nbest_k = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(10)\nn = 200\nminutes = rng.normal(180, 50, n)\ncalls = rng.integers(0, 8, n).astype(float)\ny = (calls + rng.normal(0, 1.0, n) > 4).astype(int)\nX = np.column_stack([minutes, calls])\n",
+      "tests": "import numpy as np\nfrom sklearn.model_selection import cross_val_score\nfrom sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import StandardScaler\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь {k: точность}.\"\nassert sorted(result) == [1, 3, 5, 9, 15], \"Ключи словаря — значения k: 1, 3, 5, 9, 15.\"\nexpected = {\n    k: cross_val_score(\n        make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=k)), X, y, cv=5\n    ).mean()\n    for k in (1, 3, 5, 9, 15)\n}\nfor k, value in expected.items():\n    assert abs(float(result[k]) - value) < 1e-9, f\"k={k}: масштабирование должно быть внутри Pipeline, оценка — 5-кратная кросс-валидация.\"\nbest = min(expected, key=lambda k: (-expected[k], k))\nassert best_k == best, \"best_k — k с наибольшей средней точностью (при равенстве — меньшее).\"\n",
+      "final": true
+    },
+    {
+      "id": 3126,
+      "prompt": "Итоговое задание. Подбери параметры дерева `DecisionTreeClassifier(random_state=17)` с помощью `GridSearchCV` (`cv=5`) на `X_train`, `y_train`: `max_depth` из `[1, 2, 3, 4, 5]` и `min_samples_leaf` из `[1, 5, 10]`. Сохрани в result словарь: `best_params` — лучшая комбинация, `test_score` — точность найденной модели на `X_test`, `y_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "validation": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 314,
+      "starter": "from sklearn.model_selection import GridSearchCV\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Перебор параметров дерева\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n\nfrom sklearn.model_selection import train_test_split\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "from sklearn.model_selection import GridSearchCV\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами best_params и test_score.\"\nassert {\"best_params\", \"test_score\"} <= set(result), \"Нужны ключи best_params и test_score.\"\ngrid = GridSearchCV(\n    DecisionTreeClassifier(random_state=17),\n    {\"max_depth\": [1, 2, 3, 4, 5], \"min_samples_leaf\": [1, 5, 10]},\n    cv=5,\n).fit(X_train, y_train)\nassert dict(result[\"best_params\"]) == grid.best_params_, \"best_params_ после перебора указанной сетки с cv=5.\"\nassert abs(float(result[\"test_score\"]) - grid.score(X_test, y_test)) < 1e-9, \"test_score — точность лучшей модели на тестовой части.\"\n",
+      "final": true
+    },
+    {
+      "id": 3127,
+      "prompt": "Итоговое задание. На рукописных цифрах (`X`, `y`) сравни `DecisionTreeClassifier(max_depth=8, random_state=17)` и `KNeighborsClassifier(n_neighbors=3)` 5-кратной кросс-валидацией. Сохрани в result словарь: `tree` и `knn` — средние точности, `winner` — название лучшего метода (`'tree'` или `'knn'`).",
+      "answer_type": "code",
+      "concept_weights": {
+        "trees_knn_practice": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 315,
+      "starter": "from sklearn.model_selection import cross_val_score\nfrom sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Дерево против kNN на цифрах\nresult = None\n",
+      "setup": "from sklearn.datasets import load_digits\n\ndigits = load_digits()\nX, y = digits.data[:600], digits.target[:600]\n",
+      "tests": "from sklearn.model_selection import cross_val_score\nfrom sklearn.neighbors import KNeighborsClassifier\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами tree, knn и winner.\"\nassert {\"tree\", \"knn\", \"winner\"} <= set(result), \"Нужны ключи tree, knn и winner.\"\ntree = cross_val_score(DecisionTreeClassifier(max_depth=8, random_state=17), X, y, cv=5).mean()\nknn = cross_val_score(KNeighborsClassifier(n_neighbors=3), X, y, cv=5).mean()\nassert abs(float(result[\"tree\"]) - tree) < 1e-9, \"tree: DecisionTreeClassifier(max_depth=8, random_state=17), cv=5.\"\nassert abs(float(result[\"knn\"]) - knn) < 1e-9, \"knn: KNeighborsClassifier(n_neighbors=3), cv=5.\"\nassert result[\"winner\"] == (\"knn\" if knn > tree else \"tree\"), \"winner — метод с большей средней точностью.\"\n",
+      "final": true
     }
   ],
   "rubrics": [
     {
       "id": 301,
       "name": "Масштабирование: kNN против дерева"
+    },
+    {
+      "id": 302,
+      "name": "Код: разбиение и точность на тесте"
+    },
+    {
+      "id": 303,
+      "name": "Код: функция энтропии"
+    },
+    {
+      "id": 304,
+      "name": "Код: пороги-кандидаты"
+    },
+    {
+      "id": 305,
+      "name": "Код: ограничение дерева"
+    },
+    {
+      "id": 306,
+      "name": "Код: kNN в Pipeline"
+    },
+    {
+      "id": 307,
+      "name": "Код: кросс-валидация"
+    },
+    {
+      "id": 308,
+      "name": "Код: лесенка дерева"
+    },
+    {
+      "id": 309,
+      "name": "Итог: базовый уровень и дерево"
+    },
+    {
+      "id": 310,
+      "name": "Итог: прирост информации"
+    },
+    {
+      "id": 311,
+      "name": "Итог: лучший порог"
+    },
+    {
+      "id": 312,
+      "name": "Итог: кривая глубины"
+    },
+    {
+      "id": 313,
+      "name": "Итог: выбор k"
+    },
+    {
+      "id": 314,
+      "name": "Итог: GridSearchCV"
+    },
+    {
+      "id": 315,
+      "name": "Итог: дерево против kNN"
     }
   ],
   "criteria": [
@@ -1201,6 +1532,230 @@
       "weight": 1.0,
       "positive_example": "у дерева те же разбиения, а у kNN после масштабирования другие ближайшие соседи",
       "negative_example": "просто так принято"
+    },
+    {
+      "id": 304,
+      "rubric_id": 302,
+      "criterion": "Данные разбиты с заданными параметрами, модель обучена только на обучающей части",
+      "weight": 1.0,
+      "positive_example": "train_test_split(X, y, test_size=0.25, random_state=17, stratify=y); fit(X_train, y_train)",
+      "negative_example": "fit(X, y) на всех данных"
+    },
+    {
+      "id": 305,
+      "rubric_id": 302,
+      "criterion": "Точность считается на тестовой части",
+      "weight": 1.0,
+      "positive_example": "model.score(X_test, y_test)",
+      "negative_example": "model.score(X_train, y_train)"
+    },
+    {
+      "id": 306,
+      "rubric_id": 303,
+      "criterion": "Доли классов считаются по списку меток",
+      "weight": 1.0,
+      "positive_example": "p = counts / counts.sum()",
+      "negative_example": "частоты без деления на длину"
+    },
+    {
+      "id": 307,
+      "rubric_id": 303,
+      "criterion": "Энтропия — минус сумма p·log2(p) по классам",
+      "weight": 1.0,
+      "positive_example": "-(p * np.log2(p)).sum()",
+      "negative_example": "np.log (натуральный) или сумма p²"
+    },
+    {
+      "id": 308,
+      "rubric_id": 304,
+      "criterion": "Значения сортируются по признаку вместе с метками",
+      "weight": 1.0,
+      "positive_example": "order = np.argsort(ages)",
+      "negative_example": "соседи берутся в исходном порядке"
+    },
+    {
+      "id": 309,
+      "rubric_id": 304,
+      "criterion": "Порог — середина соседей с разными метками",
+      "weight": 1.0,
+      "positive_example": "(a[i] + a[i+1]) / 2 при y[i] != y[i+1]",
+      "negative_example": "середины между всеми соседями"
+    },
+    {
+      "id": 310,
+      "rubric_id": 305,
+      "criterion": "Глубина ограничена max_depth=3",
+      "weight": 1.0,
+      "positive_example": "DecisionTreeClassifier(max_depth=3, ...)",
+      "negative_example": "глубина не ограничена"
+    },
+    {
+      "id": 311,
+      "rubric_id": 305,
+      "criterion": "Размер листа ограничен min_samples_leaf=5, модель обучена на обучающей части",
+      "weight": 1.0,
+      "positive_example": "min_samples_leaf=5; fit(X_train, y_train)",
+      "negative_example": "min_samples_split вместо min_samples_leaf"
+    },
+    {
+      "id": 312,
+      "rubric_id": 306,
+      "criterion": "Масштабирование и kNN собраны в один Pipeline и обучены на обучающей части",
+      "weight": 1.0,
+      "positive_example": "make_pipeline(StandardScaler(), KNeighborsClassifier(...)).fit(X_train, y_train)",
+      "negative_example": "KNeighborsClassifier без StandardScaler"
+    },
+    {
+      "id": 313,
+      "rubric_id": 306,
+      "criterion": "Заданы n_neighbors=3 и weights='distance', точность считается на тесте",
+      "weight": 1.0,
+      "positive_example": "KNeighborsClassifier(n_neighbors=3, weights='distance')",
+      "negative_example": "weights по умолчанию"
+    },
+    {
+      "id": 314,
+      "rubric_id": 307,
+      "criterion": "Оценка считается кросс-валидацией с 5 фолдами",
+      "weight": 1.0,
+      "positive_example": "cross_val_score(model, X, y, cv=5)",
+      "negative_example": "score на обучающих данных"
+    },
+    {
+      "id": 315,
+      "rubric_id": 307,
+      "criterion": "Результат — среднее по фолдам, а не массив",
+      "weight": 1.0,
+      "positive_example": ".mean()",
+      "negative_example": "массив из 5 чисел"
+    },
+    {
+      "id": 316,
+      "rubric_id": 308,
+      "criterion": "Дерево обучено без ограничений на всех данных",
+      "weight": 1.0,
+      "positive_example": "DecisionTreeClassifier(random_state=17).fit(X, y)",
+      "negative_example": "max_depth=3"
+    },
+    {
+      "id": 317,
+      "rubric_id": 308,
+      "criterion": "Результат — число листьев",
+      "weight": 1.0,
+      "positive_example": "tree.get_n_leaves()",
+      "negative_example": "глубина get_depth()"
+    },
+    {
+      "id": 318,
+      "rubric_id": 309,
+      "criterion": "Разбиение с заданными параметрами, обе модели обучены на обучающей части",
+      "weight": 1.0,
+      "positive_example": "train_test_split(..., test_size=0.3, random_state=17, stratify=y)",
+      "negative_example": "обучение на всех данных"
+    },
+    {
+      "id": 319,
+      "rubric_id": 309,
+      "criterion": "baseline — DummyClassifier с most_frequent, обе точности считаются на тесте",
+      "weight": 1.0,
+      "positive_example": "DummyClassifier(strategy='most_frequent').fit(...).score(X_test, y_test)",
+      "negative_example": "baseline на обучающей части"
+    },
+    {
+      "id": 320,
+      "rubric_id": 310,
+      "criterion": "Энтропия считается по долям классов с логарифмом по основанию 2",
+      "weight": 1.0,
+      "positive_example": "-(p * np.log2(p)).sum()",
+      "negative_example": "np.log или сумма p²"
+    },
+    {
+      "id": 321,
+      "rubric_id": 310,
+      "criterion": "Прирост — энтропия родителя минус взвешенная энтропия групп; выбран признак с максимальным приростом",
+      "weight": 1.0,
+      "positive_example": "H(parent) - sum(len(g)/N * H(g)); max по признакам",
+      "negative_example": "невзвешенное среднее энтропий групп"
+    },
+    {
+      "id": 322,
+      "rubric_id": 311,
+      "criterion": "Кандидаты — середины между соседними по x значениями с разными метками, данные предварительно отсортированы",
+      "weight": 1.0,
+      "positive_example": "np.argsort(x); (x[i] + x[i+1]) / 2 если y[i] != y[i+1]",
+      "negative_example": "середины между всеми соседями"
+    },
+    {
+      "id": 323,
+      "rubric_id": 311,
+      "criterion": "Для каждого кандидата считается прирост информации; возвращается порог с максимальным приростом",
+      "weight": 1.0,
+      "positive_example": "gain = H(y) - weighted H(left, right); max",
+      "negative_example": "первый кандидат без сравнения приростов"
+    },
+    {
+      "id": 324,
+      "rubric_id": 312,
+      "criterion": "Для каждой глубины 1–8 обучено дерево на обучающей части и посчитаны две точности",
+      "weight": 1.0,
+      "positive_example": "for depth in range(1, 9): fit(X_train, y_train); score(X_train), score(X_test)",
+      "negative_example": "обе точности на тесте"
+    },
+    {
+      "id": 325,
+      "rubric_id": 312,
+      "criterion": "best — глубина с максимальной точностью на тесте, при равенстве меньшая",
+      "weight": 1.0,
+      "positive_example": "argmax по test + 1",
+      "negative_example": "глубина с максимальной точностью на обучении"
+    },
+    {
+      "id": 326,
+      "rubric_id": 313,
+      "criterion": "Для каждого k считается кросс-валидация с cv=5 по Pipeline из StandardScaler и kNN",
+      "weight": 1.0,
+      "positive_example": "cross_val_score(make_pipeline(StandardScaler(), KNeighborsClassifier(n_neighbors=k)), X, y, cv=5)",
+      "negative_example": "масштабирование всей таблицы до кросс-валидации"
+    },
+    {
+      "id": 327,
+      "rubric_id": 313,
+      "criterion": "best_k — k с максимальной средней точностью, при равенстве меньшее",
+      "weight": 1.0,
+      "positive_example": "min(scores, key=lambda k: (-scores[k], k))",
+      "negative_example": "k с минимальной точностью"
+    },
+    {
+      "id": 328,
+      "rubric_id": 314,
+      "criterion": "Перебирается указанная сетка параметров по пяти фолдам на обучающей части",
+      "weight": 1.0,
+      "positive_example": "GridSearchCV(tree, {'max_depth': [...], 'min_samples_leaf': [...]}, cv=5).fit(X_train, y_train)",
+      "negative_example": "обучение на всех данных"
+    },
+    {
+      "id": 329,
+      "rubric_id": 314,
+      "criterion": "В результате — best_params_ и точность лучшей модели на тесте",
+      "weight": 1.0,
+      "positive_example": "grid.best_params_, grid.score(X_test, y_test)",
+      "negative_example": "best_score_ вместо точности на тесте"
+    },
+    {
+      "id": 330,
+      "rubric_id": 315,
+      "criterion": "Оба метода оцениваются 5-кратной кросс-валидацией с заданными параметрами",
+      "weight": 1.0,
+      "positive_example": "cross_val_score(model, X, y, cv=5).mean()",
+      "negative_example": "оценка на обучающих данных"
+    },
+    {
+      "id": 331,
+      "rubric_id": 315,
+      "criterion": "winner выбран по сравнению средних точностей",
+      "weight": 1.0,
+      "positive_example": "'knn' if knn > tree else 'tree'",
+      "negative_example": "winner записан вручную без сравнения"
     }
   ],
   "legacy": {
