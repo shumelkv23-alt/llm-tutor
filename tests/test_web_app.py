@@ -14,7 +14,7 @@ from llm_tutor.web.app import STATIC_DIR, TEMPLATES_DIR, create_app
 PAGES = [
     ("/", "home"),
     ("/courses", "courses"),
-    ("/lesson/mlcourse-topic01", "lesson"),
+    ("/lesson/mlcourse", "lesson"),
     ("/profile", "profile"),
 ]
 

@@ -14,7 +14,7 @@ from llm_tutor.student import survey
 from llm_tutor.web import markdown
 from llm_tutor.web.api_lesson import code_message
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 

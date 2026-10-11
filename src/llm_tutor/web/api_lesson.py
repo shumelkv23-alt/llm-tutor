@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
-from llm_tutor.core import lesson, turn, verify
+from llm_tutor.core import guided, lesson, turn, verify
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -206,6 +206,13 @@ class SwitchBody(BaseModel):
     node_id: str = Field(max_length=200)
 
 
+class NextBody(BaseModel):
+    """Кнопка урока: тема и число показанных частей (как в колбэке бота)."""
+
+    node_id: str = Field(max_length=200)
+    part: StrictInt = Field(ge=0, le=100)
+
+
 @router.get("/courses/{course_id}/lesson/state")
 async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
     return {"state": views.lesson_state(ctx.conn, settings=ctx.settings)}
@@ -385,6 +392,28 @@ async def code_result(body: CodeResultBody, ctx: LessonContext = Depends(lesson_
         return response
 
 
+@router.post("/courses/{course_id}/lesson/next")
+async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Урок частями (срез 28): следующая часть темы или, после последней, вопрос.
+
+    Без модели. Старая или повторная кнопка (тема или часть не совпали с
+    состоянием) получает «Эта часть уже позади» и ничего не сдвигает.
+    """
+    _require_survey(ctx)
+    async with ctx.lock:
+        reply = await _safe(
+            _sync(
+                turn.lesson_next_reply,
+                ctx.conn,
+                body.node_id,
+                body.part,
+                settings=ctx.settings,
+            ),
+            FAILURE_REPLY,
+        )
+        return turn_response(ctx, guided.NEXT_KICKOFF_TEXT, reply)
+
+
 @router.post("/courses/{course_id}/lesson/task")
 async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
@@ -447,7 +476,11 @@ async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context))
         if not graph.has_node(body.node_id):
             raise HTTPException(status_code=404, detail={"message": "Такой темы нет."})
         try:
-            text = lesson.switch_node(ctx.conn, body.node_id, settings=ctx.settings)
+            if lesson.survey_first(ctx.conn, body.node_id) is not None:
+                # Модуль темы без анкеты: сначала она, тема — следом (jump_node_id).
+                text = lesson.enter_module(ctx.conn, body.node_id, settings=ctx.settings)
+            else:
+                text = lesson.switch_node(ctx.conn, body.node_id, settings=ctx.settings)
         except Exception:  # noqa: BLE001
             logger.exception("Сбой перехода к теме")
             text = FAILURE_REPLY

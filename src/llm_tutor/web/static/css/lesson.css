@@ -392,6 +392,21 @@
   background: var(--primary-soft);
 }
 
+/* Кнопка урока частями: главное действие в чате, пока идёт объяснение. */
+.chip-lesson {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.chip-lesson:hover {
+  background: var(--primary-hover);
+}
+
+.chip-lesson[hidden] {
+  display: none;
+}
+
 .chip:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -853,6 +868,30 @@
 
 .route-topic.closed .route-mark {
   color: var(--success);
+}
+
+/* Тема закрыта после двух ошибок: засчитана, но к ней вернёмся (срез 28). */
+.route-topic.weak .route-status {
+  color: var(--warning);
+}
+
+.route-module {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 14px 10px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.route-module:not(:first-child) {
+  margin-top: 6px;
+}
+
+.route-module span {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .route-topic.current .route-mark {

@@ -60,12 +60,17 @@
       <table class="topics-table">
         <thead><tr><th scope="col">Тема</th><th scope="col">Статус</th><th scope="col">Владение</th></tr></thead>
         <tbody>
-          {% for topic in entry.learning.topics %}
-          <tr class="{{ topic.status }}">
+          {% for module in entry.learning.modules %}
+          <tr class="module-row">
+            <th scope="rowgroup" colspan="3">Модуль {{ module.number }} · {{ module.title }} <span>{{ module.closed }} из {{ module.total }}</span></th>
+          </tr>
+          {% for topic in entry.learning.topics if topic.module == module.number %}
+          <tr class="topic-row {{ topic.status }}">
             <th scope="row">{{ topic.name }}</th>
-            <td><span class="badge{% if topic.status == 'closed' %} success{% elif topic.status == 'current' %} primary{% elif topic.status == 'claimed' %} accent{% endif %}">{{ topic.label }}</span></td>
+            <td><span class="badge{% if topic.weak %} warning{% elif topic.status == 'closed' %} success{% elif topic.status == 'current' %} primary{% elif topic.status == 'claimed' %} accent{% endif %}">{{ topic.label }}</span></td>
             <td><div class="mastery" role="img" aria-label="Владение {{ topic.mastery }}%, {{ topic.confidence }}"><span class="progress-track"><span class="progress-fill" data-percent="{{ topic.mastery }}"></span></span><small>{{ topic.mastery }}% · {{ topic.confidence }}</small></div></td>
           </tr>
+          {% endfor %}
           {% endfor %}
         </tbody>
       </table>

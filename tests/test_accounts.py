@@ -218,3 +218,25 @@ def test_users_are_isolated(db) -> None:
 
     assert accounts.resolve_session(db, token, now=1001.0) == bob
     assert accounts.get_user(db, ann.id).email == "ann@example.com"
+
+
+def test_enrollment_moves_to_renamed_course(tmp_path) -> None:
+    """Миграция 002: запись на mlcourse-topic01 становится записью на mlcourse."""
+    import sqlite3
+
+    path = tmp_path / "accounts.sqlite3"
+    old = sqlite3.connect(path)
+    old.executescript((accounts.MIGRATIONS_DIR / "001_accounts.sql").read_text(encoding="utf-8"))
+    old.execute("PRAGMA user_version = 1")
+    old.execute(
+        "INSERT INTO users (id, email, name, password_hash, created_at) "
+        "VALUES (1, 'ann@example.com', 'Аня', 'x', 0)"
+    )
+    old.execute("INSERT INTO enrollments VALUES (1, 'mlcourse-topic01', 5.0)")
+    old.commit()
+    old.close()
+
+    db = accounts.open_accounts(str(path))
+
+    assert accounts.enrolled_courses(db, 1) == ["mlcourse"]
+    db.close()

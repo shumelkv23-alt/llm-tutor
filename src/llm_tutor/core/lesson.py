@@ -137,10 +137,18 @@ def switch_node(
             # Переход на другую тему снимает проверочный проход (спека §5.2).
             "verify_item_ids": [],
             "last_activity": stamp,
+            # Тема выбрана напрямую — прыжок через анкету больше не ждёт.
+            "jump_node_id": None,
             **keep,
         }
     )
     fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
+    # Модуль работы с непройденной анкетой (прыжок туда и сразу назад) не
+    # должен удерживать тему из другого модуля: любая реплика снова открыла бы
+    # его анкету (финальное ревью ветки course-modules, F-2).
+    working = repos.get_topic(conn, fresh_route.topic_id) if fresh_route.topic_id else None
+    if working is not None and not survey.is_completed(conn, working.survey):
+        fresh_route = fresh_route.model_copy(update={"topic_id": graph.topic_of(node_id)})
     text = SWITCH_TEMPLATE.format(name=name)
     post_turn(
         conn,
@@ -148,6 +156,80 @@ def switch_node(
         user_text=f"Перейти к теме «{name}»",
         assistant_text=text,
         state=new_state.model_copy(update={"route": fresh_route}),
+        now=stamp,
+    )
+    return text
+
+
+# Прыжок в модуль, анкета которого не пройдена: сначала она (§5.2 спеки модулей).
+MODULE_SURVEY_FIRST = (
+    "«{name}» — из модуля {number} «{title}». Сначала пара вопросов о модуле — "
+    "подберу, с чего начать."
+)
+
+
+def survey_first(conn: sqlite3.Connection, node_id: str) -> Topic | None:
+    """Модуль темы, анкета которого не пройдена, иначе ``None``."""
+    graph = CourseGraph.load(conn)
+    topic = repos.get_topic(conn, graph.topic_of(node_id))
+    if topic is None or survey.is_completed(conn, topic.survey):
+        return None
+    return topic
+
+
+def enter_module(
+    conn: sqlite3.Connection,
+    node_id: str,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Прыжок в модуль с непройденной анкетой: он становится модулем работы.
+
+    Текущая тема и висящее задание прошлого модуля снимаются — как при
+    обычном переходе к теме. Тему прыжка запоминаем в сессии
+    (``jump_node_id``): урок после анкеты начнётся с неё (ветка
+    course-modules, ревью 26-2 и F-3). Отдаёт реплику для чата.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    graph = CourseGraph.load(conn)
+    topic_id = graph.topic_of(node_id)
+    topic = repos.get_topic(conn, topic_id)
+    route = state.route or route_mod.build_route(
+        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), now=stamp, settings=s
+    )
+    name = graph.concept(node_id).name
+    text = MODULE_SURVEY_FIRST.format(
+        name=name, number=topic_id, title=topic.title if topic else ""
+    )
+    post_turn(
+        conn,
+        session_id,
+        user_text=f"Перейти к теме «{name}»",
+        assistant_text=text,
+        state=state.model_copy(
+            update={
+                "current_node_id": None,
+                "pending_item_id": None,
+                "mode": None,
+                "phase": "explain",
+                "node_streak": 0,
+                "verify_item_ids": [],
+                "lesson_item_ids": [],
+                "check_misses": 0,
+                "lesson_parts": [],
+                "lesson_part": 0,
+                "close_requested": False,
+                "route": route_mod.release_current(route).model_copy(
+                    update={"topic_id": topic_id}
+                ),
+                "last_activity": stamp,
+                "jump_node_id": node_id,
+            }
+        ),
         now=stamp,
     )
     return text

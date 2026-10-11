@@ -6,7 +6,7 @@ from pathlib import Path
 import llm_tutor.web
 
 STATIC = Path(llm_tutor.web.__file__).parent / "static"
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 
 
 def _tokens(block: str) -> dict[str, str]:

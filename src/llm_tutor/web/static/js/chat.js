@@ -10,6 +10,7 @@
   const form = $("#chat-form");
   const input = $("#chat-input");
   const typingLine = $("#chat-typing");
+  const lessonNext = $("#lesson-next");
   // Автопрокрутка — только если ученик и так внизу: не дёргаем того, кто читает выше.
   const NEAR_BOTTOM = 80;
 
@@ -124,7 +125,8 @@
 
   $("#chat-chips").addEventListener("click", (event) => {
     const chip = event.target.closest(".chip");
-    if (!chip || locked()) return;
+    // У кнопки урока свой обработчик (ниже).
+    if (!chip || chip === lessonNext || locked()) return;
     if (chip.dataset.action === "task") {
       window.Lesson.act("task", {}, { echo: "Дай задание" });
       window.Lesson.selectTab("practice");
@@ -133,6 +135,30 @@
       send(chip.dataset.say);
     }
   });
+
+  /* --- Урок частями: «Дальше» к следующей части, «Проверим» — вопрос по теме --- */
+
+
+  lessonNext.addEventListener("click", async () => {
+    const button = window.Lesson.state?.lesson_button;
+    if (!button || locked()) return;
+    const data = await window.Lesson.act(
+      "next",
+      { node_id: button.node_id, part: button.part },
+      { echo: button.check ? "Проверим" : "Дальше" }
+    );
+    // Вопрос выдан — он во вкладке «Практика».
+    if (data?.state?.item) {
+      window.Lesson.selectTab("practice");
+      window.Lesson.selectView("lesson");
+    }
+  });
+
+  function renderLessonButton(state) {
+    const button = state.lesson_button;
+    lessonNext.hidden = !button;
+    if (button) lessonNext.textContent = button.label;
+  }
 
   window.Lesson.chat = { append, replace, pending, typing, scrollToEnd };
 
@@ -144,6 +170,7 @@
       chip.disabled = off;
     });
     input.placeholder = off ? SURVEY_TEXT : "Спросите тьютора… Enter — отправить, Shift+Enter — новая строка";
+    renderLessonButton(state);
     placeholder();
   });
 })();

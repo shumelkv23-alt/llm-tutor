@@ -9,7 +9,13 @@ from llm_tutor.student import survey
 from llm_tutor.web import accounts
 from web_fakes import ScriptedTutor
 
-COURSE = "mlcourse-topic01"
+from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
+
+TOPICS = len(_course_data(_COURSES[0]).nodes)  # тем во всех модулях курса
+TITLE = _COURSES[0].title
+
+
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 
@@ -31,7 +37,7 @@ async def test_guest_home_is_a_landing(web) -> None:
     assert "Начать учиться" in html
     assert 'href="/register"' in html
     assert "Как это работает" in html
-    assert "Pandas и разведочный анализ данных" in html
+    assert TITLE in html
 
 
 async def test_student_without_courses_is_sent_to_catalog(student) -> None:
@@ -64,7 +70,8 @@ async def test_profile_shows_account_survey_and_topics(student) -> None:
     assert "ann@example.com" in html
     assert 'id="rename-form"' in html and 'id="password-form"' in html
     assert "Итог анкеты" in html
-    assert html.count('<tr class="') == 21
+    assert html.count('<tr class="topic-row') == TOPICS
+    assert html.count('<tr class="module-row') == 5
     assert "Текущая" in html
 
 

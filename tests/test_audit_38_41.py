@@ -15,7 +15,7 @@ from llm_tutor.web.security import LoginLimiter
 from llm_tutor.web.userdb import UserDBPool
 from web_fakes import ScriptedTutor
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 

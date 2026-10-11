@@ -4,14 +4,20 @@ import sqlite3
 
 import pytest
 
-from llm_tutor.course.seed import load_seed
+from llm_tutor.course.seed import load_course, load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.core.overview import course_progress
 from llm_tutor.web import accounts
 from llm_tutor.web.cli import main as cli_main
 
-COURSE = "mlcourse-topic01"
+from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
+
+TOPICS = len(_course_data(_COURSES[0]).nodes)  # тем во всех модулях курса
+TITLE = _COURSES[0].title
+
+
+COURSE = "mlcourse"
 BOB = {"email": "bob@example.com", "name": "Боб", "password": "пароль-боба"}
 
 
@@ -23,10 +29,10 @@ async def _card(client) -> dict:
 async def test_catalog_lists_the_course_not_enrolled(student) -> None:
     card = await _card(student)
 
-    assert card["title"] == "Pandas и разведочный анализ данных"
+    assert card["title"] == TITLE
     assert card["enrolled"] is False
     assert card["status"] == "available"
-    assert card["topics"] == 21
+    assert card["topics"] == TOPICS
 
 
 async def test_catalog_requires_login(web) -> None:
@@ -84,7 +90,7 @@ async def test_students_do_not_see_each_other(student, web, web_app) -> None:
 async def test_courses_page_renders_cards(student) -> None:
     html = (await student.get("/courses")).text
 
-    assert "Pandas и разведочный анализ данных" in html
+    assert TITLE in html
     assert "Записаться" in html
 
     await student.post(f"/api/courses/{COURSE}/enroll", json={})
@@ -126,11 +132,11 @@ async def test_lesson_page_requires_login(web) -> None:
 
 
 def test_course_progress_on_fresh_db(conn, settings) -> None:
-    load_seed(conn)
+    load_course(conn)
 
     progress = course_progress(conn, settings=settings)
 
-    assert progress.total == 21
+    assert progress.total == TOPICS
     assert progress.closed == 0
     assert progress.survey_done is False
     assert progress.current_name is None
@@ -184,3 +190,11 @@ def test_import_legacy_unknown_user(web_settings, tmp_path, email: str) -> None:
     _legacy(legacy)
 
     assert cli_main(["import-legacy", "--email", email, "--db", str(legacy)], settings=web_settings) == 1
+
+
+async def test_old_lesson_address_redirects_to_renamed_course(student) -> None:
+    """Закладка /lesson/mlcourse-topic01 ведёт на /lesson/mlcourse (срез 52)."""
+    response = await student.get("/lesson/mlcourse-topic01")
+
+    assert response.status_code == 308
+    assert response.headers["location"] == "/lesson/mlcourse"

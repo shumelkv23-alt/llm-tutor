@@ -17,7 +17,7 @@ from llm_tutor.llm.prompts import FAILURE_REPLY
 from llm_tutor.student import survey
 from llm_tutor.web import accounts, views
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 

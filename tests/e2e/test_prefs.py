@@ -168,7 +168,7 @@ async def test_expanding_on_home_keeps_lesson_default(page, live_server) -> None
     await toggle.click()
     await toggle.click()  # свернул и развернул обратно — как по умолчанию
 
-    await page.goto(f"{live_server}/lesson/mlcourse-topic01")
+    await page.goto(f"{live_server}/lesson/mlcourse")
     await expect(page.locator("html")).to_have_attribute("data-sidebar", "collapsed")
 
 

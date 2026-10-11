@@ -270,7 +270,8 @@ def load_seed_data(path: str | Path = DEFAULT_SEED_PATH) -> Seed:
     return seed
 
 
-def _apply(conn: sqlite3.Connection, course: Course) -> None:
+def apply_course(conn: sqlite3.Connection, course: Course) -> None:
+    """Записывает уже прочитанный курс в БД (идемпотентно, истина — seed)."""
     repos.replace_seed(
         conn,
         course.nodes,
@@ -288,7 +289,7 @@ def load_course(
 ) -> Course:
     """Идемпотентно приводит курс в БД к seed-файлам модулей (истина — seed)."""
     course = load_course_data(paths)
-    _apply(conn, course)
+    apply_course(conn, course)
     return course
 
 
@@ -298,7 +299,7 @@ def load_seed(conn: sqlite3.Connection, path: str | Path = DEFAULT_SEED_PATH) ->
     Всё, чего нет в файле, гасится: в том числе другие модули.
     """
     seed = _parse_seed(path)
-    _apply(conn, build_course([seed]))
+    apply_course(conn, build_course([seed]))
     return seed
 
 

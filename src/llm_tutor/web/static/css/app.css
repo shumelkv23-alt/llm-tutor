@@ -516,6 +516,11 @@ main {
   color: var(--danger);
 }
 
+.badge.warning {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
 .notice {
   margin-bottom: 16px;
   padding: 12px 16px;
@@ -1132,6 +1137,20 @@ dialog p {
 
 .topics-table tbody th {
   font-weight: 600;
+}
+
+/* Заголовок модуля в таблице тем профиля. */
+.topics-table .module-row th {
+  padding-top: 18px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.topics-table .module-row span {
+  margin-left: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .mastery {

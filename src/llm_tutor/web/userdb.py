@@ -3,8 +3,9 @@
 Ядро построено на инварианте «одна БД — один ученик» (спека веба §5): веб
 открывает ученику его файл и передаёт соединение в ``core`` как есть.
 
-Открытие: ``migrate`` → ``load_seed`` (идемпотентный upsert графа и банка) →
-сверка материалов RAG с общей БД материалов. Соединения кэшируются в
+Открытие: ``migrate`` → ``apply_course`` (идемпотентный upsert всех модулей
+курса) → сверка материалов RAG с общей БД материалов. Файл со старым id
+курса (``RENAMED_COURSES``) при первом открытии переименовывается. Соединения кэшируются в
 процессе; изменяющие запросы занятия идут под ``lock`` ученика.
 """
 
@@ -14,9 +15,9 @@ import logging
 import sqlite3
 from pathlib import Path
 
-from llm_tutor.course.seed import load_seed
+from llm_tutor.course.seed import apply_course
 from llm_tutor.db.connection import get_conn, migrate
-from llm_tutor.web.courses import get_course
+from llm_tutor.web.courses import RENAMED_COURSES, course_data, get_course
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,30 @@ class UserDBPool:
         return self._users_dir / str(uid) / f"{cid}.sqlite3"
 
     def exists(self, user_id: int, course_id: str) -> bool:
+        self._adopt_renamed(user_id, course_id)
         return self.path(user_id, course_id).is_file()
+
+    def _adopt_renamed(self, user_id: int, course_id: str) -> None:
+        """БД под прежним id курса — переименовать в нынешний (с WAL и SHM).
+
+        Прогресс ученика не должен пропасть из-за смены id курса. Если файл с
+        новым id уже есть, старый не трогаем: перезаписывать нельзя.
+        """
+        target = self.path(user_id, course_id)
+        if target.exists():
+            return
+        for old_id, new_id in RENAMED_COURSES.items():
+            if new_id != course_id:
+                continue
+            source = target.with_name(f"{old_id}.sqlite3")
+            if not source.is_file():
+                continue
+            for suffix in ("", "-wal", "-shm"):
+                old = source.with_name(source.name + suffix)
+                if old.exists():
+                    old.rename(target.with_name(target.name + suffix))
+            logger.info("БД ученика %s: курс %s → %s", user_id, old_id, new_id)
+            return
 
     def open(self, user_id: int, course_id: str) -> sqlite3.Connection:
         """Соединение с БД ученика; первый вход создаёт её и грузит курс."""
@@ -115,10 +139,11 @@ class UserDBPool:
             return conn
         course = get_course(course_id)
         assert course is not None  # проверено в _key
+        self._adopt_renamed(user_id, course_id)
         conn = get_conn(str(self.path(user_id, course_id)), check_same_thread=False)
         try:
             migrate(conn)
-            load_seed(conn, course.seed_path)
+            apply_course(conn, course_data(course))
             if sync_materials(conn, self._materials_path):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:

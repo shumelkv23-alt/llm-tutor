@@ -8,8 +8,15 @@ import logging
 import sqlite3
 
 from llm_tutor.config import Settings
+from llm_tutor.core import guided
 from llm_tutor.core.lesson import pending_survey_topic
-from llm_tutor.core.overview import course_progress, route_overview, topic_rows
+from llm_tutor.core.overview import (
+    ModuleRow,
+    course_progress,
+    module_rows,
+    route_overview,
+    topic_rows,
+)
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
@@ -76,9 +83,9 @@ def course_card(
 
 def _topic_count(course: Course) -> int:
     """Число тем курса из seed — без создания БД ученика."""
-    from llm_tutor.course.seed import load_seed_data
+    from llm_tutor.web.courses import course_data
 
-    return len(load_seed_data(course.seed_path).nodes)
+    return len(course_data(course).nodes)
 
 
 # --- Анкета ---
@@ -175,6 +182,25 @@ def _without_task(content: str, meta: str | None) -> str:
     return f"{lead}\n\n{NEW_TASK_NOTE}" if lead else NEW_TASK_NOTE
 
 
+def lesson_button(state: SessionState) -> dict | None:
+    """Кнопка урока частями (срез 28): «Дальше» к следующей части или «Проверим».
+
+    Берётся из состояния сессии, а не из ответа хода: переживает перезагрузку
+    страницы. Нет урока частями или висит задание — кнопки нет.
+    """
+    if state.current_node_id is None or state.pending_item_id is not None:
+        return None
+    if not state.lesson_parts:
+        return None
+    last = state.lesson_part >= len(state.lesson_parts)
+    return {
+        "label": guided.CHECK_LABEL if last else guided.NEXT_LABEL,
+        "check": last,
+        "node_id": state.current_node_id,
+        "part": state.lesson_part,
+    }
+
+
 def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """Состояние занятия для страницы: всё, что рисуется слева и в чате.
 
@@ -213,12 +239,23 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
         "item": item_view(item) if item is not None else None,
         "mode": "verify" if state.mode == "verify" else "lesson",
         "phase": state.phase,
+        "lesson_button": lesson_button(state),
         "streak": state.node_streak,
         # Та же цель, что у ядра: у прохода «закрой тему» серия длиннее (аудит среза 51, L1).
         "streak_target": guide.streak_target(state, settings),
         # Как в карточке курса: текущая тема тоже может быть закрытой.
         "closed": course_progress(conn, settings=settings).closed,
-        "topics": [{"id": row.id, "name": row.name, "status": row.status} for row in rows],
+        "topics": [
+            {
+                "id": row.id,
+                "name": row.name,
+                "status": row.status,
+                "module": row.topic_id,
+                "weak": row.weak,
+            }
+            for row in rows
+        ],
+        "modules": [module_view(module) for module in module_rows(conn, rows)],
         "messages": [
             message_view(message.role, _without_task(message.content, message.meta), ts=message.ts)
             for message in messages
@@ -239,6 +276,21 @@ TOPIC_STATUS_LABELS = {
     "available": "Доступна",
     "ahead": "Впереди",
 }
+
+
+# Тема закрыта после двух ошибок (срез 28): засчитана, но к ней вернёмся.
+WEAK_LABEL = "Слабое место"
+
+
+def module_view(module: ModuleRow) -> dict:
+    """Модуль для маршрута и профиля."""
+    return {
+        "number": module.number,
+        "title": module.title,
+        "closed": module.closed,
+        "total": module.total,
+        "survey_done": module.survey_done,
+    }
 
 
 def solved_items(conn: sqlite3.Connection) -> int:
@@ -281,12 +333,15 @@ def learning_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
                 "id": row.id,
                 "name": row.name,
                 "status": row.status,
-                "label": TOPIC_STATUS_LABELS.get(row.status, ""),
+                "label": WEAK_LABEL if row.weak else TOPIC_STATUS_LABELS.get(row.status, ""),
+                "weak": row.weak,
+                "module": row.topic_id,
                 "mastery": round(row.mastery * 100),
                 "confidence": "уверенно" if row.confident else "мало данных",
             }
             for row in rows
         ],
+        "modules": [module_view(module) for module in module_rows(conn, rows)],
         "next_steps": next_steps(conn, settings=settings),
         "solved": solved_items(conn),
     }

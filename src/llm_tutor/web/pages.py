@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from llm_tutor.web import accounts
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
-from llm_tutor.web.courses import get_course
+from llm_tutor.web.courses import RENAMED_COURSES, get_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
 from llm_tutor.web.views import course_card, learning_view
 
@@ -115,7 +115,10 @@ async def lesson(request: Request, user: User = Depends(page_user)) -> Response:
 @router.get("/lesson/{course_id}", response_class=HTMLResponse)
 async def lesson_page(
     course_id: str, request: Request, user: User = Depends(page_user)
-) -> HTMLResponse:
+) -> Response:
+    if course_id in RENAMED_COURSES:
+        # Закладка на прежний адрес курса ведёт туда же (срез 52).
+        return RedirectResponse(f"/lesson/{RENAMED_COURSES[course_id]}", status_code=308)
     course = get_course(course_id)
     if course is None:
         raise HTTPException(status_code=404, detail="Такого курса нет.")

@@ -106,11 +106,11 @@ def _project_path(path: str) -> Path:
 
 def _warn_about_content() -> None:
     """Предупреждения о контенте курсов при старте: чего не хватает ученику."""
-    from llm_tutor.course.seed import load_seed_data, nodes_without_theory
-    from llm_tutor.web.courses import COURSES
+    from llm_tutor.course.seed import nodes_without_theory
+    from llm_tutor.web.courses import COURSES, course_data
 
     for course in COURSES:
-        missing = nodes_without_theory(load_seed_data(course.seed_path))
+        missing = nodes_without_theory(course_data(course))
         if missing:
             logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
 

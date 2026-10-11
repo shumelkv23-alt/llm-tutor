@@ -5,6 +5,8 @@ from playwright.async_api import expect
 
 from helpers import enroll, sign_up, take_or_skip
 
+from llm_tutor.web.courses import COURSES, course_data
+
 pytestmark = pytest.mark.e2e
 
 
@@ -79,7 +81,7 @@ async def test_route_switches_topic(enrolled) -> None:
     await page.click("#route-open")
     await page.wait_for_selector("#route-dialog[open]")
     rows = page.locator(".route-topic")
-    assert await rows.count() == 21
+    assert await rows.count() == len(course_data(COURSES[0]).nodes)
     target = rows.nth(5)
     name = (await target.locator(".route-name").inner_text()).split(". ", 1)[1]
     await target.click()

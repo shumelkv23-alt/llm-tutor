@@ -23,7 +23,7 @@ from llm_tutor.db.connection import get_conn, migrate
 # Корень проекта (web/accounts.py → src → корень) — не зависит от cwd.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = _PROJECT_ROOT / "migrations_accounts"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # Срок сессии; продлевается, когда прошло больше половины (скользящий срок).
 SESSION_TTL = 30 * 24 * 3600.0
