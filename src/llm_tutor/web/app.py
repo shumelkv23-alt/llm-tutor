@@ -4,6 +4,7 @@
 собирают приложение без сети и uvicorn.
 """
 
+import asyncio
 import hashlib
 import logging
 from urllib.parse import urlparse
@@ -114,6 +115,28 @@ def _warn_about_content() -> None:
             logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
 
 
+KEY_HELP = (
+    "Тьютор в чате отвечать не будет: создай новый ключ на https://openrouter.ai/keys "
+    "и впиши его в OPENROUTER_API_KEY (.env), затем перезапусти сервер."
+)
+
+
+async def check_llm_key(llm: LLMClient) -> None:
+    """Проверка ключа OpenRouter при старте.
+
+    Без неё отвергнутый ключ виден только как «не смог получить ответ» в чате.
+    Идёт фоновой задачей, исключение которой никто не прочтёт, поэтому любой
+    сбой самой проверки пишется в лог здесь.
+    """
+    try:
+        problem = await llm.key_problem()
+    except Exception:  # noqa: BLE001 — диагностика не должна умирать молча
+        logger.exception("Проверка ключа OpenRouter при старте не удалась")
+        return
+    if problem:
+        logger.error("%s. %s", problem, KEY_HELP)
+
+
 def _llm_client(settings: Settings) -> LLMClient:
     return LLMClient(
         base_url=settings.openrouter_base_url,
@@ -142,9 +165,14 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         _warn_about_content()
+        # В фоне: сетевой запрос не должен задерживать старт. Внедрённый клиент
+        # (тесты) не проверяем — у него нет сети.
+        key_check = asyncio.create_task(check_llm_key(llm)) if owns_client else None
         try:
             yield
         finally:
+            if key_check is not None:
+                key_check.cancel()
             userdbs.close_all()
             accounts_db.close()
             if owns_client:

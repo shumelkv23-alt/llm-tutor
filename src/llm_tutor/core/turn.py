@@ -347,7 +347,10 @@ async def _tutor_branch(
 
     try:
         answer = await client.chat_structured(package.messages, TutorReply, model=model)
-    except LLMError:
+    except LLMError as exc:
+        # Ученик видит только «не смог получить ответ», поэтому причина (сеть,
+        # лимит, отвергнутый ключ) должна остаться хотя бы в логе сервера.
+        logger.warning("Тьютор не получил ответ модели: %s", exc)
         return LLM_FAILURE_REPLY, [], [], idle_state, False
     except Exception:  # noqa: BLE001 — бот не должен молчать на неожиданный сбой
         logger.exception("Неожиданный сбой тьюторского хода")
@@ -1058,6 +1061,9 @@ async def resume_reply(
             now=stamp,
             settings=s,
         )
+        # Задания может и не быть: на сбое модели ветка ниже его не выдаёт.
+        tail: str | None = None
+        options: list[str] | None = None
         if reply == LLM_FAILURE_REPLY:
             # Сбой модели не двигает занятие (см. `handle_turn`): фазу оставляем
             # объяснением, задание выдаст следующая реплика ученика.

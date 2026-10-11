@@ -1,5 +1,6 @@
 """Каркас веб-приложения: сборка, статика, оболочка страниц (Срез 37)."""
 
+import asyncio
 import re
 from pathlib import Path
 from urllib.parse import urlparse
@@ -7,6 +8,7 @@ from urllib.parse import urlparse
 import pytest
 
 from llm_tutor.config import Settings
+from llm_tutor.web import app as app_module
 from llm_tutor.web.app import STATIC_DIR, TEMPLATES_DIR, create_app
 
 PAGES = [
@@ -35,7 +37,36 @@ async def test_healthz(web) -> None:
     assert response.json() == {"status": "ok"}
 
 
-async def test_lifespan_closes_own_client(web_settings) -> None:
+@pytest.fixture
+def key_checks(monkeypatch) -> list:
+    """Подменяет проверку ключа при старте: без сети, с записью вызовов."""
+    calls: list = []
+
+    async def fake_check(llm) -> None:
+        calls.append(llm)
+
+    monkeypatch.setattr(app_module, "check_llm_key", fake_check)
+    return calls
+
+
+async def test_own_client_key_is_checked_at_startup(web_settings, key_checks) -> None:
+    app = create_app(web_settings)
+
+    async with app.router.lifespan_context(app):
+        await asyncio.sleep(0)  # фоновой задаче — шаг цикла событий
+
+    assert key_checks == [app.state.client]
+
+
+async def test_injected_client_key_is_not_checked(web_app, key_checks) -> None:
+    """Внедрённый клиент (тесты) в сеть не ходит."""
+    async with web_app.router.lifespan_context(web_app):
+        await asyncio.sleep(0)
+
+    assert key_checks == []
+
+
+async def test_lifespan_closes_own_client(web_settings, key_checks) -> None:
     """Клиент, созданный приложением, закрывается вместе с ним."""
     app = create_app(web_settings)
     client = app.state.client
@@ -181,3 +212,48 @@ def test_settings_web_defaults() -> None:
     assert settings.materials_db_path == "data/materials.sqlite3"
     assert settings.registration_open is True
     assert settings.cookie_secure is False
+
+
+# --- ключ OpenRouter при старте ---
+
+
+class _KeyCheck:
+    def __init__(self, problem: str | None) -> None:
+        self.problem = problem
+
+    async def key_problem(self) -> str | None:
+        return self.problem
+
+
+async def test_rejected_key_is_logged_with_instructions(caplog) -> None:
+    from llm_tutor.web.app import check_llm_key
+
+    with caplog.at_level("ERROR", logger="llm_tutor.web.app"):
+        await check_llm_key(_KeyCheck("OpenRouter не принял ключ (HTTP 401): User not found."))
+
+    assert "HTTP 401" in caplog.text
+    assert "OPENROUTER_API_KEY" in caplog.text
+
+
+class _BrokenKeyCheck:
+    async def key_problem(self) -> str | None:
+        raise RuntimeError("неожиданный сбой проверки")
+
+
+async def test_key_check_crash_is_logged_not_raised(caplog) -> None:
+    """Фоновая задача не должна умирать молча: её исключение никто не прочтёт."""
+    from llm_tutor.web.app import check_llm_key
+
+    with caplog.at_level("ERROR", logger="llm_tutor.web.app"):
+        await check_llm_key(_BrokenKeyCheck())
+
+    assert "неожиданный сбой проверки" in caplog.text
+
+
+async def test_valid_key_is_silent(caplog) -> None:
+    from llm_tutor.web.app import check_llm_key
+
+    with caplog.at_level("ERROR", logger="llm_tutor.web.app"):
+        await check_llm_key(_KeyCheck(None))
+
+    assert caplog.text == ""

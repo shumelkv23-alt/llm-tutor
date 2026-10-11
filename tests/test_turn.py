@@ -167,6 +167,14 @@ async def test_llm_failure_is_reported_and_turn_persisted(conn, settings) -> Non
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
 
 
+async def test_llm_failure_reason_is_logged(conn, settings, caplog) -> None:
+    """Ученик видит «не смог получить ответ», а причина остаётся в логе сервера."""
+    with caplog.at_level("WARNING", logger="llm_tutor.core.turn"):
+        await handle_turn(conn, _FailingTutor(), "m", "groupby?", now=1.0, settings=settings)
+
+    assert "сбой" in caplog.text
+
+
 # --- ответ на задание ---
 
 
@@ -760,6 +768,25 @@ async def test_resume_explains_first_then_gives_task(conn, settings) -> None:
     assert _state(conn).phase == "practice"
     assert _state(conn).pending_item_id is not None
     assert reply.options is not None
+
+
+async def test_resume_survives_llm_failure(conn, settings) -> None:
+    """Сбой модели на входе в узел — реплика о сбое, а не исключение.
+
+    Раньше ветка сбоя не заводила ``tail``, и первый урок после анкеты падал
+    с UnboundLocalError: ученик видел «Что-то пошло не так».
+    """
+    load_seed(conn)
+
+    reply = await resume_reply(conn, _FailingTutor(), "m", now=1.0, settings=settings)
+
+    assert reply.text == LLM_FAILURE_REPLY
+    assert reply.tail is None and reply.item_id is None
+    state = _state(conn)
+    assert state.phase == "explain"  # занятие не сдвинулось
+    assert state.pending_item_id is None
+    messages = repos.get_messages(conn, repos.get_open_session(conn))
+    assert messages[-1].content == LLM_FAILURE_REPLY  # ход записан
 
 
 async def test_resume_reports_finished_route(conn, settings) -> None:

@@ -6,6 +6,8 @@ import pytest
 
 from llm_tutor.core.turn import STALE_ITEM_REPLY
 from llm_tutor.db import repos
+from llm_tutor.llm.client import LLMError
+from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.student import survey
 from llm_tutor.web import accounts
 from web_fakes import ScriptedTutor
@@ -119,6 +121,37 @@ async def test_survey_finish_starts_lesson(enrolled, web_app, web_llm) -> None:
     assert state["survey"] is False
     assert state["node"] is not None
     assert body["summary"]["items"]
+
+
+class _DeadModel:
+    """Модель недоступна: так ведёт себя клиент с отвергнутым ключом OpenRouter."""
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        raise LLMError("OpenRouter вернул HTTP 401: User not found.", status=401)
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        raise LLMError("OpenRouter вернул HTTP 401: User not found.", status=401)
+
+
+async def test_survey_finish_without_model_reports_model_failure(enrolled, web_app) -> None:
+    """Первый урок без модели — честное «не смог получить ответ», а не общий сбой."""
+    web_app.state.client = _DeadModel()
+
+    body = await _finish(enrolled)
+
+    texts = [message["html"] for message in body["messages"]]
+    assert any(LLM_FAILURE_REPLY in text for text in texts)
+    assert not any(FAILURE_REPLY in text for text in texts)
+    assert body["state"]["node"] is not None  # урок начат, тема выбрана
+
+
+async def test_chat_without_model_reports_model_failure(enrolled, web_app) -> None:
+    await _finish(enrolled)
+    web_app.state.client = _DeadModel()
+
+    body = (await enrolled.post(f"{BASE}/chat", json={"text": "что такое groupby?"})).json()
+
+    assert LLM_FAILURE_REPLY in body["messages"][-1]["html"]
 
 
 async def test_survey_finish_twice_is_rejected(enrolled) -> None:
