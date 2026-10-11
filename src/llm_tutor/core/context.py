@@ -20,6 +20,7 @@ from llm_tutor.config import (
     get_settings,
 )
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import section_text
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import (
     MaterialState,
@@ -34,7 +35,7 @@ from llm_tutor.llm.prompts import (
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import retrieve
 from llm_tutor.schemas import Chunk, SessionState, Topic
-from llm_tutor.student import beta, survey
+from llm_tutor.student import beta, guide, survey
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import MODE_LABELS
 
@@ -165,12 +166,46 @@ def _system_prompt(
         format_mastery_block(
             _mastery_slice(conn, graph, state, now=now, settings=settings)
         ),
-        format_theory_block(
-            node_name,
-            repos.get_theory(conn, state.current_node_id) if state.current_node_id else None,
-        ),
+        _theory_block(conn, state, graph, node_name),
     ]
     return "\n\n".join(block for block in blocks if block)
+
+
+def _theory_block(
+    conn: sqlite3.Connection,
+    state: SessionState,
+    graph: CourseGraph | None,
+    node_name: str | None,
+) -> str | None:
+    """Конспект в промпт: у занятия с разделами — только текущий раздел (срез 54).
+
+    Плюс оглавление занятия с отметками: модель видит, что уже пройдено, и не
+    объясняет следующий раздел раньше времени. На итоговом задании — весь
+    конспект (с обрезкой по ``THEORY_PROMPT_CHARS``).
+    """
+    node_id = state.current_node_id
+    theory = repos.get_theory(conn, node_id) if node_id else None
+    if not theory or graph is None or not graph.has_node(node_id):
+        return format_theory_block(node_name, theory)
+    sections = graph.concept(node_id).sections
+    if not sections:
+        return format_theory_block(node_name, theory)
+    current = guide.current_section(state, [section.id for section in sections])
+    contents = []
+    for section in sections:
+        if section.id in state.weak_sections:
+            mark = "⚠️"
+        elif section.id in state.passed_sections:
+            mark = "✓"
+        elif section.id == current:
+            mark = "▶"
+        else:
+            mark = "·"
+        contents.append(f"{mark} {section.title}")
+    contents.append(f"{'▶' if current is None else '·'} Итоговое задание")
+    title = next((s.title for s in sections if s.id == current), None)
+    text = section_text(theory, title) if title else None
+    return format_theory_block(node_name, text or theory, section=title, contents=contents)
 
 
 def _fit_budget(

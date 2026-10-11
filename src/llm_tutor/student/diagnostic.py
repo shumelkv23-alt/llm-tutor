@@ -15,6 +15,7 @@ from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
 from llm_tutor.schemas import Event, EventSource, Item
 from llm_tutor.student import beta
@@ -85,6 +86,21 @@ def _native(item: Item, concept_id: str, topics: Mapping[str, int]) -> bool:
     return topics.get(main, 1) <= topics.get(concept_id, 1)
 
 
+def _in_lesson_part(
+    item: Item, node_id: str, *, section_id: str | None, final: bool
+) -> bool:
+    """Задание из нужной части занятия: раздела ``section_id`` или итоговое.
+
+    Раздел — раздел ГЛАВНОГО концепта задания (seed), поэтому и узел сверяется
+    с главным концептом: id разделов уникальны только внутри занятия.
+    """
+    if section_id is None and not final:
+        return True
+    if main_concept(item) != node_id:
+        return False
+    return item.final if final else item.section == section_id
+
+
 def _best_item(
     items: Iterable[Item],
     concept_id: str,
@@ -109,10 +125,15 @@ def verification_item(
     *,
     used_item_ids: frozenset[int] = frozenset(),
     include_rubric: bool = True,
+    section_id: str | None = None,
+    final: bool = False,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> DiagnosticQuestion | None:
     """Задание захода по узлу: объяснение приоритетнее автопроверки.
+
+    Занятие с разделами (срез 54): ``section_id`` — задание этого раздела,
+    ``final`` — итоговое задание занятия; без них — любое задание узла.
 
     Паузы перед повтором нет: ученик явно просит проверить, а банк по
     большинству узлов содержит пару заданий — с паузой проверять было бы
@@ -133,6 +154,7 @@ def verification_item(
         if item.id not in used_item_ids
         and node_id in item.concept_weights
         and _native(item, node_id, topics)
+        and _in_lesson_part(item, node_id, section_id=section_id, final=final)
     ]
     if not items:
         return None

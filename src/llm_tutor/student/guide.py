@@ -5,6 +5,9 @@
 считается, доказательство это решённые задачи.
 """
 
+from collections.abc import Sequence
+from typing import Literal
+
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import beta, hints
@@ -58,11 +61,15 @@ def on_verification_failed(state: SessionState) -> SessionState:
     )
 
 
-def streak_target(state: SessionState, settings: Settings) -> int:
+def streak_target(state: SessionState, settings: Settings, sections: int = 0) -> int:
     """Сколько верных ответов подряд закрывают узел в этом заходе.
 
     Проход «закрой тему» длиннее урока: ученик сам просит засчитать тему.
+    Проход по занятию с разделами (срез 54) — по вопросу на каждый раздел и
+    итоговое задание, кто бы его ни начал.
     """
+    if state.mode == "verify" and sections:
+        return sections + 1
     if state.mode == "verify" and state.close_requested:
         return settings.close_success_streak
     return settings.guide_success_streak
@@ -73,15 +80,100 @@ def is_node_closed(
     mastery: beta.Mastery,
     *,
     settings: Settings | None = None,
+    sections: Sequence[str] = (),
 ) -> bool:
-    """Пройден ли узел: серия чистых ответов ИЛИ уверенное владение (§6.1)."""
+    """Пройден ли узел (§6.1) — решает код, а не модель.
+
+    Тема без разделов: серия чистых ответов ИЛИ уверенное владение. Занятие с
+    разделами (``sections`` — их id, срез 54): пройдены все разделы и
+    итоговое задание (слабые тоже считаются пройденными) ИЛИ уверенное
+    владение; в проверочном проходе — серия по вопросу на раздел и итоговое.
+    """
     s = settings or get_settings()
-    by_streak = state.node_streak >= streak_target(state, s)
     by_mastery = (
         mastery.mean >= s.mastery_skip_threshold
         and mastery.uncertainty <= CONFIDENT_UNCERTAINTY
     )
+    if sections and state.mode != "verify":
+        return by_mastery or (lesson_sections_done(state, sections) and state.final_passed)
+    by_streak = state.node_streak >= streak_target(state, s, len(sections))
     return by_streak or by_mastery
+
+
+# --- занятие с разделами (срез 54) ---
+
+# Поля прогресса по разделам: вход в другое занятие обнуляет их все.
+SECTION_RESET: dict = {
+    "section_id": None,
+    "passed_sections": [],
+    "weak_sections": [],
+    "final_passed": False,
+    "final_weak": False,
+}
+
+SectionOutcome = Literal["passed", "weak", "retry"]
+
+
+def next_section(sections: Sequence[str], passed: Sequence[str]) -> str | None:
+    """Первый непройденный раздел занятия; ``None`` — очередь итогового задания."""
+    return next((section for section in sections if section not in passed), None)
+
+
+def lesson_sections_done(state: SessionState, sections: Sequence[str]) -> bool:
+    """Все разделы занятия пройдены (слабые — тоже)."""
+    return all(section in state.passed_sections for section in sections)
+
+
+def current_section(state: SessionState, sections: Sequence[str]) -> str | None:
+    """Раздел, по которому сейчас идёт урок; ``None`` — итоговое задание.
+
+    Записанный в состоянии раздел берётся, только если он ещё не пройден:
+    иначе (состояние потеряно, раздел убрали из seed) — первый непройденный.
+    """
+    if state.section_id in sections and state.section_id not in state.passed_sections:
+        return state.section_id
+    return next_section(sections, state.passed_sections)
+
+
+def on_section_answer(
+    state: SessionState, *, correct: bool, sections: Sequence[str]
+) -> tuple[SessionState, SectionOutcome]:
+    """Ответ на вопрос раздела или итоговое задание в уроке (план §1.6).
+
+    Верно — раздел пройден. Ошибка — второй шанс (``retry``). Вторая ошибка —
+    раздел пройден со слабым местом (⚠️), урок идёт дальше. Итоговое задание —
+    по тому же правилу. После прохождения ``section_id`` указывает на
+    следующий раздел (или ``None`` — очередь итогового).
+    """
+    section = current_section(state, sections)
+    if not correct and state.check_misses < 1:
+        return state.model_copy(update={"check_misses": 1, "section_id": section}), "retry"
+    weak = not correct
+    if section is None:
+        update: dict = {"final_passed": True, "final_weak": state.final_weak or weak}
+    else:
+        update = {
+            "passed_sections": [*state.passed_sections, section],
+            "weak_sections": (
+                [*state.weak_sections, section] if weak else state.weak_sections
+            ),
+        }
+    passed = update.get("passed_sections", state.passed_sections)
+    update.update(
+        {
+            "check_misses": 0,
+            "section_id": next_section(sections, passed),
+            # Новый раздел — новый урок частями.
+            "lesson_parts": [],
+            "lesson_part": 0,
+        }
+    )
+    return state.model_copy(update=update), "weak" if weak else "passed"
+
+
+def lesson_weak(state: SessionState) -> bool:
+    """Занятие закрывается со слабым местом: слабый раздел или итоговое."""
+    return bool(state.weak_sections) or state.final_weak
 
 
 def on_student_stuck(state: SessionState) -> SessionState:

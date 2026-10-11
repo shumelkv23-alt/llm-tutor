@@ -16,7 +16,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.schemas import RouteStep, SessionState, Topic
-from llm_tutor.student import beta, survey
+from llm_tutor.student import beta, guide, survey
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
@@ -129,6 +129,8 @@ def switch_node(
             "lesson_parts": [],
             "lesson_part": 0,
             "close_requested": False,
+            # Разделы — про занятие: в другом занятии прогресс начинается заново.
+            **guide.SECTION_RESET,
         }
     new_state = state.model_copy(
         update={
@@ -228,6 +230,7 @@ def enter_module(
                 ),
                 "last_activity": stamp,
                 "jump_node_id": node_id,
+                **guide.SECTION_RESET,
             }
         ),
         now=stamp,

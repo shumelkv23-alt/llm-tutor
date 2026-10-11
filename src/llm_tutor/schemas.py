@@ -374,8 +374,10 @@ class SessionState(BaseModel):
     close_requested: bool = False
     # Занятие с разделами (срез 53): текущий раздел, пройденные в этом заходе,
     # пройденные после двух ошибок и сдано ли итоговое задание. Вход в новое
-    # занятие обнуляет все четыре поля.
+    # занятие обнуляет все эти поля (``guide.SECTION_RESET``).
     section_id: str | None = None
     passed_sections: list[str] = Field(default_factory=list)
     weak_sections: list[str] = Field(default_factory=list)
     final_passed: bool = False
+    # Итоговое сдано после двух ошибок (срез 54): занятие закроется с ⚠️.
+    final_weak: bool = False

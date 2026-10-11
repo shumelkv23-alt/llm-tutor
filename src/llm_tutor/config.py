@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     llm_temperature: float = 0.4
     llm_max_retries: int = 1
-    llm_max_tokens: int = 2048
+    llm_max_tokens: int = 3072
 
     # --- Веб-приложение, Срез 37 ---
     web_host: str = "127.0.0.1"

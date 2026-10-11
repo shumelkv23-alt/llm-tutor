@@ -241,6 +241,21 @@ def theory_headings(text: str) -> list[str]:
     return [title for title, _ in _h2(text)]
 
 
+def section_text(text: str, title: str) -> str | None:
+    """Текст раздела конспекта: от ``## <title>`` до следующего h2 (срез 54).
+
+    В промпт идёт текущий раздел, а не весь конспект: иначе длинное занятие не
+    влезло бы в ``THEORY_PROMPT_CHARS``. ``None`` — такого заголовка нет.
+    """
+    headings = _h2(text)
+    lines = text.splitlines()
+    for index, (heading, start) in enumerate(headings):
+        if heading == title:
+            end = headings[index + 1][1] if index + 1 < len(headings) else len(lines)
+            return "\n".join(lines[start:end]).strip()
+    return None
+
+
 def _check_theory_sections(node: Concept, text: str) -> None:
     """В конспекте занятия есть ``## <title>`` каждого раздела в порядке seed."""
     headings = theory_headings(text)
