@@ -2,6 +2,7 @@
 
 from course_fixtures import T1
 import sqlite3
+import sys
 
 import pytest
 
@@ -166,7 +167,16 @@ def test_import_legacy_bad_source_leaves_nothing_behind(web_settings, tmp_path) 
     assert not list(target.parent.glob(".*.import")) if target.parent.exists() else True
 
 
-@pytest.mark.parametrize("folder", ["a#b", "a?b"])
+@pytest.mark.parametrize(
+    "folder",
+    [
+        "a#b",
+        # На Windows «?» в имени каталога запрещён: проверять там нечего.
+        pytest.param(
+            "a?b", marks=pytest.mark.skipif(sys.platform == "win32", reason="«?» в имени на Windows")
+        ),
+    ],
+)
 def test_import_legacy_path_with_uri_characters(web_settings, tmp_path, folder: str) -> None:
     user = _register(web_settings)
     source_dir = tmp_path / folder
