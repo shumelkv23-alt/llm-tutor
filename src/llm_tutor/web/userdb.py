@@ -23,6 +23,17 @@ logger = logging.getLogger(__name__)
 _CHUNK_COLUMNS = "concept_id, source_url, section, seq, content, topic_id"
 
 
+def _topic_column(conn: sqlite3.Connection, schema: str) -> str:
+    """Модуль чанка в SELECT: файл материалов старой схемы (до модулей) его не знает.
+
+    Общую БД материалов никто не мигрирует при открытии БД ученика — её
+    обновляет только ``course.ingest``. Чанки без модуля — материалы модуля 1:
+    других модулей до среза 51 не было.
+    """
+    columns = {row[1] for row in conn.execute(f"PRAGMA {schema}.table_info(chunks)")}
+    return "topic_id" if "topic_id" in columns else "1"
+
+
 def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
     """Отпечаток чанков: совпал — копировать нечего.
 
@@ -33,7 +44,7 @@ def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
     digest = hashlib.sha256()
     for row in conn.execute(
         "SELECT CASE WHEN concept_id IN (SELECT id FROM main.concepts) THEN concept_id END,"
-        f" source_url, section, seq, content, topic_id FROM {schema}.chunks"
+        f" source_url, section, seq, content, {_topic_column(conn, schema)} FROM {schema}.chunks"
         " ORDER BY source_url, seq, id"
     ):
         digest.update(repr(tuple(row)).encode("utf-8"))
@@ -58,7 +69,8 @@ def sync_materials(conn: sqlite3.Connection, materials_path: Path) -> bool:
             conn.execute(
                 f"INSERT INTO main.chunks ({_CHUNK_COLUMNS}) "
                 "SELECT CASE WHEN m.concept_id IN (SELECT id FROM main.concepts) "
-                "THEN m.concept_id END, m.source_url, m.section, m.seq, m.content, m.topic_id "
+                "THEN m.concept_id END, m.source_url, m.section, m.seq, m.content, "
+                f"{_topic_column(conn, 'materials')} "
                 "FROM materials.chunks m ORDER BY m.id"
             )
         except sqlite3.Error:

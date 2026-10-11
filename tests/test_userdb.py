@@ -103,6 +103,31 @@ def test_copied_materials_keep_their_module(pool, tmp_path) -> None:
     assert {row[0] for row in student.execute("SELECT topic_id FROM chunks")} == {2}
 
 
+def test_materials_of_old_schema_are_module_one(pool, tmp_path) -> None:
+    """Аудит среза 51, H1: общая БД материалов, созданная до модулей (без
+    chunks.topic_id), не роняет открытие БД ученика — её чанки — модуль 1."""
+    import sqlite3
+
+    from llm_tutor.db.connection import MIGRATIONS_DIR
+
+    path = tmp_path / "materials.sqlite3"
+    old = sqlite3.connect(path)
+    for name in ("001_init.sql", "002_seed_active.sql", "003_rubrics_active.sql", "004_web.sql"):
+        old.executescript((MIGRATIONS_DIR / name).read_text(encoding="utf-8"))
+    old.execute("PRAGMA user_version = 4")
+    old.execute(
+        "INSERT INTO chunks (source_url, section, seq, content) "
+        "VALUES ('https://u', 'Grouping', 0, 'Метод groupby группирует строки.')"
+    )
+    old.commit()
+    old.close()
+
+    conn = pool.open(1, COURSE)
+
+    assert {row[0] for row in conn.execute("SELECT topic_id FROM chunks")} == {1}
+    assert retrieve(conn, "groupby", k=3)
+
+
 def test_changed_materials_replace_old_chunks(tmp_path) -> None:
     materials = tmp_path / "materials.sqlite3"
     _materials(materials, "# Старое\n\nПро merge и join.")

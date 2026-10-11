@@ -324,6 +324,8 @@ async def test_verify_starts_check(enrolled) -> None:
 
     assert state["mode"] == "verify"
     assert state["item"] is not None
+    # Аудит среза 51, L1: счётчик показывает цель прохода «закрой тему», а не урока.
+    assert state["streak_target"] == 2
 
 
 async def test_core_failure_is_a_reply_not_500(enrolled, web_llm) -> None:

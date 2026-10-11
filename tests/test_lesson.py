@@ -123,6 +123,25 @@ def test_switch_to_other_theme_starts_over(conn, settings) -> None:
     assert text == lesson.SWITCH_TEMPLATE.format(name=name)
 
 
+def test_switch_drops_lesson_parts_and_misses_of_old_theme(conn, settings) -> None:
+    """Аудит среза 51, M1: ошибка и части урока прежней темы не переходят на новую."""
+    load_seed(conn)
+    _set_state(
+        conn,
+        current_node_id="python_basics",
+        check_misses=1,
+        lesson_parts=["Идея.", "Пример."],
+        lesson_part=1,
+        close_requested=True,
+    )
+
+    lesson.switch_node(conn, "groupby", now=2.0, settings=settings)
+
+    state = _state(conn)
+    assert (state.check_misses, state.lesson_parts, state.lesson_part) == (0, [], 0)
+    assert not state.close_requested
+
+
 def test_reselecting_same_theme_keeps_progress(conn, settings) -> None:
     load_seed(conn)
     _set_state(conn, current_node_id="groupby", pending_item_id=6, lesson_item_ids=[1], node_streak=1, hint_level=2)

@@ -13,7 +13,7 @@ from llm_tutor.core.overview import course_progress, route_overview, topic_rows
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
-from llm_tutor.student import survey
+from llm_tutor.student import guide, survey
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
@@ -214,7 +214,8 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
         "mode": "verify" if state.mode == "verify" else "lesson",
         "phase": state.phase,
         "streak": state.node_streak,
-        "streak_target": settings.guide_success_streak,
+        # Та же цель, что у ядра: у прохода «закрой тему» серия длиннее (аудит среза 51, L1).
+        "streak_target": guide.streak_target(state, settings),
         # Как в карточке курса: текущая тема тоже может быть закрытой.
         "closed": course_progress(conn, settings=settings).closed,
         "topics": [{"id": row.id, "name": row.name, "status": row.status} for row in rows],
