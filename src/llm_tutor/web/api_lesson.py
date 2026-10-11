@@ -27,7 +27,7 @@ from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
 from llm_tutor.web.accounts import User
-from llm_tutor.web.courses import COURSES, Course, get_course
+from llm_tutor.web.courses import COURSES, RENAMED_COURSES, Course, get_course
 from llm_tutor.web.security import accounts_db, require_user
 from llm_tutor.web.views import course_card
 
@@ -37,7 +37,14 @@ logger = logging.getLogger(__name__)
 COURSE_NOT_FOUND = "Такого курса нет."
 
 
-def course_or_404(course_id: str) -> Course:
+def course_or_404(course_id: str, request: Request) -> Course:
+    if course_id in RENAMED_COURSES:
+        # Вкладка, открытая до переименования курса, ходит по прежнему адресу
+        # API: 308 сохраняет метод и тело, fetch пойдёт следом (аудит 52, L3).
+        prefix = f"/courses/{course_id}/"
+        path = request.url.path.replace(prefix, f"/courses/{RENAMED_COURSES[course_id]}/", 1)
+        query = f"?{request.url.query}" if request.url.query else ""
+        raise HTTPException(status_code=308, headers={"Location": path + query})
     course = get_course(course_id)
     if course is None:
         raise HTTPException(status_code=404, detail={"message": COURSE_NOT_FOUND})
@@ -65,7 +72,7 @@ async def list_courses(request: Request, user: User = Depends(require_user)) -> 
 
 @router.post("/courses/{course_id}/enroll")
 async def enroll(course_id: str, request: Request, user: User = Depends(require_user)) -> dict:
-    course = course_or_404(course_id)
+    course = course_or_404(course_id, request)
     pool = request.app.state.userdbs
     async with pool.lock(user.id, course.id):
         # Сначала БД ученика: запись без БД оставила бы курс, который не открыть.
@@ -107,7 +114,7 @@ class LessonContext:
 async def lesson_context(
     course_id: str, request: Request, user: User = Depends(require_user)
 ) -> LessonContext:
-    course = course_or_404(course_id)
+    course = course_or_404(course_id, request)
     if course.id not in accounts.enrolled_courses(accounts_db(request), user.id):
         raise HTTPException(status_code=403, detail={"message": NOT_ENROLLED})
     pool = request.app.state.userdbs
@@ -470,13 +477,18 @@ async def verify_topic(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/switch")
 async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
         graph = CourseGraph.load(ctx.conn)
         if not graph.has_node(body.node_id):
             raise HTTPException(status_code=404, detail={"message": "Такой темы нет."})
+        first = lesson.survey_first(ctx.conn, body.node_id)
+        # Из анкеты модуля можно уйти к теме модуля с пройденной анкетой —
+        # иначе случайный прыжок в модуль запирал бы ученика в его анкете
+        # (аудит среза 52, M2). В модуль с непройденной анкетой — только после.
+        if first is not None and lesson.pending_survey_topic(ctx.conn) is not None:
+            raise HTTPException(status_code=409, detail={"message": SURVEY_NOT_DONE})
         try:
-            if lesson.survey_first(ctx.conn, body.node_id) is not None:
+            if first is not None:
                 # Модуль темы без анкеты: сначала она, тема — следом (jump_node_id).
                 text = lesson.enter_module(ctx.conn, body.node_id, settings=ctx.settings)
             else:

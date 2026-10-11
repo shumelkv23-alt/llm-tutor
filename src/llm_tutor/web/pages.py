@@ -118,7 +118,9 @@ async def lesson_page(
 ) -> Response:
     if course_id in RENAMED_COURSES:
         # Закладка на прежний адрес курса ведёт туда же (срез 52).
-        return RedirectResponse(f"/lesson/{RENAMED_COURSES[course_id]}", status_code=308)
+        # Query-строка (?tab=…) не теряется (аудит среза 52, L2).
+        query = f"?{request.url.query}" if request.url.query else ""
+        return RedirectResponse(f"/lesson/{RENAMED_COURSES[course_id]}{query}", status_code=308)
     course = get_course(course_id)
     if course is None:
         raise HTTPException(status_code=404, detail="Такого курса нет.")

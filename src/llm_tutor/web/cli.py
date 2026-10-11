@@ -33,7 +33,9 @@ def import_legacy(settings: Settings, email: str, db_path: str, course_id: str) 
             raise RuntimeError(f"Нет аккаунта {email!r} — сначала зарегистрируйтесь в браузере")
         pool = UserDBPool(_project_path(settings.users_dir), _project_path(settings.materials_db_path))
         target = pool.path(user.id, course_id)
-        if target.exists():
+        # exists, а не path().exists(): БД веба под прежним id курса сначала
+        # переезжает на новое имя, иначе перенос встал бы поверх неё (аудит 52, M1).
+        if pool.exists(user.id, course_id):
             raise RuntimeError(f"У ученика уже есть БД курса: {target}. Перенос не перезаписывает её")
         target.parent.mkdir(parents=True, exist_ok=True)
         # Копия — во временный файл рядом; на место он встаёт, только когда

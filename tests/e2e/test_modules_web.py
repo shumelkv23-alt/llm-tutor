@@ -67,4 +67,11 @@ async def test_route_groups_topics_by_module_and_jump_opens_module_survey(enroll
         await target.click()
     await page.wait_for_selector("#pane-left.surveying")
     await expect(page.locator("#survey .eyebrow")).to_have_text("Модуль 2")
+
+    # Случайный прыжок не запирает в анкете: можно вернуться (аудит среза 52, M2).
+    leave = page.locator(".survey-leave")
+    await expect(leave).to_have_text("‹ Вернуться к модулю 1")
+    async with page.expect_response("**/lesson/switch"):
+        await leave.click()
+    await page.wait_for_selector("#pane-left:not(.surveying)")
     assert page.errors == []

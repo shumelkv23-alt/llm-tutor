@@ -14,6 +14,9 @@
   const INTRO_TEXT = "Пара коротких вопросов — и подберу, с чего начать. Это не экзамен: отвечайте как есть.";
   // Модуль, анкету которого проходим (из состояния занятия).
   let topic = null;
+  // Тема модуля с пройденной анкетой: из анкеты следующего модуля можно уйти
+  // назад (аудит среза 52, M2). null — первая анкета курса.
+  let wayBack = null;
   const CLAIMED_NOTE = "Знакомое не пропускаю — в конце проверим коротким тестом.";
 
   function el(tag, className, text) {
@@ -43,8 +46,23 @@
     });
     go.append(window.App.icon("arrow"));
     card.append(go);
+    appendWayBack(card);
     box.replaceChildren(card);
     go.focus();
+  }
+
+  function appendWayBack(card) {
+    if (!wayBack) return;
+    card.append(button(`‹ Вернуться к модулю ${wayBack.module}`, "ghost survey-leave", leave));
+  }
+
+  async function leave() {
+    if (loading || !wayBack) return;
+    const data = await window.Lesson.act("switch", { node_id: wayBack.node_id });
+    if (data) {
+      answers = [];
+      started = false;
+    }
   }
 
   function question(data) {
@@ -74,6 +92,7 @@
     if (data.can_back) {
       card.append(button("‹ Назад", "ghost survey-back", back));
     }
+    appendWayBack(card);
     box.replaceChildren(card);
     grid.querySelector("button")?.focus();
   }
@@ -153,6 +172,7 @@
   window.Lesson.onState((state) => {
     pane.classList.toggle("surveying", Boolean(state.survey));
     topic = state.survey_topic || null;
+    wayBack = state.survey_back || null;
     if (state.survey && !started && !answers.length) intro();
   });
 })();

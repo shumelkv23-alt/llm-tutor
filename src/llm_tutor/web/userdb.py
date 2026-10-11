@@ -12,6 +12,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import sqlite3
 from pathlib import Path
 
@@ -116,18 +117,26 @@ class UserDBPool:
         новым id уже есть, старый не трогаем: перезаписывать нельзя.
         """
         target = self.path(user_id, course_id)
-        if target.exists():
-            return
         for old_id, new_id in RENAMED_COURSES.items():
             if new_id != course_id:
                 continue
             source = target.with_name(f"{old_id}.sqlite3")
             if not source.is_file():
                 continue
+            if target.exists():
+                # Оба файла — прогресс под старым id не подхватится: пусть это
+                # будет видно в логе, а не пропадёт молча (аудит 52, L4).
+                logger.warning(
+                    "БД ученика %s: есть и %s, и %s — старая не подхвачена",
+                    user_id, source.name, target.name,
+                )
+                return
             for suffix in ("", "-wal", "-shm"):
                 old = source.with_name(source.name + suffix)
                 if old.exists():
-                    old.rename(target.with_name(target.name + suffix))
+                    # replace: осиротевший -wal/-shm без основного файла на
+                    # Windows иначе уронил бы rename (FileExistsError).
+                    os.replace(old, target.with_name(target.name + suffix))
             logger.info("БД ученика %s: курс %s → %s", user_id, old_id, new_id)
             return
 

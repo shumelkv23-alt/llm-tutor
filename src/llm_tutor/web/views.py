@@ -9,7 +9,7 @@ import sqlite3
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided
-from llm_tutor.core.lesson import pending_survey_topic
+from llm_tutor.core.lesson import course_survey_done, pending_survey_topic, survey_way_back
 from llm_tutor.core.overview import (
     ModuleRow,
     course_progress,
@@ -209,9 +209,12 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """
     pending_topic = pending_survey_topic(conn)
     if pending_topic is not None:
+        back = survey_way_back(conn)
         return {
             "survey": True,
             "survey_topic": topic_view(pending_topic),
+            # Анкета модуля N > 1: путь назад к теме модуля с пройденной анкетой.
+            "survey_back": {"node_id": back[0], "module": back[1].number} if back else None,
             "node": None,
             "item": None,
             "topics": [],
@@ -322,7 +325,7 @@ def learning_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """Обучение по курсу для главной и профиля: анкета, темы, шаги, итоги."""
     rows = topic_rows(conn, settings=settings)
     return {
-        "survey_done": pending_survey_topic(conn) is None,
+        "survey_done": course_survey_done(conn),
         "self_assessment": [
             {"title": title, "answer": answer}
             for topic in repos.get_topics(conn)

@@ -274,6 +274,52 @@ def pending_survey_topic(conn: sqlite3.Connection) -> Topic | None:
     return topic
 
 
+def course_survey_done(conn: sqlite3.Connection) -> bool:
+    """Первая анкета курса пройдена: анкета следующего модуля — уже не «начало».
+
+    Ученик посреди курса перед анкетой модуля N > 1 продолжает занятие, а не
+    «начинает с анкеты» (аудит среза 52, L1).
+    """
+    pending = pending_survey_topic(conn)
+    if pending is None:
+        return True
+    topics = repos.get_topics(conn)
+    return bool(topics) and pending.number != topics[0].number
+
+
+def survey_way_back(conn: sqlite3.Connection) -> tuple[str, Topic] | None:
+    """Куда вернуться из анкеты модуля: тема последнего модуля с пройденной анкетой.
+
+    Ученик мог прыгнуть в чужой модуль из маршрута случайно — анкета не
+    должна запирать его там (аудит среза 52, M2). Тема — первая незакрытая
+    в маршруте, а если закрыты все — последняя. ``None`` — анкеты нет или
+    возвращаться некуда (первая анкета курса).
+    """
+    pending = pending_survey_topic(conn)
+    if pending is None:
+        return None
+    done = [
+        topic
+        for topic in repos.get_topics(conn)
+        if topic.number < pending.number and survey.is_completed(conn, topic.survey)
+    ]
+    if not done:
+        return None
+    topic = done[-1]
+    graph = CourseGraph.load(conn)
+    nodes = [node for node in graph.topo_order() if graph.topic_of(node) == topic.number]
+    if not nodes:
+        return None
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    closed = {
+        step.concept_id
+        for step in (state.route.steps if state.route else [])
+        if step.status == "closed"
+    }
+    return next((node for node in nodes if node not in closed), nodes[-1]), topic
+
+
 def prepare_lesson(
     conn: sqlite3.Connection,
     *,
