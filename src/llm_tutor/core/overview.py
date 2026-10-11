@@ -7,11 +7,11 @@ import sqlite3
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings
-from llm_tutor.core.lesson import NodeStatus, is_closed, node_status
+from llm_tutor.core.lesson import NodeStatus, is_closed, node_status, pending_survey_topic
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import RouteStep, SessionState
-from llm_tutor.student import beta, survey
+from llm_tutor.student import beta
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
@@ -43,7 +43,7 @@ def course_progress(
     return CourseProgress(
         total=len(nodes),
         closed=closed,
-        survey_done=survey.is_completed(conn),
+        survey_done=pending_survey_topic(conn) is None,
         current_name=graph.concept(current).name if current and graph.has_node(current) else None,
     )
 

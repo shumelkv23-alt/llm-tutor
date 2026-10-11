@@ -1,7 +1,8 @@
 # LLM-тьютор по курсу машинного обучения
 
 Веб-приложение — тьютор на основе LLM, который ведёт ученика по курсу
-[mlcourse.ai](https://mlcourse.ai) (пилот — topic01 «Pandas / Exploratory Data Analysis»).
+[mlcourse.ai](https://mlcourse.ai): пять модулей в одном графе — от «Pandas / EDA»
+до бэггинга и случайного леса (модули 6–10 не написаны).
 
 ## Стек
 
@@ -21,14 +22,16 @@ uv sync                     # установить зависимости
 #   macOS/Linux (bash):       cp .env.example .env
 
 # загрузить материалы темы в RAG-индекс (один раз; можно URL или файл):
-uv run python -m llm_tutor.course.ingest data/raw/topic01_pandas_data_analysis.md
+uv run python -m llm_tutor.course.ingest data/raw/topic01_pandas_data_analysis.md --topic 1
 # (кладёт в MATERIALS_DB_PATH, data/materials.sqlite3 — оттуда их берёт веб)
 
 uv run python -m llm_tutor.web        # http://127.0.0.1:8000
 ```
 
-Граф темы, банк заданий (`data/seed_topic01.json`) и конспекты
-(`data/theory/topic01/*.md`) грузятся в БД ученика автоматически.
+Граф, банк заданий и анкета модуля (`data/seed_topicNN.json`, файл на
+модуль) и конспекты (`data/theory/topicNN/*.md`) грузятся в БД ученика
+автоматически. Пока веб грузит только модуль 1 — остальные подключаются в
+срезе 52 плана `docs/superpowers/plans/2026-10-11-dense-lessons.md`.
 
 **Ученики.** Каждый регистрируется в браузере (`/register`: имя, email,
 пароль). Аккаунты лежат в `data/accounts.sqlite3`, а данные ученика по курсу —
@@ -99,7 +102,7 @@ uv run python -m llm_tutor.web.cli import-legacy --email ann@example.com --db da
 перестаёт предлагаться, но строку из БД не удаляет: на неё ссылается журнал
 событий (то же с концептами).
 
-**Банк небольшой** — от двух заданий на каждый из 21 узла. Повтор уже
+**Банк небольшой** — от двух заданий на каждую тему. Повтор уже
 отвеченного задания идёт в зачёт с пониженным весом (`REPEAT_EVIDENCE_WEIGHT`),
 чтобы не выдавать его за независимое свидетельство.
 

@@ -8,10 +8,11 @@ import logging
 import sqlite3
 
 from llm_tutor.config import Settings
+from llm_tutor.core.lesson import pending_survey_topic
 from llm_tutor.core.overview import course_progress, route_overview, topic_rows
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.schemas import Item, SessionState
+from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
 from llm_tutor.student import survey
 from llm_tutor.web import markdown
 
@@ -83,9 +84,9 @@ def _topic_count(course: Course) -> int:
 # --- Анкета ---
 
 
-def survey_progress(answers: list[int]) -> "survey.Progress":
-    """Ход анкеты из ответов клиента; недопустимая последовательность — ``ValueError``."""
-    progress = survey.Progress()
+def survey_progress(config: SurveyConfig, answers: list[int]) -> "survey.Progress":
+    """Ход анкеты модуля из ответов клиента; недопустимая последовательность — ``ValueError``."""
+    progress = survey.Progress(config)
     for index in answers:
         if isinstance(index, bool) or not isinstance(index, int):
             raise ValueError(f"Ответ анкеты — номер варианта, а не {index!r}")
@@ -95,12 +96,13 @@ def survey_progress(answers: list[int]) -> "survey.Progress":
 
 def survey_question(progress: "survey.Progress") -> dict:
     """Текущий вопрос анкеты (вызывать на незаконченной анкете)."""
+    config = progress.config
     key = progress.next_key()
     assert key is not None
-    if key == survey.LEVEL_KEY:
-        question, example = survey.LEVEL_QUESTION, None
+    if key == config.level_key:
+        question, example = config.level_question, None
     else:
-        block = survey.block_by_key(key)
+        block = config.block(key)
         question, example = block.question, block.example
     position = progress.position()
     return {
@@ -108,22 +110,27 @@ def survey_question(progress: "survey.Progress") -> dict:
         "step": progress.step,
         "question": question,
         "example": example,
-        "options": list(survey.options_for(key)),
+        "options": list(survey.options_for(config, key)),
         "number": position[0] if position else None,
         "total": position[1] if position else None,
         "can_back": progress.step > 0,
     }
 
 
-def survey_summary(final: dict[str, int]) -> dict:
+def survey_summary(config: SurveyConfig, final: dict[str, int]) -> dict:
     """Сводка «как я тебя понял»: блок → ответ, и есть ли заявленное знакомым."""
     return {
         "items": [
             {"title": block.title, "answer": survey.SELF_LEVELS[final[block.key]]}
-            for block in survey.BLOCKS
+            for block in config.blocks
         ],
         "claimed": any(index == survey.CONFIDENT_INDEX for index in final.values()),
     }
+
+
+def topic_view(topic: Topic) -> dict:
+    """Модуль для страницы: номер, название, вводная."""
+    return {"number": topic.number, "title": topic.title, "intro": topic.intro}
 
 
 # --- Занятие ---
@@ -174,8 +181,16 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     Чтение, а не ход: сессию не заводим. Задание берётся из состояния сессии,
     а не из текста ответа — это источник правды для «Практики».
     """
-    if not survey.is_completed(conn):
-        return {"survey": True, "node": None, "item": None, "topics": [], "messages": []}
+    pending_topic = pending_survey_topic(conn)
+    if pending_topic is not None:
+        return {
+            "survey": True,
+            "survey_topic": topic_view(pending_topic),
+            "node": None,
+            "item": None,
+            "topics": [],
+            "messages": [],
+        }
     graph = CourseGraph.load(conn)
     session_id = repos.get_open_session(conn)
     state = repos.get_session_state(conn, session_id) if session_id else SessionState()
@@ -254,10 +269,11 @@ def learning_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """Обучение по курсу для главной и профиля: анкета, темы, шаги, итоги."""
     rows = topic_rows(conn, settings=settings)
     return {
-        "survey_done": survey.is_completed(conn),
+        "survey_done": pending_survey_topic(conn) is None,
         "self_assessment": [
             {"title": title, "answer": answer}
-            for title, answer in survey.self_assessment(conn).items()
+            for topic in repos.get_topics(conn)
+            for title, answer in survey.self_assessment(conn, topic.survey).items()
         ],
         "topics": [
             {

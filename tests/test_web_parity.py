@@ -4,6 +4,7 @@
 здесь — то, что было покрыто только через бота.
 """
 
+from course_fixtures import T1
 import time
 
 import pytest
@@ -32,9 +33,9 @@ async def enrolled(student):
 
 
 def _answers(choice: int) -> list[int]:
-    progress, given = survey.Progress(), []
+    progress, given = survey.Progress(T1), []
     while (key := progress.next_key()) is not None:
-        index = min(choice, len(survey.options_for(key)) - 1)
+        index = min(choice, len(survey.options_for(T1, key)) - 1)
         progress, given = progress.answer(index), [*given, index]
     return given
 
@@ -66,7 +67,7 @@ async def test_lesson_failure_after_survey_is_reported(enrolled, web_app, monkey
 
     body = await _finish(enrolled)
 
-    assert survey.is_completed(_db(web_app))  # анкета записана, урок продолжится ходом
+    assert survey.is_completed(_db(web_app), T1)  # анкета записана, урок продолжится ходом
     assert FAILURE_REPLY.split(".")[0] in body["messages"][-1]["html"]
 
 
@@ -113,13 +114,13 @@ async def test_answer_does_not_parse_intents(enrolled, web_app) -> None:
 
 
 def test_survey_summary_promises_check_only_with_confident_blocks() -> None:
-    confident = {block.key: survey.CONFIDENT_INDEX for block in survey.BLOCKS}
-    unknown = {block.key: 0 for block in survey.BLOCKS}
+    confident = {block.key: survey.CONFIDENT_INDEX for block in T1.blocks}
+    unknown = {block.key: 0 for block in T1.blocks}
 
-    assert views.survey_summary(confident)["claimed"] is True
-    summary = views.survey_summary(unknown)
+    assert views.survey_summary(T1, confident)["claimed"] is True
+    summary = views.survey_summary(T1, unknown)
     assert summary["claimed"] is False
-    assert [item["title"] for item in summary["items"]] == [block.title for block in survey.BLOCKS]
+    assert [item["title"] for item in summary["items"]] == [block.title for block in T1.blocks]
     assert {item["answer"] for item in summary["items"]} == {survey.SELF_LEVELS[0]}
 
 
@@ -127,7 +128,7 @@ async def test_survey_question_shows_progress_and_example(enrolled) -> None:
     question = (await enrolled.post(f"{BASE}/survey/next", json={"answers": [1]})).json()["question"]
 
     assert question["number"] == 1
-    assert question["total"] == len(survey.BLOCKS)
+    assert question["total"] == len(T1.blocks)
     assert question["question"]
     assert question["example"]
 

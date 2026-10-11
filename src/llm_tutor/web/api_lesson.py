@@ -22,7 +22,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
-from llm_tutor.schemas import CriterionResult, GradeResult, SessionState
+from llm_tutor.schemas import CriterionResult, GradeResult, SessionState, Topic
 from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
@@ -148,8 +148,23 @@ def turn_response(ctx: LessonContext, user_text: str | None, reply: TurnReply | 
 
 
 def _require_survey(ctx: LessonContext) -> None:
-    if not survey.is_completed(ctx.conn):
+    if lesson.pending_survey_topic(ctx.conn) is not None:
         raise HTTPException(status_code=409, detail={"message": SURVEY_NOT_DONE})
+
+
+def _survey_topic(ctx: LessonContext) -> Topic:
+    """Модуль, анкету которого проходит ученик; анкеты нет — 409."""
+    topic = lesson.pending_survey_topic(ctx.conn)
+    if topic is None:
+        raise HTTPException(status_code=409, detail={"message": SURVEY_DONE})
+    return topic
+
+
+def _progress(topic: Topic, answers: list[int]) -> "survey.Progress":
+    try:
+        return views.survey_progress(topic.survey, answers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID}) from exc
 
 
 async def _safe(call: Awaitable[TurnReply], failure: str) -> TurnReply:
@@ -198,34 +213,37 @@ async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/survey/next")
 async def survey_next(body: SurveyBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    if survey.is_completed(ctx.conn):
-        raise HTTPException(status_code=409, detail={"message": SURVEY_DONE})
-    try:
-        progress = views.survey_progress(body.answers)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID}) from exc
+    topic = _survey_topic(ctx)
+    progress = _progress(topic, body.answers)
     if progress.next_key() is None:
-        return {"question": None, "summary": views.survey_summary(progress.final_answers())}
+        return {
+            "question": None,
+            "summary": views.survey_summary(topic.survey, progress.final_answers()),
+        }
     return {"question": views.survey_question(progress), "summary": None}
 
 
 @router.post("/courses/{course_id}/lesson/survey/finish")
 async def survey_finish(body: SurveyBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    try:
-        progress = views.survey_progress(body.answers)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID}) from exc
-    if progress.next_key() is not None:
-        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID})
     async with ctx.lock:
-        # Проверка под замком: второй параллельный finish увидит пройденную анкету.
-        if survey.is_completed(ctx.conn):
-            raise HTTPException(status_code=409, detail={"message": SURVEY_DONE})
+        # Модуль и проверка — под замком: второй параллельный finish увидит
+        # пройденную анкету, а не начнёт урок второй раз.
+        topic = _survey_topic(ctx)
+        progress = _progress(topic, body.answers)
+        if progress.next_key() is not None:
+            raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID})
+        config = topic.survey
         final = progress.final_answers()
-        survey.apply_answers(ctx.conn, final, level=progress.level, settings=ctx.settings)
+        survey.apply_answers(
+            ctx.conn, config, final, level=progress.level, settings=ctx.settings
+        )
         try:
             start, reply = await lesson.begin_lesson(
-                ctx.conn, ctx.client, ctx.model, settings=ctx.settings
+                ctx.conn,
+                ctx.client,
+                ctx.model,
+                settings=ctx.settings,
+                claimed=survey.claimed_concepts(ctx.conn, config),
             )
         except Exception:  # noqa: BLE001 — анкета записана, урок продолжится ходом
             logger.exception("Сбой первого хода урока")
@@ -234,7 +252,7 @@ async def survey_finish(body: SurveyBody, ctx: LessonContext = Depends(lesson_co
     lead = _lesson_lead(ctx.conn, start) if start is not None else None
     if lead:
         response["messages"].insert(0, views.message_view("assistant", lead))
-    response["summary"] = views.survey_summary(final)
+    response["summary"] = views.survey_summary(config, final)
     return response
 
 

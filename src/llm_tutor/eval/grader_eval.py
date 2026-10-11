@@ -22,7 +22,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from llm_tutor.config import get_settings
-from llm_tutor.course.seed import DEFAULT_SEED_PATH, load_seed
+from llm_tutor.course.seed import load_course
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.eval.metrics import Agreement, agreement
@@ -146,12 +146,21 @@ def format_report(report: EvalReport) -> str:
     )
 
 
+def load_eval_course(conn, seed: str | None = None) -> None:
+    """Курс для прогона: все модули из data/ (или один файл, если задан).
+
+    ``load_seed`` здесь нельзя: «один модуль как весь курс» погасил бы
+    остальные модули, окажись под рукой рабочая БД (аудит среза 24, M1).
+    """
+    load_course(conn, None if seed is None else [seed])
+
+
 async def _run(args: argparse.Namespace) -> EvalReport:
     settings = get_settings()
     conn = get_conn(args.db)
     try:
         migrate(conn)
-        load_seed(conn, args.seed)
+        load_eval_course(conn, args.seed)
         golden = load_golden(args.golden)
         client = LLMClient(
             base_url=settings.openrouter_base_url,
@@ -169,13 +178,19 @@ async def _run(args: argparse.Namespace) -> EvalReport:
         conn.close()
 
 
-def main(argv: list[str] | None = None) -> int:
-    """CLI: прогнать грейдер по золотому набору и напечатать отчёт."""
+def build_parser() -> argparse.ArgumentParser:
+    """Аргументы CLI. БД по умолчанию — в памяти: прогон пишет в неё курс и
+    события, и DB_PATH рабочего бота сюда подставляться не должен."""
     parser = argparse.ArgumentParser(description="Прогон грейдера по золотому набору.")
     parser.add_argument("--golden", default=str(DEFAULT_GOLDEN_PATH))
-    parser.add_argument("--seed", default=str(DEFAULT_SEED_PATH))
-    parser.add_argument("--db", default=os.environ.get("DB_PATH", ":memory:"))
-    args = parser.parse_args(argv)
+    parser.add_argument("--seed", default=None, help="один seed-файл; по умолчанию — весь курс")
+    parser.add_argument("--db", default=":memory:")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI: прогнать грейдер по золотому набору и напечатать отчёт."""
+    args = build_parser().parse_args(argv)
 
     report = asyncio.run(_run(args))
     print(format_report(report))

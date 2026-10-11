@@ -6,6 +6,7 @@
 
 import sqlite3
 import time
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
 
@@ -14,8 +15,8 @@ from llm_tutor.core.turn import TurnReply, post_turn, reset_lesson, resume_reply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
-from llm_tutor.schemas import RouteStep, SessionState
-from llm_tutor.student import beta
+from llm_tutor.schemas import RouteStep, SessionState, Topic
+from llm_tutor.student import beta, survey
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
@@ -166,21 +167,67 @@ class LessonStart:
         return bool(self.upcoming) and self.upcoming[0].status == "claimed"
 
 
-def prepare_lesson(
-    conn: sqlite3.Connection, *, settings: Settings, limit: int = UPCOMING_STEPS
-) -> LessonStart:
-    """Сброс захода и маршрут после анкеты (без модели).
+def pending_survey_topic(conn: sqlite3.Connection) -> Topic | None:
+    """Модуль занятия, анкета которого ещё не пройдена (§5.2 спеки модулей).
 
-    Первый шаг списка — ровно тот узел, с которого начнётся урок: его же
-    передают в ``resume_reply``, иначе планировщик мог бы выбрать другой.
+    Это чтение, а не ход: сессию не заводим. ``None`` — анкету проходить не
+    нужно (или курс пуст).
     """
-    reset_lesson(conn)
     graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return None
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    topic_id = route_mod.topic_for(graph, state)
+    topic = repos.get_topic(conn, topic_id) if topic_id is not None else None
+    if topic is None or survey.is_completed(conn, topic.survey):
+        return None
+    return topic
+
+
+def prepare_lesson(
+    conn: sqlite3.Connection,
+    *,
+    settings: Settings,
+    claimed: Collection[str] = (),
+    limit: int = UPCOMING_STEPS,
+) -> LessonStart:
+    """Сброс захода и маршрут после анкеты модуля (без модели).
+
+    ``claimed`` — темы, которые анкета модуля только что назвала знакомыми.
+    Снимок маршрута не обнуляется: в нём закрытое прошлых модулей. Первый шаг
+    списка — ровно тот узел, с которого начнётся урок: его же передают в
+    ``resume_reply``, иначе планировщик мог бы выбрать другой. Тема прыжка в
+    модуль (``jump_node_id``) — первая, если она есть.
+    """
+    session_id = repos.get_open_session(conn)
+    jump = repos.get_session_state(conn, session_id).jump_node_id if session_id else None
+    reset_lesson(conn, claimed=claimed)
+    graph = CourseGraph.load(conn)
+    previous = repos.get_session_state(conn, session_id).route if session_id else None
     route = route_mod.build_route(
-        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), settings=settings
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        previous=previous,
+        settings=settings,
     )
-    first = route_mod.next_node_id(conn, graph, route, settings=settings)
-    return LessonStart(first=first, upcoming=route_mod.upcoming(route, first, limit=limit))
+    first = (
+        jump
+        if jump is not None and graph.has_node(jump)
+        else route_mod.next_node_id(conn, graph, route, settings=settings)
+    )
+    # Список — по участку модуля работы: первой темой может быть подтянутый
+    # предок из прошлого модуля, и участок его модуля был бы не тот.
+    topic = (
+        route.topic_id
+        if jump is None and route.topic_id is not None
+        else graph.topic_of(first) if first is not None else None
+    )
+    section = route_mod.working_section(graph, route, topic) if first is not None else []
+    return LessonStart(
+        first=first, upcoming=route_mod.upcoming(route, first, limit=limit, section=section)
+    )
 
 
 async def begin_lesson(
@@ -189,10 +236,11 @@ async def begin_lesson(
     model: str,
     *,
     settings: Settings,
+    claimed: Collection[str] = (),
     limit: int = UPCOMING_STEPS,
 ) -> tuple[LessonStart, TurnReply | None]:
     """Подготовка и первый ход урока. ``None`` вместо хода — учить уже нечему."""
-    start = prepare_lesson(conn, settings=settings, limit=limit)
+    start = prepare_lesson(conn, settings=settings, claimed=claimed, limit=limit)
     if not start.upcoming:
         return start, None
     reply = await resume_reply(conn, client, model, settings=settings, start_node_id=start.first)

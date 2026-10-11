@@ -20,7 +20,7 @@ from llm_tutor.web.courses import get_course
 
 logger = logging.getLogger(__name__)
 
-_CHUNK_COLUMNS = "concept_id, source_url, section, seq, content"
+_CHUNK_COLUMNS = "concept_id, source_url, section, seq, content, topic_id"
 
 
 def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
@@ -33,7 +33,8 @@ def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
     digest = hashlib.sha256()
     for row in conn.execute(
         "SELECT CASE WHEN concept_id IN (SELECT id FROM main.concepts) THEN concept_id END,"
-        f" source_url, section, seq, content FROM {schema}.chunks ORDER BY source_url, seq, id"
+        f" source_url, section, seq, content, topic_id FROM {schema}.chunks"
+        " ORDER BY source_url, seq, id"
     ):
         digest.update(repr(tuple(row)).encode("utf-8"))
     return digest.hexdigest()
@@ -57,7 +58,7 @@ def sync_materials(conn: sqlite3.Connection, materials_path: Path) -> bool:
             conn.execute(
                 f"INSERT INTO main.chunks ({_CHUNK_COLUMNS}) "
                 "SELECT CASE WHEN m.concept_id IN (SELECT id FROM main.concepts) "
-                "THEN m.concept_id END, m.source_url, m.section, m.seq, m.content "
+                "THEN m.concept_id END, m.source_url, m.section, m.seq, m.content, m.topic_id "
                 "FROM materials.chunks m ORDER BY m.id"
             )
         except sqlite3.Error:

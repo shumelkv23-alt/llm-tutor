@@ -66,7 +66,12 @@ def is_node_closed(
 ) -> bool:
     """Пройден ли узел: серия чистых ответов ИЛИ уверенное владение (§6.1)."""
     s = settings or get_settings()
-    by_streak = state.node_streak >= s.guide_success_streak
+    needed = (
+        s.close_success_streak
+        if state.mode == "verify" and state.close_requested
+        else s.guide_success_streak
+    )
+    by_streak = state.node_streak >= needed
     by_mastery = (
         mastery.mean >= s.mastery_skip_threshold
         and mastery.uncertainty <= CONFIDENT_UNCERTAINTY

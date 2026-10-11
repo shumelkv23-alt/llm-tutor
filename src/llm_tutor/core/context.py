@@ -33,8 +33,9 @@ from llm_tutor.llm.prompts import (
 )
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import retrieve
-from llm_tutor.schemas import Chunk, SessionState
+from llm_tutor.schemas import Chunk, SessionState, Topic
 from llm_tutor.student import beta, survey
+from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import MODE_LABELS
 
 # Грубая оценка объёма без токенизатора: ~4 символа на токен.
@@ -75,10 +76,17 @@ def _mastery_slice(
     except KeyError:
         return []
 
+    # Зависимые из модулей впереди ученику ещё не встречались: их названия
+    # в промпте урока сбивали бы тьютора (финальное ревью ветки, F-7).
+    topic = graph.topic_of(state.current_node_id)
     neighbours = [
         state.current_node_id,
         *graph.prerequisites(state.current_node_id),
-        *graph.dependents(state.current_node_id),
+        *(
+            node_id
+            for node_id in graph.dependents(state.current_node_id)
+            if graph.topic_of(node_id) <= topic
+        ),
     ]
     return [
         (
@@ -89,7 +97,9 @@ def _mastery_slice(
     ]
 
 
-def _material_state(conn: sqlite3.Connection, chunks: list[Chunk]) -> MaterialState:
+def _material_state(
+    conn: sqlite3.Connection, chunks: list[Chunk], *, max_topic: int | None = None
+) -> MaterialState:
     """Состояние материалов курса для промпта.
 
     Промах поиска НЕ значит «вне курса»: поиск ключевой, а материал
@@ -99,7 +109,8 @@ def _material_state(conn: sqlite3.Connection, chunks: list[Chunk]) -> MaterialSt
     """
     if chunks:
         return "found"
-    return "empty" if repos.count_chunks(conn) == 0 else "no_match"
+    # Материалы будущих модулей ученику недоступны — для него их нет (27-4).
+    return "empty" if repos.count_chunks(conn, max_topic=max_topic) == 0 else "no_match"
 
 
 def _system_prompt(
@@ -107,14 +118,17 @@ def _system_prompt(
     state: SessionState,
     graph: CourseGraph | None,
     *,
+    topic: Topic | None,
     material: MaterialState,
     now: float,
     settings: Settings,
 ) -> str:
     """Правила + профиль + состояние занятия + срез модели ученика."""
     # Профиль — самооценка из анкеты по блокам (срез 23). Раньше фильтр ждал
-    # ключи старой анкеты и молча отсекал всё.
-    profile = format_profile_block(survey.self_assessment(conn))
+    # ключи старой анкеты и молча отсекал всё. С среза 27 — анкета модуля занятия.
+    profile = format_profile_block(
+        survey.self_assessment(conn, topic.survey) if topic is not None else {}
+    )
     node_name = None
     if graph is not None and state.current_node_id:
         try:
@@ -123,8 +137,10 @@ def _system_prompt(
             node_name = None
     route_block = None
     if state.route is not None and graph is not None:
+        # Маршрут в промпте — участок модуля, как на экранах: весь курс
+        # раздул бы промпт и сбил счёт «пройдено».
         route_block = format_route_block(
-            state.route,
+            route_mod.section_route(graph, state.route),
             names={node_id: graph.concept(node_id).name for node_id in graph.node_ids},
         )
     blocks = [
@@ -133,6 +149,7 @@ def _system_prompt(
             material=material,
             phase=state.phase,
             route_block=route_block,
+            topic=topic,
         ),
         profile,
         format_state_block(
@@ -206,7 +223,14 @@ def build_context(
 
     # top_k <= 0 не должен «выключать» RAG и бота — падаем на дефолт.
     effective_k = top_k if top_k > 0 else DEFAULT_RAG_TOP_K
-    chunks = retrieve(conn, user_message, k=effective_k)
+    # Модуль занятия: по нему профиль, маршрут в промпте и материалы (срез 27).
+    topic_id = (
+        route_mod.topic_for(graph, session_state)
+        if graph is not None and graph.node_ids
+        else None
+    )
+    topic = repos.get_topic(conn, topic_id) if topic_id is not None else None
+    chunks = retrieve(conn, user_message, k=effective_k, max_topic=topic_id)
 
     tail: list[ChatMessage] = []
     if dialog_tail > 0:
@@ -216,11 +240,12 @@ def build_context(
             if message.role in ("user", "assistant")
         ]
 
-    material_state = _material_state(conn, chunks)
+    material_state = _material_state(conn, chunks, max_topic=topic_id)
     system = _system_prompt(
         conn,
         session_state,
         graph,
+        topic=topic,
         material=material_state,
         now=stamp,
         settings=s,

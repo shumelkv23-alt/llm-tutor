@@ -46,6 +46,10 @@ def _as_number(text: str) -> float | None:
 def _option_text(item: Item, raw: str) -> str | None:
     """Разворачивает ответ на choice (индекс или текст) в текст варианта."""
     candidate = normalize_answer(raw)
+    # Сначала текст варианта: у варианта-числа («150») цифры — это ответ, а не
+    # индекс, иначе верная кнопка засчитывалась бы ошибкой (финальное ревью, F-1).
+    if candidate in (normalize_answer(option) for option in item.options):
+        return candidate
     if candidate.isdigit():
         index = int(candidate)
         if 0 <= index < len(item.options):
@@ -55,7 +59,10 @@ def _option_text(item: Item, raw: str) -> str | None:
 
 
 def _check_choice(item: Item, answer: str) -> bool:
-    expected = _option_text(item, item.answer or "")
+    # Эталон — всегда индекс варианта, даже если варианты сами числа.
+    raw = (item.answer or "").strip()
+    index = int(raw) if raw.isdigit() else -1
+    expected = normalize_answer(item.options[index]) if 0 <= index < len(item.options) else None
     if expected is None:
         # Битый эталон (индекс вне вариантов) — падаем, а не пишем «неверно»
         # за верный ответ: молчаливый ноль отравил бы модель ученика.

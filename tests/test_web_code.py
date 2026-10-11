@@ -1,5 +1,6 @@
 """Итог тестов кода из браузера: API и ядро (Срез 46)."""
 
+from course_fixtures import T1
 import pytest
 
 from llm_tutor.db import repos
@@ -17,9 +18,9 @@ def web_llm():
 
 
 def _answers() -> list[int]:
-    progress, given = survey.Progress(), []
+    progress, given = survey.Progress(T1), []
     while (key := progress.next_key()) is not None:
-        index = min(1, len(survey.options_for(key)) - 1)
+        index = min(1, len(survey.options_for(T1, key)) - 1)
         progress, given = progress.answer(index), [*given, index]
     return given
 

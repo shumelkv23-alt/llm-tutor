@@ -4,6 +4,7 @@
 с удалением Telegram они проверяются напрямую.
 """
 
+from course_fixtures import T1
 from web_fakes import ScriptedTutor
 
 from llm_tutor.core import lesson, overview, turn
@@ -137,12 +138,15 @@ def test_reselecting_same_theme_keeps_progress(conn, settings) -> None:
 
 
 async def _finish(conn, settings, answers: list[int]):
-    progress = survey.Progress()
+    progress = survey.Progress(T1)
     for index in answers:
         progress = progress.answer(index)
     assert progress.next_key() is None
-    survey.apply_answers(conn, progress.final_answers(), level=progress.level, settings=settings)
-    return await lesson.begin_lesson(conn, ScriptedTutor("Объясняю."), "m", settings=settings)
+    survey.apply_answers(conn, T1, progress.final_answers(), level=progress.level, settings=settings)
+    return await lesson.begin_lesson(
+        conn, ScriptedTutor("Объясняю."), "m", settings=settings,
+        claimed=survey.claimed_concepts(conn, T1),
+    )
 
 
 def _said(reply) -> str:

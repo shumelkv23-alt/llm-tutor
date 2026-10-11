@@ -1,5 +1,6 @@
 """Регрессии по ревью срезов 38–41."""
 
+from course_fixtures import T1
 import sqlite3
 
 import pytest
@@ -24,7 +25,7 @@ def web_llm():
 
 
 def _answers() -> list[int]:
-    progress, given = survey.Progress(), []
+    progress, given = survey.Progress(T1), []
     while progress.next_key() is not None:
         progress, given = progress.answer(1), [*given, 1]
     return given

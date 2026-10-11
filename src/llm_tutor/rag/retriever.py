@@ -54,14 +54,18 @@ def retrieve(
     *,
     concept_id: str | None = None,
     k: int = 4,
+    max_topic: int | None = None,
 ) -> list[Chunk]:
-    """Возвращает топ-``k`` чанков по BM25; пустой запрос → ``[]``."""
+    """Возвращает топ-``k`` чанков по BM25; пустой запрос → ``[]``.
+
+    ``max_topic`` — модуль занятия: материалы будущих модулей не берутся.
+    """
     match = build_fts_query(query)
     if not match or k <= 0:
         return []
 
     sql = (
-        "SELECT c.id, c.concept_id, c.source_url, c.section, c.seq, c.content "
+        "SELECT c.id, c.concept_id, c.source_url, c.section, c.seq, c.content, c.topic_id "
         "FROM chunks_fts "
         "JOIN chunks c ON c.id = chunks_fts.rowid "
         "WHERE chunks_fts MATCH ?"
@@ -70,6 +74,10 @@ def retrieve(
     if concept_id is not None:
         sql += " AND c.concept_id = ?"
         params.append(concept_id)
+    if max_topic is not None:
+        # Материалы текущего и прошлых модулей; будущие — нет (§5.5 спеки модулей).
+        sql += " AND c.topic_id <= ?"
+        params.append(max_topic)
     sql += " ORDER BY bm25(chunks_fts) LIMIT ?"
     params.append(k)
 
@@ -82,6 +90,7 @@ def retrieve(
             section=row["section"],
             seq=row["seq"],
             content=row["content"],
+            topic_id=row["topic_id"],
         )
         for row in rows
     ]

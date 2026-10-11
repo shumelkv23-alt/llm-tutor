@@ -90,6 +90,19 @@ def test_materials_are_copied_and_searchable(pool, tmp_path) -> None:
     assert retrieve(conn, "groupby", k=3)
 
 
+def test_copied_materials_keep_their_module(pool, tmp_path) -> None:
+    """Материал модуля 2 и в БД ученика — модуля 2: RAG фильтрует по модулю."""
+    path = tmp_path / "materials.sqlite3"
+    conn = get_conn(str(path))
+    migrate(conn)
+    ingest_text(conn, "# Графики\n\nseaborn pairplot рисует пары.", "https://u/2", topic_id=2)
+    conn.close()
+
+    student = pool.open(1, COURSE)
+
+    assert {row[0] for row in student.execute("SELECT topic_id FROM chunks")} == {2}
+
+
 def test_changed_materials_replace_old_chunks(tmp_path) -> None:
     materials = tmp_path / "materials.sqlite3"
     _materials(materials, "# Старое\n\nПро merge и join.")

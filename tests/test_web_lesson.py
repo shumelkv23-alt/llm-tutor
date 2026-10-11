@@ -1,5 +1,6 @@
 """API занятия: анкета, ходы, задания (Срез 41)."""
 
+from course_fixtures import T1
 import asyncio
 
 import pytest
@@ -30,10 +31,10 @@ async def enrolled(student):
 
 def _answers(choice: int) -> list[int]:
     """Полная анкета: на каждый вопрос — вариант ``choice`` (или последний)."""
-    progress = survey.Progress()
+    progress = survey.Progress(T1)
     given: list[int] = []
     while (key := progress.next_key()) is not None:
-        index = min(choice, len(survey.options_for(key)) - 1)
+        index = min(choice, len(survey.options_for(T1, key)) - 1)
         progress = progress.answer(index)
         given.append(index)
     return given
@@ -79,18 +80,18 @@ async def test_state_before_survey(enrolled) -> None:
 async def test_survey_next_walks_questions(enrolled) -> None:
     first = (await enrolled.post(f"{BASE}/survey/next", json={"answers": []})).json()
 
-    assert first["question"]["key"] == survey.LEVEL_KEY
-    assert first["question"]["options"] == list(survey.LEVEL_OPTIONS)
+    assert first["question"]["key"] == T1.level_key
+    assert first["question"]["options"] == list(T1.level_options)
     assert first["question"]["can_back"] is False
 
     second = (await enrolled.post(f"{BASE}/survey/next", json={"answers": [1]})).json()
-    assert second["question"]["key"] != survey.LEVEL_KEY
+    assert second["question"]["key"] != T1.level_key
     assert second["question"]["number"] == 1
     assert second["question"]["can_back"] is True
 
     done = (await enrolled.post(f"{BASE}/survey/next", json={"answers": _answers(1)})).json()
     assert done["question"] is None
-    assert len(done["summary"]["items"]) == len(survey.BLOCKS)
+    assert len(done["summary"]["items"]) == len(T1.blocks)
 
 
 @pytest.mark.parametrize("answers", [[9], [1, 99], [-1], [True]])
@@ -107,13 +108,13 @@ async def test_survey_finish_requires_complete_answers(enrolled, web_app) -> Non
     response = await enrolled.post(f"{BASE}/survey/finish", json={"answers": [1]})
 
     assert response.status_code == 422
-    assert not survey.is_completed(_user_db(web_app))
+    assert not survey.is_completed(_user_db(web_app), T1)
 
 
 async def test_survey_finish_starts_lesson(enrolled, web_app, web_llm) -> None:
     body = await _finish(enrolled)
 
-    assert survey.is_completed(_user_db(web_app))
+    assert survey.is_completed(_user_db(web_app), T1)
     texts = [message["html"] for message in body["messages"]]
     assert "Ближайшие шаги" in texts[0]
     assert any("groupby разбивает" in text for text in texts)
@@ -134,13 +135,13 @@ class _DeadModel:
 
 
 async def test_survey_finish_without_model_reports_model_failure(enrolled, web_app) -> None:
-    """Первый урок без модели — честное «не смог получить ответ», а не общий сбой."""
+    """Первый урок без модели — описание темы из графа, а не общий сбой (срезы 28, 50)."""
     web_app.state.client = _DeadModel()
 
     body = await _finish(enrolled)
 
     texts = [message["html"] for message in body["messages"]]
-    assert any(LLM_FAILURE_REPLY in text for text in texts)
+    assert any("📘" in text for text in texts)
     assert not any(FAILURE_REPLY in text for text in texts)
     assert body["state"]["node"] is not None  # урок начат, тема выбрана
 

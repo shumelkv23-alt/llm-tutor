@@ -16,6 +16,25 @@ def _seed_with_theory(tmp_path, theory: dict[str, str]):
         json.dumps(
             {
                 "course": "demo",
+                "topic": {
+                    "number": 1,
+                    "title": "Демо",
+                    "intro": "",
+                    "survey": {
+                        "level_key": "demo_level",
+                        "level_question": "Как дела?",
+                        "level_options": ["С нуля", "Немного", "Уверенно"],
+                        "blocks": [
+                            {
+                                "key": "demo_block",
+                                "title": "Всё",
+                                "question": "Знаешь?",
+                                "example": "а, б",
+                                "concepts": ["a", "b"],
+                            }
+                        ],
+                    },
+                },
                 "nodes": [{"id": "a", "name": "Узел А"}, {"id": "b", "name": "Узел Б"}],
                 "edges": [{"from_id": "a", "to_id": "b"}],
             },
@@ -35,7 +54,7 @@ def test_theory_dir_follows_seed_name(tmp_path) -> None:
 
 
 def test_migration_004_adds_columns_to_existing_db(tmp_path) -> None:
-    """БД версии 3 с данными доходит до 4 без потерь."""
+    """БД версии 3 с данными доходит до текущей схемы без потерь."""
     path = tmp_path / "old.sqlite3"
     conn = sqlite3.connect(path)
     for name in ("001_init.sql", "002_seed_active.sql", "003_rubrics_active.sql"):
@@ -48,7 +67,7 @@ def test_migration_004_adds_columns_to_existing_db(tmp_path) -> None:
     upgraded = get_conn(str(path))
     migrate(upgraded)
 
-    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION == 4
+    assert upgraded.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
     assert upgraded.execute("SELECT name, theory FROM concepts").fetchone()[:] == ("Икс", None)
     columns = {row[1] for row in upgraded.execute("PRAGMA table_info(items)")}
     assert {"starter", "setup", "tests"} <= columns
@@ -111,6 +130,7 @@ def test_removed_node_does_not_keep_theory(conn, tmp_path) -> None:
     raw = json.loads(seed.read_text(encoding="utf-8"))
     raw["nodes"] = [node for node in raw["nodes"] if node["id"] != "b"]
     raw["edges"] = []
+    raw["topic"]["survey"]["blocks"][0]["concepts"] = ["a"]
     seed.write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
 
     load_seed(conn, seed)
