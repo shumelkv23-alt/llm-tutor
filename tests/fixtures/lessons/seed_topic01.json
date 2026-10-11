@@ -1,0 +1,359 @@
+{
+ "course": "test/lessons01",
+ "comment": "Тестовый модуль в формате занятий (срез 53): 3 занятия × 2 раздела, итоговые, legacy.",
+ "topic": {
+  "number": 1,
+  "title": "Таблицы (тестовый модуль с занятиями)",
+  "intro": "Тестовый модуль: занятия с разделами.",
+  "published": true,
+  "survey": {
+   "level_key": "l1_level",
+   "level_question": "Как у тебя с этим модулем?",
+   "level_options": [
+    "С нуля",
+    "Немного",
+    "Уверенно"
+   ],
+   "blocks": [
+    {
+     "key": "l1_basics",
+     "title": "Основы",
+     "question": "Знаешь основы?",
+     "example": "основы",
+     "concepts": [
+      "l1_frames",
+      "l1_select"
+     ]
+    },
+    {
+     "key": "l1_more",
+     "title": "Дальше",
+     "question": "А дальше?",
+     "example": "дальше",
+     "concepts": [
+      "l1_group"
+     ]
+    }
+   ],
+   "assumed_by_confident": [
+    "l1_basics"
+   ],
+   "foundation": [
+    "l1_basics"
+   ]
+  }
+ },
+ "nodes": [
+  {
+   "id": "l1_frames",
+   "name": "Series и DataFrame",
+   "difficulty": 0.2,
+   "description": "Тестовое занятие «Series и DataFrame».",
+   "source_url": null,
+   "sections": [
+    {
+     "id": "series",
+     "title": "Series"
+    },
+    {
+     "id": "dataframe",
+     "title": "DataFrame"
+    }
+   ]
+  },
+  {
+   "id": "l1_select",
+   "name": "Выборка данных",
+   "difficulty": 0.35,
+   "description": "Тестовое занятие «Выборка данных».",
+   "source_url": null,
+   "sections": [
+    {
+     "id": "loc",
+     "title": "loc и iloc"
+    },
+    {
+     "id": "mask",
+     "title": "Булевы маски"
+    }
+   ]
+  },
+  {
+   "id": "l1_group",
+   "name": "Группировка",
+   "difficulty": 0.5,
+   "description": "Тестовое занятие «Группировка».",
+   "source_url": null,
+   "sections": [
+    {
+     "id": "groupby",
+     "title": "groupby"
+    },
+    {
+     "id": "pivot",
+     "title": "pivot_table"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from_id": "l1_frames",
+   "to_id": "l1_select",
+   "type": "requires",
+   "hard": true,
+   "weight": 1.0
+  },
+  {
+   "from_id": "l1_select",
+   "to_id": "l1_group",
+   "type": "requires",
+   "hard": true,
+   "weight": 1.0
+  }
+ ],
+ "items": [
+  {
+   "id": 3001,
+   "prompt": "Вопрос 1 по разделу «Series» занятия «Series и DataFrame»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_frames": 1.0
+   },
+   "difficulty": 0.2,
+   "options": [
+    "Верно про Series",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "series"
+  },
+  {
+   "id": 3002,
+   "prompt": "Вопрос 2 по разделу «Series» занятия «Series и DataFrame»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_frames": 1.0
+   },
+   "difficulty": 0.2,
+   "options": [
+    "Верно про Series",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "series"
+  },
+  {
+   "id": 3003,
+   "prompt": "Вопрос 1 по разделу «DataFrame» занятия «Series и DataFrame»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_frames": 1.0
+   },
+   "difficulty": 0.2,
+   "options": [
+    "Верно про DataFrame",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "dataframe"
+  },
+  {
+   "id": 3004,
+   "prompt": "Вопрос 2 по разделу «DataFrame» занятия «Series и DataFrame»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_frames": 1.0
+   },
+   "difficulty": 0.2,
+   "options": [
+    "Верно про DataFrame",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "dataframe"
+  },
+  {
+   "id": 3005,
+   "prompt": "Итоговое задание занятия «Series и DataFrame»: назови метод.",
+   "answer_type": "short",
+   "concept_weights": {
+    "l1_frames": 1.0
+   },
+   "difficulty": 0.2,
+   "answer": "final_l1_frames",
+   "final": true
+  },
+  {
+   "id": 3006,
+   "prompt": "Вопрос 1 по разделу «loc и iloc» занятия «Выборка данных»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_select": 1.0
+   },
+   "difficulty": 0.35,
+   "options": [
+    "Верно про loc и iloc",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "loc"
+  },
+  {
+   "id": 3007,
+   "prompt": "Вопрос 2 по разделу «loc и iloc» занятия «Выборка данных»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_select": 1.0
+   },
+   "difficulty": 0.35,
+   "options": [
+    "Верно про loc и iloc",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "loc"
+  },
+  {
+   "id": 3008,
+   "prompt": "Вопрос 1 по разделу «Булевы маски» занятия «Выборка данных»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_select": 1.0
+   },
+   "difficulty": 0.35,
+   "options": [
+    "Верно про Булевы маски",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "mask"
+  },
+  {
+   "id": 3009,
+   "prompt": "Вопрос 2 по разделу «Булевы маски» занятия «Выборка данных»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_select": 1.0
+   },
+   "difficulty": 0.35,
+   "options": [
+    "Верно про Булевы маски",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "mask"
+  },
+  {
+   "id": 3010,
+   "prompt": "Итоговое задание занятия «Выборка данных»: назови метод.",
+   "answer_type": "short",
+   "concept_weights": {
+    "l1_select": 1.0
+   },
+   "difficulty": 0.35,
+   "answer": "final_l1_select",
+   "final": true
+  },
+  {
+   "id": 3011,
+   "prompt": "Вопрос 1 по разделу «groupby» занятия «Группировка»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_group": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про groupby",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "groupby"
+  },
+  {
+   "id": 3012,
+   "prompt": "Вопрос 2 по разделу «groupby» занятия «Группировка»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_group": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про groupby",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "groupby"
+  },
+  {
+   "id": 3013,
+   "prompt": "Вопрос 1 по разделу «pivot_table» занятия «Группировка»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_group": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про pivot_table",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "pivot"
+  },
+  {
+   "id": 3014,
+   "prompt": "Вопрос 2 по разделу «pivot_table» занятия «Группировка»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l1_group": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про pivot_table",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "pivot"
+  },
+  {
+   "id": 3015,
+   "prompt": "Итоговое задание занятия «Группировка»: назови метод.",
+   "answer_type": "short",
+   "concept_weights": {
+    "l1_group": 1.0
+   },
+   "difficulty": 0.5,
+   "answer": "final_l1_group",
+   "final": true
+  }
+ ],
+ "rubrics": [],
+ "criteria": [],
+ "legacy": {
+  "old_series": {
+   "node": "l1_frames",
+   "section": "series"
+  },
+  "old_dataframe": {
+   "node": "l1_frames",
+   "section": "dataframe"
+  },
+  "old_groupby": {
+   "node": "l1_group",
+   "section": "groupby"
+  },
+  "old_python": null
+ }
+}

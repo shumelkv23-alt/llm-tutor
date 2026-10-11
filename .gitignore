@@ -57,3 +57,8 @@ data/raw/
 
 # --- БД учеников веба ---
 data/users/
+
+# Журналы исполнения планов (CLAUDE.md: в git не попадают)
+.superpowers/
+# Рабочие копии агентов-ревьюеров
+.claude/worktrees/

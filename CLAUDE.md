@@ -38,7 +38,10 @@ uv run python -m llm_tutor.web         # http://127.0.0.1:8000
 анкета модуля в разделе `topic`); всего 103 темы и 264 задания, задания с
 кодом несут `starter`/`setup`/`tests` и рубрику. `data/theory/topicNN/*.md` —
 конспекты тем (пока только модуль 1). Тестовые курсы из двух модулей —
-`tests/course_fixtures.py`. Открытые находки ревью — `problems.md`.
+`tests/course_fixtures.py`; курс в формате занятий (узел с 2–4 разделами,
+итоговые задания, `legacy`) — `tests/fixtures/lessons` (`load_lessons`).
+Правила занятий проверяет `course/seed._check_lessons` (`MAX_LESSONS = 10`) —
+только у модуля, где разделы есть у узлов. Открытые находки ревью — `problems.md`.
 
 ## Документы
 

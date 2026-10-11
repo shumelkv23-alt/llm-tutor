@@ -1,0 +1,357 @@
+{
+ "course": "test/lessons02",
+ "comment": "Тестовый модуль в формате занятий (срез 53): 3 занятия × 2 раздела, итоговые, legacy.",
+ "topic": {
+  "number": 2,
+  "title": "Графики (тестовый модуль с занятиями)",
+  "intro": "Тестовый модуль 2: занятия с разделами.",
+  "published": true,
+  "survey": {
+   "level_key": "l2_level",
+   "level_question": "Как у тебя с этим модулем?",
+   "level_options": [
+    "С нуля",
+    "Немного",
+    "Уверенно"
+   ],
+   "blocks": [
+    {
+     "key": "l2_basics",
+     "title": "Основы",
+     "question": "Знаешь основы?",
+     "example": "основы",
+     "concepts": [
+      "l2_hist",
+      "l2_box"
+     ]
+    },
+    {
+     "key": "l2_more",
+     "title": "Дальше",
+     "question": "А дальше?",
+     "example": "дальше",
+     "concepts": [
+      "l2_corr"
+     ]
+    }
+   ],
+   "assumed_by_confident": [
+    "l2_basics"
+   ],
+   "foundation": [
+    "l2_basics"
+   ]
+  }
+ },
+ "nodes": [
+  {
+   "id": "l2_hist",
+   "name": "Распределения",
+   "difficulty": 0.3,
+   "description": "Тестовое занятие «Распределения».",
+   "source_url": null,
+   "sections": [
+    {
+     "id": "hist",
+     "title": "Гистограмма"
+    },
+    {
+     "id": "kde",
+     "title": "Плотность"
+    }
+   ]
+  },
+  {
+   "id": "l2_box",
+   "name": "Ящики и скрипки",
+   "difficulty": 0.4,
+   "description": "Тестовое занятие «Ящики и скрипки».",
+   "source_url": null,
+   "sections": [
+    {
+     "id": "box",
+     "title": "Ящик с усами"
+    },
+    {
+     "id": "violin",
+     "title": "Скрипка"
+    }
+   ]
+  },
+  {
+   "id": "l2_corr",
+   "name": "Связи признаков",
+   "difficulty": 0.5,
+   "description": "Тестовое занятие «Связи признаков».",
+   "source_url": null,
+   "sections": [
+    {
+     "id": "corr",
+     "title": "Корреляции"
+    },
+    {
+     "id": "scatter",
+     "title": "Рассеяние"
+    }
+   ]
+  }
+ ],
+ "edges": [
+  {
+   "from_id": "l2_hist",
+   "to_id": "l2_box",
+   "type": "requires",
+   "hard": true,
+   "weight": 1.0
+  },
+  {
+   "from_id": "l2_box",
+   "to_id": "l2_corr",
+   "type": "requires",
+   "hard": true,
+   "weight": 1.0
+  },
+  {
+   "from_id": "l1_frames",
+   "to_id": "l2_hist",
+   "type": "requires",
+   "hard": false,
+   "weight": 0.5
+  }
+ ],
+ "items": [
+  {
+   "id": 3101,
+   "prompt": "Вопрос 1 по разделу «Гистограмма» занятия «Распределения»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_hist": 1.0
+   },
+   "difficulty": 0.3,
+   "options": [
+    "Верно про Гистограмма",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "hist"
+  },
+  {
+   "id": 3102,
+   "prompt": "Вопрос 2 по разделу «Гистограмма» занятия «Распределения»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_hist": 1.0
+   },
+   "difficulty": 0.3,
+   "options": [
+    "Верно про Гистограмма",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "hist"
+  },
+  {
+   "id": 3103,
+   "prompt": "Вопрос 1 по разделу «Плотность» занятия «Распределения»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_hist": 1.0
+   },
+   "difficulty": 0.3,
+   "options": [
+    "Верно про Плотность",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "kde"
+  },
+  {
+   "id": 3104,
+   "prompt": "Вопрос 2 по разделу «Плотность» занятия «Распределения»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_hist": 1.0
+   },
+   "difficulty": 0.3,
+   "options": [
+    "Верно про Плотность",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "kde"
+  },
+  {
+   "id": 3105,
+   "prompt": "Итоговое задание занятия «Распределения»: назови метод.",
+   "answer_type": "short",
+   "concept_weights": {
+    "l2_hist": 1.0
+   },
+   "difficulty": 0.3,
+   "answer": "final_l2_hist",
+   "final": true
+  },
+  {
+   "id": 3106,
+   "prompt": "Вопрос 1 по разделу «Ящик с усами» занятия «Ящики и скрипки»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_box": 1.0
+   },
+   "difficulty": 0.4,
+   "options": [
+    "Верно про Ящик с усами",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "box"
+  },
+  {
+   "id": 3107,
+   "prompt": "Вопрос 2 по разделу «Ящик с усами» занятия «Ящики и скрипки»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_box": 1.0
+   },
+   "difficulty": 0.4,
+   "options": [
+    "Верно про Ящик с усами",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "box"
+  },
+  {
+   "id": 3108,
+   "prompt": "Вопрос 1 по разделу «Скрипка» занятия «Ящики и скрипки»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_box": 1.0
+   },
+   "difficulty": 0.4,
+   "options": [
+    "Верно про Скрипка",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "violin"
+  },
+  {
+   "id": 3109,
+   "prompt": "Вопрос 2 по разделу «Скрипка» занятия «Ящики и скрипки»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_box": 1.0
+   },
+   "difficulty": 0.4,
+   "options": [
+    "Верно про Скрипка",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "violin"
+  },
+  {
+   "id": 3110,
+   "prompt": "Итоговое задание занятия «Ящики и скрипки»: назови метод.",
+   "answer_type": "short",
+   "concept_weights": {
+    "l2_box": 1.0
+   },
+   "difficulty": 0.4,
+   "answer": "final_l2_box",
+   "final": true
+  },
+  {
+   "id": 3111,
+   "prompt": "Вопрос 1 по разделу «Корреляции» занятия «Связи признаков»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_corr": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про Корреляции",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "corr"
+  },
+  {
+   "id": 3112,
+   "prompt": "Вопрос 2 по разделу «Корреляции» занятия «Связи признаков»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_corr": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про Корреляции",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "corr"
+  },
+  {
+   "id": 3113,
+   "prompt": "Вопрос 1 по разделу «Рассеяние» занятия «Связи признаков»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_corr": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про Рассеяние",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "scatter"
+  },
+  {
+   "id": 3114,
+   "prompt": "Вопрос 2 по разделу «Рассеяние» занятия «Связи признаков»?",
+   "answer_type": "choice",
+   "concept_weights": {
+    "l2_corr": 1.0
+   },
+   "difficulty": 0.5,
+   "options": [
+    "Верно про Рассеяние",
+    "Неверно",
+    "Тоже неверно"
+   ],
+   "answer": "0",
+   "section": "scatter"
+  },
+  {
+   "id": 3115,
+   "prompt": "Итоговое задание занятия «Связи признаков»: назови метод.",
+   "answer_type": "short",
+   "concept_weights": {
+    "l2_corr": 1.0
+   },
+   "difficulty": 0.5,
+   "answer": "final_l2_corr",
+   "final": true
+  }
+ ],
+ "rubrics": [],
+ "criteria": [],
+ "legacy": {
+  "old_hist": {
+   "node": "l2_hist",
+   "section": "hist"
+  }
+ }
+}

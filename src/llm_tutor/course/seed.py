@@ -4,7 +4,9 @@
 (``data/seed_topicNN.json``). В БД все файлы ложатся ОДНИМ проходом
 ``replace_seed``: по очереди нельзя — каждый следующий погасил бы предыдущий.
 Перед записью курс валидируется целиком: ссылки между модулями, рёбра только
-назад (``CourseGraph``), анкета модуля накрывает его темы, циклов нет.
+назад (``CourseGraph``), анкета модуля накрывает его темы, циклов нет. Модуль
+в формате занятий (у узлов есть разделы, срез 53) проверяется ещё и по
+правилам занятий: ``_check_lessons``.
 
 CLI: ``python -m llm_tutor.course.seed [--seed PATH] [--db PATH]``.
 """
@@ -22,6 +24,11 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Criterion, Edge, Item, Rubric, Topic
 
+# Правила занятий (срез 53, план dense-lessons §3).
+MAX_LESSONS = 10  # занятий в модуле
+MIN_SECTIONS, MAX_SECTIONS = 2, 4  # разделов в занятии
+MIN_SECTION_ITEMS = 2  # заданий на раздел в опубликованном модуле
+
 # Корень проекта (src/llm_tutor/course/seed.py → src → корень).
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DATA_DIR = _PROJECT_ROOT / "data"
@@ -36,6 +43,13 @@ _COURSE_NAME_RE = re.compile(r"seed_topic\d{2}\.json")
 _MISNAMED_RE = re.compile(r"seed_topic(?!\d{2}(?:_\w+)?\.json)\d+(?:_\w+)?\.json")
 
 
+class LegacyTarget(BaseModel):
+    """Куда переехала старая тема: занятие и его раздел (срез 53)."""
+
+    node: str
+    section: str
+
+
 class Seed(BaseModel):
     """Seed-файл модуля: модуль, его граф, банк заданий и рубрики."""
 
@@ -46,6 +60,9 @@ class Seed(BaseModel):
     items: list[Item] = Field(default_factory=list)
     rubrics: list[Rubric] = Field(default_factory=list)
     criteria: list[Criterion] = Field(default_factory=list)
+    # Старая тема → (занятие, раздел); ``None`` — тема убрана без замены.
+    # По этой таблице переносится прогресс учеников (срез 56).
+    legacy: dict[str, LegacyTarget | None] = Field(default_factory=dict)
     # Конспекты узлов: не из JSON, а из файлов data/theory/<тема>/<узел>.md.
     theory: dict[str, str] = Field(default_factory=dict)
 
@@ -64,6 +81,8 @@ class Course:
     warnings: tuple[str, ...] = ()
     # Конспекты узлов всех модулей (id узла → Markdown).
     theory: dict[str, str] = field(default_factory=dict)
+    # Таблица переноса старых тем всех модулей (``Seed.legacy``).
+    legacy: dict[str, LegacyTarget | None] = field(default_factory=dict)
 
 
 class SeedError(ValueError):
@@ -189,6 +208,152 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
     return warnings
 
 
+def main_concept(item: Item) -> str | None:
+    """Главный концепт задания — с наибольшим весом (при равенстве — первый).
+
+    Раздел задания — раздел именно этого концепта: по нему задание выдаётся
+    в занятии.
+    """
+    if not item.concept_weights:
+        return None
+    return max(item.concept_weights, key=item.concept_weights.__getitem__)
+
+
+_FENCE_RE = re.compile(r"^\s*(```|~~~)")
+
+
+def theory_headings(text: str) -> list[str]:
+    """Заголовки второго уровня конспекта (``## …``) вне блоков кода."""
+    headings: list[str] = []
+    fenced = False
+    for line in text.splitlines():
+        if _FENCE_RE.match(line):
+            fenced = not fenced
+        elif not fenced and line.startswith("## "):
+            headings.append(line[3:].strip())
+    return headings
+
+
+def _check_theory_sections(node: Concept, text: str) -> None:
+    """В конспекте занятия есть ``## <title>`` каждого раздела в порядке seed."""
+    headings = theory_headings(text)
+    position = 0
+    for section in node.sections:
+        try:
+            position = headings.index(section.title, position) + 1
+        except ValueError:
+            raise SeedError(
+                f"В конспекте занятия {node.id} нет заголовка «## {section.title}» "
+                f"(или он стоит не по порядку разделов)"
+            ) from None
+
+
+def _section_items(items: Sequence[Item]) -> dict[tuple[str, str], int]:
+    """Сколько заданий у каждого раздела: (занятие, раздел) → число."""
+    counts: dict[tuple[str, str], int] = {}
+    for item in items:
+        concept = main_concept(item)
+        if concept is not None and item.section is not None:
+            counts[(concept, item.section)] = counts.get((concept, item.section), 0) + 1
+    return counts
+
+
+def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> None:
+    """Правила занятий с разделами (план dense-lessons §3).
+
+    Модуль либо целиком в старом формате (темы без разделов, правила занятий
+    его не касаются), либо целиком в формате занятий. Содержание (задания на
+    раздел, итоговое, конспект) требуется только от опубликованного модуля.
+    """
+    nodes = {node.id: node for seed in seeds for node in seed.nodes}
+    for seed in seeds:
+        number = seed.topic.number
+        lessons = [node for node in seed.nodes if node.sections]
+        if not lessons:
+            continue
+        flat = sorted(node.id for node in seed.nodes if not node.sections)
+        if flat:
+            raise SeedError(f"В модуле {number} разделы есть не у всех занятий: нет у {flat}")
+        if len(lessons) > MAX_LESSONS:
+            raise SeedError(
+                f"В модуле {number} {len(lessons)} занятий, а можно не больше {MAX_LESSONS}"
+            )
+        for node in lessons:
+            if not MIN_SECTIONS <= len(node.sections) <= MAX_SECTIONS:
+                raise SeedError(
+                    f"В занятии {node.id} {len(node.sections)} разделов, "
+                    f"а нужно от {MIN_SECTIONS} до {MAX_SECTIONS}"
+                )
+            _check_unique(f"разделов занятия {node.id}", [s.id for s in node.sections])
+
+    for item in items:
+        concept = main_concept(item)
+        node = nodes.get(concept) if concept is not None else None
+        if node is None or not node.sections:
+            if item.section is not None or item.final:
+                raise SeedError(
+                    f"Задание {item.id}: раздел или «итоговое» есть только у заданий "
+                    f"занятия с разделами, а главный концепт {concept} — без разделов"
+                )
+            continue
+        if item.final:
+            continue
+        if item.section is None:
+            raise SeedError(f"Задание {item.id} занятия {node.id} без раздела и не итоговое")
+        if item.section not in {s.id for s in node.sections}:
+            raise SeedError(
+                f"Задание {item.id}: раздела {item.section!r} нет в занятии {node.id} "
+                f"(раздел задания — раздел его главного концепта)"
+            )
+
+    counts = _section_items(items)
+    finals = {main_concept(item) for item in items if item.final}
+    for seed in seeds:
+        if not seed.topic.published:
+            continue
+        for node in seed.nodes:
+            if not node.sections:
+                continue
+            for section in node.sections:
+                if counts.get((node.id, section.id), 0) < MIN_SECTION_ITEMS:
+                    raise SeedError(
+                        f"В разделе {node.id}/{section.id} опубликованного модуля "
+                        f"{seed.topic.number} меньше {MIN_SECTION_ITEMS} заданий"
+                    )
+            if node.id not in finals:
+                raise SeedError(f"У занятия {node.id} нет итогового задания")
+            if node.id not in seed.theory:
+                raise SeedError(f"У занятия {node.id} нет конспекта")
+            _check_theory_sections(node, seed.theory[node.id])
+
+
+def _merge_legacy(
+    seeds: Sequence[Seed], nodes: Sequence[Concept]
+) -> dict[str, LegacyTarget | None]:
+    """Таблицы переноса модулей в одну; цели проверены, старые id не живые."""
+    by_id = {node.id: node for node in nodes}
+    legacy: dict[str, LegacyTarget | None] = {}
+    for seed in seeds:
+        for old, target in seed.legacy.items():
+            if old in legacy:
+                raise SeedError(f"Старая тема {old} в таблице переноса нескольких модулей")
+            if old in by_id:
+                raise SeedError(f"Старая тема {old} из таблицы переноса — живой узел курса")
+            if target is not None:
+                node = by_id.get(target.node)
+                if node is None:
+                    raise SeedError(
+                        f"Старая тема {old} переносится в неизвестное занятие {target.node}"
+                    )
+                if target.section not in {section.id for section in node.sections}:
+                    raise SeedError(
+                        f"Старая тема {old} переносится в неизвестный раздел "
+                        f"{target.node}/{target.section}"
+                    )
+            legacy[old] = target
+    return legacy
+
+
 def _parse_seed(path: str | Path) -> Seed:
     """Читает seed-файл модуля; темам проставляет модуль по файлу."""
     source = Path(path)
@@ -230,6 +395,8 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     _check_references(nodes, items, rubrics, criteria)
     CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
     warnings = _check_topics(ordered)
+    _check_lessons(ordered, items)
+    legacy = _merge_legacy(ordered, nodes)
     return Course(
         topics=tuple(seed.topic for seed in ordered),
         nodes=tuple(nodes),
@@ -239,6 +406,7 @@ def build_course(seeds: Sequence[Seed]) -> Course:
         criteria=tuple(criteria),
         warnings=tuple(warnings),
         theory={node_id: text for seed in ordered for node_id, text in seed.theory.items()},
+        legacy=legacy,
     )
 
 
@@ -336,6 +504,27 @@ def nodes_without_items(seed: Seed | Course) -> list[str]:
     )
 
 
+def thin_sections(course: Seed | Course) -> list[str]:
+    """Разделы занятий, где заданий меньше ``MIN_SECTION_ITEMS`` (``занятие/раздел``).
+
+    Опубликованный модуль с такими разделами не загрузится; у черновика это
+    список того, что осталось написать.
+    """
+    counts = _section_items(course.items)
+    return [
+        f"{node.id}/{section.id}"
+        for node in course.nodes
+        for section in node.sections
+        if counts.get((node.id, section.id), 0) < MIN_SECTION_ITEMS
+    ]
+
+
+def lessons_without_final(course: Seed | Course) -> list[str]:
+    """Занятия с разделами без итогового задания."""
+    finals = {main_concept(item) for item in course.items if item.final}
+    return [node.id for node in course.nodes if node.sections and node.id not in finals]
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI: проверить курс (или загрузить его в указанную БД)."""
     import argparse
@@ -382,6 +571,12 @@ def main(argv: list[str] | None = None) -> int:
     no_theory = nodes_without_theory(course)
     if no_theory:
         print(f"Без конспекта (вкладка «Теория» пуста): {', '.join(no_theory)}")
+    thin = thin_sections(course)
+    if thin:
+        print(f"Разделы, где меньше {MIN_SECTION_ITEMS} заданий: {', '.join(thin)}")
+    no_final = lessons_without_final(course)
+    if no_final:
+        print(f"Занятия без итогового задания: {', '.join(no_final)}")
     return 0
 
 

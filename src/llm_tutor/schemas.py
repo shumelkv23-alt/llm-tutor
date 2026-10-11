@@ -30,8 +30,20 @@ EdgeType = Literal["requires", "part_of", "leads_to"]
 AnswerType = Literal["open", "code", "choice", "short"]
 
 
+class Section(BaseModel):
+    """Раздел занятия (срез 53): шаг внутри узла со своим объяснением и заданиями.
+
+    Своих рёбер и владения у раздела нет — это не узел графа.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+
+
 class Concept(BaseModel):
-    """Узел графа курса (концепт)."""
+    """Узел графа курса (концепт); с разделами — занятие."""
 
     id: str
     name: str
@@ -43,6 +55,8 @@ class Concept(BaseModel):
     topic_id: int = Field(default=1, ge=1)
     # Убранный из seed узел не удаляется (на него ссылаются события), а гасится.
     active: bool = True
+    # Разделы занятия по порядку; пусто — узел в старом формате (тема).
+    sections: list[Section] = Field(default_factory=list)
 
 
 class Edge(BaseModel):
@@ -89,6 +103,10 @@ class Item(BaseModel):
     tests: str | None = None
     # Убранное из seed задание не удаляется (на него ссылаются события), а гасится.
     active: bool = True
+    # Раздел главного концепта задания (срез 53); у итогового задания занятия
+    # (``final``) раздела нет.
+    section: str | None = None
+    final: bool = False
 
     @property
     def runnable(self) -> bool:
@@ -115,6 +133,8 @@ class Item(BaseModel):
             raise ValueError(f"у short-задания {self.id} должен быть непустой эталон")
         if self.answer_type != "code" and (self.starter or self.setup or self.tests):
             raise ValueError(f"starter/setup/tests — только у code-задания (задание {self.id})")
+        if self.final and self.section is not None:
+            raise ValueError(f"у итогового задания {self.id} не бывает раздела")
         return self
 
 
@@ -214,6 +234,9 @@ class Topic(BaseModel):
     intro: str
     survey: SurveyConfig
     active: bool = True
+    # Модуль открыт ученикам (срез 53): неопубликованный виден в маршруте как
+    # «скоро», но войти в него нельзя.
+    published: bool = True
 
 
 class Event(BaseModel):
@@ -347,3 +370,10 @@ class SessionState(BaseModel):
     # Проход начат просьбой «закрой тему», а не проверкой знакомого
     # по анкете: серия до закрытия у него длиннее (``close_success_streak``).
     close_requested: bool = False
+    # Занятие с разделами (срез 53): текущий раздел, пройденные в этом заходе,
+    # пройденные после двух ошибок и сдано ли итоговое задание. Вход в новое
+    # занятие обнуляет все четыре поля.
+    section_id: str | None = None
+    passed_sections: list[str] = Field(default_factory=list)
+    weak_sections: list[str] = Field(default_factory=list)
+    final_passed: bool = False

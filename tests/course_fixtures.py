@@ -41,6 +41,16 @@ TOPIC01_ORDER = [
 
 MINI_SEED_PATH = Path(__file__).parent / "fixtures" / "seed_topic02_mini.json"
 
+# Курс в формате занятий (срез 53): два модуля по 3 занятия × 2 раздела,
+# итоговые задания, таблица legacy и конспекты.
+LESSONS_DIR = Path(__file__).parent / "fixtures" / "lessons"
+LESSON_SEED_PATHS = [LESSONS_DIR / "seed_topic01.json", LESSONS_DIR / "seed_topic02.json"]
+
+
+def load_lessons(conn) -> Course:
+    """Курс из занятий с разделами в БД."""
+    return load_course(conn, LESSON_SEED_PATHS)
+
 # Анкеты модулей: topic01 и тестового мини-модуля 2.
 T1 = load_seed_data(DEFAULT_SEED_PATH).topic.survey
 T2 = load_course_data([DEFAULT_SEED_PATH, MINI_SEED_PATH]).topics[1].survey

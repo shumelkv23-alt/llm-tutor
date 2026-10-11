@@ -515,16 +515,16 @@ Pyodide нет). Где нужен seaborn, задание проверяет д
 
 Без изменения поведения: реальные seed пока без разделов.
 
-- [ ] **53.1 Схемы.** `Section(id, title)`; `Concept.sections`;
+- [x] **53.1 Схемы.** `Section(id, title)`; `Concept.sections`;
       `Item.section`, `Item.final`; `Topic.published`; поля `SessionState`
       из §4.
-- [ ] **53.2 Миграция `006_sections.sql`:** `concepts.sections TEXT NOT NULL
+- [x] **53.2 Миграция `006_sections.sql`:** `concepts.sections TEXT NOT NULL
       DEFAULT '[]'`, `items.section TEXT`, `items.final INTEGER NOT NULL
       DEFAULT 0`, `topics.published INTEGER NOT NULL DEFAULT 1`. Чтение и
       запись в `db/repos.py`.
-- [ ] **53.3 Валидатор** `_check_lessons` (§3), `MAX_LESSONS = 10`; `legacy`
+- [x] **53.3 Валидатор** `_check_lessons` (§3), `MAX_LESSONS = 10`; `legacy`
       в seed. CLI печатает разделы без заданий и занятия без итогового.
-- [ ] **53.4 Фикстура:** два модуля по 3 занятия × 2 раздела, итоговые
+- [x] **53.4 Фикстура:** два модуля по 3 занятия × 2 раздела, итоговые
       задания, `legacy`, конспекты. Тест на каждое правило валидатора,
       отдельно — «11 занятий в модуле не грузятся».
 - [ ] **53.5 Ревью среза 53.**

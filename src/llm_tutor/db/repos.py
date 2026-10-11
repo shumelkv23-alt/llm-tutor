@@ -236,12 +236,13 @@ def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[
 def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     """Upsert концепта без коммита (для вызова внутри чужой транзакции)."""
     conn.execute(
-        "INSERT INTO concepts (id, name, difficulty, description, source_url, topic_id, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?) "
+        "INSERT INTO concepts "
+        "(id, name, difficulty, description, source_url, topic_id, sections, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "name = excluded.name, difficulty = excluded.difficulty, "
         "description = excluded.description, source_url = excluded.source_url, "
-        "topic_id = excluded.topic_id, "
+        "topic_id = excluded.topic_id, sections = excluded.sections, "
         # Вернувшийся в seed узел снова активен.
         "active = 1",
         (
@@ -251,6 +252,9 @@ def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
             concept.description,
             concept.source_url,
             concept.topic_id,
+            json.dumps(
+                [section.model_dump() for section in concept.sections], ensure_ascii=False
+            ),
             int(concept.active),
         ),
     )
@@ -271,13 +275,14 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
     conn.execute(
         "INSERT INTO items "
         "(id, concept_weights, difficulty, answer_type, prompt, options, answer,"
-        " rubric_id, starter, setup, tests, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        " rubric_id, starter, setup, tests, section, final, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "concept_weights = excluded.concept_weights, difficulty = excluded.difficulty, "
         "answer_type = excluded.answer_type, prompt = excluded.prompt, "
         "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id, "
         "starter = excluded.starter, setup = excluded.setup, tests = excluded.tests, "
+        "section = excluded.section, final = excluded.final, "
         # Вернувшееся в seed задание снова активно.
         "active = 1",
         (
@@ -292,6 +297,8 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
             item.starter,
             item.setup,
             item.tests,
+            item.section,
+            int(item.final),
             int(item.active),
         ),
     )
@@ -373,7 +380,7 @@ def get_criteria(conn: sqlite3.Connection, rubric_id: int) -> list[Criterion]:
 
 _ITEM_COLUMNS = (
     "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id,"
-    " starter, setup, tests, active"
+    " starter, setup, tests, section, final, active"
 )
 
 
@@ -390,6 +397,8 @@ def _row_to_item(row: sqlite3.Row) -> Item:
         starter=row["starter"],
         setup=row["setup"],
         tests=row["tests"],
+        section=row["section"],
+        final=bool(row["final"]),
         active=bool(row["active"]),
     )
 
@@ -432,10 +441,17 @@ def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
 def _write_topic(conn: sqlite3.Connection, topic: Topic) -> None:
     """Upsert модуля без коммита; анкета хранится JSON-ом."""
     conn.execute(
-        "INSERT INTO topics (id, title, intro, survey, active) VALUES (?, ?, ?, ?, 1) "
+        "INSERT INTO topics (id, title, intro, survey, published, active) "
+        "VALUES (?, ?, ?, ?, ?, 1) "
         "ON CONFLICT(id) DO UPDATE SET title = excluded.title, intro = excluded.intro, "
-        "survey = excluded.survey, active = 1",
-        (topic.number, topic.title, topic.intro, topic.survey.model_dump_json()),
+        "survey = excluded.survey, published = excluded.published, active = 1",
+        (
+            topic.number,
+            topic.title,
+            topic.intro,
+            topic.survey.model_dump_json(),
+            int(topic.published),
+        ),
     )
 
 
@@ -446,13 +462,14 @@ def _row_to_topic(row: sqlite3.Row) -> Topic:
         intro=row["intro"],
         survey=SurveyConfig.model_validate_json(row["survey"]),
         active=bool(row["active"]),
+        published=bool(row["published"]),
     )
 
 
 def get_topics(conn: sqlite3.Connection) -> list[Topic]:
     """Активные модули курса по возрастанию номера."""
     rows = conn.execute(
-        "SELECT id, title, intro, survey, active FROM topics WHERE active = 1 ORDER BY id"
+        "SELECT id, title, intro, survey, published, active FROM topics WHERE active = 1 ORDER BY id"
     ).fetchall()
     return [_row_to_topic(row) for row in rows]
 
@@ -460,7 +477,7 @@ def get_topics(conn: sqlite3.Connection) -> list[Topic]:
 def get_topic(conn: sqlite3.Connection, topic_id: int) -> Topic | None:
     """Активный модуль по номеру или ``None``."""
     row = conn.execute(
-        "SELECT id, title, intro, survey, active FROM topics WHERE id = ? AND active = 1",
+        "SELECT id, title, intro, survey, published, active FROM topics WHERE id = ? AND active = 1",
         (topic_id,),
     ).fetchone()
     return _row_to_topic(row) if row else None
@@ -546,7 +563,7 @@ def replace_seed(
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
     """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(
-        "SELECT id, name, difficulty, description, source_url, topic_id, active "
+        "SELECT id, name, difficulty, description, source_url, topic_id, sections, active "
         "FROM concepts WHERE active = 1 ORDER BY id"
     ).fetchall()
     return [
@@ -557,6 +574,7 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
             description=r["description"],
             source_url=r["source_url"],
             topic_id=r["topic_id"],
+            sections=json.loads(r["sections"]),
             active=bool(r["active"]),
         )
         for r in rows
