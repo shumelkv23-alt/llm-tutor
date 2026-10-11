@@ -312,7 +312,7 @@ async def test_switch_topic(enrolled) -> None:
     body = (await enrolled.post(f"{BASE}/switch", json={"node_id": "groupby"})).json()
 
     assert body["state"]["node"]["id"] == "groupby"
-    assert "Перейти к теме" in body["messages"][0]["html"]
+    assert "Перейти к занятию" in body["messages"][0]["html"]
     assert (await enrolled.post(f"{BASE}/switch", json={"node_id": "nope"})).status_code == 404
 
 

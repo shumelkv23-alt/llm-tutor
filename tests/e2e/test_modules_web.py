@@ -61,6 +61,10 @@ async def test_route_groups_topics_by_module_and_jump_opens_module_survey(enroll
     assert await headers.count() == 5
     await expect(headers.nth(1)).to_contain_text("Модуль 2")
 
+    # Модуль 2 свёрнут (раскрыт только модуль текущего занятия) — раскрываем.
+    toggle = page.locator('.route-module-toggle[data-module="2"]')
+    await expect(toggle).to_have_attribute("aria-expanded", "false")
+    await toggle.click()
     # Тема модуля 2 — сначала его анкета.
     target = page.locator('.route-topic[data-node="df_plot"]')
     async with page.expect_response("**/lesson/switch"):

@@ -35,13 +35,13 @@ logger = logging.getLogger(__name__)
 # Задание уже неактуально (пропало из банка или не проверяется кодом).
 STALE_ITEM_REPLY = "Это задание уже неактуально — возьми новое."
 # Реплика «дай задание» попадает в журнал как обычная просьба ученика.
-PRACTICE_KICKOFF_TEXT = "Давай задание по текущей теме."
+PRACTICE_KICKOFF_TEXT = "Давай задание по текущему занятию."
 # Напоминание, что вопрос не сбросил выданное задание.
 PENDING_ITEM_NOTE = (
     "Задание всё ещё ждёт ответа — ответь на него или пропусти."
 )
 # Повод тьюторского хода при нажатии «Не понимаю».
-STUCK_KICKOFF_TEXT = "Не понял, давай подробнее по текущей теме."
+STUCK_KICKOFF_TEXT = "Не понял, давай подробнее."
 SKIP_KICKOFF_TEXT = "Пропустить задание."
 SKIP_REPLY = (
     "Пропустил — свидетельство не записано, вернёмся к этому узлу позже. "
@@ -59,7 +59,7 @@ NO_TASK_FOR_NODE_REPLY = (
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
 # Курс пройден: открытых тем не осталось ни в одном модуле (§4.3 спеки модулей).
-ROUTE_DONE_REPLY = "🎓 Курс пройден — открытых тем не осталось. Свериться можно в маршруте."
+ROUTE_DONE_REPLY = "🎓 Курс пройден — открытых занятий не осталось. Свериться можно в маршруте."
 # Модуль пройден: все темы его рабочего участка закрыты.
 TOPIC_DONE_NOTE = route_mod.TOPIC_DONE_NOTE
 # Переход в следующий модуль: с какой темы начинаем.
@@ -67,7 +67,12 @@ NEXT_TOPIC_NOTE = "Дальше — модуль {number} «{title}», начи�
 # Закрыта последняя открытая тема курса.
 COURSE_DONE_NOTE = "🎓 Это был последний шаг — курс пройден! Свериться можно в маршруте."
 # Повтор уже закрытой темы, когда курс пройден: «🎓» второй раз не нужен.
-COURSE_STILL_DONE_NOTE = "Открытых тем по-прежнему нет — свериться можно в маршруте."
+COURSE_STILL_DONE_NOTE = "Открытых занятий по-прежнему нет — свериться можно в маршруте."
+# Открытые модули пройдены, а следующие ещё «скоро» (срез 55): это не конец курса.
+MODULES_SOON_NOTE = (
+    "Открытые модули пройдены 🎉 Следующие скоро откроются — а пока пройденное "
+    "можно повторить в маршруте."
+)
 # Следующий модуль ещё без анкеты: урок продолжится после неё (§5.2 спеки модулей).
 NEXT_TOPIC_SURVEY_NOTE = (
     "Дальше — модуль {number} «{title}». Сначала пара вопросов — подберу, с чего начать."
@@ -81,16 +86,16 @@ VERIFY_STEP_TEMPLATE = "🔎 Проверка «{name}» — шаг {step}"
 VERIFY_EXPLAIN_PREFIX = "Объясни своими словами:"
 # Проход исчерпал задания узла, а серия ещё не набрана.
 VERIFY_EXHAUSTED_REPLY = (
-    "Проверить нечем: по этой теме мало заданий, и мы их уже прошли. "
+    "Проверить нечем: по этому занятию мало заданий, и мы их уже прошли. "
     "Разберём её уроком — напиши что угодно, и продолжим."
 )
 # У узла нет ни одного задания.
 VERIFY_NO_ITEMS_REPLY = (
-    "По этой теме у меня нет проверочных заданий — "
+    "По этому занятию у меня нет проверочных заданий — "
     "закрою её, когда владение подтвердится по ходу."
 )
 # Проход не подтвердился — говорим честно и возвращаемся к разбору.
-VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к теме и разберёмся."
+VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к занятию и разберёмся."
 # Вход в заявленный в анкете узел: самооценку подтверждаем проходом (срез 23).
 CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — пара быстрых вопросов."
 
@@ -460,6 +465,11 @@ def _fresh_route(
         now=now,
         settings=settings,
     )
+
+
+def _modules_soon(conn: sqlite3.Connection) -> bool:
+    """Есть модули, которые ещё не открыты ученикам (``Topic.published``)."""
+    return any(not topic.published for topic in repos.get_topics(conn))
 
 
 def _sections(graph: CourseGraph, node_id: str | None) -> list[str]:
@@ -1112,7 +1122,7 @@ def _close_node_if_ready(
             ]
         }
     )
-    notes = [f"✅ Тема «{closed_name}» закрыта."]
+    notes = [f"✅ Занятие «{closed_name}» закрыто."]
     # «🎉» — один раз на модуль: возврат к пройденному его не повторяет.
     if (
         topic is not None
@@ -1173,7 +1183,12 @@ def _close_node_if_ready(
         }
     )
     if next_node_id is None:
-        notes.append(COURSE_STILL_DONE_NOTE if reclosed else COURSE_DONE_NOTE)
+        if reclosed:
+            notes.append(COURSE_STILL_DONE_NOTE)
+        elif _modules_soon(conn):
+            notes.append(MODULES_SOON_NOTE)
+        else:
+            notes.append(COURSE_DONE_NOTE)
         return new_state, "\n\n".join(notes)
     next_name = graph.concept(next_node_id).name
     if next_topic != topic:
@@ -1186,7 +1201,7 @@ def _close_node_if_ready(
         notes.append(CLAIMED_CHECK_NOTE.format(name=next_name))
         return _checking(new_state, next_node_id), "\n\n".join(notes)
     if len(notes) == 1:
-        return new_state, f"✅ Тема «{closed_name}» закрыта — идём дальше: {next_name}."
+        return new_state, f"✅ Занятие «{closed_name}» закрыто — идём дальше: {next_name}."
     return new_state, "\n\n".join(notes)
 
 

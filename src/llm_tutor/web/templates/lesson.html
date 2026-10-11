@@ -40,7 +40,7 @@
     </div>
     <div class="lesson-actions">
       <button class="btn" type="button" id="route-open" aria-haspopup="dialog" disabled>{{ icon('route') }}<span>Маршрут</span></button>
-      <button class="btn" type="button" id="verify-topic" data-turn disabled>{{ icon('check') }}<span>Закрыть тему</span></button>
+      <button class="btn" type="button" id="verify-topic" data-turn disabled>{{ icon('check') }}<span>Закрыть занятие</span></button>
     </div>
   </header>
 
@@ -52,6 +52,7 @@
   <div class="split" id="split">
     <section class="pane pane-left" id="pane-left" role="tabpanel" aria-labelledby="view-lesson">
       <div class="survey" id="survey" aria-live="polite"></div>
+      <ol class="section-strip" id="section-strip" aria-label="Разделы занятия" hidden></ol>
       <div class="tabs" role="tablist" aria-label="Разделы урока">
         <button type="button" role="tab" id="tab-btn-theory" aria-controls="tab-theory" aria-selected="true">{{ icon('book') }}Теория</button>
         <button type="button" role="tab" id="tab-btn-practice" aria-controls="tab-practice" aria-selected="false" tabindex="-1">{{ icon('check') }}Практика<span class="tab-dot" id="practice-dot" hidden></span></button>

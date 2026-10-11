@@ -22,7 +22,7 @@ from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
 NodeStatus = Literal["closed", "current", "claimed", "available", "ahead"]
 
-SWITCH_TEMPLATE = "Ок, тема — «{name}». Спроси, что непонятно, — объясню."
+SWITCH_TEMPLATE = "Ок, занятие — «{name}». Спроси, что непонятно, — объясню."
 
 
 def closed_from_route(state: SessionState) -> set[str]:
@@ -155,7 +155,7 @@ def switch_node(
     post_turn(
         conn,
         session_id,
-        user_text=f"Перейти к теме «{name}»",
+        user_text=f"Перейти к занятию «{name}»",
         assistant_text=text,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=stamp,
@@ -210,7 +210,7 @@ def enter_module(
     post_turn(
         conn,
         session_id,
-        user_text=f"Перейти к теме «{name}»",
+        user_text=f"Перейти к занятию «{name}»",
         assistant_text=text,
         state=state.model_copy(
             update={

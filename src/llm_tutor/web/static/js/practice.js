@@ -176,7 +176,7 @@
       wrap.append(banner);
     }
     if (state.mode === "verify" && state.node) {
-      wrap.append(el("p", "verify-note", `Проверка темы «${state.node.name}»: ответьте без подсказок — так тема закроется.`));
+      wrap.append(el("p", "verify-note", `Проверка занятия «${state.node.name}»: ответьте без подсказок — так занятие закроется.`));
     }
     const banner = verdictBanner();
     if (banner) wrap.append(banner);
@@ -185,6 +185,8 @@
       const card = el("article", `task-card${state.mode === "verify" ? " verify" : ""}`);
       const head = el("div", "task-head");
       head.append(el("span", "badge primary", TYPE_LABELS[state.item.type] || "Задание"));
+      // Раздел занятия или итоговое (срез 55).
+      if (state.item.part) head.append(el("span", "task-part", state.item.part));
       head.append(el("span", "task-streak", `Верно подряд: ${state.streak} из ${state.streak_target}`));
       const prompt = el("div", "task-prompt");
       // Готовый HTML: задание прошло web.markdown.render на сервере.
@@ -193,7 +195,7 @@
       wrap.append(card);
     } else if (state.node) {
       const empty = el("div", "empty");
-      empty.append(el("strong", "", "Задания сейчас нет"), "Возьмите задание по теме — проверим, как она усвоилась.");
+      empty.append(el("strong", "", "Задания сейчас нет"), "Возьмите задание по занятию — проверим, как оно усвоилось.");
       const take = button("Взять задание", "primary", () => window.Lesson.act("task", {}, { echo: "Дай задание" }), "check");
       empty.append(el("br"), take);
       wrap.append(empty);

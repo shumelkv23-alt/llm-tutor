@@ -62,8 +62,18 @@ class CourseGraph:
 
     @classmethod
     def load(cls, conn: sqlite3.Connection) -> "CourseGraph":
-        """Строит граф из БД (concepts + edges)."""
-        return cls(repos.get_concepts(conn), repos.get_edges(conn))
+        """Строит граф из БД (concepts + edges) — то, что видит ученик.
+
+        Узлы неопубликованных модулей (``Topic.published``, срез 55) в граф не
+        входят: маршрут, переходы и «следующий модуль» их не видят, войти в
+        «скоро» нельзя ни из меню, ни переходом после «🎉». Рёбра к ним
+        отбрасываются вместе с узлами.
+        """
+        hidden = {topic.number for topic in repos.get_topics(conn) if not topic.published}
+        concepts = [c for c in repos.get_concepts(conn) if c.topic_id not in hidden]
+        ids = {concept.id for concept in concepts}
+        edges = [e for e in repos.get_edges(conn) if e.from_id in ids and e.to_id in ids]
+        return cls(concepts, edges)
 
     def _check_endpoints(self, edge: Edge) -> None:
         for node_id in (edge.from_id, edge.to_id):

@@ -51,18 +51,25 @@
     <p class="notice error">Данные курса сейчас не открываются. Сообщите администратору.</p>
     {% else %}
     {% if main.card.current_topic %}<p class="continue-topic">Сейчас: <b>{{ main.card.current_topic }}</b></p>{% endif %}
-    <div class="progress" role="img" aria-label="Закрыто тем: {{ main.card.closed }} из {{ main.card.topics }}">
-      <div class="progress-label"><span>Закрыто тем</span><b>{{ main.card.closed }} из {{ main.card.topics }}</b></div>
+    <div class="progress" role="img" aria-label="Закрыто занятий: {{ main.card.closed }} из {{ main.card.topics }}">
+      <div class="progress-label"><span>Закрыто занятий</span><b>{{ main.card.closed }} из {{ main.card.topics }}</b></div>
       <div class="progress-track"><span class="progress-fill" data-percent="{{ main.card.percent }}"></span></div>
     </div>
+    {% if main.card.modules %}
+    <ul class="course-modules" aria-label="Модули курса">
+      {% for module in main.card.modules %}
+      <li{% if not module.published %} class="soon"{% endif %}><span>Модуль {{ module.number }} · {{ module.title }}</span><b>{% if not module.published %}скоро{% elif module.total and module.closed >= module.total %}🎉 пройден{% else %}{{ module.closed }} из {{ module.total }}{% endif %}</b></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
     <a class="btn primary" href="{{ main.card.href }}">{% if main.card.status == 'survey' %}Начать с анкеты{% else %}Продолжить занятие{% endif %}{{ icon('arrow') }}</a>
     {% endif %}
   </section>
   {% if main.learning %}
   <section class="panel stats-card" aria-label="Итоги">
-    {# «Закрыто тем» уже есть в карточке курса — здесь то, чего там нет. #}
+    {# «Закрыто занятий» уже есть в карточке курса — здесь то, чего там нет. #}
     <div class="stat"><span>Решено заданий</span><strong>{{ main.learning.solved }}</strong></div>
-    <div class="stat"><span>Тем впереди</span><strong>{{ main.card.topics - main.card.closed }}</strong></div>
+    <div class="stat"><span>Занятий впереди</span><strong>{{ main.card.topics - main.card.closed }}</strong></div>
     <div class="stat"><span>Знакомых на проверку</span><strong>{{ main.learning.topics | selectattr('status', 'equalto', 'claimed') | list | length }}</strong></div>
   </section>
   <section class="panel next-card" aria-labelledby="next-title">

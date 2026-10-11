@@ -1195,3 +1195,123 @@
   border-color: var(--success);
   background: var(--success-soft);
 }
+
+/* --- Занятие с разделами (срез 55) --- */
+
+/* Полоса разделов над вкладками: на узком экране прокручивается вбок. */
+.section-strip {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 12px;
+  list-style: none;
+  overflow-x: auto;
+  flex: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.section-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  max-width: 220px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.section-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.section-step.current {
+  border-color: var(--primary-text);
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+.section-step.passed {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.section-step.weak {
+  color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.task-part {
+  color: var(--muted);
+  font-size: 13px;
+  margin-right: auto;
+}
+
+.theory-toc {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.theory-toc ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc-link {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.toc-link:disabled {
+  cursor: default;
+}
+
+.toc-item.current .toc-link {
+  color: var(--primary-text);
+  font-weight: 600;
+}
+
+.toc-item.weak .toc-link {
+  color: var(--warning);
+}
+
+.route-module-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.route-module-toggle strong::before {
+  content: "▸ ";
+}
+
+.route-module-toggle[aria-expanded="true"] strong::before {
+  content: "▾ ";
+}
+
+.route-module.soon strong {
+  color: var(--muted);
+}

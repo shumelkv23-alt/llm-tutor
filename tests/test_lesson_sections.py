@@ -103,7 +103,7 @@ async def test_lesson_walks_sections_then_final_then_closes(conn, settings) -> N
     assert state.current_node_id == "l1_select"
     assert state.section_id == "loc" and state.passed_sections == []
     assert not state.final_passed
-    assert "закрыта" in reply.text
+    assert "закрыто" in reply.text
 
 
 async def test_first_mistake_gives_second_question_of_same_section(conn, settings) -> None:

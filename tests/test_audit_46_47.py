@@ -62,7 +62,7 @@ async def test_home_stats_do_not_repeat_course_card(student) -> None:
     html = (await student.get("/")).text
 
     assert (
-        html.count("Закрыто тем") == 2
+        html.count("Закрыто занятий") == 2
     )  # подпись прогресса и её aria-label — в карточке курса
-    assert "Тем впереди" in html
+    assert "Занятий впереди" in html
     assert "С возвращением" in html

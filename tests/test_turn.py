@@ -408,7 +408,7 @@ async def test_two_clean_answers_close_node_and_move_on(conn, settings) -> None:
     # Срез 28: следующая тема — урок частями, задание после «Проверим».
     assert state.phase == "explain" and state.lesson_parts
     assert state.pending_item_id is None
-    assert "Тема «Основы Python» закрыта — идём дальше" in reply.text
+    assert "Занятие «Основы Python» закрыто — идём дальше" in reply.text
 
 
 async def test_stuck_keeps_student_on_the_same_node(conn, settings) -> None:
@@ -946,7 +946,7 @@ async def test_closed_node_leads_into_next_lesson(conn, settings) -> None:
             conn, client, "m", item.options[0], now=now, settings=settings
         )
 
-    assert "закрыта" in reply.text
+    assert "закрыто" in reply.text
     assert "Теперь про Series и DataFrame" in reply.text  # объяснение следующего
     assert reply.button is not None  # урок частями, тест после «Проверим» (срез 28)
     assert _state(conn).current_node_id != "python_basics"
@@ -965,7 +965,7 @@ async def test_lesson_answer_after_help_still_counts(conn, settings) -> None:
 
     # Ответ после помощи дошёл до порога серии и закрыл узел: в уроке серию
     # считают верные ответы, а не только чистые.
-    assert "закрыта" in reply.text
+    assert "закрыто" in reply.text
     assert _state(conn).current_node_id != "groupby"
 
 
@@ -983,7 +983,7 @@ async def test_verify_pass_answer_after_help_does_not_count(conn, settings) -> N
     )
 
     assert _state(conn).node_streak == 0
-    assert "закрыта" not in reply.text
+    assert "закрыто" not in reply.text
     assert _state(conn).current_node_id == "groupby"
 
 

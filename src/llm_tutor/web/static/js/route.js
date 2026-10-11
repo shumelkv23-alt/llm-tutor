@@ -1,4 +1,8 @@
-/* «Маршрут»: выезжающая панель — модули, внутри темы со статусами; переход к теме. */
+/* «Маршрут»: выезжающая панель — модули, внутри занятия со статусами; переход.
+ *
+ * Модуль сворачивается (по умолчанию раскрыт только модуль текущего занятия),
+ * пройденный модуль — «🎉», неопубликованный — «скоро» без занятий (срез 55).
+ */
 (() => {
   const { confirm } = window.App;
   const dialog = document.getElementById("route-dialog");
@@ -9,16 +13,34 @@
   const WEAK_MARK = "⚠️";
   const WEAK_LABEL = "Слабое место";
 
-  function moduleHeader(module) {
+  // Модули, которые ученик раскрыл или свернул сам: его выбор сильнее умолчания.
+  const toggled = new Map();
+
+  function finished(module) {
+    return module.published && module.total > 0 && module.closed >= module.total;
+  }
+
+  function moduleHeader(module, open) {
     const item = document.createElement("li");
-    item.className = "route-module";
+    item.className = `route-module${module.published ? "" : " soon"}`;
     const title = document.createElement("strong");
     title.textContent = `Модуль ${module.number} · ${module.title}`;
     const count = document.createElement("span");
-    count.textContent = module.survey_done
-      ? `закрыто ${module.closed} из ${module.total}`
-      : `${module.total} тем · начнём с короткой анкеты`;
-    item.append(title, count);
+    if (!module.published) {
+      count.textContent = "скоро";
+      item.append(title, count);
+      return item;
+    }
+    if (finished(module)) count.textContent = `🎉 Модуль ${module.number} пройден`;
+    else if (module.survey_done) count.textContent = `закрыто ${module.closed} из ${module.total}`;
+    else count.textContent = `${module.total} занятий · начнём с короткой анкеты`;
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "route-module-toggle";
+    toggle.dataset.module = String(module.number);
+    toggle.setAttribute("aria-expanded", String(open));
+    toggle.append(title, count);
+    item.append(toggle);
     return item;
   }
 
@@ -48,14 +70,30 @@
   function render(state) {
     list.replaceChildren();
     if (state.survey) return;
-    summary.textContent = `Закрыто ${state.closed} из ${state.topics.length}`;
     const modules = state.modules || [];
     if (!modules.length) {
+      summary.textContent = `Закрыто ${state.closed} из ${state.topics.length}`;
       state.topics.forEach((topic, index) => list.append(topicRow(topic, index + 1)));
       return;
     }
+    const open = modules.filter((module) => module.published);
+    const here = state.node?.lesson?.module.number;
+    const working = modules.find((module) => module.number === here);
+    if (open.length && open.every(finished)) {
+      summary.textContent = modules.length > open.length
+        ? "🎉 Открытые модули пройдены — следующие скоро"
+        : "🎓 Курс пройден";
+    } else if (working) {
+      summary.textContent = `Модуль ${working.number}: закрыто ${working.closed} из ${working.total}`;
+    } else {
+      summary.textContent = `Закрыто ${state.closed} из ${state.topics.length}`;
+    }
     modules.forEach((module) => {
-      list.append(moduleHeader(module));
+      const expanded = toggled.has(module.number)
+        ? toggled.get(module.number)
+        : module.number === (here ?? open[0]?.number);
+      list.append(moduleHeader(module, expanded));
+      if (!module.published || !expanded) return;
       state.topics
         .filter((topic) => topic.module === module.number)
         .forEach((topic, index) => list.append(topicRow(topic, index + 1)));
@@ -63,6 +101,14 @@
   }
 
   list.addEventListener("click", async (event) => {
+    const toggle = event.target.closest(".route-module-toggle");
+    if (toggle) {
+      const number = Number(toggle.dataset.module);
+      toggled.set(number, toggle.getAttribute("aria-expanded") !== "true");
+      render(window.Lesson.state);
+      list.querySelector(`.route-module-toggle[data-module="${number}"]`)?.focus();
+      return;
+    }
     const row = event.target.closest(".route-topic");
     if (!row || window.Lesson.busy) return;
     const state = window.Lesson.state;
@@ -72,7 +118,7 @@
     }
     if (state.item) {
       const ok = await confirm(
-        "Перейти к другой теме?",
+        "Перейти к другому занятию?",
         "Задание, которое ждёт ответа, будет снято.",
         { label: "Перейти" }
       );

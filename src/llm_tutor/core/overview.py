@@ -107,6 +107,8 @@ class ModuleRow:
     closed: int
     total: int
     survey_done: bool
+    # Модуль ещё не открыт ученикам (срез 55): в маршруте — «скоро».
+    published: bool = True
 
 
 def module_rows(conn: sqlite3.Connection, rows: list[TopicRow]) -> list[ModuleRow]:
@@ -121,6 +123,7 @@ def module_rows(conn: sqlite3.Connection, rows: list[TopicRow]) -> list[ModuleRo
                 closed=sum(1 for row in own if row.status == "closed"),
                 total=len(own),
                 survey_done=survey.is_completed(conn, topic.survey),
+                published=topic.published,
             )
         )
     return result

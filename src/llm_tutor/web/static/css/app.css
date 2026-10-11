@@ -1672,3 +1672,30 @@ pre code .p {
     outline-offset: -2px;
   }
 }
+
+/* Прогресс по модулям в карточке курса (срез 55). */
+.course-modules {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+
+.course-modules li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+}
+
+.course-modules b {
+  color: var(--heading);
+  font-weight: 600;
+}
+
+.course-modules .soon b {
+  color: var(--muted);
+  font-weight: 400;
+}

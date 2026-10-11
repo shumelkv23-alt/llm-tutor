@@ -57,10 +57,17 @@ def course_card(
         "closed": 0,
         "current_topic": None,
         "status": "available",
+        # Прогресс по модулям (срез 55): «Модуль N — закрыто k из m» / «скоро».
+        "modules": [],
     }
     if enrolled:
         try:
-            progress = course_progress(pool.open(user_id, course.id), settings=settings)
+            conn = pool.open(user_id, course.id)
+            progress = course_progress(conn, settings=settings)
+            card["modules"] = [
+                module_view(module)
+                for module in module_rows(conn, topic_rows(conn, settings=settings))
+            ]
         except (sqlite3.DatabaseError, RuntimeError):
             # Одна битая БД не должна ронять каталог: курс помечается недоступным.
             logger.exception("БД ученика %s по курсу %s не открывается", user_id, course.id)
@@ -150,7 +157,25 @@ def message_view(role: str, text: str, *, ts: float | None = None) -> dict:
     return {"role": role, "html": str(markdown.render(text)), "ts": ts}
 
 
-def item_view(item: Item) -> dict:
+FINAL_LABEL = "Итоговое задание"
+
+
+def item_part(item: Item, graph: CourseGraph | None) -> str | None:
+    """Подпись задания в «Практике»: «Раздел j: …» или «Итоговое задание» (срез 55)."""
+    if item.final:
+        return FINAL_LABEL
+    if item.section is None or graph is None:
+        return None
+    for node_id in item.concept_weights:
+        if not graph.has_node(node_id):
+            continue
+        for number, section in enumerate(graph.concept(node_id).sections, 1):
+            if section.id == item.section:
+                return f"Раздел {number}: {section.title}"
+    return None
+
+
+def item_view(item: Item, graph: CourseGraph | None = None) -> dict:
     """Задание для «Практики». У задания с кодом — всё, что нужно браузеру для
     запуска: заготовка, подготовка данных и проверки (они видны ученику в
     исходниках страницы — цена проверки на его стороне, спека §8)."""
@@ -160,6 +185,7 @@ def item_view(item: Item) -> dict:
         "prompt_html": str(markdown.render(item.prompt)),
         "options": list(item.options),
         "runnable": item.runnable,
+        "part": item_part(item, graph),
     }
     if item.runnable:
         view.update(starter=item.starter or "", setup=item.setup or "", tests=item.tests or "")
@@ -201,6 +227,52 @@ def lesson_button(state: SessionState) -> dict | None:
     }
 
 
+def lesson_view(
+    conn: sqlite3.Connection, graph: CourseGraph, state: SessionState, node_id: str
+) -> dict:
+    """Где ученик в курсе (срез 55): модуль, занятие k из m, разделы и итоговое.
+
+    Статус раздела: ``passed`` / ``weak`` (пройден после двух ошибок) /
+    ``current`` / ``ahead``. У темы без разделов список пуст, ``final`` — None.
+    """
+    module = graph.topic_of(node_id)
+    topic = repos.get_topic(conn, module)
+    lessons = [node for node in graph.topo_order() if graph.topic_of(node) == module]
+    concept = graph.concept(node_id)
+    ids = [section.id for section in concept.sections]
+    here = state.current_node_id == node_id
+    current = guide.current_section(state, ids) if ids and here else (ids[0] if ids else None)
+
+    def status(section_id: str) -> str:
+        if not here:
+            return "current" if section_id == current else "ahead"
+        if section_id in state.weak_sections:
+            return "weak"
+        if section_id in state.passed_sections:
+            return "passed"
+        return "current" if section_id == current else "ahead"
+
+    sections = [
+        {"id": section.id, "title": section.title, "status": status(section.id)}
+        for section in concept.sections
+    ]
+    final = None
+    if ids:
+        if here and state.final_passed:
+            final_status = "weak" if state.final_weak else "passed"
+        else:
+            final_status = "current" if here and current is None else "ahead"
+        final = {"title": FINAL_LABEL, "status": final_status}
+    return {
+        "module": {"number": module, "title": topic.title if topic else f"Модуль {module}"},
+        "index": lessons.index(node_id) + 1,
+        "total": len(lessons),
+        "sections": sections,
+        "section_index": ids.index(current) + 1 if here and current in ids else None,
+        "final": final,
+    }
+
+
 def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """Состояние занятия для страницы: всё, что рисуется слева и в чате.
 
@@ -232,6 +304,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             "description": concept.description,
             "source_url": concept.source_url,
             "theory_html": str(markdown.render(repos.get_theory(conn, concept.id) or "")),
+            "lesson": lesson_view(conn, graph, state, concept.id),
         }
     item = repos.get_item(conn, state.pending_item_id) if state.pending_item_id else None
     messages = repos.get_messages(conn, session_id)[-CHAT_HISTORY:] if session_id else []
@@ -239,13 +312,17 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     return {
         "survey": False,
         "node": node,
-        "item": item_view(item) if item is not None else None,
+        "item": item_view(item, graph) if item is not None else None,
         "mode": "verify" if state.mode == "verify" else "lesson",
         "phase": state.phase,
         "lesson_button": lesson_button(state),
         "streak": state.node_streak,
         # Та же цель, что у ядра: у прохода «закрой тему» серия длиннее (аудит среза 51, L1).
-        "streak_target": guide.streak_target(state, settings),
+        "streak_target": guide.streak_target(
+            state,
+            settings,
+            len(node["lesson"]["sections"]) if node is not None else 0,
+        ),
         # Как в карточке курса: текущая тема тоже может быть закрытой.
         "closed": course_progress(conn, settings=settings).closed,
         "topics": [
@@ -293,6 +370,7 @@ def module_view(module: ModuleRow) -> dict:
         "closed": module.closed,
         "total": module.total,
         "survey_done": module.survey_done,
+        "published": module.published,
     }
 
 

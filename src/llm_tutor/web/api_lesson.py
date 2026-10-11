@@ -497,4 +497,4 @@ async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context))
             logger.exception("Сбой перехода к теме")
             text = FAILURE_REPLY
         name = graph.concept(body.node_id).name
-        return turn_response(ctx, f"Перейти к теме «{name}»", text)
+        return turn_response(ctx, f"Перейти к занятию «{name}»", text)

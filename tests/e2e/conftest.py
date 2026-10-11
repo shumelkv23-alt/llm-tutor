@@ -50,8 +50,21 @@ def _free_port() -> int:
 
 
 @pytest.fixture
+def lessons_server(monkeypatch, tmp_path):
+    """Живой сервер, у которого курс mlcourse — фикстура занятий (срез 55)."""
+    from course_fixtures import use_lessons_course
+
+    use_lessons_course(monkeypatch)
+    yield from _serve(tmp_path)
+
+
+@pytest.fixture
 def live_server(tmp_path):
     """URL приложения, запущенного uvicorn в отдельном потоке."""
+    yield from _serve(tmp_path)
+
+
+def _serve(tmp_path):
     settings = Settings(
         _env_file=None,
         openrouter_api_key="test-key",
