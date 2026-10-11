@@ -1214,6 +1214,38 @@
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
       "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert \"pred\" in df.columns, \"Добавьте в df столбец pred.\"\nexpected = (_source[\"International plan\"] == \"Yes\") | (_source[\"Customer service calls\"] >= 4)\nassert df[\"pred\"].astype(bool).tolist() == expected.tolist(), \"Прогноз не по правилу: нужно ИЛИ (|), а не И, и порог «4 и больше».\"\nassert result is not None and abs(float(result) - (expected == _source[\"Churn\"]).mean()) < 1e-9, \"Доля верных — среднее от (pred == Churn).\"\n",
       "final": true
+    },
+    {
+      "id": 1021,
+      "prompt": "Напиши код: `day` и `eve` — минуты разговоров днём и вечером, индекс — номера клиентов, но клиенты идут в разном порядке. Посчитай суммарные минуты каждого клиента и сохрани Series в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 17,
+      "starter": "# Сумма минут по каждому клиенту\nresult = None\n",
+      "setup": "import pandas as pd\n\nday = pd.Series({\"c1\": 265.1, \"c2\": 161.6, \"c3\": 243.4, \"c4\": 299.4})\neve = pd.Series({\"c3\": 121.2, \"c1\": 197.4, \"c4\": 61.9, \"c2\": 195.5})\n_day, _eve = day.copy(), eve.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: клиент → сумма минут.\"\nexpected = (_day + _eve).sort_index()\nassert sorted(result.index) == sorted(expected.index), \"В индексе — номера клиентов c1…c4.\"\nassert (result.sort_index().round(6) == expected.round(6)).all(), \"Суммы не те: складывайте Series целиком — pandas выровняет их по индексу, а .values складываются по позициям.\"\n",
+      "section": "series"
+    },
+    {
+      "id": 1022,
+      "prompt": "Напиши код: найди в таблице df столбцы строкового типа (`object`) и сохрани список их названий в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 18,
+      "starter": "# Названия столбцов типа object\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\"],\n    \"Account length\": [128, 107, 137],\n    \"International plan\": [\"No\", \"No\", \"Yes\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4],\n    \"Churn\": [False, True, False],\n})\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result is not None, \"Положите в result список названий столбцов.\"\ngot = sorted(result)\nassert got == [\"International plan\", \"State\"], \"Нужны только столбцы с dtype object — посмотрите df.dtypes.\"\n",
+      "section": "inspect"
     }
   ],
   "rubrics": [
@@ -1280,6 +1312,14 @@
     {
       "id": 16,
       "name": "Итог: правило-прогноз"
+    },
+    {
+      "id": 17,
+      "name": "Код: выравнивание Series по индексу"
+    },
+    {
+      "id": 18,
+      "name": "Код: столбцы по типу"
     }
   ],
   "criteria": [
@@ -1570,6 +1610,38 @@
       "weight": 1.0,
       "positive_example": "(df['pred'] == df['Churn']).mean()",
       "negative_example": "df['pred'].mean()"
+    },
+    {
+      "id": 37,
+      "rubric_id": 17,
+      "criterion": "Series складываются целиком, и pandas выравнивает их по индексу",
+      "weight": 1.0,
+      "positive_example": "result = day + eve",
+      "negative_example": "result = day.values + eve.values"
+    },
+    {
+      "id": 38,
+      "rubric_id": 17,
+      "criterion": "Результат — Series с номерами клиентов в индексе",
+      "weight": 1.0,
+      "positive_example": "индекс c1…c4",
+      "negative_example": "список чисел без индекса"
+    },
+    {
+      "id": 39,
+      "rubric_id": 18,
+      "criterion": "Типы столбцов берутся из df.dtypes",
+      "weight": 1.0,
+      "positive_example": "df.dtypes == 'object'",
+      "negative_example": "перебор df.head()"
+    },
+    {
+      "id": 40,
+      "rubric_id": 18,
+      "criterion": "В ответе — названия столбцов, а не их значения",
+      "weight": 1.0,
+      "positive_example": "df.columns[...]",
+      "negative_example": "df.select_dtypes('object')"
     }
   ],
   "legacy": {

@@ -1,164 +1,203 @@
 # Группировка и сводные таблицы
 
-groupby по схеме split → apply → combine, агрегаты и agg, crosstab и pivot_table.
+«Чем ушедшие клиенты отличаются от оставшихся?», «В каких штатах отток
+выше?» — это вопросы о группах. Группировка и сводные таблицы отвечают на них
+одной строкой кода и дают основу для всех выводов в анализе данных.
+
+## Зачем
+
+После занятия вы сможете:
+
+- объяснить схему split → apply → combine и записать её через `groupby`;
+- посчитать несколько статистик по группам сразу через `agg`;
+- построить таблицу сопряжённости `crosstab` и сводную таблицу `pivot_table`;
+- читать доли в сводных таблицах и делать по ним выводы.
 
 ## split → apply → combine
 
-### Группировка: groupby
+### Главное
 
-#### Зачем
+`df.groupby("ключ")` работает в три шага:
 
-Самые содержательные вопросы к данным — сравнения групп. Уходят ли чаще клиенты с международным тарифом? Сколько минут в среднем говорят в каждом штате? `groupby` разбивает таблицу на группы по значению ключа и считает по каждой группе одно и то же.
+1. **split** — строки делятся на группы по значению ключа (все клиенты с
+   международным тарифом — одна группа, без него — другая);
+2. **apply** — к каждой группе применяется функция: среднее, сумма, размер;
+3. **combine** — результаты собираются в новую Series или таблицу, где
+   **индекс — значения ключа**.
 
-#### Главное
+Сам `df.groupby(...)` ничего не считает: он возвращает объект «группировка».
+Расчёт происходит, когда к нему применяют агрегат:
 
-Группировка работает по схеме **split → apply → combine**:
+- `df.groupby("key")["col"].mean()` — один столбец, результат — Series;
+- `df.groupby("key")[["a", "b"]].mean()` — несколько столбцов, результат —
+  DataFrame;
+- `df.groupby("key").size()` — размер каждой группы.
 
-1. **split** — строки делятся на группы по значению ключевого столбца (или нескольких);
-2. **apply** — к каждой группе применяется функция, обычно агрегат: `mean`, `sum`, `count`, `size`;
-3. **combine** — результаты собираются в новую таблицу или Series, где индекс — значения ключа.
+Ключей может быть несколько: `groupby(["State", "Churn"])` — тогда индекс
+результата составной (MultiIndex). Вернуть ключи в обычные столбцы помогает
+`reset_index()` или параметр `as_index=False`.
 
-- `df.groupby("key")["col"].mean()` — среднее `col` в каждой группе.
-- Группировать можно по нескольким столбцам: `groupby(["a", "b"])` — тогда индекс результата составной.
-- **`size()`** считает строки в группе, **`count()`** — непустые значения.
-- `as_index=False` или `.reset_index()` вернут ключ из индекса в обычный столбец.
-- Без агрегата `groupby` сам по себе ничего не считает: это «отложенное» разбиение.
-
-#### Пример
+### Пример
 
 ```python
 import pandas as pd
 
-df = pd.DataFrame({
-    "International plan": ["No", "No", "Yes", "No", "Yes", "No", "Yes", "No"],
-    "Total day minutes": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],
-    "Churn": [False, False, True, False, True, False, False, False],
-})
+df = pd.DataFrame(
+    {
+        "International plan": ["No", "No", "No", "Yes", "Yes", "Yes", "No", "No"],
+        "Total day minutes": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],
+        "Customer service calls": [1, 4, 0, 2, 3, 0, 4, 5],
+        "Churn": [False, False, False, False, True, False, True, True],
+    }
+)
 
+# Доля ушедших в каждой группе: среднее по логическому столбцу.
 print(df.groupby("International plan")["Churn"].mean())
-# No     0.000000
-# Yes    0.666667 — с международным тарифом уходят заметно чаще
 
-print(df.groupby("International plan")["Total day minutes"].mean().round(1))
-print(df.groupby("International plan").size())   # No 5, Yes 3
-
-by_two = df.groupby(["International plan", "Churn"], as_index=False)["Total day minutes"].mean()
-print(by_two)
+print(df.groupby("Churn")[["Total day minutes", "Customer service calls"]].mean().round(1))
+print(df.groupby("International plan").size())
+print(df.groupby("Churn", as_index=False)["Customer service calls"].median())
 ```
 
-#### Частые ошибки
+### Частые ошибки
 
-- **Ждать результат без агрегата:** `df.groupby("a")` — это объект группировки, а не таблица.
-- **Путать `size` и `count`:** `size` считает все строки, `count` пропускает `NaN` (и считается по каждому столбцу).
-- **Делать выводы по маленьким группам.** Доля оттока 100% в группе из двух клиентов ничего не доказывает. Смотрите и размер группы.
-
-#### Источник
-
-Группировка в [теме 1 mlcourse.ai](https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html).
+- **Ждать результат от самого `groupby`.** Без агрегата получится объект
+  `DataFrameGroupBy`, а не таблица.
+- **Агрегат по нечисловым столбцам.** `df.groupby("key").mean()` по всей
+  таблице упадёт, если в ней есть строковые столбцы. Выберите числовые
+  столбцы явно.
+- **Потерять ключ.** После группировки ключ — это индекс, а не столбец.
+  `result["International plan"]` не найдёт его; нужен `result.index` или
+  `reset_index()`.
 
 ## Агрегаты и agg
 
-### Агрегации
+### Главное
 
-#### Зачем
+Готовые агрегаты: `mean`, `median`, `sum`, `min`, `max`, `std`, `count`
+(непустые), `size` (все строки), `nunique`. Когда нужно несколько статистик
+сразу, используют `agg`:
 
-Одного среднего по группе часто мало: хочется сразу видеть и среднее, и медиану, и число объектов, причём для разных столбцов — разные функции. Метод `agg` собирает такую сводку за один вызов.
+- `agg(["mean", "max"])` — список функций для выбранных столбцов;
+- `agg({"col1": "mean", "col2": ["min", "max"]})` — свои функции каждому
+  столбцу;
+- именованные агрегаты: `agg(avg_calls=("Customer service calls", "mean"))` —
+  сразу задают имя столбца результата.
 
-#### Главное
+Функцию можно передать и как свою: `agg(lambda s: s.max() - s.min())`, но
+встроенные имена в кавычках считаются быстрее.
 
-- Простые агрегаты вызываются прямо: `sum`, `mean`, `median`, `min`, `max`, `std`, `count`, `nunique`.
-- **`agg(["mean", "max"])`** — несколько функций к выбранным столбцам: в результате по столбцу на каждую функцию.
-- **`agg({"col1": "mean", "col2": ["min", "max"]})`** — словарь «столбец → функция(и)»: каждому столбцу своё.
-- **Именованная агрегация** даёт понятные имена столбцов результата: `agg(avg_minutes=("Total day minutes", "mean"), clients=("Churn", "size"))`.
-- Агрегат принимает и свою функцию: `agg(lambda s: s.max() - s.min())`.
-- Без `groupby` метод `agg` сворачивает всю таблицу.
+`count` и `size` различаются пропусками: `size` считает все строки группы,
+`count` — только непустые значения столбца.
 
-#### Пример
+### Пример
 
 ```python
 import pandas as pd
 
-df = pd.DataFrame({
-    "State": ["KS", "OH", "KS", "OH", "OH", "KS"],
-    "Total day minutes": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4],
-    "Customer service calls": [1, 1, 0, 2, 4, 0],
-    "Churn": [False, False, True, False, True, False],
-})
-
-print(df.groupby("State")["Total day minutes"].agg(["mean", "max"]).round(1))
-
-summary = df.groupby("State").agg({
-    "Total day minutes": "median",
-    "Customer service calls": ["min", "max"],
-})
-print(summary)
-
-named = df.groupby("State").agg(
-    clients=("Churn", "size"),
-    churn_rate=("Churn", "mean"),
-    calls_range=("Customer service calls", lambda s: s.max() - s.min()),
+df = pd.DataFrame(
+    {
+        "Churn": [False, False, False, False, True, False, True, True],
+        "Total day minutes": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],
+        "Customer service calls": [1, 4, 0, 2, 3, 0, 4, 5],
+    }
 )
-print(named)
+grouped = df.groupby("Churn")
+
+print(grouped["Total day minutes"].agg(["mean", "min", "max"]).round(1))
+print(grouped.agg({"Total day minutes": "median", "Customer service calls": ["mean", "max"]}))
+print(
+    grouped.agg(
+        clients=("Total day minutes", "size"),
+        avg_calls=("Customer service calls", "mean"),
+    )
+)
 ```
 
-#### Частые ошибки
+### Частые ошибки
 
-- **Получить столбцы с двухуровневыми именами** после `agg` со списками и не понять, как к ним обратиться. Используйте именованную агрегацию — имена будут плоскими.
-- **Путать `count` и `size`** в агрегации: `count` не считает пропуски.
-- **Агрегировать текстовый столбец средним** — будет ошибка. Для текста подходят `nunique`, `first` и `size`.
-
-#### Источник
-
-Агрегации после группировки в [теме 1 mlcourse.ai](https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html).
+- **Перепутать `count` и `size`.** При пропусках они дают разные числа. Число
+  клиентов в группе — `size`.
+- **Словарь с несуществующим столбцом.** `agg({"calls": "mean"})` упадёт с
+  `KeyError`, если столбец называется `Customer service calls`.
+- **Многоуровневые названия.** Список функций для столбца даёт двухуровневые
+  названия столбцов результата. Если они мешают — используйте именованные
+  агрегаты.
 
 ## crosstab и pivot_table
 
-### Сводные таблицы: crosstab и pivot_table
+### Главное
 
-#### Зачем
+**Таблица сопряжённости** `pd.crosstab(строки, столбцы)` считает, сколько
+раз встречается каждая пара значений двух признаков. Параметры:
 
-Когда интересует связь **двух** признаков сразу — тарифа и оттока, штата и числа звонков, — одномерной группировки мало. Нужна двумерная таблица: по строкам значения одного признака, по столбцам — другого. `crosstab` считает в ней частоты, `pivot_table` — любые агрегаты.
+- `normalize="index"` — доли внутри каждой строки (строка в сумме даёт 1);
+- `normalize="columns"` — доли внутри каждого столбца;
+- `margins=True` — добавить итоги «All».
 
-#### Главное
+Например, `pd.crosstab(df["International plan"], df["Churn"],
+normalize="index")` показывает долю ушедших среди клиентов с международным
+тарифом и без него. В полном датасете mlcourse.ai с тарифом уходят около 42%
+клиентов, без него — около 11%: тариф — сильный признак оттока.
 
-- **`pd.crosstab(df["a"], df["b"])`** — таблица сопряжённости: сколько строк с каждой парой значений.
-- **`normalize`** превращает частоты в доли: `"index"` — доли внутри каждой строки, `"columns"` — внутри столбца, `True` — от всей таблицы.
-- **`margins=True`** добавляет итоги по строкам и столбцам (строка и столбец `All`).
-- **`df.pivot_table(values=..., index=..., columns=..., aggfunc=...)`** — сводка агрегата: например, среднее число минут для каждой пары «тариф × отток».
-- По умолчанию `pivot_table` считает **среднее**. Другую функцию задают через `aggfunc` (`"sum"`, `"count"`, `"median"` или список).
-- По сути `pivot_table` — это `groupby` по двум ключам, развёрнутый в таблицу.
+**Сводная таблица** `df.pivot_table(values=…, index=…, columns=…,
+aggfunc=…)` — обобщение: в ячейке не количество, а любая статистика столбца
+`values` для пары (строка, столбец). По умолчанию `aggfunc="mean"`.
 
-#### Пример
+### Пример
 
 ```python
 import pandas as pd
 
-df = pd.DataFrame({
-    "International plan": ["No", "No", "Yes", "No", "Yes", "No", "Yes", "No"],
-    "Voice mail plan": ["Yes", "No", "No", "No", "Yes", "No", "No", "Yes"],
-    "Total day minutes": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],
-    "Churn": [False, False, True, False, True, False, False, False],
-})
+df = pd.DataFrame(
+    {
+        "International plan": ["No", "No", "No", "Yes", "Yes", "Yes", "No", "No"],
+        "Voice mail plan": ["Yes", "No", "No", "No", "No", "Yes", "Yes", "No"],
+        "Total day minutes": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],
+        "Churn": [False, False, False, False, True, False, True, True],
+    }
+)
 
 print(pd.crosstab(df["International plan"], df["Churn"]))
 print(pd.crosstab(df["International plan"], df["Churn"], normalize="index").round(2))
 print(pd.crosstab(df["International plan"], df["Churn"], margins=True))
 
-table = df.pivot_table(
-    values="Total day minutes",
-    index="International plan",
-    columns="Voice mail plan",
-    aggfunc="mean",
+print(
+    df.pivot_table(
+        values="Total day minutes",
+        index="International plan",
+        columns="Voice mail plan",
+        aggfunc="mean",
+    ).round(1)
 )
-print(table.round(1))
 ```
 
-#### Частые ошибки
+### Частые ошибки
 
-- **Сравнивать абсолютные частоты групп разного размера.** Для вывода «где чаще уходят» нужен `normalize="index"`.
-- **Ждать от `pivot_table` суммы.** По умолчанию считается среднее, сумму нужно задать в `aggfunc="sum"`.
-- **Путать `pivot_table` и `pivot`.** `pivot` только переставляет данные и падает на повторяющихся парах ключей, а `pivot_table` их агрегирует.
+- **Не та нормировка.** «Какая доля клиентов с тарифом ушла» — это
+  `normalize="index"`, если тариф — строки. `normalize="columns"` ответит на
+  другой вопрос: «какая доля ушедших была с тарифом».
+- **Пустые ячейки.** Если сочетания значений нет в данных, в `pivot_table`
+  будет `NaN`. Это не ошибка, а отсутствие таких клиентов.
+- **Выводы по маленьким группам.** Доля 100% в группе из двух клиентов ничего
+  не значит. Смотрите и на `size` групп.
 
-#### Источник
+## Итоги занятия
 
-Сводные таблицы в [теме 1 mlcourse.ai](https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html).
+| Что | Что делает |
+|---|---|
+| `df.groupby("key")["col"].mean()` | статистика по группам — Series |
+| `df.groupby("key")[["a", "b"]].agg([...])` | несколько статистик по группам |
+| `agg(name=("col", "func"))` | именованный агрегат |
+| `size()` / `count()` | все строки группы / непустые значения |
+| `pd.crosstab(a, b, normalize="index")` | частоты пар, доли по строкам |
+| `df.pivot_table(values, index, columns, aggfunc)` | сводная таблица со статистикой |
+
+Схема для любого вопроса о группах: выбрать ключ → выбрать столбцы → выбрать
+статистику.
+
+## Источник
+
+[mlcourse.ai, тема 1: первичный анализ данных с Pandas](https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html)
+и документация pandas: [Group by: split-apply-combine](https://pandas.pydata.org/docs/user_guide/groupby.html),
+[Reshaping and pivot tables](https://pandas.pydata.org/docs/user_guide/reshaping.html).

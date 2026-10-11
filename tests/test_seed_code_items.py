@@ -42,6 +42,9 @@ SOLUTIONS = {
         "df['pred'] = (df['International plan'] == 'Yes') | (df['Customer service calls'] >= 4)\n"
         "result = (df['pred'] == df['Churn']).mean()"
     ),
+    # Задания с кодом внутри занятий модуля 1 (срез 57).
+    1021: "result = day + eve",
+    1022: "result = df.columns[df.dtypes == 'object'].tolist()",
 }
 
 # Неверные решения, которые на данных задания совпадали с верным (аудит среза 46).
@@ -63,6 +66,8 @@ WRONG = {
         "df['pred'] = (df['International plan'] == 'Yes') & (df['Customer service calls'] >= 4)\n"
         "result = (df['pred'] == df['Churn']).mean()"
     ),
+    1021: "result = pd.Series(day.values + eve.values, index=day.index)",
+    1022: "result = df.columns.tolist()",
 }
 
 # Верные альтернативы, которые проверки отвергали.
@@ -98,6 +103,8 @@ ALTERNATIVES = [
         "df['pred'] = df['International plan'].eq('Yes') | df['Customer service calls'].ge(4)\n"
         "result = df['pred'].eq(df['Churn']).sum() / len(df)",
     ),
+    (1021, "result = day.add(eve)"),
+    (1022, "result = list(df.select_dtypes(include='object').columns)"),
 ]
 
 ITEMS = {item.id: item for item in load_seed_data().items if item.answer_type == "code"}
