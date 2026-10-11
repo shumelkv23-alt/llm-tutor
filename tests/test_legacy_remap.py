@@ -249,6 +249,38 @@ def test_stale_pending_item_is_dropped(conn, settings) -> None:
 # --- БД бота с прогрессом в модулях 3 и 5 через import-legacy ---
 
 
+@pytest.fixture
+def module5_soon(monkeypatch, tmp_path):
+    """Настоящий курс, где модуль 5 снова «скоро» (с среза 61 он опубликован).
+
+    Копия seed-файлов и конспектов во временной папке: переносу прогресса нужен
+    курс с неопубликованным модулем, а в data/ таких больше нет.
+    """
+    import shutil
+    from dataclasses import replace
+
+    from llm_tutor.course.seed import course_paths
+    from llm_tutor.web import api_lesson, courses
+
+    source = course_paths()[0].parent
+    root = tmp_path / "course"
+    root.mkdir()
+    shutil.copytree(source / "theory", root / "theory")
+    paths = []
+    for path in course_paths():
+        text = path.read_text(encoding="utf-8")
+        if path.name == "seed_topic05.json":
+            assert '"published": true' in text
+            text = text.replace('"published": true', '"published": false')
+        target = root / path.name
+        target.write_text(text, encoding="utf-8")
+        paths.append(target)
+    course = replace(courses.COURSES[0], seed_paths=tuple(paths))
+    monkeypatch.setattr(courses, "COURSES", (course,))
+    monkeypatch.setitem(courses._BY_ID, course.id, course)
+    monkeypatch.setattr(api_lesson, "COURSES", (course,))
+
+
 def _import_bot_db(web_settings, tmp_path, *, closed, current, mastery):
     """БД бота с прогрессом → import-legacy → открытая БД ученика (и пул)."""
     from llm_tutor.db.connection import get_conn, migrate
@@ -272,7 +304,9 @@ def _import_bot_db(web_settings, tmp_path, *, closed, current, mastery):
     return pool.open(user.id, "mlcourse"), pool
 
 
-async def test_bot_db_with_module5_progress_via_import_legacy(web_settings, tmp_path) -> None:
+async def test_bot_db_with_module5_progress_via_import_legacy(
+    module5_soon, web_settings, tmp_path
+) -> None:
     module5 = ["ensembles", "bootstrapping", "bagging", "bagging_variance",
                "rf_variance_decorrelation", "rf_bias"]
     student, pool = _import_bot_db(

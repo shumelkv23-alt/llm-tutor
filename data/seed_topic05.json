@@ -60,7 +60,7 @@
         "t05_ensembles"
       ]
     },
-    "published": false
+    "published": true
   },
   "nodes": [
     {
@@ -1145,12 +1145,252 @@
       "answer": null,
       "rubric_id": 501,
       "section": "oob"
+    },
+    {
+      "id": 5111,
+      "prompt": "Напиши код: с помощью генератора `rng` сделай 200 бутстрэп-выборок индексов объектов размера `n` (с возвращением) и найди среднюю долю различных объектов в выборке. Сохрани число в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 502,
+      "starter": "# Средняя доля уникальных объектов в бутстрэп-выборке\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(7)\nn = 500\n_state0 = rng.bit_generator.state\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert rng.bit_generator.state != _state0, \"Выборки нужно получать из генератора rng (rng.choice).\"\nshare = float(result)\nassert share < 0.665, \"Доля слишком велика: бутстрэп-выборка берётся с возвращением (replace=True), поэтому часть объектов повторяется.\"\nassert share > 0.60, \"Доля слишком мала: размер выборки должен быть равен n.\"\n",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5112,
+      "prompt": "Напиши код: обучи `RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17)` на `X_train`, `y_train`. Сохрани в result кортеж `(oob, test)`: оценку out-of-bag и точность на `X_test`, `y_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 503,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# OOB-оценка и точность на тесте\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nforest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)\noob, test = result\nassert abs(float(oob) - forest.oob_score_) < 1e-9, \"oob — атрибут oob_score_ леса с oob_score=True, n_estimators=50, random_state=17.\"\nassert abs(float(test) - forest.score(X_test, y_test)) < 1e-9, \"test — точность обученного леса на X_test, y_test.\"\n",
+      "section": "oob"
+    },
+    {
+      "id": 5113,
+      "prompt": "Напиши код: оцени 5-кратной кросс-валидацией на `X`, `y` `RandomForestClassifier` и `ExtraTreesClassifier` (у обоих `n_estimators=50`, `random_state=17`). Сохрани в result словарь со средними точностями: ключи `forest` и `extra`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 504,
+      "starter": "from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier\nfrom sklearn.model_selection import cross_val_score\n\n# Лес против ExtraTrees\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier\nfrom sklearn.model_selection import cross_val_score\nassert isinstance(result, dict) and {\"forest\", \"extra\"} <= set(result), \"result — словарь с ключами forest и extra.\"\nforest = cross_val_score(RandomForestClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean()\nextra = cross_val_score(ExtraTreesClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean()\nassert abs(float(result[\"forest\"]) - forest) < 1e-9, \"forest: RandomForestClassifier(n_estimators=50, random_state=17), cv=5, среднее.\"\nassert abs(float(result[\"extra\"]) - extra) < 1e-9, \"extra: ExtraTreesClassifier(n_estimators=50, random_state=17), cv=5, среднее.\"\n",
+      "section": "extra_trees"
+    },
+    {
+      "id": 5114,
+      "prompt": "Напиши код: для `max_features` из `[1, 2, 4, 8]` обучи на всех `X`, `y` `RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17, max_features=…)`. Сохрани в result значение `max_features` с наибольшей оценкой `oob_score_`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 505,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# Лучшее max_features по OOB\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nscores = {}\nfor m in (1, 2, 4, 8):\n    scores[m] = RandomForestClassifier(\n        n_estimators=50, oob_score=True, random_state=17, max_features=m\n    ).fit(X, y).oob_score_\nbest = max(scores, key=lambda m: (scores[m], -m))\nassert best != 1, \"внутренняя ошибка задания\"\nassert result == best, \"Лучшее max_features выбирают по oob_score_ (а не по точности на обучающей выборке): \" + str({m: round(s, 3) for m, s in scores.items()})\n",
+      "section": "max_features"
+    },
+    {
+      "id": 5115,
+      "prompt": "Напиши код: `forest` уже обучен. Для каждого объекта `X` найди долю деревьев, в которых он попал в один лист с объектом 0 (метод `apply`). Сохрани в result индекс самого «похожего» на объект 0 объекта — не считая сам объект 0.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 506,
+      "starter": "# Ближайший к объекту 0 по лесу\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\n\nrng = np.random.default_rng(0)\nX = rng.normal(size=(200, 5))\ny = (X[:, 0] + X[:, 1] > 0).astype(int)\nforest = RandomForestClassifier(n_estimators=50, min_samples_leaf=5, random_state=17).fit(X, y)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nimport numpy as np\nleaves = forest.apply(X)\nsimilarity = (leaves == leaves[0]).mean(axis=1)\nsimilarity[0] = -1.0\nbest = np.flatnonzero(similarity == similarity.max())\nassert int(result) != 0, \"Сам объект 0 не считается.\"\nassert int(result) in best.tolist(), \"Нужен объект с наибольшей долей общих листьев с объектом 0 (forest.apply(X)).\"\n",
+      "section": "vs_knn"
+    },
+    {
+      "id": 5116,
+      "prompt": "Напиши код: `forest` обучен на таблице `X` (столбцы с названиями). Сохрани в result `pandas.Series` с важностями признаков по уменьшению неоднородности (`feature_importances_`): индекс — названия признаков, порядок — от самого важного к наименее важному.",
+      "answer_type": "code",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 507,
+      "starter": "import pandas as pd\n\n# Таблица важностей\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\nfrom sklearn.ensemble import RandomForestClassifier\n\nrng = np.random.default_rng(2)\nn = 400\nX = pd.DataFrame({\n    \"plan\": rng.integers(0, 2, n),\n    \"calls\": rng.integers(0, 8, n),\n    \"minutes\": rng.normal(180, 50, n),\n})\ny = ((2 * X[\"plan\"] + 1.5 * (X[\"calls\"] > 3) + rng.normal(0, 0.7, n)) > 1.5).astype(int)\nforest = RandomForestClassifier(n_estimators=50, random_state=17).fit(X, y)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nimport pandas as pd\nassert isinstance(result, pd.Series), \"Ожидается pandas.Series.\"\nassert sorted(result.index) == sorted(X.columns), \"Индекс — названия признаков таблицы X.\"\nexpected = pd.Series(forest.feature_importances_, index=X.columns)\nassert (result.values[:-1] >= result.values[1:]).all(), \"Сортировка — по убыванию важности.\"\nassert all(abs(float(result[c]) - float(expected[c])) < 1e-12 for c in X.columns), \"Значения — forest.feature_importances_.\"\n",
+      "section": "impurity"
+    },
+    {
+      "id": 5121,
+      "prompt": "Итоговое задание. `boot` — индексы 25 бутстрэп-выборок (массив 25 × n) для `X_train`. На каждой выборке обучи `DecisionTreeClassifier(random_state=17)`. Ответ ансамбля для `X_test` — голосование большинством (метки 0/1, моделей нечётное число). Сохрани в result словарь: `single` — точность одного дерева, обученного на всём `X_train`, `bagging` — точность ансамбля на `X_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 508,
+      "starter": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Бэггинг руками\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n\nboot = np.array([np.random.default_rng(s).choice(len(X_train), size=len(X_train), replace=True)\n                 for s in range(25)])\n",
+      "tests": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами single и bagging.\"\nassert {\"single\", \"bagging\"} <= set(result), \"Нужны ключи single и bagging.\"\nsingle = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\nvotes = np.array([\n    DecisionTreeClassifier(random_state=17).fit(X_train[i], y_train[i]).predict(X_test) for i in boot\n])\nbagging = float(((votes.mean(axis=0) > 0.5).astype(int) == y_test).mean())\nassert abs(float(result[\"single\"]) - single) < 1e-9, \"single: одно дерево, обученное на всём X_train, точность на X_test.\"\nassert abs(float(result[\"bagging\"]) - bagging) < 1e-9, \"bagging: 25 деревьев на выборках X_train[idx], голосование большинством, точность на X_test.\"\nassert bagging > single, \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 5122,
+      "prompt": "Итоговое задание. Обучи на `X_train`, `y_train` `RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)`. Сохрани в result словарь: `oob` — оценка out-of-bag, `test` — точность на `X_test`, `m` — сколько признаков перебирает каждое дерево при разбиении (`max_features_` первого дерева), `rule` — число признаков по правилу √d (целое, `int(np.sqrt(d))`).",
+      "answer_type": "code",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 509,
+      "starter": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\n\n# Лес, OOB и правило √d\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами oob, test, m и rule.\"\nassert {\"oob\", \"test\", \"m\", \"rule\"} <= set(result), \"Нужны ключи oob, test, m и rule.\"\nforest = RandomForestClassifier(n_estimators=60, max_features=\"sqrt\", oob_score=True, random_state=17).fit(X_train, y_train)\nassert abs(float(result[\"oob\"]) - forest.oob_score_) < 1e-9, \"oob — oob_score_ леса.\"\nassert abs(float(result[\"test\"]) - forest.score(X_test, y_test)) < 1e-9, \"test — точность на X_test.\"\nassert int(result[\"m\"]) == forest.estimators_[0].max_features_, \"m — forest.estimators_[0].max_features_.\"\nassert int(result[\"rule\"]) == int(np.sqrt(X_train.shape[1])), \"rule = int(np.sqrt(d)), где d — число признаков.\"\n",
+      "final": true
+    },
+    {
+      "id": 5123,
+      "prompt": "Итоговое задание. Для числа деревьев `B` из `[1, 5, 20, 60]` обучи `RandomForestClassifier(n_estimators=B, random_state=17)` на `X_train`, `y_train`. Сохрани в result список из четырёх точностей на `X_test` (в порядке `B`), а в `plateau` — наименьшее `B`, при котором точность не меньше `максимум − 0.01`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 510,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# Качество и число деревьев\nresult = None\nplateau = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nsizes = [1, 5, 20, 60]\nexpected = [\n    RandomForestClassifier(n_estimators=b, random_state=17).fit(X_train, y_train).score(X_test, y_test)\n    for b in sizes\n]\nassert len(result) == 4, \"Нужны четыре точности — по одной на каждое B.\"\nassert all(abs(float(a) - b) < 1e-9 for a, b in zip(result, expected)), \"Точность каждого леса — на X_test, в порядке B = 1, 5, 20, 60.\"\nwant = next(b for b, v in zip(sizes, expected) if v >= max(expected) - 0.01)\nassert plateau == want, \"plateau — наименьшее B с точностью не ниже максимум − 0.01.\"\n",
+      "final": true
+    },
+    {
+      "id": 5124,
+      "prompt": "Итоговое задание. Подбери параметры леса `RandomForestClassifier(n_estimators=30, random_state=17)` через `GridSearchCV` (`cv=3`) на `X_train`, `y_train`: `max_features` из `[2, 8]` и `min_samples_leaf` из `[1, 10]`. Сохрани в result словарь: `best_params` и `test_score` — точность найденной модели на `X_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 511,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\nfrom sklearn.model_selection import GridSearchCV\n\n# Подбор параметров леса\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.model_selection import GridSearchCV\nassert isinstance(result, dict) and {\"best_params\", \"test_score\"} <= set(result), \"result — словарь с ключами best_params и test_score.\"\ngrid = GridSearchCV(\n    RandomForestClassifier(n_estimators=30, random_state=17),\n    {\"max_features\": [2, 8], \"min_samples_leaf\": [1, 10]}, cv=3,\n).fit(X_train, y_train)\nassert dict(result[\"best_params\"]) == grid.best_params_, \"best_params_ после перебора сетки max_features × min_samples_leaf с cv=3.\"\nassert abs(float(result[\"test_score\"]) - grid.score(X_test, y_test)) < 1e-9, \"test_score — точность лучшей модели на X_test.\"\n",
+      "final": true
+    },
+    {
+      "id": 5125,
+      "prompt": "Итоговое задание. Данные устроены как XOR. Сохрани в result словарь: `linear` — точность на `X_test` обычной `LogisticRegression(max_iter=1000)`, обученной на `X_train`; `embedding` — точность на `X_test` пайплайна `RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17)` → `LogisticRegression(max_iter=1000)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 512,
+      "starter": "from sklearn.ensemble import RandomTreesEmbedding\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\n\n# Прямая против эмбеддинга по листьям\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(1)\nX = rng.uniform(-1, 1, size=(400, 2))\ny = (X[:, 0] * X[:, 1] > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n",
+      "tests": "from sklearn.ensemble import RandomTreesEmbedding\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами linear и embedding.\"\nassert {\"linear\", \"embedding\"} <= set(result), \"Нужны ключи linear и embedding.\"\nlinear = LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_test, y_test)\nstacked = make_pipeline(\n    RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17),\n    LogisticRegression(max_iter=1000),\n).fit(X_train, y_train).score(X_test, y_test)\nassert abs(float(result[\"linear\"]) - linear) < 1e-9, \"linear: LogisticRegression(max_iter=1000) на исходных признаках.\"\nassert abs(float(result[\"embedding\"]) - stacked) < 1e-9, \"embedding: RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17) → LogisticRegression(max_iter=1000).\"\nassert stacked > linear + 0.2, \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 5126,
+      "prompt": "Итоговое задание. Обучи `RandomForestClassifier(n_estimators=60, random_state=17)` на `X_train`, `y_train`. Сохрани в result словарь: `sum` — сумма `feature_importances_`, `impurity_top` — номер признака с наибольшей важностью по неоднородности, `permutation_top` — номер признака с наибольшей перестановочной важностью на `X_test`, `y_test` (`permutation_importance(…, n_repeats=5, random_state=17)`).",
+      "answer_type": "code",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 513,
+      "starter": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.inspection import permutation_importance\n\n# Две важности\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(2)\nn = 500\nuseful = rng.integers(0, 2, n)\nnoise_binary = rng.integers(0, 2, n)\nnoise_continuous = rng.normal(size=n)\ny = ((useful + rng.normal(0, 0.8, n)) > 0.5).astype(int)\nX = np.column_stack([useful, noise_binary, noise_continuous])\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n",
+      "tests": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.inspection import permutation_importance\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами sum, impurity_top и permutation_top.\"\nassert {\"sum\", \"impurity_top\", \"permutation_top\"} <= set(result), \"Нужны ключи sum, impurity_top и permutation_top.\"\nforest = RandomForestClassifier(n_estimators=60, random_state=17).fit(X_train, y_train)\nperm = permutation_importance(forest, X_test, y_test, n_repeats=5, random_state=17)\nimpurity_top = int(np.argmax(forest.feature_importances_))\npermutation_top = int(np.argmax(perm.importances_mean))\nassert impurity_top != permutation_top, \"внутренняя ошибка задания\"\nassert abs(float(result[\"sum\"]) - 1.0) < 1e-9, \"Сумма feature_importances_ равна 1.\"\nassert int(result[\"impurity_top\"]) == impurity_top, \"impurity_top — argmax feature_importances_ (важность по неоднородности).\"\nassert int(result[\"permutation_top\"]) == permutation_top, \"permutation_top — argmax importances_mean перестановочной важности на X_test, y_test.\"\n",
+      "final": true
     }
   ],
   "rubrics": [
     {
       "id": 501,
       "name": "Оценка леса по out-of-bag и важность признаков"
+    },
+    {
+      "id": 502,
+      "name": "Код: бутстрэп"
+    },
+    {
+      "id": 503,
+      "name": "Код: оценка out-of-bag"
+    },
+    {
+      "id": 504,
+      "name": "Код: лес и ExtraTrees"
+    },
+    {
+      "id": 505,
+      "name": "Код: подбор max_features по OOB"
+    },
+    {
+      "id": 506,
+      "name": "Код: близость по листьям леса"
+    },
+    {
+      "id": 507,
+      "name": "Код: важности по неоднородности"
+    },
+    {
+      "id": 508,
+      "name": "Итог: бэггинг руками"
+    },
+    {
+      "id": 509,
+      "name": "Итог: лес и правило √d"
+    },
+    {
+      "id": 510,
+      "name": "Итог: плато по числу деревьев"
+    },
+    {
+      "id": 511,
+      "name": "Итог: GridSearchCV для леса"
+    },
+    {
+      "id": 512,
+      "name": "Итог: эмбеддинг по листьям"
+    },
+    {
+      "id": 513,
+      "name": "Итог: две важности признаков"
     }
   ],
   "criteria": [
@@ -1177,6 +1417,198 @@
       "weight": 1.0,
       "positive_example": "учту, что признаки с многими уровнями и коррелированные группы получат лишний вес",
       "negative_example": "просто возьму топ-3 признака и выброшу остальные"
+    },
+    {
+      "id": 504,
+      "rubric_id": 502,
+      "criterion": "Выборка индексов берётся с возвращением, размером n",
+      "weight": 1.0,
+      "positive_example": "rng.choice(n, size=n, replace=True)",
+      "negative_example": "rng.choice(n, size=n, replace=False)"
+    },
+    {
+      "id": 505,
+      "rubric_id": 502,
+      "criterion": "Доля различных объектов считается через np.unique и усредняется по 200 выборкам",
+      "weight": 1.0,
+      "positive_example": "len(np.unique(idx)) / n; mean по 200 повторам",
+      "negative_example": "жёстко записанное число 0.632"
+    },
+    {
+      "id": 506,
+      "rubric_id": 503,
+      "criterion": "Лес обучен с oob_score=True и n_estimators=50 на обучающей части",
+      "weight": 1.0,
+      "positive_example": "RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)",
+      "negative_example": "oob_score по умолчанию (False)"
+    },
+    {
+      "id": 507,
+      "rubric_id": 503,
+      "criterion": "OOB берётся из oob_score_, тестовая точность — на X_test",
+      "weight": 1.0,
+      "positive_example": "forest.oob_score_, forest.score(X_test, y_test)",
+      "negative_example": "точность на обучении вместо OOB"
+    },
+    {
+      "id": 508,
+      "rubric_id": 504,
+      "criterion": "Обе модели оцениваются кросс-валидацией cv=5 на одних данных",
+      "weight": 1.0,
+      "positive_example": "cross_val_score(model, X, y, cv=5)",
+      "negative_example": "оценка на обучении"
+    },
+    {
+      "id": 509,
+      "rubric_id": 504,
+      "criterion": "В словаре — средние (.mean()) для ключей forest и extra",
+      "weight": 1.0,
+      "positive_example": "{'forest': ..., 'extra': ...}",
+      "negative_example": "массив оценок вместо среднего"
+    },
+    {
+      "id": 510,
+      "rubric_id": 505,
+      "criterion": "Для каждого значения max_features обучается свой лес с oob_score=True",
+      "weight": 1.0,
+      "positive_example": "for m in [1, 2, 4, 8]: RandomForestClassifier(max_features=m, oob_score=True, ...)",
+      "negative_example": "один лес для всех значений"
+    },
+    {
+      "id": 511,
+      "rubric_id": 505,
+      "criterion": "Выбрано значение с наибольшим oob_score_",
+      "weight": 1.0,
+      "positive_example": "max(scores, key=scores.get)",
+      "negative_example": "выбор по точности на обучении"
+    },
+    {
+      "id": 512,
+      "rubric_id": 506,
+      "criterion": "Номера листьев берутся через forest.apply(X) и сравниваются с листьями объекта 0",
+      "weight": 1.0,
+      "positive_example": "leaves == leaves[0]",
+      "negative_example": "евклидово расстояние между объектами"
+    },
+    {
+      "id": 513,
+      "rubric_id": 506,
+      "criterion": "Близость — доля деревьев с общим листом; объект 0 исключён",
+      "weight": 1.0,
+      "positive_example": "(leaves == leaves[0]).mean(axis=1); sim[0] = -1; argmax",
+      "negative_example": "argmax без исключения нулевого объекта"
+    },
+    {
+      "id": 514,
+      "rubric_id": 507,
+      "criterion": "Важности взяты из feature_importances_ и подписаны названиями столбцов",
+      "weight": 1.0,
+      "positive_example": "pd.Series(forest.feature_importances_, index=X.columns)",
+      "negative_example": "список без названий"
+    },
+    {
+      "id": 515,
+      "rubric_id": 507,
+      "criterion": "Серия отсортирована по убыванию",
+      "weight": 1.0,
+      "positive_example": ".sort_values(ascending=False)",
+      "negative_example": "порядок столбцов таблицы"
+    },
+    {
+      "id": 516,
+      "rubric_id": 508,
+      "criterion": "Каждое дерево обучается на своей бутстрэп-выборке X_train[idx], y_train[idx]",
+      "weight": 1.0,
+      "positive_example": "for idx in boot: tree.fit(X_train[idx], y_train[idx])",
+      "negative_example": "все деревья на одних и тех же данных"
+    },
+    {
+      "id": 517,
+      "rubric_id": 508,
+      "criterion": "Ответ — голосование большинством по 25 деревьям, точность на тесте",
+      "weight": 1.0,
+      "positive_example": "(votes.mean(axis=0) > 0.5)",
+      "negative_example": "ответ одного дерева"
+    },
+    {
+      "id": 518,
+      "rubric_id": 509,
+      "criterion": "Лес обучен с заданными параметрами на обучающей части",
+      "weight": 1.0,
+      "positive_example": "RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)",
+      "negative_example": "max_features=None"
+    },
+    {
+      "id": 519,
+      "rubric_id": 509,
+      "criterion": "OOB, точность на тесте, число признаков на разбиение и правило √d посчитаны",
+      "weight": 1.0,
+      "positive_example": "forest.oob_score_; forest.estimators_[0].max_features_; int(np.sqrt(d))",
+      "negative_example": "rule записан числом, не вычислен"
+    },
+    {
+      "id": 520,
+      "rubric_id": 510,
+      "criterion": "Для каждого B обучается лес с random_state=17 и считается точность на тесте",
+      "weight": 1.0,
+      "positive_example": "for b in [1, 5, 20, 60]: RandomForestClassifier(n_estimators=b, random_state=17)...",
+      "negative_example": "точность на обучении"
+    },
+    {
+      "id": 521,
+      "rubric_id": 510,
+      "criterion": "plateau — наименьшее B, достигающее максимум − 0.01",
+      "weight": 1.0,
+      "positive_example": "next(b for b, v in zip(sizes, scores) if v >= max(scores) - 0.01)",
+      "negative_example": "B с максимальной точностью без допуска"
+    },
+    {
+      "id": 522,
+      "rubric_id": 511,
+      "criterion": "Перебирается сетка max_features × min_samples_leaf по трём фолдам на обучающей части",
+      "weight": 1.0,
+      "positive_example": "GridSearchCV(RandomForestClassifier(n_estimators=30, random_state=17), {...}, cv=3).fit(X_train, y_train)",
+      "negative_example": "обучение на всех данных"
+    },
+    {
+      "id": 523,
+      "rubric_id": 511,
+      "criterion": "В результате — best_params_ и точность лучшей модели на тесте",
+      "weight": 1.0,
+      "positive_example": "grid.best_params_; grid.score(X_test, y_test)",
+      "negative_example": "best_score_ вместо точности на тесте"
+    },
+    {
+      "id": 524,
+      "rubric_id": 512,
+      "criterion": "Базовая линейная модель обучена на исходных признаках, точность — на тесте",
+      "weight": 1.0,
+      "positive_example": "LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_test, y_test)",
+      "negative_example": "оценка на обучающей части"
+    },
+    {
+      "id": 525,
+      "rubric_id": 512,
+      "criterion": "Пайплайн RandomTreesEmbedding → LogisticRegression с заданными параметрами",
+      "weight": 1.0,
+      "positive_example": "make_pipeline(RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17), LogisticRegression(...))",
+      "negative_example": "другие параметры эмбеддинга"
+    },
+    {
+      "id": 526,
+      "rubric_id": 513,
+      "criterion": "Важность по неоднородности берётся из feature_importances_ (сумма равна 1)",
+      "weight": 1.0,
+      "positive_example": "forest.feature_importances_.sum(); argmax",
+      "negative_example": "важность по тестовым данным"
+    },
+    {
+      "id": 527,
+      "rubric_id": 513,
+      "criterion": "Перестановочная важность считается на X_test, y_test с n_repeats=5 и random_state=17",
+      "weight": 1.0,
+      "positive_example": "permutation_importance(forest, X_test, y_test, n_repeats=5, random_state=17).importances_mean",
+      "negative_example": "перестановочная важность на обучающих данных"
     }
   ],
   "legacy": {

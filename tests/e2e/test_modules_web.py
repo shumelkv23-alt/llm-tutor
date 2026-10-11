@@ -51,8 +51,8 @@ async def test_lesson_button_gives_the_question(enrolled) -> None:
     assert page.errors == []
 
 
-async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
-    """Настоящий курс (срез 60): модули 1–4 открыты, 5 — «скоро» без занятий."""
+async def test_route_lists_all_five_modules_open(enrolled) -> None:
+    """Настоящий курс (срез 61): все пять модулей открыты, «скоро» в маршруте нет."""
     page = enrolled
     await _survey(page)
 
@@ -60,17 +60,13 @@ async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
     await page.wait_for_selector("#route-dialog[open]")
     headers = page.locator(".route-module")
     assert await headers.count() == 5
-    for number in (2, 3, 4):
+    for number in (1, 2, 3, 4, 5):
+        header = headers.nth(number - 1)
+        await expect(header).to_contain_text(f"Модуль {number}")
+        await expect(header).not_to_contain_text("скоро")
         await expect(
             page.locator(f'.route-module-toggle[data-module="{number}"]')
         ).to_have_count(1)
-    for number in (5,):
-        header = headers.nth(number - 1)
-        await expect(header).to_contain_text(f"Модуль {number}")
-        await expect(header).to_contain_text("скоро")
-        await expect(
-            page.locator(f'.route-module-toggle[data-module="{number}"]')
-        ).to_have_count(0)
     # Раскрыт только модуль текущего занятия: в DOM занятия модуля 1.
     await expect(page.locator(".route-topic")).to_have_count(7)
     assert page.errors == []

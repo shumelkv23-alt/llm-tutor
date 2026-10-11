@@ -1131,6 +1131,345 @@ ALTERNATIVES += [
     ),
 ]
 
+# Модуль 5 (срез 61): задания внутри занятий (5111–5116) и итоговые (5121–5126).
+_IMP = (
+    "from sklearn.ensemble import RandomForestClassifier\n"
+    "from sklearn.inspection import permutation_importance\n"
+)
+
+SOLUTIONS.update({
+    5111: (
+        "shares = []\n"
+        "for _ in range(200):\n"
+        "    idx = rng.choice(n, size=n, replace=True)\n"
+        "    shares.append(len(np.unique(idx)) / n)\n"
+        "result = float(np.mean(shares))"
+    ),
+    5112: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "forest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)\n"
+        "result = (forest.oob_score_, forest.score(X_test, y_test))"
+    ),
+    5113: (
+        "from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier\n"
+        "from sklearn.model_selection import cross_val_score\n"
+        "result = {\n"
+        "    'forest': cross_val_score(RandomForestClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean(),\n"
+        "    'extra': cross_val_score(ExtraTreesClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean(),\n"
+        "}"
+    ),
+    5114: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "scores = {}\n"
+        "for m in [1, 2, 4, 8]:\n"
+        "    forest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17, max_features=m)\n"
+        "    scores[m] = forest.fit(X, y).oob_score_\n"
+        "result = max(scores, key=scores.get)"
+    ),
+    5115: (
+        "leaves = forest.apply(X)\n"
+        "similarity = (leaves == leaves[0]).mean(axis=1)\n"
+        "similarity[0] = -1\n"
+        "result = int(similarity.argmax())"
+    ),
+    5116: "result = pd.Series(forest.feature_importances_, index=X.columns).sort_values(ascending=False)",
+    5121: (
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "single = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\n"
+        "votes = np.array([\n"
+        "    DecisionTreeClassifier(random_state=17).fit(X_train[i], y_train[i]).predict(X_test) for i in boot\n"
+        "])\n"
+        "result = {'single': single, 'bagging': float(((votes.mean(axis=0) > 0.5).astype(int) == y_test).mean())}"
+    ),
+    5122: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "forest = RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)\n"
+        "forest.fit(X_train, y_train)\n"
+        "result = {\n"
+        "    'oob': forest.oob_score_,\n"
+        "    'test': forest.score(X_test, y_test),\n"
+        "    'm': forest.estimators_[0].max_features_,\n"
+        "    'rule': int(np.sqrt(X_train.shape[1])),\n"
+        "}"
+    ),
+    5123: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "sizes = [1, 5, 20, 60]\n"
+        "result = [RandomForestClassifier(n_estimators=b, random_state=17).fit(X_train, y_train).score(X_test, y_test)\n"
+        "          for b in sizes]\n"
+        "plateau = next(b for b, v in zip(sizes, result) if v >= max(result) - 0.01)"
+    ),
+    5124: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "from sklearn.model_selection import GridSearchCV\n"
+        "grid = GridSearchCV(RandomForestClassifier(n_estimators=30, random_state=17),\n"
+        "                    {'max_features': [2, 8], 'min_samples_leaf': [1, 10]}, cv=3).fit(X_train, y_train)\n"
+        "result = {'best_params': grid.best_params_, 'test_score': grid.score(X_test, y_test)}"
+    ),
+    5125: (
+        "from sklearn.ensemble import RandomTreesEmbedding\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "linear = LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_test, y_test)\n"
+        "stacked = make_pipeline(RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17),\n"
+        "                        LogisticRegression(max_iter=1000)).fit(X_train, y_train)\n"
+        "result = {'linear': linear, 'embedding': stacked.score(X_test, y_test)}"
+    ),
+    5126: (
+        _IMP
+        + "forest = RandomForestClassifier(n_estimators=60, random_state=17).fit(X_train, y_train)\n"
+        "perm = permutation_importance(forest, X_test, y_test, n_repeats=5, random_state=17)\n"
+        "result = {\n"
+        "    'sum': forest.feature_importances_.sum(),\n"
+        "    'impurity_top': int(np.argmax(forest.feature_importances_)),\n"
+        "    'permutation_top': int(np.argmax(perm.importances_mean)),\n"
+        "}"
+    ),
+})
+
+WRONG.update({
+    5111: (
+        "shares = []\n"
+        "for _ in range(200):\n"
+        "    idx = rng.choice(n, size=n, replace=False)\n"
+        "    shares.append(len(np.unique(idx)) / n)\n"
+        "result = float(np.mean(shares))"
+    ),
+    5112: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "forest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)\n"
+        "result = (forest.score(X_train, y_train), forest.score(X_test, y_test))"
+    ),
+    5113: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "from sklearn.model_selection import cross_val_score\n"
+        "score = cross_val_score(RandomForestClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean()\n"
+        "result = {'forest': score, 'extra': score}"
+    ),
+    5114: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "scores = {}\n"
+        "for m in [1, 2, 4, 8]:\n"
+        "    forest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17, max_features=m)\n"
+        "    scores[m] = forest.fit(X, y).score(X, y)\n"
+        "result = max(scores, key=scores.get)"
+    ),
+    5115: (
+        "leaves = forest.apply(X)\n"
+        "similarity = (leaves == leaves[0]).mean(axis=1)\n"
+        "result = int(similarity.argmax())"
+    ),
+    5116: "result = pd.Series(forest.feature_importances_, index=X.columns)",
+    5121: (
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "single = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\n"
+        "votes = np.array([\n"
+        "    DecisionTreeClassifier(random_state=17).fit(X_train, y_train).predict(X_test) for i in boot\n"
+        "])\n"
+        "result = {'single': single, 'bagging': float(((votes.mean(axis=0) > 0.5).astype(int) == y_test).mean())}"
+    ),
+    5122: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "forest = RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)\n"
+        "forest.fit(X_train, y_train)\n"
+        "result = {\n"
+        "    'oob': forest.oob_score_,\n"
+        "    'test': forest.score(X_test, y_test),\n"
+        "    'm': forest.estimators_[0].max_features_,\n"
+        "    'rule': round(np.sqrt(X_train.shape[1])),\n"
+        "}"
+    ),
+    5123: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "sizes = [1, 5, 20, 60]\n"
+        "result = [RandomForestClassifier(n_estimators=b, random_state=17).fit(X_train, y_train).score(X_train, y_train)\n"
+        "          for b in sizes]\n"
+        "plateau = next(b for b, v in zip(sizes, result) if v >= max(result) - 0.01)"
+    ),
+    5124: (
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "from sklearn.model_selection import GridSearchCV\n"
+        "grid = GridSearchCV(RandomForestClassifier(n_estimators=30, random_state=17),\n"
+        "                    {'max_features': [2, 8], 'min_samples_leaf': [1, 10]}, cv=3).fit(X_train, y_train)\n"
+        "result = {'best_params': grid.best_params_, 'test_score': grid.score(X_train, y_train)}"
+    ),
+    5125: (
+        "from sklearn.ensemble import RandomTreesEmbedding\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "linear = LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_test, y_test)\n"
+        "stacked = make_pipeline(RandomTreesEmbedding(n_estimators=30, max_depth=1, random_state=17),\n"
+        "                        LogisticRegression(max_iter=1000)).fit(X_train, y_train)\n"
+        "result = {'linear': linear, 'embedding': stacked.score(X_test, y_test)}"
+    ),
+    5126: (
+        _IMP
+        + "forest = RandomForestClassifier(n_estimators=60, random_state=17).fit(X_train, y_train)\n"
+        "perm = permutation_importance(forest, X_train, y_train, n_repeats=5, random_state=17)\n"
+        "result = {\n"
+        "    'sum': forest.feature_importances_.sum(),\n"
+        "    'impurity_top': int(np.argmax(forest.feature_importances_)),\n"
+        "    'permutation_top': int(np.argmax(perm.importances_mean)),\n"
+        "}"
+    ),
+})
+
+MORE_WRONG += [
+    (
+        5111,
+        "shares = []\n"
+        "for _ in range(200):\n"
+        "    idx = rng.choice(n, size=n // 2, replace=True)\n"
+        "    shares.append(len(np.unique(idx)) / n)\n"
+        "result = float(np.mean(shares))",
+    ),
+    (5111, "result = 0.632"),
+    (
+        5112,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "forest = RandomForestClassifier(n_estimators=100, oob_score=True, random_state=17).fit(X_train, y_train)\n"
+        "result = (forest.oob_score_, forest.score(X_test, y_test))",
+    ),
+    (
+        5113,
+        "from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier\n"
+        "from sklearn.model_selection import cross_val_score\n"
+        "result = {\n"
+        "    'forest': cross_val_score(RandomForestClassifier(n_estimators=50, random_state=17), X, y, cv=3).mean(),\n"
+        "    'extra': cross_val_score(ExtraTreesClassifier(n_estimators=50, random_state=17), X, y, cv=3).mean(),\n"
+        "}",
+    ),
+    (
+        5114,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "scores = {}\n"
+        "for m in [1, 2, 4, 8]:\n"
+        "    forest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17, max_features=m)\n"
+        "    scores[m] = forest.fit(X, y).oob_score_\n"
+        "result = min(scores, key=scores.get)",
+    ),
+    (
+        5115,
+        "import numpy as np\n"
+        "result = int(np.argsort(np.linalg.norm(X - X[0], axis=1))[1])",
+    ),
+    (5116, "result = pd.Series(forest.feature_importances_, index=X.columns).sort_values()"),
+    (
+        5121,
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "single = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\n"
+        "votes = np.array([\n"
+        "    DecisionTreeClassifier(random_state=17).fit(X_train[i], y_train[i]).predict(X_test) for i in boot\n"
+        "])\n"
+        "result = {'single': single, 'bagging': float((votes.max(axis=0) == y_test).mean())}",
+    ),
+    (
+        5122,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "forest = RandomForestClassifier(n_estimators=60, max_features=None, oob_score=True, random_state=17)\n"
+        "forest.fit(X_train, y_train)\n"
+        "result = {\n"
+        "    'oob': forest.oob_score_,\n"
+        "    'test': forest.score(X_test, y_test),\n"
+        "    'm': forest.estimators_[0].max_features_,\n"
+        "    'rule': int(np.sqrt(X_train.shape[1])),\n"
+        "}",
+    ),
+    (
+        5123,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "sizes = [1, 5, 20, 60]\n"
+        "result = [RandomForestClassifier(n_estimators=b, random_state=17).fit(X_train, y_train).score(X_test, y_test)\n"
+        "          for b in sizes]\n"
+        "plateau = sizes[-1]",
+    ),
+    (
+        5124,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "from sklearn.model_selection import GridSearchCV\n"
+        "grid = GridSearchCV(RandomForestClassifier(n_estimators=30, random_state=17),\n"
+        "                    {'max_features': [2, 8], 'min_samples_leaf': [1, 10]}, cv=3).fit(X_train, y_train)\n"
+        "result = {'best_params': grid.best_params_, 'test_score': grid.best_score_}",
+    ),
+    (
+        5125,
+        "from sklearn.ensemble import RandomTreesEmbedding\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "linear = LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_train, y_train)\n"
+        "stacked = make_pipeline(RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17),\n"
+        "                        LogisticRegression(max_iter=1000)).fit(X_train, y_train)\n"
+        "result = {'linear': linear, 'embedding': stacked.score(X_test, y_test)}",
+    ),
+    (
+        5126,
+        _IMP
+        + "forest = RandomForestClassifier(n_estimators=60, random_state=17).fit(X_train, y_train)\n"
+        "perm = permutation_importance(forest, X_test, y_test, n_repeats=5, random_state=17)\n"
+        "result = {\n"
+        "    'sum': perm.importances_mean.sum(),\n"
+        "    'impurity_top': int(np.argmax(forest.feature_importances_)),\n"
+        "    'permutation_top': int(np.argmax(perm.importances_mean)),\n"
+        "}",
+    ),
+]
+
+ALTERNATIVES += [
+    (
+        5111,
+        "shares = [len(set(rng.integers(0, n, n).tolist())) / n for _ in range(200)]\n"
+        "result = sum(shares) / len(shares)",
+    ),
+    (
+        5112,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "from sklearn.metrics import accuracy_score\n"
+        "forest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17)\n"
+        "forest.fit(X_train, y_train)\n"
+        "oob = forest.oob_score_\n"
+        "test = accuracy_score(y_test, forest.predict(X_test))\n"
+        "result = (oob, test)",
+    ),
+    (
+        5114,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "def oob(m):\n"
+        "    return RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17,\n"
+        "                                  max_features=m).fit(X, y).oob_score_\n"
+        "result = max([1, 2, 4, 8], key=oob)",
+    ),
+    (
+        5115,
+        "import numpy as np\n"
+        "leaves = forest.apply(X)\n"
+        "similarity = np.array([(leaves[i] == leaves[0]).mean() for i in range(len(X))])\n"
+        "result = int(np.argsort(-similarity)[1])",
+    ),
+    (
+        5116,
+        "importances = dict(zip(X.columns, forest.feature_importances_))\n"
+        "ordered = sorted(importances, key=importances.get, reverse=True)\n"
+        "result = pd.Series([importances[c] for c in ordered], index=ordered)",
+    ),
+    (
+        5121,
+        "from sklearn.tree import DecisionTreeClassifier\n"
+        "single = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\n"
+        "trees = [DecisionTreeClassifier(random_state=17).fit(X_train[i], y_train[i]) for i in boot]\n"
+        "ensemble = (np.sum([t.predict(X_test) for t in trees], axis=0) > len(trees) / 2).astype(int)\n"
+        "result = {'single': single, 'bagging': float(np.mean(ensemble == y_test))}",
+    ),
+    (
+        5123,
+        "from sklearn.ensemble import RandomForestClassifier\n"
+        "result = []\n"
+        "for b in [1, 5, 20, 60]:\n"
+        "    result.append(RandomForestClassifier(n_estimators=b, random_state=17).fit(X_train, y_train).score(X_test, y_test))\n"
+        "limit = max(result) - 0.01\n"
+        "plateau = [1, 5, 20, 60][[v >= limit for v in result].index(True)]",
+    ),
+]
+
 ITEMS = {item.id: item for item in load_course_data().items if item.answer_type == "code"}
 
 
