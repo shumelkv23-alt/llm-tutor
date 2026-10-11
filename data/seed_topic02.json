@@ -1,6 +1,6 @@
 {
   "course": "mlcourse.ai/topic02",
-  "comment": "Граф тем модуля 2 «Визуальный анализ данных» + банк заданий. Рёбра: from -> to означает «from требуется для to». hard=false — мягкий пререквизит (штраф, не блокировка). Межмодульные рёбра ведут только назад, в темы модуля 1, и все мягкие. items: для choice answer — индекс варианта (строкой), для short — эталонный ответ.",
+  "comment": "Модуль 2 в формате занятий (срез 56, scripts/build_lessons.py): узел — занятие из 2–4 разделов.",
   "topic": {
     "number": 2,
     "title": "Визуальный анализ данных",
@@ -8,145 +8,1381 @@
     "survey": {
       "level_key": "t02_level",
       "level_question": "Как у тебя с графиками в Python?",
-      "level_options": ["С нуля", "Немного рисовал", "Уверенно строю графики"],
-      "blocks": [
-        {"key": "t02_basics", "title": "Основы графиков", "question": "Строишь графики через pandas и matplotlib?", "example": "зачем вообще графики, типы признаков, df.plot, matplotlib и seaborn", "concepts": ["viz_purpose", "feature_types", "viz_libraries", "df_plot"]},
-        {"key": "t02_distributions", "title": "Распределения", "question": "Смотришь на распределение одного признака?", "example": "hist, плотность, boxplot, violinplot, countplot, баланс классов", "concepts": ["histogram", "density_plot", "box_plot", "violin_plot", "bar_count_plot", "class_imbalance"]},
-        {"key": "t02_relations", "title": "Связи признаков", "question": "Ищешь связи между признаками на графиках?", "example": "corr + heatmap, scatter, pairplot, hue, catplot, crosstab", "concepts": ["correlation_heatmap", "scatter_plot", "pairplot", "num_vs_cat", "catplot", "cat_vs_cat", "heatmap_pivot"]},
-        {"key": "t02_advanced", "title": "t-SNE, plotly и кейс", "question": "Знаешь t-SNE и интерактивные графики?", "example": "снижение размерности, TSNE, plotly Figure, кейс оттока", "concepts": ["dim_reduction", "tsne", "plotly_interactive", "visual_eda_case"]}
+      "level_options": [
+        "С нуля",
+        "Немного рисовал",
+        "Уверенно строю графики"
       ],
-      "assumed_by_confident": ["t02_basics"],
-      "foundation": ["t02_basics"]
-    }
+      "blocks": [
+        {
+          "key": "t02_basics",
+          "title": "Основы графиков",
+          "question": "Строишь графики через pandas и matplotlib?",
+          "example": "зачем вообще графики, типы признаков, df.plot, matplotlib и seaborn",
+          "concepts": [
+            "viz_intro"
+          ]
+        },
+        {
+          "key": "t02_distributions",
+          "title": "Распределения",
+          "question": "Смотришь на распределение одного признака?",
+          "example": "hist, плотность, boxplot, violinplot, countplot, баланс классов",
+          "concepts": [
+            "distributions"
+          ]
+        },
+        {
+          "key": "t02_relations",
+          "title": "Связи признаков",
+          "question": "Ищешь связи между признаками на графиках?",
+          "example": "corr + heatmap, scatter, pairplot, hue, catplot, crosstab",
+          "concepts": [
+            "numeric_relations",
+            "mixed_relations"
+          ]
+        },
+        {
+          "key": "t02_advanced",
+          "title": "t-SNE, plotly и кейс",
+          "question": "Знаешь t-SNE и интерактивные графики?",
+          "example": "снижение размерности, TSNE, plotly Figure, кейс оттока",
+          "concepts": [
+            "tsne_plotly",
+            "visual_churn"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t02_basics"
+      ],
+      "foundation": [
+        "t02_basics"
+      ]
+    },
+    "published": false
   },
   "nodes": [
-    {"id": "viz_purpose", "name": "Зачем визуализировать данные", "difficulty": 0.2, "description": "Графики на всех этапах ML-проекта: первое знакомство с данными, поиск закономерностей, разбор модели.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "feature_types", "name": "Типы признаков", "difficulty": 0.3, "description": "Количественные (дискретные и непрерывные), категориальные, бинарные и порядковые признаки — от типа зависит график.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "viz_libraries", "name": "matplotlib и seaborn", "difficulty": 0.3, "description": "matplotlib — основа графики в Python, seaborn — надстройка с удобными настройками и сложными графиками в одну строку.", "source_url": "https://mlcourse.ai/book/topic02/topic02_additional_seaborn_matplotlib_plotly.html"},
-    {"id": "df_plot", "name": "Графики из pandas: df.plot", "difficulty": 0.3, "description": "Метод plot у DataFrame и Series: тип графика через kind, поворот подписей через rot.", "source_url": "https://mlcourse.ai/book/topic02/topic02_additional_seaborn_matplotlib_plotly.html"},
-    {"id": "histogram", "name": "Гистограмма", "difficulty": 0.3, "description": "Распределение количественного признака по интервалам равной ширины (bins); форма и скошенность.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "density_plot", "name": "Плотность распределения (KDE)", "difficulty": 0.4, "description": "Сглаженная гистограмма: не зависит от ширины интервалов; kind=\"density\", histplot(kde=True).", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "box_plot", "name": "Ящик с усами (box plot)", "difficulty": 0.45, "description": "Квартили Q1 и Q3, медиана, усы на 1.5·IQR и выбросы точками.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "violin_plot", "name": "Скрипичная диаграмма (violin plot)", "difficulty": 0.4, "description": "Оценка плотности с обеих сторон оси: распределение целиком, а не отдельные статистики.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "bar_count_plot", "name": "Частоты категорий: countplot", "difficulty": 0.35, "description": "Столбчатая диаграмма частот — график value_counts; чем она отличается от гистограммы и от barplot.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "class_imbalance", "name": "Баланс классов целевой переменной", "difficulty": 0.35, "description": "Распределение целевого признака: когда один класс сильно реже другого.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "correlation_heatmap", "name": "Матрица корреляций и heatmap", "difficulty": 0.45, "description": "corr() по числовым признакам и тепловая карта; зависимые признаки, которые не несут новой информации.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "scatter_plot", "name": "Диаграмма рассеяния", "difficulty": 0.4, "description": "Два количественных признака как точки на плоскости: plt.scatter и sns.jointplot.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "pairplot", "name": "Матрица диаграмм рассеяния: pairplot", "difficulty": 0.45, "description": "Диаграммы рассеяния для всех пар признаков, на диагонали — распределения; ограничения на большом числе признаков.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "num_vs_cat", "name": "Количественный против категориального", "difficulty": 0.5, "description": "Цвет по категории (hue), ящики с усами по группам целевой переменной.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "catplot", "name": "catplot: две категории сразу", "difficulty": 0.55, "description": "Количественный признак по двум категориальным: панели через col.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "cat_vs_cat", "name": "Категориальный против категориального", "difficulty": 0.45, "description": "countplot с hue и таблица сопряжённости crosstab; осторожность с маленькими группами.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "heatmap_pivot", "name": "Тепловая карта сводной таблицы", "difficulty": 0.5, "description": "Числовой признак по двум категориальным: pivot_table и heatmap с подписями.", "source_url": "https://mlcourse.ai/book/topic02/topic02_additional_seaborn_matplotlib_plotly.html"},
-    {"id": "dim_reduction", "name": "Снижение размерности для визуализации", "difficulty": 0.55, "description": "Как увидеть датасет со множеством признаков целиком; линейный PCA и нелинейное manifold learning.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "tsne", "name": "t-SNE", "difficulty": 0.65, "description": "Проекция на плоскость с сохранением соседства точек; подготовка признаков и ограничения метода.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"},
-    {"id": "plotly_interactive", "name": "Интерактивные графики: plotly", "difficulty": 0.5, "description": "Figure из traces и layout; наведение, масштаб и скрытие серий.", "source_url": "https://mlcourse.ai/book/topic02/topic02_additional_seaborn_matplotlib_plotly.html"},
-    {"id": "visual_eda_case", "name": "Кейс: визуальный анализ оттока", "difficulty": 0.65, "description": "Что графики говорят об оттоке телеком-клиентов: звонки в поддержку, международный тариф, дневные минуты.", "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html"}
+    {
+      "id": "viz_intro",
+      "name": "Зачем графики и чем их строить",
+      "difficulty": 0.32,
+      "description": "Графики на этапах ML, типы признаков и инструменты: matplotlib, seaborn, df.plot.",
+      "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html",
+      "sections": [
+        {
+          "id": "purpose",
+          "title": "Графики на всех этапах ML"
+        },
+        {
+          "id": "feature_types",
+          "title": "Типы признаков"
+        },
+        {
+          "id": "libraries",
+          "title": "matplotlib, seaborn и df.plot"
+        }
+      ]
+    },
+    {
+      "id": "distributions",
+      "name": "Распределение одного признака",
+      "difficulty": 0.38,
+      "description": "Гистограмма, KDE, ящик с усами и скрипка, частоты категорий и баланс классов.",
+      "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html",
+      "sections": [
+        {
+          "id": "histogram",
+          "title": "Гистограмма"
+        },
+        {
+          "id": "kde",
+          "title": "Плотность KDE"
+        },
+        {
+          "id": "box_violin",
+          "title": "Ящик с усами и скрипка"
+        },
+        {
+          "id": "counts",
+          "title": "Частоты категорий и баланс классов"
+        }
+      ]
+    },
+    {
+      "id": "numeric_relations",
+      "name": "Связи количественных признаков",
+      "difficulty": 0.43,
+      "description": "Корреляции и тепловая карта, диаграмма рассеяния и pairplot.",
+      "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html",
+      "sections": [
+        {
+          "id": "corr",
+          "title": "Корреляции и heatmap"
+        },
+        {
+          "id": "scatter",
+          "title": "Диаграмма рассеяния"
+        },
+        {
+          "id": "pairplot",
+          "title": "pairplot"
+        }
+      ]
+    },
+    {
+      "id": "mixed_relations",
+      "name": "Признаки разных типов вместе",
+      "difficulty": 0.5,
+      "description": "Количественный против категориального, категориальный против категориального, тепловая карта сводной таблицы.",
+      "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html",
+      "sections": [
+        {
+          "id": "num_cat",
+          "title": "Количественный против категориального"
+        },
+        {
+          "id": "cat_cat",
+          "title": "Категориальный против категориального"
+        },
+        {
+          "id": "pivot_heatmap",
+          "title": "Тепловая карта сводной таблицы"
+        }
+      ]
+    },
+    {
+      "id": "tsne_plotly",
+      "name": "Весь датасет на плоскости и интерактив",
+      "difficulty": 0.57,
+      "description": "Зачем снижать размерность, t-SNE и интерактивные графики plotly.",
+      "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html",
+      "sections": [
+        {
+          "id": "why_reduce",
+          "title": "Зачем снижать размерность"
+        },
+        {
+          "id": "tsne",
+          "title": "t-SNE"
+        },
+        {
+          "id": "plotly",
+          "title": "Интерактивные графики plotly"
+        }
+      ]
+    },
+    {
+      "id": "visual_churn",
+      "name": "Кейс: визуальный анализ оттока",
+      "difficulty": 0.65,
+      "description": "Признаки оттока по одному и против целевого признака.",
+      "source_url": "https://mlcourse.ai/book/topic02/topic02_visual_data_analysis.html",
+      "sections": [
+        {
+          "id": "one_by_one",
+          "title": "Признаки по одному"
+        },
+        {
+          "id": "against_target",
+          "title": "Признаки против оттока"
+        }
+      ]
+    }
   ],
   "edges": [
-    {"from_id": "visualization_basics", "to_id": "viz_libraries", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pandas_dataframe", "to_id": "df_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_libraries", "to_id": "df_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "feature_types", "to_id": "histogram", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "histogram", "to_id": "density_plot", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "histogram", "to_id": "box_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_libraries", "to_id": "box_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "describe_stats", "to_id": "box_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "box_plot", "to_id": "violin_plot", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "density_plot", "to_id": "violin_plot", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "feature_types", "to_id": "bar_count_plot", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "histogram", "to_id": "bar_count_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "value_counts", "to_id": "bar_count_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "bar_count_plot", "to_id": "class_imbalance", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "feature_types", "to_id": "correlation_heatmap", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_libraries", "to_id": "correlation_heatmap", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_libraries", "to_id": "scatter_plot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "scatter_plot", "to_id": "pairplot", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "histogram", "to_id": "pairplot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "scatter_plot", "to_id": "num_vs_cat", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "box_plot", "to_id": "num_vs_cat", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "num_vs_cat", "to_id": "catplot", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "bar_count_plot", "to_id": "cat_vs_cat", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "summary_tables", "to_id": "cat_vs_cat", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "correlation_heatmap", "to_id": "heatmap_pivot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "summary_tables", "to_id": "heatmap_pivot", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "pairplot", "to_id": "dim_reduction", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "dim_reduction", "to_id": "tsne", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "scatter_plot", "to_id": "tsne", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_libraries", "to_id": "plotly_interactive", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "df_plot", "to_id": "plotly_interactive", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "num_vs_cat", "to_id": "visual_eda_case", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "cat_vs_cat", "to_id": "visual_eda_case", "type": "requires", "hard": true, "weight": 1.0},
-    {"from_id": "class_imbalance", "to_id": "visual_eda_case", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "viz_purpose", "to_id": "visual_eda_case", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "eda_workflow", "to_id": "visual_eda_case", "type": "requires", "hard": false, "weight": 0.5},
-    {"from_id": "churn_eda_case", "to_id": "visual_eda_case", "type": "requires", "hard": false, "weight": 0.5}
+    {
+      "from_id": "pandas_structures",
+      "to_id": "viz_intro",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "types_stats",
+      "to_id": "viz_intro",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "types_stats",
+      "to_id": "distributions",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "viz_intro",
+      "to_id": "distributions",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "viz_intro",
+      "to_id": "numeric_relations",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "distributions",
+      "to_id": "numeric_relations",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "grouping",
+      "to_id": "mixed_relations",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "distributions",
+      "to_id": "mixed_relations",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "numeric_relations",
+      "to_id": "mixed_relations",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "viz_intro",
+      "to_id": "tsne_plotly",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "numeric_relations",
+      "to_id": "tsne_plotly",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "mixed_relations",
+      "to_id": "tsne_plotly",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "eda_case",
+      "to_id": "visual_churn",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "viz_intro",
+      "to_id": "visual_churn",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "distributions",
+      "to_id": "visual_churn",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "mixed_relations",
+      "to_id": "visual_churn",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "tsne_plotly",
+      "to_id": "visual_churn",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
   ],
   "items": [
-    {"id": 2001, "prompt": "Зачем в машинном обучении визуализируют данные?", "answer_type": "choice", "concept_weights": {"viz_purpose": 1.0}, "difficulty": 0.2, "options": ["Только чтобы оформить итоговый отчёт для заказчика проекта", "Чтобы на всех этапах проекта быстро замечать закономерности", "Чтобы по графикам подбирать гиперпараметры вместо валидации", "Чтобы сжать данные перед сохранением на диск"], "answer": "1"},
-    {"id": 2002, "prompt": "Когда в ML-проекте обычно впервые строят графики по данным?", "answer_type": "choice", "concept_weights": {"viz_purpose": 1.0}, "difficulty": 0.2, "options": ["Только после выкладки модели в продакшен", "Только при подготовке итогового отчёта по проекту", "Сразу, при первом знакомстве с новыми данными", "После обучения модели, чтобы проверить её качество"], "answer": "2"},
-    {"id": 2003, "prompt": "Как называется категориальный признак, значения которого упорядочены?", "answer_type": "choice", "concept_weights": {"feature_types": 1.0}, "difficulty": 0.3, "options": ["Бинарный", "Порядковый", "Непрерывный", "Целевой"], "answer": "1"},
-    {"id": 2004, "prompt": "Признак принимает ровно два значения — «Yes» и «No». Что это за признак?", "answer_type": "choice", "concept_weights": {"feature_types": 1.0}, "difficulty": 0.3, "options": ["Непрерывный количественный, если Yes = 1, а No = 0", "Порядковый с тремя уровнями", "Дискретный количественный", "Бинарный — частный случай категориального"], "answer": "3"},
-    {"id": 2005, "prompt": "Какой из признаков данных об оттоке — количественный?", "answer_type": "choice", "concept_weights": {"feature_types": 1.0}, "difficulty": 0.3, "options": ["Штат, в котором живёт клиент (State)", "Длительность дневных звонков в минутах", "Подключён ли международный тариф (International plan)", "Ушёл ли клиент (Churn)"], "answer": "1"},
-    {"id": 2006, "prompt": "Как соотносятся seaborn и matplotlib?", "answer_type": "choice", "concept_weights": {"viz_libraries": 1.0}, "difficulty": 0.3, "options": ["seaborn — надстройка над matplotlib с удобными настройками", "seaborn — интерактивная библиотека для графиков в браузере", "matplotlib — надстройка над seaborn с низкоуровневыми функциями", "seaborn — отдельный движок отрисовки, без matplotlib внутри"], "answer": "0"},
-    {"id": 2007, "prompt": "На какой библиотеке построены и seaborn, и метод DataFrame.plot()? Напиши только имя библиотеки.", "answer_type": "short", "concept_weights": {"viz_libraries": 1.0, "visualization_basics": 0.3}, "difficulty": 0.3, "options": [], "answer": "matplotlib"},
-    {"id": 2008, "prompt": "Какой параметр метода df.plot() задаёт тип графика (линия, столбцы, гистограмма)? Напиши только имя параметра.", "answer_type": "short", "concept_weights": {"df_plot": 1.0}, "difficulty": 0.3, "options": [], "answer": "kind"},
-    {"id": 2009, "prompt": "Что делает параметр rot в вызове df.plot(kind=\"bar\", rot=45)?", "answer_type": "choice", "concept_weights": {"df_plot": 1.0}, "difficulty": 0.3, "options": ["Поворачивает весь график целиком на 45° против часовой", "Сортирует столбцы по высоте", "Поворачивает подписи делений оси X на 45°", "Задаёт ширину столбцов"], "answer": "2"},
-    {"id": 2010, "prompt": "Что получится в результате df.groupby(\"Year\")[\"Sales\"].sum().plot()?", "answer_type": "choice", "concept_weights": {"df_plot": 1.0, "groupby": 0.3}, "difficulty": 0.35, "options": ["Таблица продаж без графика", "Гистограмма распределения годов", "Линейный график суммарных продаж по годам", "Ошибка: plot() нельзя вызвать после groupby"], "answer": "2"},
-    {"id": 2011, "prompt": "Каким методом DataFrame построить гистограммы числовых столбцов? Напиши только имя метода — без скобок.", "answer_type": "short", "concept_weights": {"histogram": 1.0}, "difficulty": 0.3, "options": [], "answer": "hist"},
-    {"id": 2012, "prompt": "Что показывает гистограмма признака?", "answer_type": "choice", "concept_weights": {"histogram": 1.0}, "difficulty": 0.3, "options": ["Как значения признака связаны с целевой переменной задачи", "Долю пропусков в каждом столбце", "Среднее значение признака по каждой группе категорий", "Сколько значений попало в каждый интервал равной ширины"], "answer": "3"},
-    {"id": 2013, "prompt": "У гистограммы признака длинный «хвост» справа. Как называют такое распределение?", "answer_type": "choice", "concept_weights": {"histogram": 1.0}, "difficulty": 0.35, "options": ["Скошенное влево", "Скошенное вправо", "Равномерное", "Симметричное нормальное"], "answer": "1"},
-    {"id": 2014, "prompt": "Чем график плотности (KDE) удобнее гистограммы?", "answer_type": "choice", "concept_weights": {"density_plot": 1.0}, "difficulty": 0.4, "options": ["Он сглажен и не зависит от ширины интервалов (bins)", "Он показывает выбросы отдельными точками за пределами усов", "Он строится только по категориальным признакам", "Он показывает точные квартили"], "answer": "0"},
-    {"id": 2015, "prompt": "Какой вызов seaborn строит гистограмму с наложенной оценкой плотности?", "answer_type": "choice", "concept_weights": {"density_plot": 1.0}, "difficulty": 0.4, "options": ["sns.boxplot(x, kde=True)", "sns.countplot(x, density=True)", "sns.histplot(x, kde=True)", "sns.heatmap(x, kde=True)"], "answer": "2"},
-    {"id": 2016, "prompt": "Что ограничивает «ящик» на box plot?", "answer_type": "choice", "concept_weights": {"box_plot": 1.0, "describe_stats": 0.5}, "difficulty": 0.45, "options": ["Минимум и максимум признака", "Первый и третий квартили (25-й и 75-й процентили)", "Среднее плюс-минус одно стандартное отклонение признака", "5-й и 95-й процентили распределения признака"], "answer": "1"},
-    {"id": 2017, "prompt": "Усы box plot тянутся до самых дальних точек внутри интервала от Q1 − k·IQR до Q3 + k·IQR. Чему равно k? Ответ — число.", "answer_type": "short", "concept_weights": {"box_plot": 1.0}, "difficulty": 0.5, "options": [], "answer": "1.5"},
-    {"id": 2018, "prompt": "Что отмечает линия внутри ящика на box plot?", "answer_type": "choice", "concept_weights": {"box_plot": 1.0}, "difficulty": 0.4, "options": ["Среднее", "Моду", "Медиану", "Межквартильный размах"], "answer": "2"},
-    {"id": 2019, "prompt": "Что означают отдельные точки за пределами усов на box plot?", "answer_type": "choice", "concept_weights": {"box_plot": 1.0}, "difficulty": 0.4, "options": ["Пропущенные значения", "Квартили распределения", "Средние по группам", "Выбросы"], "answer": "3"},
-    {"id": 2020, "prompt": "Чем violin plot отличается от box plot?", "answer_type": "choice", "concept_weights": {"violin_plot": 1.0}, "difficulty": 0.4, "options": ["Показывает только выбросы, а ящик с квартилями убирает", "Показывает сглаженную плотность с обеих сторон, а не отдельные статистики", "Строится только по категориальным признакам и не имеет числовой оси значений", "Ничем — это другое название box plot"], "answer": "1"},
-    {"id": 2021, "prompt": "Какая функция seaborn строит скрипичную диаграмму? Напиши только имя функции — без sns. и скобок.", "answer_type": "short", "concept_weights": {"violin_plot": 1.0}, "difficulty": 0.4, "options": [], "answer": "violinplot"},
-    {"id": 2022, "prompt": "Какая функция seaborn рисует столбчатую диаграмму частот категорий — график того, что считает value_counts? Напиши только имя функции — без sns. и скобок.", "answer_type": "short", "concept_weights": {"bar_count_plot": 1.0, "value_counts": 0.5}, "difficulty": 0.35, "options": [], "answer": "countplot"},
-    {"id": 2023, "prompt": "Чем столбчатая диаграмма частот отличается от гистограммы?", "answer_type": "choice", "concept_weights": {"bar_count_plot": 1.0}, "difficulty": 0.35, "options": ["Столбчатая — только для числовых признаков, гистограмма — для строковых категорий", "Это одно и то же", "Гистограмма — для числового признака, столбчатая — для категорий любого типа", "Гистограмма не показывает частоты, а только среднее по интервалам"], "answer": "2"},
-    {"id": 2024, "prompt": "Что обычно показывает sns.barplot() — в отличие от sns.countplot()?", "answer_type": "choice", "concept_weights": {"bar_count_plot": 1.0}, "difficulty": 0.45, "options": ["Частоты значений категории, как countplot, но горизонтально", "Статистику числового признака по группам категориального", "Плотность распределения числового признака по группам", "Матрицу корреляций признаков"], "answer": "1"},
-    {"id": 2025, "prompt": "В данных об оттоке ушедших клиентов намного меньше, чем оставшихся. Как это называется?", "answer_type": "choice", "concept_weights": {"class_imbalance": 1.0}, "difficulty": 0.35, "options": ["Мультиколлинеарность признаков", "Переобучение модели", "Скошенность признака", "Дисбаланс классов"], "answer": "3"},
-    {"id": 2026, "prompt": "Как быстрее всего проверить баланс классов целевой переменной Churn?", "answer_type": "choice", "concept_weights": {"class_imbalance": 1.0, "value_counts": 0.3}, "difficulty": 0.35, "options": ["df[\"Churn\"].value_counts() или countplot по Churn", "df.corr() по всем признакам и целевой переменной", "sns.pairplot(df) по всем признакам", "t-SNE по всем признакам, с раскраской точек по Churn"], "answer": "0"},
-    {"id": 2027, "prompt": "Какой метод DataFrame считает попарные корреляции числовых столбцов? Напиши только имя метода — без скобок.", "answer_type": "short", "concept_weights": {"correlation_heatmap": 1.0}, "difficulty": 0.4, "options": [], "answer": "corr"},
-    {"id": 2028, "prompt": "Какая функция seaborn рисует матрицу значений цветом — например, матрицу корреляций? Напиши только имя функции — без sns. и скобок.", "answer_type": "short", "concept_weights": {"correlation_heatmap": 1.0}, "difficulty": 0.45, "options": [], "answer": "heatmap"},
-    {"id": 2029, "prompt": "Признак «Total day charge» почти полностью вычисляется из «Total day minutes». Что с ним делают в статье модуля?", "answer_type": "choice", "concept_weights": {"correlation_heatmap": 1.0}, "difficulty": 0.45, "options": ["Оставляют оба: лишние признаки модели никогда не мешают", "Убирают: зависимый признак не несёт новой информации", "Перемножают их в один новый признак с ценой минуты", "Превращают его в категориальный"], "answer": "1"},
-    {"id": 2030, "prompt": "Что рисует sns.jointplot(x=..., y=..., kind=\"scatter\")?", "answer_type": "choice", "concept_weights": {"scatter_plot": 1.0}, "difficulty": 0.4, "options": ["Только линию регрессии между двумя признаками без точек", "Матрицу диаграмм рассеяния для всех пар числовых признаков таблицы", "Ящики с усами по группам", "Диаграмму рассеяния двух признаков и их гистограммы по краям"], "answer": "3"},
-    {"id": 2031, "prompt": "Облако точек на диаграмме рассеяния похоже на эллипс, вытянутый вдоль осей, без наклона. Что это говорит о двух признаках?", "answer_type": "choice", "concept_weights": {"scatter_plot": 1.0}, "difficulty": 0.45, "options": ["Признаки сильно положительно коррелируют", "Один признак — точная копия другого", "Признаки, скорее всего, не коррелируют", "Оба признака категориальные"], "answer": "2"},
-    {"id": 2032, "prompt": "Какое значение параметра kind у sns.jointplot рисует сглаженную двумерную плотность вместо точек? Напиши одно слово.", "answer_type": "short", "concept_weights": {"scatter_plot": 1.0}, "difficulty": 0.45, "options": [], "answer": "kde"},
-    {"id": 2033, "prompt": "Какая функция seaborn строит матрицу диаграмм рассеяния для всех пар признаков? Напиши только имя функции — без sns. и скобок.", "answer_type": "short", "concept_weights": {"pairplot": 1.0}, "difficulty": 0.4, "options": [], "answer": "pairplot"},
-    {"id": 2034, "prompt": "Что по умолчанию стоит на диагонали матрицы sns.pairplot?", "answer_type": "choice", "concept_weights": {"pairplot": 1.0}, "difficulty": 0.45, "options": ["Коэффициенты корреляции Пирсона для каждой пары признаков", "Пустые клетки", "Диаграммы рассеяния каждого признака с самим собой по прямой", "Распределение каждого признака (гистограмма или плотность)"], "answer": "3"},
-    {"id": 2035, "prompt": "Почему pairplot по датасету с десятками признаков — плохая идея?", "answer_type": "choice", "concept_weights": {"pairplot": 1.0}, "difficulty": 0.5, "options": ["Пар становится слишком много, и анализ всё равно идёт по парам", "pairplot умеет сравнивать только два признака за один вызов", "Он автоматически выкидывает выбросы, и картина искажается", "pairplot обязательно требует целевую переменную в параметре hue"], "answer": "0"},
-    {"id": 2036, "prompt": "Какой параметр функций seaborn (lmplot, countplot и других) раскрашивает данные по значениям категориального признака? Напиши только имя параметра.", "answer_type": "short", "concept_weights": {"num_vs_cat": 1.0}, "difficulty": 0.45, "options": [], "answer": "hue"},
-    {"id": 2037, "prompt": "Что будет на графике sns.boxplot(x=\"Churn\", y=\"Total day minutes\", data=df)?", "answer_type": "choice", "concept_weights": {"num_vs_cat": 1.0}, "difficulty": 0.5, "options": ["Один ящик по всем клиентам сразу, без деления на группы", "Два ящика: дневные минуты оставшихся и ушедших клиентов", "Частоты значений Churn", "Корреляцию Churn и дневных минут в виде одного числа"], "answer": "1"},
-    {"id": 2038, "prompt": "Что показали ящики с усами дневных минут в группах Churn в статье модуля?", "answer_type": "choice", "concept_weights": {"visual_eda_case": 1.0}, "difficulty": 0.55, "options": ["Ушедшие клиенты в среднем говорят днём больше", "Ушедшие клиенты в среднем говорят днём меньше", "Группы почти не отличаются", "У ушедших клиентов нет выбросов по дневным минутам"], "answer": "0"},
-    {"id": 2039, "prompt": "Какая функция seaborn строит график количественного признака сразу по двум категориальным, раскладывая его на панели через col? Напиши только имя функции — без sns. и скобок.", "answer_type": "short", "concept_weights": {"catplot": 1.0}, "difficulty": 0.55, "options": [], "answer": "catplot"},
-    {"id": 2040, "prompt": "Что делает параметр col в sns.catplot(x=\"Churn\", y=\"Total day minutes\", col=\"Customer service calls\", kind=\"box\", data=df)?", "answer_type": "choice", "concept_weights": {"catplot": 1.0}, "difficulty": 0.55, "options": ["Задаёт цвет ящиков по значениям Customer service calls", "Сортирует ящики на оси X по медиане значений Customer service calls", "Рисует отдельную панель для каждого значения Customer service calls", "Меняет тип графика с ящиков на столбчатую диаграмму по звонкам"], "answer": "2"},
-    {"id": 2041, "prompt": "Как на одном графике сравнить частоты числа звонков в поддержку у ушедших и оставшихся клиентов?", "answer_type": "choice", "concept_weights": {"cat_vs_cat": 1.0}, "difficulty": 0.45, "options": ["sns.histplot(df[\"Customer service calls\"]) без разбивки по Churn", "df.corr()", "sns.boxplot(x=\"Churn\", data=df) по одной целевой переменной", "sns.countplot(x=\"Customer service calls\", hue=\"Churn\", data=df)"], "answer": "3"},
-    {"id": 2042, "prompt": "Что вернёт pd.crosstab(df[\"State\"], df[\"Churn\"])?", "answer_type": "choice", "concept_weights": {"cat_vs_cat": 1.0, "summary_tables": 0.5}, "difficulty": 0.45, "options": ["Таблицу: сколько клиентов каждого штата ушло и сколько осталось", "Средний отток по каждому штату в виде одной колонки", "Корреляцию штата и оттока одним числом для всей таблицы", "Список уникальных штатов без повторов, отсортированный по оттоку"], "answer": "0"},
-    {"id": 2043, "prompt": "Почему выводы об оттоке по отдельным штатам ненадёжны, по статье модуля?", "answer_type": "choice", "concept_weights": {"cat_vs_cat": 1.0}, "difficulty": 0.5, "options": ["crosstab неверно считает частоты при большом числе категорий", "В каждом штате мало клиентов — разница может быть случайной", "Штат — количественный признак, его нельзя группировать", "Отток нельзя считать по группам"], "answer": "1"},
-    {"id": 2044, "prompt": "Что покажет тепловая карта по таблице df.pivot_table(index=\"Platform\", columns=\"Genre\", values=\"Global_Sales\", aggfunc=\"sum\")?", "answer_type": "choice", "concept_weights": {"heatmap_pivot": 1.0, "summary_tables": 0.3}, "difficulty": 0.5, "options": ["Корреляцию продаж между каждой платформой и каждым жанром", "Число выпущенных игр для каждой пары платформа × жанр, цветом", "Суммарные продажи для каждой пары платформа × жанр, цветом", "Распределение продаж одной платформы"], "answer": "2"},
-    {"id": 2045, "prompt": "Какой параметр sns.heatmap выводит числа прямо в ячейках?", "answer_type": "choice", "concept_weights": {"heatmap_pivot": 1.0}, "difficulty": 0.5, "options": ["hue=True", "annot=True", "labels=True", "show_values=True"], "answer": "1"},
-    {"id": 2046, "prompt": "Зачем снижают размерность данных перед визуализацией?", "answer_type": "choice", "concept_weights": {"dim_reduction": 1.0}, "difficulty": 0.55, "options": ["Чтобы увидеть датасет с множеством признаков целиком на плоскости", "Чтобы автоматически удалить выбросы из данных перед обучением", "Чтобы быстрее читать CSV-файл", "Чтобы сбалансировать классы целевой переменной перед построением графиков"], "answer": "0"},
-    {"id": 2047, "prompt": "Какой метод снижения размерности статья модуля называет линейным — в отличие от manifold learning?", "answer_type": "choice", "concept_weights": {"dim_reduction": 1.0}, "difficulty": 0.55, "options": ["t-SNE — стохастическое вложение соседей", "PCA — метод главных компонент", "KDE — оценка плотности", "pairplot — матрица диаграмм рассеяния"], "answer": "1"},
-    {"id": 2048, "prompt": "Снижение размерности без целевой переменной — задача какого типа?", "answer_type": "choice", "concept_weights": {"dim_reduction": 1.0}, "difficulty": 0.5, "options": ["Обучение с учителем", "Обучение без учителя", "Обучение с подкреплением", "Классификация"], "answer": "1"},
-    {"id": 2049, "prompt": "В чём главная идея t-SNE?", "answer_type": "choice", "concept_weights": {"tsne": 1.0}, "difficulty": 0.65, "options": ["Линейно проецировать данные на ортогональные оси наибольшей дисперсии", "Выбрать два самых важных признака", "Отсортировать объекты по целевой переменной и разложить по оси", "Близкие в исходном пространстве точки остаются близкими на плоскости"], "answer": "3"},
-    {"id": 2050, "prompt": "Как называется класс scikit-learn для t-SNE? Напиши только имя класса.", "answer_type": "short", "concept_weights": {"tsne": 1.0}, "difficulty": 0.6, "options": [], "answer": "TSNE"},
-    {"id": 2051, "prompt": "Какое ограничение интерпретации t-SNE отмечает статья модуля?", "answer_type": "choice", "concept_weights": {"tsne": 1.0}, "difficulty": 0.65, "options": ["Работает только с двумя исходными признаками, остальные отбрасывает", "Требует целевую переменную, без неё картинка не строится", "Картинка сильно зависит от random seed — далеко идущих выводов не делают", "Не умеет проецировать на плоскость — только в трёхмерное пространство"], "answer": "2"},
-    {"id": 2052, "prompt": "Что делают в статье с бинарными признаками «Yes»/«No» перед t-SNE?", "answer_type": "choice", "concept_weights": {"tsne": 1.0, "apply_functions": 0.3}, "difficulty": 0.6, "options": ["Переводят в 1 и 0 через map", "Удаляют из данных", "Оставляют строками", "Заменяют средним по столбцу"], "answer": "0"},
-    {"id": 2053, "prompt": "Как называется библиотека интерактивных графиков из статьи модуля? Напиши только имя библиотеки.", "answer_type": "short", "concept_weights": {"plotly_interactive": 1.0}, "difficulty": 0.45, "options": [], "answer": "plotly"},
-    {"id": 2054, "prompt": "Из чего состоит объект Figure в plotly?", "answer_type": "choice", "concept_weights": {"plotly_interactive": 1.0}, "difficulty": 0.5, "options": ["Только из одного DataFrame с данными", "Из данных (traces) и оформления (layout)", "Из осей (axes) и фигуры (figure) matplotlib", "Из HTML-шаблона и CSS"], "answer": "1"},
-    {"id": 2055, "prompt": "Чем интерактивный график plotly удобнее статичного?", "answer_type": "choice", "concept_weights": {"plotly_interactive": 1.0}, "difficulty": 0.5, "options": ["Он всегда строится быстрее и не тормозит на больших данных", "Он не требует подготовки данных и сам заполняет пропуски в таблице", "Можно навести мышь на точку, скрыть серию, приблизить участок", "Он занимает меньше места в файле"], "answer": "2"},
-    {"id": 2056, "prompt": "Что показал countplot числа звонков в поддержку с hue=\"Churn\" в данных об оттоке?", "answer_type": "choice", "concept_weights": {"visual_eda_case": 1.0, "churn_eda_case": 0.3}, "difficulty": 0.6, "options": ["Доля ушедших заметно растёт начиная с 4 звонков", "Число звонков в поддержку никак не связано с оттоком", "Чем больше звонков в поддержку, тем меньше отток", "Ушедшие клиенты в поддержку не звонят"], "answer": "0"},
-    {"id": 2057, "prompt": "Какой бинарный признак, по статье модуля, сильно связан с оттоком?", "answer_type": "choice", "concept_weights": {"visual_eda_case": 1.0}, "difficulty": 0.6, "options": ["Voice mail plan — подключена ли голосовая почта", "International plan — международный тариф", "Area code — код региона", "Account length — сколько дней клиент обслуживается"], "answer": "1"},
-    {"id": 2058, "prompt": "Опиши, как ты визуально проверишь, связан ли количественный признак с оттоком (Churn): какие графики построишь и что на них будешь искать.", "answer_type": "open", "concept_weights": {"visual_eda_case": 1.0, "num_vs_cat": 0.5}, "difficulty": 0.65, "options": [], "answer": null, "rubric_id": 201}
+    {
+      "id": 38,
+      "prompt": "Какая библиотека строит графики и обычно используется вместе с pandas? Напиши только имя библиотеки — без точек.",
+      "answer_type": "short",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "matplotlib",
+      "section": "libraries"
+    },
+    {
+      "id": 39,
+      "prompt": "Что рисует plt.scatter(x, y)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Ломаную линию через точки (x, y)",
+        "Столбчатую диаграмму",
+        "Точки (x, y) на плоскости",
+        "Гистограмму значений x и y"
+      ],
+      "answer": "2",
+      "section": "libraries"
+    },
+    {
+      "id": 2001,
+      "prompt": "Зачем в машинном обучении визуализируют данные?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.2,
+      "options": [
+        "Только чтобы оформить итоговый отчёт для заказчика проекта",
+        "Чтобы на всех этапах проекта быстро замечать закономерности",
+        "Чтобы по графикам подбирать гиперпараметры вместо валидации",
+        "Чтобы сжать данные перед сохранением на диск"
+      ],
+      "answer": "1",
+      "section": "purpose"
+    },
+    {
+      "id": 2002,
+      "prompt": "Когда в ML-проекте обычно впервые строят графики по данным?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.2,
+      "options": [
+        "Только после выкладки модели в продакшен",
+        "Только при подготовке итогового отчёта по проекту",
+        "Сразу, при первом знакомстве с новыми данными",
+        "После обучения модели, чтобы проверить её качество"
+      ],
+      "answer": "2",
+      "section": "purpose"
+    },
+    {
+      "id": 2003,
+      "prompt": "Как называется категориальный признак, значения которого упорядочены?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Бинарный",
+        "Порядковый",
+        "Непрерывный",
+        "Целевой"
+      ],
+      "answer": "1",
+      "section": "feature_types"
+    },
+    {
+      "id": 2004,
+      "prompt": "Признак принимает ровно два значения — «Yes» и «No». Что это за признак?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Непрерывный количественный, если Yes = 1, а No = 0",
+        "Порядковый с тремя уровнями",
+        "Дискретный количественный",
+        "Бинарный — частный случай категориального"
+      ],
+      "answer": "3",
+      "section": "feature_types"
+    },
+    {
+      "id": 2005,
+      "prompt": "Какой из признаков данных об оттоке — количественный?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Штат, в котором живёт клиент (State)",
+        "Длительность дневных звонков в минутах",
+        "Подключён ли международный тариф (International plan)",
+        "Ушёл ли клиент (Churn)"
+      ],
+      "answer": "1",
+      "section": "feature_types"
+    },
+    {
+      "id": 2006,
+      "prompt": "Как соотносятся seaborn и matplotlib?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "seaborn — надстройка над matplotlib с удобными настройками",
+        "seaborn — интерактивная библиотека для графиков в браузере",
+        "matplotlib — надстройка над seaborn с низкоуровневыми функциями",
+        "seaborn — отдельный движок отрисовки, без matplotlib внутри"
+      ],
+      "answer": "0",
+      "section": "libraries"
+    },
+    {
+      "id": 2007,
+      "prompt": "На какой библиотеке построены и seaborn, и метод DataFrame.plot()? Напиши только имя библиотеки.",
+      "answer_type": "short",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "matplotlib",
+      "section": "libraries"
+    },
+    {
+      "id": 2008,
+      "prompt": "Какой параметр метода df.plot() задаёт тип графика (линия, столбцы, гистограмма)? Напиши только имя параметра.",
+      "answer_type": "short",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "kind",
+      "section": "libraries"
+    },
+    {
+      "id": 2009,
+      "prompt": "Что делает параметр rot в вызове df.plot(kind=\"bar\", rot=45)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Поворачивает весь график целиком на 45° против часовой",
+        "Сортирует столбцы по высоте",
+        "Поворачивает подписи делений оси X на 45°",
+        "Задаёт ширину столбцов"
+      ],
+      "answer": "2",
+      "section": "libraries"
+    },
+    {
+      "id": 2010,
+      "prompt": "Что получится в результате df.groupby(\"Year\")[\"Sales\"].sum().plot()?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "viz_intro": 1.0,
+        "grouping": 0.3
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Таблица продаж без графика",
+        "Гистограмма распределения годов",
+        "Линейный график суммарных продаж по годам",
+        "Ошибка: plot() нельзя вызвать после groupby"
+      ],
+      "answer": "2",
+      "section": "libraries"
+    },
+    {
+      "id": 2011,
+      "prompt": "Каким методом DataFrame построить гистограммы числовых столбцов? Напиши только имя метода — без скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "hist",
+      "section": "histogram"
+    },
+    {
+      "id": 2012,
+      "prompt": "Что показывает гистограмма признака?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Как значения признака связаны с целевой переменной задачи",
+        "Долю пропусков в каждом столбце",
+        "Среднее значение признака по каждой группе категорий",
+        "Сколько значений попало в каждый интервал равной ширины"
+      ],
+      "answer": "3",
+      "section": "histogram"
+    },
+    {
+      "id": 2013,
+      "prompt": "У гистограммы признака длинный «хвост» справа. Как называют такое распределение?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Скошенное влево",
+        "Скошенное вправо",
+        "Равномерное",
+        "Симметричное нормальное"
+      ],
+      "answer": "1",
+      "section": "histogram"
+    },
+    {
+      "id": 2014,
+      "prompt": "Чем график плотности (KDE) удобнее гистограммы?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Он сглажен и не зависит от ширины интервалов (bins)",
+        "Он показывает выбросы отдельными точками за пределами усов",
+        "Он строится только по категориальным признакам",
+        "Он показывает точные квартили"
+      ],
+      "answer": "0",
+      "section": "kde"
+    },
+    {
+      "id": 2015,
+      "prompt": "Какой вызов seaborn строит гистограмму с наложенной оценкой плотности?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "sns.boxplot(x, kde=True)",
+        "sns.countplot(x, density=True)",
+        "sns.histplot(x, kde=True)",
+        "sns.heatmap(x, kde=True)"
+      ],
+      "answer": "2",
+      "section": "kde"
+    },
+    {
+      "id": 2016,
+      "prompt": "Что ограничивает «ящик» на box plot?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0,
+        "types_stats": 0.5
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Минимум и максимум признака",
+        "Первый и третий квартили (25-й и 75-й процентили)",
+        "Среднее плюс-минус одно стандартное отклонение признака",
+        "5-й и 95-й процентили распределения признака"
+      ],
+      "answer": "1",
+      "section": "box_violin"
+    },
+    {
+      "id": 2017,
+      "prompt": "Усы box plot тянутся до самых дальних точек внутри интервала от Q1 − k·IQR до Q3 + k·IQR. Чему равно k? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "1.5",
+      "section": "box_violin"
+    },
+    {
+      "id": 2018,
+      "prompt": "Что отмечает линия внутри ящика на box plot?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Среднее",
+        "Моду",
+        "Медиану",
+        "Межквартильный размах"
+      ],
+      "answer": "2",
+      "section": "box_violin"
+    },
+    {
+      "id": 2019,
+      "prompt": "Что означают отдельные точки за пределами усов на box plot?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Пропущенные значения",
+        "Квартили распределения",
+        "Средние по группам",
+        "Выбросы"
+      ],
+      "answer": "3",
+      "section": "box_violin"
+    },
+    {
+      "id": 2020,
+      "prompt": "Чем violin plot отличается от box plot?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Показывает только выбросы, а ящик с квартилями убирает",
+        "Показывает сглаженную плотность с обеих сторон, а не отдельные статистики",
+        "Строится только по категориальным признакам и не имеет числовой оси значений",
+        "Ничем — это другое название box plot"
+      ],
+      "answer": "1",
+      "section": "box_violin"
+    },
+    {
+      "id": 2021,
+      "prompt": "Какая функция seaborn строит скрипичную диаграмму? Напиши только имя функции — без sns. и скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "violinplot",
+      "section": "box_violin"
+    },
+    {
+      "id": 2022,
+      "prompt": "Какая функция seaborn рисует столбчатую диаграмму частот категорий — график того, что считает value_counts? Напиши только имя функции — без sns. и скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "distributions": 1.0,
+        "types_stats": 0.5
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": "countplot",
+      "section": "counts"
+    },
+    {
+      "id": 2023,
+      "prompt": "Чем столбчатая диаграмма частот отличается от гистограммы?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Столбчатая — только для числовых признаков, гистограмма — для строковых категорий",
+        "Это одно и то же",
+        "Гистограмма — для числового признака, столбчатая — для категорий любого типа",
+        "Гистограмма не показывает частоты, а только среднее по интервалам"
+      ],
+      "answer": "2",
+      "section": "counts"
+    },
+    {
+      "id": 2024,
+      "prompt": "Что обычно показывает sns.barplot() — в отличие от sns.countplot()?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Частоты значений категории, как countplot, но горизонтально",
+        "Статистику числового признака по группам категориального",
+        "Плотность распределения числового признака по группам",
+        "Матрицу корреляций признаков"
+      ],
+      "answer": "1",
+      "section": "counts"
+    },
+    {
+      "id": 2025,
+      "prompt": "В данных об оттоке ушедших клиентов намного меньше, чем оставшихся. Как это называется?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Мультиколлинеарность признаков",
+        "Переобучение модели",
+        "Скошенность признака",
+        "Дисбаланс классов"
+      ],
+      "answer": "3",
+      "section": "counts"
+    },
+    {
+      "id": 2026,
+      "prompt": "Как быстрее всего проверить баланс классов целевой переменной Churn?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "distributions": 1.0,
+        "types_stats": 0.3
+      },
+      "difficulty": 0.35,
+      "options": [
+        "df[\"Churn\"].value_counts() или countplot по Churn",
+        "df.corr() по всем признакам и целевой переменной",
+        "sns.pairplot(df) по всем признакам",
+        "t-SNE по всем признакам, с раскраской точек по Churn"
+      ],
+      "answer": "0",
+      "section": "counts"
+    },
+    {
+      "id": 2027,
+      "prompt": "Какой метод DataFrame считает попарные корреляции числовых столбцов? Напиши только имя метода — без скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "corr",
+      "section": "corr"
+    },
+    {
+      "id": 2028,
+      "prompt": "Какая функция seaborn рисует матрицу значений цветом — например, матрицу корреляций? Напиши только имя функции — без sns. и скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "heatmap",
+      "section": "corr"
+    },
+    {
+      "id": 2029,
+      "prompt": "Признак «Total day charge» почти полностью вычисляется из «Total day minutes». Что с ним делают в статье модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Оставляют оба: лишние признаки модели никогда не мешают",
+        "Убирают: зависимый признак не несёт новой информации",
+        "Перемножают их в один новый признак с ценой минуты",
+        "Превращают его в категориальный"
+      ],
+      "answer": "1",
+      "section": "corr"
+    },
+    {
+      "id": 2030,
+      "prompt": "Что рисует sns.jointplot(x=..., y=..., kind=\"scatter\")?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Только линию регрессии между двумя признаками без точек",
+        "Матрицу диаграмм рассеяния для всех пар числовых признаков таблицы",
+        "Ящики с усами по группам",
+        "Диаграмму рассеяния двух признаков и их гистограммы по краям"
+      ],
+      "answer": "3",
+      "section": "scatter"
+    },
+    {
+      "id": 2031,
+      "prompt": "Облако точек на диаграмме рассеяния похоже на эллипс, вытянутый вдоль осей, без наклона. Что это говорит о двух признаках?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Признаки сильно положительно коррелируют",
+        "Один признак — точная копия другого",
+        "Признаки, скорее всего, не коррелируют",
+        "Оба признака категориальные"
+      ],
+      "answer": "2",
+      "section": "scatter"
+    },
+    {
+      "id": 2032,
+      "prompt": "Какое значение параметра kind у sns.jointplot рисует сглаженную двумерную плотность вместо точек? Напиши одно слово.",
+      "answer_type": "short",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "kde",
+      "section": "scatter"
+    },
+    {
+      "id": 2033,
+      "prompt": "Какая функция seaborn строит матрицу диаграмм рассеяния для всех пар признаков? Напиши только имя функции — без sns. и скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "pairplot",
+      "section": "pairplot"
+    },
+    {
+      "id": 2034,
+      "prompt": "Что по умолчанию стоит на диагонали матрицы sns.pairplot?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Коэффициенты корреляции Пирсона для каждой пары признаков",
+        "Пустые клетки",
+        "Диаграммы рассеяния каждого признака с самим собой по прямой",
+        "Распределение каждого признака (гистограмма или плотность)"
+      ],
+      "answer": "3",
+      "section": "pairplot"
+    },
+    {
+      "id": 2035,
+      "prompt": "Почему pairplot по датасету с десятками признаков — плохая идея?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Пар становится слишком много, и анализ всё равно идёт по парам",
+        "pairplot умеет сравнивать только два признака за один вызов",
+        "Он автоматически выкидывает выбросы, и картина искажается",
+        "pairplot обязательно требует целевую переменную в параметре hue"
+      ],
+      "answer": "0",
+      "section": "pairplot"
+    },
+    {
+      "id": 2036,
+      "prompt": "Какой параметр функций seaborn (lmplot, countplot и других) раскрашивает данные по значениям категориального признака? Напиши только имя параметра.",
+      "answer_type": "short",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "hue",
+      "section": "num_cat"
+    },
+    {
+      "id": 2037,
+      "prompt": "Что будет на графике sns.boxplot(x=\"Churn\", y=\"Total day minutes\", data=df)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Один ящик по всем клиентам сразу, без деления на группы",
+        "Два ящика: дневные минуты оставшихся и ушедших клиентов",
+        "Частоты значений Churn",
+        "Корреляцию Churn и дневных минут в виде одного числа"
+      ],
+      "answer": "1",
+      "section": "num_cat"
+    },
+    {
+      "id": 2038,
+      "prompt": "Что показали ящики с усами дневных минут в группах Churn в статье модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Ушедшие клиенты в среднем говорят днём больше",
+        "Ушедшие клиенты в среднем говорят днём меньше",
+        "Группы почти не отличаются",
+        "У ушедших клиентов нет выбросов по дневным минутам"
+      ],
+      "answer": "0",
+      "section": "one_by_one"
+    },
+    {
+      "id": 2039,
+      "prompt": "Какая функция seaborn строит график количественного признака сразу по двум категориальным, раскладывая его на панели через col? Напиши только имя функции — без sns. и скобок.",
+      "answer_type": "short",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": "catplot",
+      "section": "num_cat"
+    },
+    {
+      "id": 2040,
+      "prompt": "Что делает параметр col в sns.catplot(x=\"Churn\", y=\"Total day minutes\", col=\"Customer service calls\", kind=\"box\", data=df)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Задаёт цвет ящиков по значениям Customer service calls",
+        "Сортирует ящики на оси X по медиане значений Customer service calls",
+        "Рисует отдельную панель для каждого значения Customer service calls",
+        "Меняет тип графика с ящиков на столбчатую диаграмму по звонкам"
+      ],
+      "answer": "2",
+      "section": "num_cat"
+    },
+    {
+      "id": 2041,
+      "prompt": "Как на одном графике сравнить частоты числа звонков в поддержку у ушедших и оставшихся клиентов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "sns.histplot(df[\"Customer service calls\"]) без разбивки по Churn",
+        "df.corr()",
+        "sns.boxplot(x=\"Churn\", data=df) по одной целевой переменной",
+        "sns.countplot(x=\"Customer service calls\", hue=\"Churn\", data=df)"
+      ],
+      "answer": "3",
+      "section": "cat_cat"
+    },
+    {
+      "id": 2042,
+      "prompt": "Что вернёт pd.crosstab(df[\"State\"], df[\"Churn\"])?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0,
+        "grouping": 0.5
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Таблицу: сколько клиентов каждого штата ушло и сколько осталось",
+        "Средний отток по каждому штату в виде одной колонки",
+        "Корреляцию штата и оттока одним числом для всей таблицы",
+        "Список уникальных штатов без повторов, отсортированный по оттоку"
+      ],
+      "answer": "0",
+      "section": "cat_cat"
+    },
+    {
+      "id": 2043,
+      "prompt": "Почему выводы об оттоке по отдельным штатам ненадёжны, по статье модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "crosstab неверно считает частоты при большом числе категорий",
+        "В каждом штате мало клиентов — разница может быть случайной",
+        "Штат — количественный признак, его нельзя группировать",
+        "Отток нельзя считать по группам"
+      ],
+      "answer": "1",
+      "section": "cat_cat"
+    },
+    {
+      "id": 2044,
+      "prompt": "Что покажет тепловая карта по таблице df.pivot_table(index=\"Platform\", columns=\"Genre\", values=\"Global_Sales\", aggfunc=\"sum\")?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0,
+        "grouping": 0.3
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Корреляцию продаж между каждой платформой и каждым жанром",
+        "Число выпущенных игр для каждой пары платформа × жанр, цветом",
+        "Суммарные продажи для каждой пары платформа × жанр, цветом",
+        "Распределение продаж одной платформы"
+      ],
+      "answer": "2",
+      "section": "pivot_heatmap"
+    },
+    {
+      "id": 2045,
+      "prompt": "Какой параметр sns.heatmap выводит числа прямо в ячейках?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "hue=True",
+        "annot=True",
+        "labels=True",
+        "show_values=True"
+      ],
+      "answer": "1",
+      "section": "pivot_heatmap"
+    },
+    {
+      "id": 2046,
+      "prompt": "Зачем снижают размерность данных перед визуализацией?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Чтобы увидеть датасет с множеством признаков целиком на плоскости",
+        "Чтобы автоматически удалить выбросы из данных перед обучением",
+        "Чтобы быстрее читать CSV-файл",
+        "Чтобы сбалансировать классы целевой переменной перед построением графиков"
+      ],
+      "answer": "0",
+      "section": "why_reduce"
+    },
+    {
+      "id": 2047,
+      "prompt": "Какой метод снижения размерности статья модуля называет линейным — в отличие от manifold learning?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "t-SNE — стохастическое вложение соседей",
+        "PCA — метод главных компонент",
+        "KDE — оценка плотности",
+        "pairplot — матрица диаграмм рассеяния"
+      ],
+      "answer": "1",
+      "section": "why_reduce"
+    },
+    {
+      "id": 2048,
+      "prompt": "Снижение размерности без целевой переменной — задача какого типа?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Обучение с учителем",
+        "Обучение без учителя",
+        "Обучение с подкреплением",
+        "Классификация"
+      ],
+      "answer": "1",
+      "section": "why_reduce"
+    },
+    {
+      "id": 2049,
+      "prompt": "В чём главная идея t-SNE?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [
+        "Линейно проецировать данные на ортогональные оси наибольшей дисперсии",
+        "Выбрать два самых важных признака",
+        "Отсортировать объекты по целевой переменной и разложить по оси",
+        "Близкие в исходном пространстве точки остаются близкими на плоскости"
+      ],
+      "answer": "3",
+      "section": "tsne"
+    },
+    {
+      "id": 2050,
+      "prompt": "Как называется класс scikit-learn для t-SNE? Напиши только имя класса.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "TSNE",
+      "section": "tsne"
+    },
+    {
+      "id": 2051,
+      "prompt": "Какое ограничение интерпретации t-SNE отмечает статья модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [
+        "Работает только с двумя исходными признаками, остальные отбрасывает",
+        "Требует целевую переменную, без неё картинка не строится",
+        "Картинка сильно зависит от random seed — далеко идущих выводов не делают",
+        "Не умеет проецировать на плоскость — только в трёхмерное пространство"
+      ],
+      "answer": "2",
+      "section": "tsne"
+    },
+    {
+      "id": 2052,
+      "prompt": "Что делают в статье с бинарными признаками «Yes»/«No» перед t-SNE?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0,
+        "transform": 0.3
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Переводят в 1 и 0 через map",
+        "Удаляют из данных",
+        "Оставляют строками",
+        "Заменяют средним по столбцу"
+      ],
+      "answer": "0",
+      "section": "tsne"
+    },
+    {
+      "id": 2053,
+      "prompt": "Как называется библиотека интерактивных графиков из статьи модуля? Напиши только имя библиотеки.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "plotly",
+      "section": "plotly"
+    },
+    {
+      "id": 2054,
+      "prompt": "Из чего состоит объект Figure в plotly?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Только из одного DataFrame с данными",
+        "Из данных (traces) и оформления (layout)",
+        "Из осей (axes) и фигуры (figure) matplotlib",
+        "Из HTML-шаблона и CSS"
+      ],
+      "answer": "1",
+      "section": "plotly"
+    },
+    {
+      "id": 2055,
+      "prompt": "Чем интерактивный график plotly удобнее статичного?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Он всегда строится быстрее и не тормозит на больших данных",
+        "Он не требует подготовки данных и сам заполняет пропуски в таблице",
+        "Можно навести мышь на точку, скрыть серию, приблизить участок",
+        "Он занимает меньше места в файле"
+      ],
+      "answer": "2",
+      "section": "plotly"
+    },
+    {
+      "id": 2056,
+      "prompt": "Что показал countplot числа звонков в поддержку с hue=\"Churn\" в данных об оттоке?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "visual_churn": 1.0,
+        "eda_case": 0.3
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Доля ушедших заметно растёт начиная с 4 звонков",
+        "Число звонков в поддержку никак не связано с оттоком",
+        "Чем больше звонков в поддержку, тем меньше отток",
+        "Ушедшие клиенты в поддержку не звонят"
+      ],
+      "answer": "0",
+      "section": "one_by_one"
+    },
+    {
+      "id": 2057,
+      "prompt": "Какой бинарный признак, по статье модуля, сильно связан с оттоком?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Voice mail plan — подключена ли голосовая почта",
+        "International plan — международный тариф",
+        "Area code — код региона",
+        "Account length — сколько дней клиент обслуживается"
+      ],
+      "answer": "1",
+      "section": "one_by_one"
+    },
+    {
+      "id": 2058,
+      "prompt": "Опиши, как ты визуально проверишь, связан ли количественный признак с оттоком (Churn): какие графики построишь и что на них будешь искать.",
+      "answer_type": "open",
+      "concept_weights": {
+        "visual_churn": 1.0,
+        "mixed_relations": 0.5
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 201,
+      "section": "one_by_one"
+    }
   ],
   "rubrics": [
-    {"id": 201, "name": "Визуальная проверка связи признака с целевой"}
+    {
+      "id": 201,
+      "name": "Визуальная проверка связи признака с целевой"
+    }
   ],
   "criteria": [
-    {"id": 201, "rubric_id": 201, "criterion": "Называет график распределения признака по группам целевой (box plot, violin plot или гистограммы/плотности с hue)", "weight": 1.0, "positive_example": "построю sns.boxplot(x='Churn', y='Total day minutes')", "negative_example": "посмотрю df.head()"},
-    {"id": 202, "rubric_id": 201, "criterion": "Объясняет, что сравнивает между группами: сдвиг медианы или квартилей, форму распределения", "weight": 1.0, "positive_example": "смотрю, выше ли медиана у ушедших и насколько перекрываются ящики", "negative_example": "смотрю, красиво ли получилось"},
-    {"id": 203, "rubric_id": 201, "criterion": "Помнит про осторожность выводов: дисбаланс классов или маленькие группы, вывод по одному графику — гипотеза", "weight": 1.0, "positive_example": "ушедших мало, так что это гипотеза — проверю ещё", "negative_example": "по графику сразу понятно, что признак главный"}
-  ]
+    {
+      "id": 201,
+      "rubric_id": 201,
+      "criterion": "Называет график распределения признака по группам целевой (box plot, violin plot или гистограммы/плотности с hue)",
+      "weight": 1.0,
+      "positive_example": "построю sns.boxplot(x='Churn', y='Total day minutes')",
+      "negative_example": "посмотрю df.head()"
+    },
+    {
+      "id": 202,
+      "rubric_id": 201,
+      "criterion": "Объясняет, что сравнивает между группами: сдвиг медианы или квартилей, форму распределения",
+      "weight": 1.0,
+      "positive_example": "смотрю, выше ли медиана у ушедших и насколько перекрываются ящики",
+      "negative_example": "смотрю, красиво ли получилось"
+    },
+    {
+      "id": 203,
+      "rubric_id": 201,
+      "criterion": "Помнит про осторожность выводов: дисбаланс классов или маленькие группы, вывод по одному графику — гипотеза",
+      "weight": 1.0,
+      "positive_example": "ушедших мало, так что это гипотеза — проверю ещё",
+      "negative_example": "по графику сразу понятно, что признак главный"
+    }
+  ],
+  "legacy": {
+    "visualization_basics": {
+      "node": "viz_intro",
+      "section": "libraries"
+    },
+    "viz_purpose": {
+      "node": "viz_intro",
+      "section": "purpose"
+    },
+    "feature_types": {
+      "node": "viz_intro",
+      "section": "feature_types"
+    },
+    "viz_libraries": {
+      "node": "viz_intro",
+      "section": "libraries"
+    },
+    "df_plot": {
+      "node": "viz_intro",
+      "section": "libraries"
+    },
+    "histogram": {
+      "node": "distributions",
+      "section": "histogram"
+    },
+    "density_plot": {
+      "node": "distributions",
+      "section": "kde"
+    },
+    "box_plot": {
+      "node": "distributions",
+      "section": "box_violin"
+    },
+    "violin_plot": {
+      "node": "distributions",
+      "section": "box_violin"
+    },
+    "bar_count_plot": {
+      "node": "distributions",
+      "section": "counts"
+    },
+    "class_imbalance": {
+      "node": "distributions",
+      "section": "counts"
+    },
+    "correlation_heatmap": {
+      "node": "numeric_relations",
+      "section": "corr"
+    },
+    "scatter_plot": {
+      "node": "numeric_relations",
+      "section": "scatter"
+    },
+    "pairplot": {
+      "node": "numeric_relations",
+      "section": "pairplot"
+    },
+    "num_vs_cat": {
+      "node": "mixed_relations",
+      "section": "num_cat"
+    },
+    "catplot": {
+      "node": "mixed_relations",
+      "section": "num_cat"
+    },
+    "cat_vs_cat": {
+      "node": "mixed_relations",
+      "section": "cat_cat"
+    },
+    "heatmap_pivot": {
+      "node": "mixed_relations",
+      "section": "pivot_heatmap"
+    },
+    "dim_reduction": {
+      "node": "tsne_plotly",
+      "section": "why_reduce"
+    },
+    "tsne": {
+      "node": "tsne_plotly",
+      "section": "tsne"
+    },
+    "plotly_interactive": {
+      "node": "tsne_plotly",
+      "section": "plotly"
+    },
+    "visual_eda_case": {
+      "node": "visual_churn",
+      "section": "one_by_one"
+    }
+  }
 }

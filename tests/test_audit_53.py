@@ -9,7 +9,8 @@ from pydantic import ValidationError
 from test_lessons_seed import _course_copy, _load, _node, _section_items
 
 from llm_tutor.course import seed as seed_module
-from llm_tutor.course.seed import SeedError, load_course_data, theory_headings
+from llm_tutor.course.seed import SeedError, theory_headings
+from legacy_course import load_course_data
 from llm_tutor.db import repos
 from llm_tutor.schemas import Section
 

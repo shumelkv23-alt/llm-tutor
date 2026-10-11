@@ -2,7 +2,7 @@
 
 from llm_tutor.core.overview import route_overview, topic_rows
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 
 

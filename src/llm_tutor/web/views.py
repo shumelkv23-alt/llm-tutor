@@ -89,10 +89,16 @@ def course_card(
 
 
 def _topic_count(course: Course) -> int:
-    """Число тем курса из seed — без создания БД ученика."""
+    """Число занятий в открытых модулях курса — из seed, без БД ученика.
+
+    Неопубликованные модули — «скоро» (срез 55): их занятий нет и в карточке
+    записанного ученика, иначе числа разошлись бы.
+    """
     from llm_tutor.web.courses import course_data
 
-    return len(course_data(course).nodes)
+    data = course_data(course)
+    published = {topic.number for topic in data.topics if topic.published}
+    return sum(1 for node in data.nodes if node.topic_id in published)
 
 
 # --- Анкета ---

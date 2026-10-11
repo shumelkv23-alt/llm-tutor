@@ -2,7 +2,7 @@
 
 import pytest
 
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.eval import metrics
 from llm_tutor.eval.grader_eval import (

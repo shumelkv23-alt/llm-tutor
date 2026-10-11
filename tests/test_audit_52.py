@@ -3,7 +3,7 @@
 import logging
 
 import pytest
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
@@ -100,11 +100,30 @@ def test_orphan_wal_of_new_name_does_not_block_adoption(tmp_path) -> None:
 
 
 # --- M2: из анкеты модуля 2 можно вернуться в модуль 1 ---
+# С среза 56 модули 2–5 настоящего курса ещё «скоро» — сценарии идут на
+# курсе-фикстуре занятий, где открыты оба модуля.
 
 
-async def test_student_can_leave_module_survey_back_to_previous_module(enrolled, web_app) -> None:
-    await enrolled.post(f"{BASE}/survey/finish", json={"answers": _answers(T1)})
-    state = (await enrolled.post(f"{BASE}/switch", json={"node_id": "df_plot"})).json()["state"]
+@pytest.fixture
+async def lessons(monkeypatch, student, web_app):
+    from course_fixtures import use_lessons_course
+
+    use_lessons_course(monkeypatch)
+    response = await student.post(f"/api/courses/{COURSE}/enroll", json={})
+    assert response.status_code == 200
+    return student
+
+
+async def _finish_module_1(client, web_app) -> None:
+    config = repos.get_topic(_user_db(web_app), 1).survey
+    response = await client.post(f"{BASE}/survey/finish", json={"answers": _answers(config)})
+    assert response.status_code == 200, response.text
+
+
+async def test_student_can_leave_module_survey_back_to_previous_module(lessons, web_app) -> None:
+    enrolled = lessons
+    await _finish_module_1(enrolled, web_app)
+    state = (await enrolled.post(f"{BASE}/switch", json={"node_id": "l2_box"})).json()["state"]
     assert state["survey"] is True and state["survey_topic"]["number"] == 2
     back = state["survey_back"]
     assert back["module"] == 1
@@ -120,11 +139,12 @@ async def test_student_can_leave_module_survey_back_to_previous_module(enrolled,
     assert chat.status_code == 200
 
 
-async def test_module_survey_still_blocks_jump_to_another_unsurveyed_module(enrolled) -> None:
-    await enrolled.post(f"{BASE}/survey/finish", json={"answers": _answers(T1)})
-    await enrolled.post(f"{BASE}/switch", json={"node_id": "df_plot"})
+async def test_module_survey_still_blocks_jump_to_another_unsurveyed_module(lessons, web_app) -> None:
+    await _finish_module_1(lessons, web_app)
+    await lessons.post(f"{BASE}/switch", json={"node_id": "l2_box"})
 
-    response = await enrolled.post(f"{BASE}/switch", json={"node_id": "entropy"})
+    # Занятие того же (не пройденного по анкете) модуля — только после анкеты.
+    response = await lessons.post(f"{BASE}/switch", json={"node_id": "l2_corr"})
 
     assert response.status_code == 409
 
@@ -133,7 +153,7 @@ async def test_first_course_survey_has_no_way_back_and_blocks_switch(enrolled) -
     state = (await enrolled.get(f"{BASE}/state")).json()["state"]
     assert state["survey"] is True and state["survey_back"] is None
 
-    response = await enrolled.post(f"{BASE}/switch", json={"node_id": "groupby"})
+    response = await enrolled.post(f"{BASE}/switch", json={"node_id": "grouping"})
 
     assert response.status_code == 409
 
@@ -141,9 +161,11 @@ async def test_first_course_survey_has_no_way_back_and_blocks_switch(enrolled) -
 # --- L1: анкета модуля 2 — не «начало курса» ---
 
 
-async def test_home_continues_course_during_module_survey(enrolled) -> None:
-    await enrolled.post(f"{BASE}/survey/finish", json={"answers": _answers(T1)})
-    await enrolled.post(f"{BASE}/switch", json={"node_id": "df_plot"})
+async def test_home_continues_course_during_module_survey(lessons, web_app) -> None:
+    enrolled = lessons
+    await _finish_module_1(enrolled, web_app)
+    state = (await enrolled.post(f"{BASE}/switch", json={"node_id": "l2_box"})).json()["state"]
+    assert state["survey"] is True and state["survey_topic"]["number"] == 2
 
     html = (await enrolled.get("/")).text
 

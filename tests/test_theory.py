@@ -4,7 +4,8 @@ import json
 import sqlite3
 
 from llm_tutor.core.context import build_context
-from llm_tutor.course.seed import load_seed, load_seed_data, nodes_without_theory, theory_dir_for
+from llm_tutor.course.seed import nodes_without_theory, theory_dir_for
+from legacy_course import load_seed, load_seed_data
 from llm_tutor.db import repos
 from llm_tutor.db.connection import MIGRATIONS_DIR, SCHEMA_VERSION, get_conn, migrate
 

@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from llm_tutor.course.seed import load_course, load_seed
+from legacy_course import load_course, load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.core.overview import course_progress
@@ -13,7 +13,9 @@ from llm_tutor.web.cli import main as cli_main
 
 from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
 
-TOPICS = len(_course_data(_COURSES[0]).nodes)  # тем во всех модулях курса
+# Занятий в открытых ученикам модулях (неопубликованные — «скоро», срез 55).
+_PUBLISHED = {t.number for t in _course_data(_COURSES[0]).topics if t.published}
+TOPICS = sum(1 for n in _course_data(_COURSES[0]).nodes if n.topic_id in _PUBLISHED)
 TITLE = _COURSES[0].title
 
 
@@ -66,7 +68,7 @@ async def test_progress_counts_closed_topics(student, web_app) -> None:
         repos.set_fact(conn, key, "Впервые вижу", source="self")
     conn.execute("UPDATE mastery SET alpha = 1, beta = 1")
     conn.execute(
-        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('python_basics', 60, 1, ?)",
+        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('pandas_structures', 60, 1, ?)",
         (__import__("time").time(),),
     )
     conn.commit()
@@ -132,7 +134,9 @@ async def test_lesson_page_requires_login(web) -> None:
 
 
 def test_course_progress_on_fresh_db(conn, settings) -> None:
-    load_course(conn)
+    from llm_tutor.course.seed import load_course as load_real_course
+
+    load_real_course(conn)
 
     progress = course_progress(conn, settings=settings)
 

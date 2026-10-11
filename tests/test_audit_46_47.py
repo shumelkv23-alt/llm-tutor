@@ -4,7 +4,7 @@
 гонки вкладки «Код» — в tests/e2e/test_audit_46_47_code.py.
 """
 
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 import re
 
 import pytest

@@ -1,9 +1,34 @@
-"""Реальные seed-файлы курса: все модули грузятся и годятся для урока (срез 24)."""
+"""Реальные seed-файлы курса: все модули грузятся и годятся для урока (срез 24).
+
+С среза 56 курс — 33 занятия с разделами. Модули 2–5 пока не опубликованы и
+в граф ученика (``CourseGraph.load``) не входят, поэтому граф здесь строится
+из данных курса целиком.
+"""
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_course
+from llm_tutor.course.seed import load_course, load_course_data
 from llm_tutor.db import repos
 from llm_tutor.student import diagnostic
+
+
+def _graph() -> CourseGraph:
+    """Граф всего курса, включая неопубликованные модули."""
+    course = load_course_data()
+    return CourseGraph(course.nodes, course.edges)
+
+
+# Порядок занятий в модулях — как в таблицах плана dense-lessons §2.
+LESSON_ORDER = {
+    1: ["pandas_structures", "load_inspect", "types_stats", "selection", "transform",
+        "grouping", "eda_case"],
+    2: ["viz_intro", "distributions", "numeric_relations", "mixed_relations", "tsne_plotly",
+        "visual_churn"],
+    3: ["ml_basics", "tree_criteria", "tree_building", "tree_tuning", "knn", "validation",
+        "trees_knn_practice"],
+    4: ["linreg", "linreg_stats", "ridge", "logreg", "nonlinear", "text", "curves"],
+    5: ["bagging_basics", "forest", "rf_theory", "rf_tuning", "rf_properties",
+        "feature_importance"],
+}
 
 
 def test_modules_are_numbered_from_one_without_gaps(conn) -> None:
@@ -12,17 +37,55 @@ def test_modules_are_numbered_from_one_without_gaps(conn) -> None:
     assert numbers == list(range(1, len(numbers) + 1))
 
 
-def test_every_module_has_15_to_25_topics(conn) -> None:
-    load_course(conn)
-    graph = CourseGraph.load(conn)
+def test_lessons_and_sections_per_module() -> None:
+    """33 занятия из 96 разделов: 7, 6, 7, 7, 6 занятий (план §2, сводка)."""
+    course = load_course_data()
+    lessons = {n: [node for node in course.nodes if node.topic_id == n] for n in range(1, 6)}
 
-    for topic_id in graph.topic_ids:
-        assert 15 <= len(graph.topic_nodes(topic_id)) <= 25, topic_id
+    assert [len(lessons[n]) for n in range(1, 6)] == [7, 6, 7, 7, 6]
+    assert [sum(len(node.sections) for node in lessons[n]) for n in range(1, 6)] == [
+        20, 18, 20, 18, 20
+    ]
+
+
+def test_lesson_order_in_every_module_follows_the_plan() -> None:
+    graph = _graph()
+
+    for number, expected in LESSON_ORDER.items():
+        assert graph.topic_nodes(number) == expected, number
+
+
+def test_python_and_numpy_are_gone() -> None:
+    course = load_course_data()
+    ids = {node.id for node in course.nodes}
+
+    assert not ids & {"python_basics", "numpy_basics"}
+    assert course.legacy["python_basics"] is None and course.legacy["numpy_basics"] is None
+    assert "block_python" not in course.topics[0].survey.keys
+    assert course.topics[0].survey.foundation == ("block_tables",)
+    assert "Python" not in course.topics[0].survey.level_question
+
+
+def test_legacy_covers_all_103_old_topics() -> None:
+    from legacy_course import load_course_data as load_old
+
+    old = {node.id for node in load_old().nodes}
+    course = load_course_data()
+
+    assert set(course.legacy) == old
+    assert course.legacy["groupby"].node == "grouping"
+    assert course.legacy["visualization_basics"].node == "viz_intro"
+
+
+def test_only_module_1_is_published_for_now() -> None:
+    assert [topic.published for topic in load_course_data().topics] == [
+        True, False, False, False, False
+    ]
 
 
 def test_every_node_has_two_auto_checked_items(conn) -> None:
     load_course(conn)
-    graph = CourseGraph.load(conn)
+    graph = _graph()
     items = repos.get_items(conn)
 
     for node_id in graph.node_ids:
@@ -81,7 +144,7 @@ def test_reference_answer_typed_as_text_is_answer_and_passes(conn) -> None:
 def test_items_lean_only_on_earlier_modules(conn) -> None:
     """Вторичный вес задания — на тему своего или прошлого модуля, не будущего."""
     load_course(conn)
-    graph = CourseGraph.load(conn)
+    graph = _graph()
 
     for item in repos.get_items(conn):
         main = max(item.concept_weights, key=item.concept_weights.get)
@@ -90,13 +153,11 @@ def test_items_lean_only_on_earlier_modules(conn) -> None:
         ), item.id
 
 
-def test_topic01_order_is_kept_in_whole_course(conn) -> None:
+def test_module1_order_is_kept_in_whole_course(conn) -> None:
     """Порядок модуля 1 не сдвигают рёбра других модулей (аудит среза 24, M2)."""
-    from course_fixtures import TOPIC01_ORDER
-
     load_course(conn)
 
-    assert CourseGraph.load(conn).topic_nodes(1) == TOPIC01_ORDER
+    assert CourseGraph.load(conn).topic_nodes(1) == LESSON_ORDER[1]
 
 
 MAX_LONGEST_ANSWER_SHARE = 0.25
@@ -110,7 +171,7 @@ MAX_LONGEST_ANSWER_SHARE = 0.25
 def test_choice_answer_is_not_systematically_the_longest(conn) -> None:
     """Верный вариант не выдаёт себя длиной (правило контента §6.2)."""
     load_course(conn)
-    graph = CourseGraph.load(conn)
+    graph = _graph()
 
     longest_by_topic: dict[int, list[bool]] = {}
     for item in repos.get_items(conn):
@@ -134,7 +195,7 @@ def test_choice_answer_is_not_systematically_the_longest(conn) -> None:
 def test_every_module_has_short_items(conn) -> None:
     """Типы заданий как в topic01: не только choice, но и short (§6.2, аудит 5-M3)."""
     load_course(conn)
-    graph = CourseGraph.load(conn)
+    graph = _graph()
 
     short_topics = {
         graph.topic_of(max(item.concept_weights, key=item.concept_weights.get))
@@ -170,7 +231,7 @@ def test_module4_content_audit(conn) -> None:
     items = {item.id: item for item in repos.get_items(conn)}
 
     # 4-M1: кейсы деревьев и kNN не пререквизит текстового пайплайна.
-    assert ("trees_knn_cases", "text_pipeline") not in {
+    assert ("trees_knn_practice", "text") not in {
         (edge.from_id, edge.to_id) for edge in course.edges
     }
     # 4-M2: «уверенно обучаю в sklearn» не означает знания теории МНК.
@@ -179,7 +240,7 @@ def test_module4_content_audit(conn) -> None:
         for key in survey.assumed_by_confident
         for concept in survey.block(key).concepts
     }
-    assert not assumed & {"gauss_markov", "normal_equation"}
+    assert not assumed & {"linreg_stats"}
     # 4-M3: short с подсказкой «L1 или L2» угадывался 50/50.
     assert items[4021].answer_type == "choice"
     # Взамен short модулю 4 — 4035 (C = 1/λ), иначе их бы не осталось ни одного.

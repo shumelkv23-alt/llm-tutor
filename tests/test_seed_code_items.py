@@ -23,6 +23,25 @@ SOLUTIONS = {
     48: "result = pd.crosstab(df['International plan'], df['Churn'], normalize='index')",
     49: "df['Churn'] = df['Churn'].astype('int64')\nresult = df['Churn']",
     50: "result = df.loc[df['Churn'], 'Total day minutes'].median()",
+    # Итоговые задания модуля 1 (срез 56).
+    1011: (
+        "result = pd.DataFrame({'city': ['Казань', 'Москва', 'Сочи'], 'age': [20, 45, 52]},"
+        " index=['a', 'b', 'c'])"
+    ),
+    1012: "df = pd.read_csv(io.StringIO(csv_text), sep=';')\nresult = df.isna().sum()",
+    1013: "df['Churn'] = df['Churn'] == 'True'\nresult = df['Churn'].mean()",
+    1014: "result = df.loc[df['State'] == 'OH', ['Total day minutes', 'Churn']]",
+    1015: (
+        "df['International plan'] = df['International plan'].map({'Yes': 1, 'No': 0})\n"
+        "result = df.sort_values('Total day minutes', ascending=False).head(3)"
+    ),
+    1016: (
+        "result = df.groupby('International plan')[['Churn', 'Customer service calls']].mean()"
+    ),
+    1017: (
+        "df['pred'] = (df['International plan'] == 'Yes') | (df['Customer service calls'] >= 4)\n"
+        "result = (df['pred'] == df['Churn']).mean()"
+    ),
 }
 
 # Неверные решения, которые на данных задания совпадали с верным (аудит среза 46).
@@ -34,6 +53,16 @@ WRONG = {
         "result['Total day charge'] = df['Total day charge'].sort_values(ascending=False).head(3).values"
     ),
     46: "result = pd.Series({True: 0.375, 'мусор': 0.625})",
+    1011: "result = pd.DataFrame({'city': ['Казань', 'Москва', 'Сочи'], 'age': [20, 45, 52]})",
+    1012: "df = pd.read_csv(io.StringIO(csv_text))\nresult = df.isna().sum()",
+    1013: "df['Churn'] = df['Churn'].astype(bool)\nresult = df['Churn'].mean()",
+    1014: "result = df[df['State'] == 'OH']",
+    1015: "result = df.sort_values('Total day minutes', ascending=False).head(3)",
+    1016: "result = df.groupby('International plan')['Churn'].mean()",
+    1017: (
+        "df['pred'] = (df['International plan'] == 'Yes') & (df['Customer service calls'] >= 4)\n"
+        "result = (df['pred'] == df['Churn']).mean()"
+    ),
 }
 
 # Верные альтернативы, которые проверки отвергали.
@@ -48,6 +77,27 @@ ALTERNATIVES = [
         "result = pd.crosstab(df['International plan'], df['Churn'].astype(int), normalize='index')",
     ),
     (10, "result = df.groupby('city')['age'].agg('mean')"),
+    (
+        1011,
+        "result = pd.DataFrame([['Казань', 20], ['Москва', 45], ['Сочи', 52]],"
+        " columns=['city', 'age'], index=['a', 'b', 'c'])",
+    ),
+    (1013, "df['Churn'] = df['Churn'].map({'True': True, 'False': False})\nresult = df['Churn'].mean()"),
+    (
+        1015,
+        "df['International plan'] = df['International plan'].replace({'Yes': 1, 'No': 0})\n"
+        "result = df.nlargest(3, 'Total day minutes')",
+    ),
+    (
+        1016,
+        "result = df.groupby('International plan').agg("
+        "{'Churn': 'mean', 'Customer service calls': 'mean'})",
+    ),
+    (
+        1017,
+        "df['pred'] = df['International plan'].eq('Yes') | df['Customer service calls'].ge(4)\n"
+        "result = df['pred'].eq(df['Churn']).sum() / len(df)",
+    ),
 ]
 
 ITEMS = {item.id: item for item in load_seed_data().items if item.answer_type == "code"}

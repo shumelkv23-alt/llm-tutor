@@ -1,6 +1,6 @@
 """API занятия: анкета, ходы, задания (Срез 41)."""
 
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 import asyncio
 
 import pytest
@@ -309,23 +309,24 @@ async def test_parallel_chat_turns_are_serialized(enrolled, web_app, web_llm) ->
 async def test_switch_topic(enrolled) -> None:
     await _finish(enrolled)
 
-    body = (await enrolled.post(f"{BASE}/switch", json={"node_id": "groupby"})).json()
+    body = (await enrolled.post(f"{BASE}/switch", json={"node_id": "grouping"})).json()
 
-    assert body["state"]["node"]["id"] == "groupby"
+    assert body["state"]["node"]["id"] == "grouping"
     assert "Перейти к занятию" in body["messages"][0]["html"]
     assert (await enrolled.post(f"{BASE}/switch", json={"node_id": "nope"})).status_code == 404
 
 
 async def test_verify_starts_check(enrolled) -> None:
     await _finish(enrolled)
-    await enrolled.post(f"{BASE}/switch", json={"node_id": "pandas_intro"})
+    await enrolled.post(f"{BASE}/switch", json={"node_id": "pandas_structures"})
 
     state = (await enrolled.post(f"{BASE}/verify", json={})).json()["state"]
 
     assert state["mode"] == "verify"
     assert state["item"] is not None
-    # Аудит среза 51, L1: счётчик показывает цель прохода «закрой тему», а не урока.
-    assert state["streak_target"] == 2
+    # Аудит среза 51, L1: счётчик — цель прохода, а не урока. У занятия из трёх
+    # разделов — по вопросу на раздел и итоговое (срез 54).
+    assert state["streak_target"] == 4
 
 
 async def test_core_failure_is_a_reply_not_500(enrolled, web_llm) -> None:
@@ -355,22 +356,30 @@ async def test_students_lessons_are_isolated(enrolled, web, web_app) -> None:
 
 
 async def test_closing_a_node_end_to_end(enrolled, web_app) -> None:
-    """Сквозной сценарий: анкета → урок → верные ответы → тема закрыта."""
-    await _finish(enrolled, choice=0)
-    closed_before = (await enrolled.get(f"{BASE}/state")).json()["state"]["closed"]
+    """Сквозной сценарий: анкета → разделы занятия → итоговое с кодом → занятие закрыто."""
+    from course_fixtures import correct_answer
 
-    state = None
-    for _ in range(12):
-        item = await _pending_choice(enrolled, web_app)
-        state = (
-            await enrolled.post(
-                f"{BASE}/answer", json={"item_id": item.id, "answer": int(item.answer)}
-            )
-        ).json()["state"]
+    await _finish(enrolled, choice=0)
+    state = (await enrolled.get(f"{BASE}/state")).json()["state"]
+    closed_before = state["closed"]
+    first = state["node"]["id"]
+
+    for _ in range(20):
+        if state["item"] is None:
+            state = (await enrolled.post(f"{BASE}/task", json={})).json()["state"]
+        item = repos.get_item(_user_db(web_app), state["item"]["id"])
+        if item.runnable:
+            body = {"item_id": item.id, "code": "result = 1", "passed": True, "report": ""}
+            state = (await enrolled.post(f"{BASE}/code-result", json=body)).json()["state"]
+        else:
+            answer = int(item.answer) if item.answer_type == "choice" else correct_answer(item)
+            body = {"item_id": item.id, "answer": answer}
+            state = (await enrolled.post(f"{BASE}/answer", json=body)).json()["state"]
         if state["closed"] > closed_before:
             break
 
-    assert state is not None and state["closed"] > closed_before
+    assert state["closed"] > closed_before
+    assert state["node"]["id"] != first
 
 
 async def test_chat_while_task_pending_goes_to_tutor(enrolled, web_app, web_llm) -> None:
@@ -457,24 +466,35 @@ async def test_state_lists_modules_and_topic_modules(enrolled) -> None:
     first = state["modules"][0]
     assert first["survey_done"] and not state["modules"][1]["survey_done"]
     assert first["total"] == sum(1 for topic in state["topics"] if topic["module"] == 1)
-    assert {topic["module"] for topic in state["topics"]} == {1, 2, 3, 4, 5}
+    # Модули 2–5 ещё «скоро» (срез 56): в маршруте только занятия модуля 1.
+    assert [module["published"] for module in state["modules"]] == [True] + [False] * 4
+    assert {topic["module"] for topic in state["topics"]} == {1}
 
 
-async def test_jump_to_next_module_goes_through_its_survey(enrolled, web_app) -> None:
-    await _finish(enrolled)
+async def test_jump_to_next_module_goes_through_its_survey(monkeypatch, student, web_app) -> None:
+    """Прыжок в модуль 2 — через его анкету (курс-фикстура: оба модуля открыты)."""
+    from course_fixtures import use_lessons_course
 
-    body = (await enrolled.post(f"{BASE}/switch", json={"node_id": "df_plot"})).json()
+    use_lessons_course(monkeypatch)
+    await student.post(f"/api/courses/{COURSE}/enroll", json={})
+    conn = _user_db(web_app)
+    await student.post(
+        f"{BASE}/survey/finish",
+        json={"answers": _module_answers(repos.get_topic(conn, 1).survey)},
+    )
+
+    body = (await student.post(f"{BASE}/switch", json={"node_id": "l2_box"})).json()
 
     assert "из модуля 2" in body["messages"][-1]["html"]
     state = body["state"]
     assert state["survey"] is True and state["survey_topic"]["number"] == 2
 
-    topic = repos.get_topic(_user_db(web_app), 2)
-    finished = await enrolled.post(
+    topic = repos.get_topic(conn, 2)
+    finished = await student.post(
         f"{BASE}/survey/finish", json={"answers": _module_answers(topic.survey)}
     )
     assert finished.status_code == 200, finished.text
-    assert finished.json()["state"]["node"]["id"] == "df_plot"  # урок — с темы прыжка
+    assert finished.json()["state"]["node"]["id"] == "l2_box"  # урок — с занятия прыжка
 
 
 async def test_weak_topic_is_marked_in_state(enrolled, web_app) -> None:
@@ -484,7 +504,7 @@ async def test_weak_topic_is_marked_in_state(enrolled, web_app) -> None:
     state = repos.get_session_state(conn, session_id)
     steps = [
         step.model_copy(update={"status": "closed", "weak": True})
-        if step.concept_id == "pandas_intro"
+        if step.concept_id == "load_inspect"
         else step
         for step in state.route.steps
     ]
@@ -494,5 +514,5 @@ async def test_weak_topic_is_marked_in_state(enrolled, web_app) -> None:
 
     topics = (await enrolled.get(f"{BASE}/state")).json()["state"]["topics"]
 
-    row = next(topic for topic in topics if topic["id"] == "pandas_intro")
+    row = next(topic for topic in topics if topic["id"] == "load_inspect")
     assert row["weak"] and row["status"] == "closed"

@@ -4,7 +4,7 @@
 здесь — то, что было покрыто только через бота.
 """
 
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 import time
 
 import pytest
@@ -74,7 +74,7 @@ async def test_lesson_failure_after_survey_is_reported(enrolled, web_app, monkey
 @pytest.mark.parametrize(
     ("path", "body", "target", "name"),
     [
-        ("switch", {"node_id": "groupby"}, lesson, "switch_node"),
+        ("switch", {"node_id": "grouping"}, lesson, "switch_node"),
         ("skip", {}, turn, "skip_pending"),
         ("task", {}, turn, "start_practice_reply"),
         ("verify", {}, verify, "start_verification"),
@@ -180,7 +180,7 @@ async def test_lesson_survives_reopening_databases(enrolled, web_app) -> None:
 async def test_topic_names_are_escaped(enrolled, web_app) -> None:
     await _finish(enrolled)
     conn = _db(web_app)
-    conn.execute("UPDATE concepts SET name = '<b>Жирная</b>' WHERE id = 'groupby'")
+    conn.execute("UPDATE concepts SET name = '<b>Жирная</b>' WHERE id = 'grouping'")
     conn.commit()
 
     html = (await enrolled.get("/profile")).text

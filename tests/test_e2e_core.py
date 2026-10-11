@@ -18,7 +18,7 @@ from llm_tutor.config import Settings
 from llm_tutor.core import lesson, overview
 from llm_tutor.core.turn import handle_turn, lesson_next_reply
 from llm_tutor.course.ingest import ingest_text
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient

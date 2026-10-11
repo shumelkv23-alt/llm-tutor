@@ -21,6 +21,7 @@ from llm_tutor.config import Settings, get_settings
 from llm_tutor.core import guided, intents
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.legacy import legacy_passed
 from llm_tutor.db import repos
 from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
@@ -939,9 +940,20 @@ async def _start_lesson(
     kickoff = guided.LESSON_KICKOFF.format(name=concept.name)
     fallback = f"📘 {concept.name}\n\n{concept.description or concept.name}"
     sections = [section.id for section in concept.sections]
+    if sections and not fresh.passed_sections and not fresh.weak_sections:
+        # Разделы, пройденные до перестройки курса (срез 56), не повторяем.
+        passed, weak = legacy_passed(conn, node_id)
+        passed = [section for section in passed if section in sections]
+        if passed:
+            fresh = fresh.model_copy(
+                update={
+                    "passed_sections": passed,
+                    "weak_sections": [section for section in weak if section in passed],
+                }
+            )
     if sections:
         # Занятие с разделами (срез 54): объясняется текущий раздел.
-        section = guide.current_section(state, sections)
+        section = guide.current_section(fresh, sections)
         fresh = fresh.model_copy(update={"section_id": section})
         if section is None:
             # Разделы пройдены: объяснять нечего, «Проверим» выдаст итоговое.

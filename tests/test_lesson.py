@@ -9,7 +9,7 @@ from web_fakes import ScriptedTutor
 
 from llm_tutor.core import lesson, overview, turn
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
 from llm_tutor.student import survey

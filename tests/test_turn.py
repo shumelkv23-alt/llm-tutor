@@ -23,7 +23,7 @@ from llm_tutor.core.turn import (
     start_practice_reply,
 )
 from llm_tutor.course.ingest import ingest_text
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 from llm_tutor.llm.client import LLMError

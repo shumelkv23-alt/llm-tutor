@@ -42,6 +42,15 @@ async def test_survey_back_failure_keeps_answers_in_sync(enrolled) -> None:
 
 
 async def _short_task(page):
+    # Короткий ответ есть в первом разделе занятия «Загрузка и первый осмотр»
+    # (срез 56: в первом занятии курса — только вопросы с вариантами).
+    await page.evaluate(
+        """() => fetch('/api/courses/mlcourse/lesson/switch', {method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({node_id: 'load_inspect'})})"""
+    )
+    await page.reload()
+    await page.wait_for_selector("#lesson[aria-busy=false]")
     await page.click("#tab-btn-practice")
     for _ in range(15):
         if await page.locator("input.practice-input").count():

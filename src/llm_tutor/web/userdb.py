@@ -16,6 +16,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from llm_tutor.config import Settings
+from llm_tutor.course.legacy import remap_progress
 from llm_tutor.course.seed import apply_course
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.web.courses import RENAMED_COURSES, course_data, get_course
@@ -87,9 +89,18 @@ def sync_materials(conn: sqlite3.Connection, materials_path: Path) -> bool:
 class UserDBPool:
     """Открытые БД учеников и их блокировки (на процесс)."""
 
-    def __init__(self, users_dir: str | Path, materials_path: str | Path) -> None:
+    def __init__(
+        self,
+        users_dir: str | Path,
+        materials_path: str | Path,
+        *,
+        settings: Settings | None = None,
+    ) -> None:
         self._users_dir = Path(users_dir)
         self._materials_path = Path(materials_path)
+        # Настройки — для переноса прогресса на занятия (срез 56). Без них —
+        # значения по умолчанию, не из .env: пул создают и тесты, и CLI.
+        self._settings = settings or Settings.model_construct()
         self._conns: dict[tuple[int, str], sqlite3.Connection] = {}
         self._locks: dict[tuple[int, str], asyncio.Lock] = {}
 
@@ -152,7 +163,10 @@ class UserDBPool:
         conn = get_conn(str(self.path(user_id, course_id)), check_same_thread=False)
         try:
             migrate(conn)
-            apply_course(conn, course_data(course))
+            data = course_data(course)
+            apply_course(conn, data)
+            # Старые темы → занятия (срез 56): один раз, отметка — факт в БД.
+            remap_progress(conn, data.legacy, settings=self._settings)
             if sync_materials(conn, self._materials_path):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:

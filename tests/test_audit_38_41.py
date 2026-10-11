@@ -1,12 +1,12 @@
 """Регрессии по ревью срезов 38–41."""
 
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 import sqlite3
 import sys
 
 import pytest
 
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.student import survey
@@ -71,11 +71,11 @@ async def test_closed_count_matches_course_card(lesson, web_app) -> None:
 
     conn = _db(web_app)
     conn.execute(
-        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('groupby', 80, 1, ?)",
+        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('grouping', 80, 1, ?)",
         (time.time(),),
     )
     conn.commit()
-    await lesson.post(f"{BASE}/switch", json={"node_id": "groupby"})
+    await lesson.post(f"{BASE}/switch", json={"node_id": "grouping"})
 
     state = (await lesson.get(f"{BASE}/state")).json()["state"]
     card = (await lesson.get("/api/courses")).json()["courses"][0]

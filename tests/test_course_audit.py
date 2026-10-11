@@ -6,7 +6,8 @@ import pytest
 from course_fixtures import MINI_SEED_PATH, load_two_modules
 
 from llm_tutor.course import seed as seed_mod
-from llm_tutor.course.seed import DEFAULT_SEED_PATH, SeedError, course_paths, load_course_data
+from llm_tutor.course.seed import SeedError
+from legacy_course import DEFAULT_SEED_PATH, course_paths, load_course_data
 from llm_tutor.db import repos
 from llm_tutor.eval import grader_eval
 

@@ -1,6 +1,6 @@
 """Главная и профиль (Срез 47)."""
 
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 import time
 
 import pytest
@@ -11,7 +11,9 @@ from web_fakes import ScriptedTutor
 
 from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
 
-TOPICS = len(_course_data(_COURSES[0]).nodes)  # тем во всех модулях курса
+# Занятий в открытых ученикам модулях (неопубликованные — «скоро», срез 55).
+_PUBLISHED = {t.number for t in _course_data(_COURSES[0]).topics if t.published}
+TOPICS = sum(1 for n in _course_data(_COURSES[0]).nodes if n.topic_id in _PUBLISHED)
 TITLE = _COURSES[0].title
 
 
@@ -81,7 +83,7 @@ async def test_profile_of_two_students_differs(student, web, web_app) -> None:
     ann = accounts.find_user(web_app.state.accounts, "ann@example.com")
     conn = web_app.state.userdbs.open(ann.id, COURSE)
     conn.execute(
-        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('groupby', 80, 1, ?)",
+        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('grouping', 80, 1, ?)",
         (time.time(),),
     )
     conn.commit()

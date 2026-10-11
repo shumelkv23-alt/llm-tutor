@@ -49,7 +49,7 @@ def test_answer_kind(item: Item, text: str, kind: str) -> None:
 from test_turn import _FailingTutor, _FakeTutor, _state  # noqa: E402
 
 from llm_tutor.core.turn import handle_turn, lesson_next_reply  # noqa: E402
-from llm_tutor.course.seed import load_seed  # noqa: E402
+from legacy_course import load_seed
 
 
 def test_split_parts() -> None:

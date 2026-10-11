@@ -2,14 +2,11 @@
 
 from pathlib import Path
 
+from legacy_course import DEFAULT_SEED_PATH, load_course, load_course_data, load_seed_data
+
+from llm_tutor.course import seed as real_seed
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import (
-    DEFAULT_SEED_PATH,
-    Course,
-    load_course,
-    load_course_data,
-    load_seed_data,
-)
+from llm_tutor.course.seed import Course
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, Route, RouteStep, SessionState
 
@@ -67,9 +64,11 @@ def use_lessons_course(monkeypatch) -> None:
     monkeypatch.setitem(courses._BY_ID, course.id, course)
     monkeypatch.setattr(api_lesson, "COURSES", (course,))
 
-# Анкеты модулей: topic01 и тестового мини-модуля 2.
+# Анкеты модулей старого формата: topic01 и тестового мини-модуля 2 (движок).
 T1 = load_seed_data(DEFAULT_SEED_PATH).topic.survey
 T2 = load_course_data([DEFAULT_SEED_PATH, MINI_SEED_PATH]).topics[1].survey
+# Анкета модуля 1 настоящего курса (data/, занятия) — для тестов веба.
+WEB_T1 = real_seed.load_seed_data().topic.survey
 
 
 def load_two_modules(conn) -> Course:

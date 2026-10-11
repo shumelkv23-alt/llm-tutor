@@ -5,7 +5,7 @@ from web_fakes import GradingTutor
 from llm_tutor.core import verify
 from llm_tutor.core.turn import VERIFY_FAILED_NOTE, VERIFY_NO_ITEMS_REPLY, handle_turn
 from llm_tutor.core.verify import VERIFY_NO_NODE_REPLY
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 
 

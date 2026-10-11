@@ -10,7 +10,7 @@ from llm_tutor.core import intents
 from llm_tutor.core.overview import module_rows, topic_rows
 from llm_tutor.core.turn import MODULES_SOON_NOTE
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_course_data
+from legacy_course import load_course_data
 from llm_tutor.db import repos
 from llm_tutor.web import accounts, views
 from course_fixtures import LESSON_SEED_PATHS, use_lessons_course
@@ -192,7 +192,7 @@ async def test_web_switch_into_unpublished_module_is_refused(lessons_student, we
 
 
 def test_lesson_state_without_sections_has_empty_lesson_parts(conn, settings) -> None:
-    from llm_tutor.course.seed import load_seed
+    from legacy_course import load_seed
 
     load_seed(conn)
     graph = CourseGraph.load(conn)

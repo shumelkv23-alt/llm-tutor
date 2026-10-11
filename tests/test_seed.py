@@ -5,7 +5,7 @@
 """
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.student import diagnostic
 

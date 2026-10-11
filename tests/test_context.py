@@ -5,7 +5,7 @@ from course_fixtures import T2, finish_all_but, load_two_modules
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.ingest import ingest_text
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import route as route_mod

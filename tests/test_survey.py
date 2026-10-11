@@ -5,7 +5,7 @@ from course_fixtures import T1, T2, load_two_modules
 import pytest
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.student import beta, self_report, survey
 from llm_tutor.student.survey import Progress

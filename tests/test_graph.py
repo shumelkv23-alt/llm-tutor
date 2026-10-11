@@ -6,14 +6,8 @@ import pytest
 from course_fixtures import TOPIC01_ORDER
 
 from llm_tutor.course.graph import CourseGraph, CourseGraphError
-from llm_tutor.course.seed import (
-    DEFAULT_SEED_PATH,
-    SeedError,
-    load_seed,
-    items_without_rubric,
-    load_seed_data,
-    nodes_without_items,
-)
+from llm_tutor.course.seed import SeedError, items_without_rubric, nodes_without_items
+from legacy_course import DEFAULT_SEED_PATH, load_seed, load_seed_data
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Event
 

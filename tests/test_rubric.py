@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from llm_tutor.config import Settings
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.grader import rubric
 from llm_tutor.grader.rubric import (

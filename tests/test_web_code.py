@@ -1,6 +1,6 @@
 """Итог тестов кода из браузера: API и ядро (Срез 46)."""
 
-from course_fixtures import T1
+from course_fixtures import WEB_T1 as T1
 import pytest
 
 from llm_tutor.db import repos
@@ -38,7 +38,8 @@ def _db(web_app):
     return web_app.state.userdbs.open(user.id, COURSE)
 
 
-async def _runnable_item(client, node_id: str = "boolean_indexing") -> dict:
+async def _runnable_item(client, node_id: str = "transform") -> dict:
+    # Первый раздел занятия «transform» — «Сортировка» с заданием на код (45).
     await client.post(f"{BASE}/switch", json={"node_id": node_id})
     for _ in range(8):
         state = (await client.post(f"{BASE}/task", json={})).json()["state"]

@@ -11,15 +11,8 @@ from course_fixtures import LESSON_SEED_PATHS, LESSONS_DIR, load_lessons
 from pydantic import ValidationError
 
 from llm_tutor.course import seed as seed_module
-from llm_tutor.course.seed import (
-    MAX_LESSONS,
-    SeedError,
-    lessons_without_final,
-    load_course_data,
-    main_concept,
-    theory_headings,
-    thin_sections,
-)
+from llm_tutor.course.seed import MAX_LESSONS, SeedError, lessons_without_final, main_concept, theory_headings, thin_sections
+from legacy_course import LEGACY_PATHS, load_course, load_course_data
 from llm_tutor.db import connection, repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.schemas import Item, SessionState
@@ -93,7 +86,7 @@ def test_sections_final_and_published_round_trip_through_db(conn) -> None:
 
 def test_flat_concepts_and_items_keep_defaults(conn) -> None:
     """Узел и задание старого формата: разделов нет, не итоговое, модуль открыт."""
-    seed_module.load_course(conn)
+    load_course(conn)  # старый формат: темы без разделов
     concept = next(c for c in repos.get_concepts(conn) if c.id == "groupby")
     assert concept.sections == []
     assert all(item.section is None and not item.final for item in repos.get_items(conn))
@@ -259,7 +252,7 @@ def test_section_or_final_on_flat_node_item_fails(field) -> None:
         item.model_copy(update={key: value}) if item.id == course.items[0].id else item
         for item in course.items
     ]
-    seeds = [seed_module._parse_seed(path) for path in seed_module.course_paths()]
+    seeds = [seed_module._parse_seed(path) for path in LEGACY_PATHS]
     seeds[0].items = [item for item in broken if item.id in {i.id for i in seeds[0].items}]
     with pytest.raises(SeedError, match="только у заданий занятия с разделами"):
         seed_module.build_course(seeds)

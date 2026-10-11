@@ -159,7 +159,9 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     llm = _llm_client(settings) if client is None else client
     accounts_db = accounts.open_accounts(settings.accounts_db_path)
     userdbs = UserDBPool(
-        _project_path(settings.users_dir), _project_path(settings.materials_db_path)
+        _project_path(settings.users_dir),
+        _project_path(settings.materials_db_path),
+        settings=settings,
     )
 
     @asynccontextmanager

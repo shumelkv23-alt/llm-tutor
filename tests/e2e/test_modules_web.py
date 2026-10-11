@@ -51,7 +51,8 @@ async def test_lesson_button_gives_the_question(enrolled) -> None:
     assert page.errors == []
 
 
-async def test_route_groups_topics_by_module_and_jump_opens_module_survey(enrolled) -> None:
+async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
+    """Настоящий курс (срез 56): модули 2–5 — «скоро», без занятий и без раскрытия."""
     page = enrolled
     await _survey(page)
 
@@ -60,13 +61,32 @@ async def test_route_groups_topics_by_module_and_jump_opens_module_survey(enroll
     headers = page.locator(".route-module")
     assert await headers.count() == 5
     await expect(headers.nth(1)).to_contain_text("Модуль 2")
+    await expect(headers.nth(1)).to_contain_text("скоро")
+    await expect(page.locator('.route-module-toggle[data-module="2"]')).to_have_count(0)
+    await expect(page.locator(".route-topic")).to_have_count(7)
+    assert page.errors == []
 
+
+@pytest.fixture
+async def lessons_enrolled(page, lessons_server):
+    await sign_up(page, lessons_server)
+    await enroll(page, lessons_server)
+    return page
+
+
+async def test_jump_opens_module_survey_and_way_back(lessons_enrolled) -> None:
+    """Курс-фикстура с двумя открытыми модулями: прыжок в модуль 2 и возврат."""
+    page = lessons_enrolled
+    await _survey(page)
+
+    await page.click("#route-open")
+    await page.wait_for_selector("#route-dialog[open]")
     # Модуль 2 свёрнут (раскрыт только модуль текущего занятия) — раскрываем.
     toggle = page.locator('.route-module-toggle[data-module="2"]')
     await expect(toggle).to_have_attribute("aria-expanded", "false")
     await toggle.click()
-    # Тема модуля 2 — сначала его анкета.
-    target = page.locator('.route-topic[data-node="df_plot"]')
+    # Занятие модуля 2 — сначала его анкета.
+    target = page.locator('.route-topic[data-node="l2_box"]')
     async with page.expect_response("**/lesson/switch"):
         await target.click()
     await page.wait_for_selector("#pane-left.surveying")

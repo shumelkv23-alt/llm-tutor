@@ -6,15 +6,8 @@ import pytest
 from course_fixtures import MINI_SEED_PATH, TOPIC01_ORDER, load_two_modules
 
 from llm_tutor.course.graph import CourseGraph, CourseGraphError
-from llm_tutor.course.seed import (
-    DEFAULT_SEED_PATH,
-    SeedError,
-    course_paths,
-    load_course_data,
-    load_seed,
-    load_seed_data,
-    main,
-)
+from llm_tutor.course.seed import SeedError, main
+from legacy_course import DEFAULT_SEED_PATH, course_paths, load_course_data, load_seed, load_seed_data
 from llm_tutor.db import repos
 
 
@@ -137,9 +130,11 @@ def test_course_paths_take_only_module_files(tmp_path) -> None:
 
 
 def test_empty_data_dir_reports_clearly(tmp_path, monkeypatch) -> None:
+    from llm_tutor.course import seed as real_seed
+
     monkeypatch.setattr("llm_tutor.course.seed.DATA_DIR", tmp_path)
     with pytest.raises(FileNotFoundError, match="Нет seed-файлов"):
-        load_course_data()
+        real_seed.load_course_data()
 
 
 def test_seed_cli_loads_whole_course(tmp_path, capsys) -> None:
