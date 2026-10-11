@@ -53,3 +53,6 @@ data/*.sqlite
 .idea/
 .vscode/
 *.swp
+
+# --- БД учеников веба ---
+data/users/
