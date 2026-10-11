@@ -16,7 +16,7 @@ from llm_tutor.core.overview import course_progress
 from llm_tutor.core.turn import handle_turn, resume_reply
 from llm_tutor.course import legacy as legacy_mod
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_course
+from llm_tutor.course.seed import load_course, load_course_data
 from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
 from test_turn import _FakeTutor
@@ -111,7 +111,9 @@ def test_closed_python_does_not_close_a_lesson(conn, settings) -> None:
     _migrate(conn, settings)
 
     progress = course_progress(conn, now=NOW, settings=settings)
-    assert progress.closed == 0 and progress.total == 7
+    open_lessons = {t.number for t in load_course_data().topics if t.published}
+    lessons = [n for n in load_course_data().nodes if n.topic_id in open_lessons]
+    assert progress.closed == 0 and progress.total == len(lessons)
     assert _state(conn).current_node_id == "pandas_structures"
 
 

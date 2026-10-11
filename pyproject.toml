@@ -27,6 +27,9 @@ dev = [
     "playwright>=1.48,<2",
     "pandas>=2.2,<3",
     "matplotlib>=3.8,<4",
+    "scikit-learn>=1.5,<2",
+    "seaborn>=0.13,<0.14",
+    "plotly>=5.20,<7",
 ]
 
 [build-system]

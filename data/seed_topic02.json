@@ -60,7 +60,7 @@
         "t02_basics"
       ]
     },
-    "published": false
+    "published": true
   },
   "nodes": [
     {
@@ -1261,12 +1261,315 @@
       "answer": null,
       "rubric_id": 201,
       "section": "one_by_one"
+    },
+    {
+      "id": 2101,
+      "prompt": "На графике доли ушедших по числу звонков в поддержку у группы «6 звонков» доля 100%, но в группе всего двое клиентов. Как правильно обращаться с этой находкой?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Это самая надёжная группа: доля максимальна, значит, эффект сильнейший",
+        "Выбросить группу и не обсуждать влияние звонков вообще",
+        "Показывать размер группы рядом с долей и не строить вывод на двух клиентах",
+        "Достаточно: доля 100% не может получиться случайно"
+      ],
+      "answer": "2",
+      "section": "against_target"
+    },
+    {
+      "id": 2102,
+      "prompt": "Ушедших клиентов гораздо меньше, чем оставшихся, и на графике плотности их кривая получается приплюснутой. Какой параметр `sns.kdeplot` нормирует каждую группу отдельно (его ставят в `False`)? Напиши только имя параметра.",
+      "answer_type": "short",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": "common_norm",
+      "section": "against_target"
+    },
+    {
+      "id": 2103,
+      "prompt": "Клиентов с тарифом «Yes» в десять раз меньше, чем с тарифом «No». Что считать, чтобы честно сравнить риск ухода в этих двух группах?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Число ушедших в каждой группе",
+        "Долю ушедших внутри каждой группы",
+        "Число клиентов в каждой группе",
+        "Долю группы среди всех клиентов"
+      ],
+      "answer": "1",
+      "section": "against_target"
+    },
+    {
+      "id": 2104,
+      "prompt": "На графиках ушедшие клиенты в среднем чаще звонили в поддержку. Как корректно сформулировать итог первого визуального анализа?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Звонки в поддержку вызывают уход, признак можно считать доказанным",
+        "Дисбаланс классов можно не учитывать: связь уже видна",
+        "Признак нужно сразу исключить: график не доказывает причинность",
+        "Это гипотеза: связь похожа на реальную, её проверят на других данных или тестом"
+      ],
+      "answer": "3",
+      "section": "against_target"
+    },
+    {
+      "id": 2111,
+      "prompt": "Напиши код: на осях `ax` построй гистограмму столбца `Total day minutes` таблицы df в 6 корзин и задай заголовок графика. Сохрани оси в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 202,
+      "starter": "# Гистограмма в 6 корзин с заголовком на осях ax\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0,\n                          184.5, 129.1, 187.7, 128.8, 75.0, 121.2, 147.0, 215.8],\n})\nfig, ax = plt.subplots()\n",
+      "tests": "from matplotlib.axes import Axes\nassert \"result\" in globals(), \"Сохраните оси в переменную result.\"\nassert isinstance(result, Axes), \"Ожидаются оси matplotlib (Axes), а не данные.\"\nassert len(result.patches) == 6, \"На графике должно быть 6 столбцов: bins=6.\"\nheights = [patch.get_height() for patch in result.patches]\nassert sum(heights) == len(df), \"Высоты столбцов — число клиентов (без density), по всему столбцу.\"\nassert result.get_title().strip(), \"Задайте заголовок: ax.set_title(...).\"\n",
+      "section": "libraries"
+    },
+    {
+      "id": 2112,
+      "prompt": "Напиши код: на осях `ax` нарисуй столбчатую диаграмму трёх самых частых штатов (`State`): слева самый частый, высота столбца — число клиентов, столбцы подписаны названиями штатов. Сохрани оси в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 203,
+      "starter": "# Три самых частых штата\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"OH\", \"NJ\", \"OH\", \"KS\", \"NJ\", \"OH\", \"MN\", \"NJ\", \"KS\", \"OH\",\n              \"WV\", \"NJ\", \"AL\", \"OH\", \"MN\", \"OH\", \"MN\"],\n})\nfig, ax = plt.subplots()\n",
+      "tests": "from matplotlib.axes import Axes\nassert \"result\" in globals(), \"Сохраните оси в переменную result.\"\nassert isinstance(result, Axes), \"Ожидаются оси matplotlib (Axes).\"\ntop = df[\"State\"].value_counts().head(3)\nassert len(result.patches) == 3, \"Нужно ровно 3 столбца.\"\nassert [p.get_height() for p in result.patches] == top.tolist(), \"Высоты — число клиентов; слева самый частый штат.\"\nresult.figure.canvas.draw()\nassert [t.get_text() for t in result.get_xticklabels()] == top.index.tolist(), \"Подпишите столбцы названиями штатов.\"\n",
+      "section": "counts"
+    },
+    {
+      "id": 2113,
+      "prompt": "Напиши код: найди пару разных числовых признаков таблицы df с самой сильной связью — по модулю коэффициента корреляции Пирсона. Сохрани названия двух столбцов в переменную result (кортеж или список).",
+      "answer_type": "code",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 204,
+      "starter": "# Самая сильная связь по модулю корреляции\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [120, 150, 180, 210, 240, 270, 300, 330, 160, 250],\n    \"Customer service calls\": [8, 7, 6, 5, 3, 3, 1, 0, 6, 3],\n    \"Total eve minutes\": [150, 130, 190, 180, 260, 230, 310, 270, 200, 240],\n    \"Total intl calls\": [3, 5, 4, 6, 3, 5, 4, 5, 3, 6],\n})\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nnames = list(result)\nassert len(names) == 2 and names[0] != names[1], \"Нужны два разных столбца, а не столбец с самим собой.\"\nassert set(names) == {\"Total day minutes\", \"Customer service calls\"}, \"Связь может быть и отрицательной: сравнивайте корреляции по модулю.\"\n",
+      "section": "corr"
+    },
+    {
+      "id": 2114,
+      "prompt": "Напиши код: посчитай данные для ящика с усами по `Total intl minutes` отдельно для ушедших и оставшихся. Сохрани в result таблицу: индекс — значение `Churn`, столбцы `q1` (первый квартиль), `median` и `q3` (третий квартиль).",
+      "answer_type": "code",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 205,
+      "starter": "# Q1, медиана и Q3 по группам Churn\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Churn\": [False, False, True, False, True, False, False, True, False, True, False, False],\n    \"Total intl minutes\": [10.0, 8.5, 13.2, 9.1, 11.8, 10.4, 7.9, 14.5, 9.7, 12.6, 11.1, 8.8],\n})\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert set(result.index) == {False, True}, \"Индекс — значения Churn: False и True.\"\nassert {\"q1\", \"median\", \"q3\"} <= set(result.columns), \"Нужны столбцы q1, median и q3.\"\ngroup = df.groupby(\"Churn\")[\"Total intl minutes\"]\nexpected = pd.DataFrame({\"q1\": group.quantile(0.25), \"median\": group.median(), \"q3\": group.quantile(0.75)})\nfor column in [\"q1\", \"median\", \"q3\"]:\n    assert (result[column].sort_index() - expected[column].sort_index()).abs().max() < 1e-9, f\"Столбец {column} посчитан неверно.\"\n",
+      "section": "num_cat"
+    },
+    {
+      "id": 2115,
+      "prompt": "Напиши код: найди индекс клиента, ближайшего к клиенту с индексом 0 по евклидову расстоянию, после стандартизации признаков (среднее 0, стандартное отклонение 1 в каждом столбце). Сам клиент 0 не считается. Сохрани индекс в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 206,
+      "starter": "# Ближайший сосед клиента 0 в стандартизованных признаках\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [180.0, 183.0, 195.0, 240.0, 120.0, 150.0, 210.0, 165.0],\n    \"Customer service calls\": [1, 6, 1, 3, 4, 0, 5, 2],\n})\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert result != 0, \"Ближайший сосед — другой клиент, не сам клиент 0.\"\nanswers = set()\nfor ddof in (0, 1):\n    z = (df - df.mean()) / df.std(ddof=ddof)\n    distance = ((z - z.loc[0]) ** 2).sum(axis=1) ** 0.5\n    answers.add(int(distance.drop(0).idxmin()))\nassert len(answers) == 1, \"внутренняя ошибка задания\"\nassert int(result) in answers, \"Расстояние считается после стандартизации: минуты и звонки должны иметь одинаковый вес.\"\n",
+      "section": "why_reduce"
+    },
+    {
+      "id": 2116,
+      "prompt": "Напиши код: найди в таблице df числовые столбцы (целые и дробные, но не булевы), у которых не больше 4 уникальных значений, — это кандидаты в категориальные признаки. Сохрани список названий в result в порядке столбцов таблицы.",
+      "answer_type": "code",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 207,
+      "starter": "# Числа, которые на самом деле категории\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Area code\": [415, 408, 510, 415, 650, 408, 510, 415],\n    \"Customer service calls\": [1, 0, 3, 5, 2, 7, 1, 4],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Voice mail plan\": [1, 0, 0, 1, 0, 0, 1, 0],\n    \"International plan\": [\"No\", \"No\", \"Yes\", \"No\", \"Yes\", \"No\", \"No\", \"Yes\"],\n    \"Churn\": [False, False, True, False, True, False, False, True],\n})\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert list(result) == [\"Area code\", \"Voice mail plan\"], \"Нужны только числовые (не булевы, не строковые) столбцы с ≤ 4 уникальными значениями.\"\n",
+      "section": "one_by_one"
+    },
+    {
+      "id": 2121,
+      "prompt": "Итоговое задание. Построй фигуру `fig` с двумя графиками рядом: слева — гистограмма `Total day minutes` в 8 корзин, справа — столбцы с числом клиентов по `International plan`. У обоих графиков должен быть заголовок. Сохрани фигуру в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "viz_intro": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 208,
+      "starter": "# Два графика рядом\nfig, axes = plt.subplots(1, 2, figsize=(9, 3))\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0,\n                          184.5, 129.1, 187.7, 128.8, 75.0, 121.2, 147.0, 215.8],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"No\", \"No\", \"Yes\", \"No\",\n                           \"No\", \"No\", \"No\", \"No\", \"Yes\", \"No\", \"No\", \"No\"],\n})\n",
+      "tests": "from matplotlib.figure import Figure\nassert \"result\" in globals(), \"Сохраните фигуру в переменную result.\"\nassert isinstance(result, Figure), \"Ожидается фигура (Figure): fig из plt.subplots.\"\nassert len(result.axes) == 2, \"На фигуре должно быть два графика.\"\nleft, right = result.axes\nassert left.get_position().x0 < right.get_position().x0, \"Графики должны стоять рядом: гистограмма слева.\"\nassert len(left.patches) == 8, \"Слева гистограмма в 8 корзин.\"\nassert sum(p.get_height() for p in left.patches) == len(df), \"Гистограмма по всему столбцу Total day minutes.\"\nplan = df[\"International plan\"].value_counts()\nassert sorted(p.get_height() for p in right.patches) == sorted(plan.tolist()), \"Справа — число клиентов с тарифом и без.\"\nassert left.get_title().strip() and right.get_title().strip(), \"У обоих графиков должен быть заголовок.\"\n",
+      "final": true
+    },
+    {
+      "id": 2122,
+      "prompt": "Итоговое задание. По правилу Тьюки найди выбросы в `Total day minutes`: границы усов `Q1 − 1,5·IQR` и `Q3 + 1,5·IQR`. Сохрани в `result` словарь с ключами `low` и `high` (границы) и `n_outliers` (сколько значений вне границ), а в `clean` — таблицу без выбросов.",
+      "answer_type": "code",
+      "concept_weights": {
+        "distributions": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 209,
+      "starter": "# Выбросы по правилу Тьюки\nresult = None\nclean = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [180.0, 175.0, 190.0, 185.0, 200.0, 170.0, 195.0, 182.0, 188.0, 178.0,\n                          192.0, 5.0, 184.0, 186.0, 330.0, 181.0, 179.0, 183.0, 189.0, 177.0],\n})\n",
+      "tests": "assert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами low, high, n_outliers.\"\nassert {\"low\", \"high\", \"n_outliers\"} <= set(result), \"Нужны ключи low, high и n_outliers.\"\nminutes = df[\"Total day minutes\"]\nq1, q3 = minutes.quantile([0.25, 0.75])\nlow, high = q1 - 1.5 * (q3 - q1), q3 + 1.5 * (q3 - q1)\nassert abs(result[\"low\"] - low) < 1e-6 and abs(result[\"high\"] - high) < 1e-6, \"Границы: Q1 − 1,5·IQR и Q3 + 1,5·IQR.\"\noutside = (minutes < low) | (minutes > high)\nassert int(result[\"n_outliers\"]) == int(outside.sum()), \"Выбросы бывают с обеих сторон: ниже low и выше high.\"\nassert isinstance(clean, pd.DataFrame), \"clean — таблица без выбросов.\"\nassert sorted(clean[\"Total day minutes\"].tolist()) == sorted(minutes[~outside].tolist()), \"В clean остаются только значения внутри границ.\"\n",
+      "final": true
+    },
+    {
+      "id": 2123,
+      "prompt": "Итоговое задание. Нарисуй на осях `ax` диаграмму рассеяния: `Total day minutes` по оси X и `Customer service calls` по оси Y, ушедшие и оставшиеся клиенты — двумя отдельными наборами точек. В `corr` сохрани коэффициент корреляции Пирсона между этими признаками по всей таблице, а оси — в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "numeric_relations": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 210,
+      "starter": "# Рассеяние по группам и корреляция\nresult = None\ncorr = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0,\n                          184.5, 129.1, 187.7, 128.8, 215.8, 121.2],\n    \"Customer service calls\": [1, 4, 0, 2, 7, 0, 4, 5, 1, 2, 3, 1, 6, 2],\n    \"Churn\": [False, False, False, False, True, False, True, True,\n              False, False, False, False, True, False],\n})\nfig, ax = plt.subplots()\n",
+      "tests": "import numpy as np\nfrom matplotlib.axes import Axes\nassert \"result\" in globals() and isinstance(result, Axes), \"result — оси (Axes) с диаграммой.\"\nassert len(result.collections) == 2, \"Два набора точек: отдельный scatter для ушедших и для оставшихся.\"\ngroups = [df[df[\"Churn\"] == flag] for flag in (False, True)]\nexpected = sorted(\n    (round(float(x), 6), round(float(y), 6))\n    for g in groups for x, y in zip(g[\"Total day minutes\"], g[\"Customer service calls\"])\n)\npoints = sorted(\n    (round(float(x), 6), round(float(y), 6))\n    for c in result.collections for x, y in np.asarray(c.get_offsets())\n)\nassert points == expected, \"По оси X — Total day minutes, по оси Y — Customer service calls, точки всех клиентов.\"\nsizes = sorted(len(c.get_offsets()) for c in result.collections)\nassert sizes == sorted(len(g) for g in groups), \"Группы должны быть разделены по Churn.\"\nassert corr is not None and abs(float(corr) - df[\"Total day minutes\"].corr(df[\"Customer service calls\"])) < 1e-9, \"corr — коэффициент Пирсона между двумя признаками.\"\n",
+      "final": true
+    },
+    {
+      "id": 2124,
+      "prompt": "Итоговое задание. В `table` сохрани сводную таблицу долей ушедших: строки — `International plan`, столбцы — `many_calls` (признак «4 и больше звонков в поддержку», он уже есть в df). Затем нарисуй её тепловую карту на осях `ax` через `ax.imshow`. Оси сохрани в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "mixed_relations": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 211,
+      "starter": "# Сводная таблица и её тепловая карта на осях ax\ntable = None\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"No\", \"No\", \"Yes\", \"No\",\n                           \"Yes\", \"No\", \"No\", \"Yes\", \"No\", \"No\", \"Yes\", \"No\"],\n    \"many_calls\": [False, False, True, False, True, False, True, False,\n                   True, False, True, True, False, False, False, True],\n    \"Churn\": [False, False, True, False, False, False, True, False,\n              True, True, False, True, False, False, False, True],\n})\nfig, ax = plt.subplots()\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and hasattr(result, \"images\"), \"result — оси (Axes).\"\nassert isinstance(table, pd.DataFrame), \"table — сводная таблица (DataFrame).\"\nassert list(table.index) == [\"No\", \"Yes\"] and list(table.columns) == [False, True], \"Строки — International plan, столбцы — many_calls.\"\nexpected = df.groupby([\"International plan\", \"many_calls\"])[\"Churn\"].mean().unstack()\nassert np.allclose(table.values.astype(float), expected.values), \"В клетках — доля ушедших (среднее Churn), а не их число.\"\nassert len(result.images) == 1, \"Тепловая карта рисуется через ax.imshow.\"\nassert np.allclose(np.asarray(result.images[0].get_array(), dtype=float), table.values.astype(float)), \"ax.imshow должен рисовать именно table.\"\n",
+      "final": true
+    },
+    {
+      "id": 2125,
+      "prompt": "Итоговое задание. Приведи `Total day minutes` и `Customer service calls` к среднему 0 и стандартному отклонению 1: результат — таблица `z` с теми же двумя столбцами. Затем нарисуй на осях `ax` диаграмму рассеяния стандартизованных признаков (первый — по оси X) двумя наборами точек: ушедшие и оставшиеся. Оси сохрани в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tsne_plotly": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 212,
+      "starter": "# Стандартизация и рассеяние по группам\nz = None\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0,\n                          184.5, 129.1, 187.7, 128.8, 215.8, 121.2],\n    \"Customer service calls\": [1, 4, 0, 2, 7, 0, 4, 5, 1, 2, 3, 1, 6, 2],\n    \"Churn\": [False, False, False, False, True, False, True, True,\n              False, False, False, False, True, False],\n})\nfig, ax = plt.subplots()\n",
+      "tests": "import numpy as np\nfrom matplotlib.axes import Axes\nassert \"result\" in globals() and isinstance(result, Axes), \"result — оси (Axes) с диаграммой.\"\ncolumns = [\"Total day minutes\", \"Customer service calls\"]\nassert isinstance(z, pd.DataFrame) and list(z.columns) == columns, \"z — таблица с двумя числовыми столбцами.\"\nfor column in columns:\n    assert abs(z[column].mean()) < 1e-9, f\"{column}: среднее после стандартизации должно быть 0.\"\n    assert min(abs(z[column].std(ddof=0) - 1), abs(z[column].std(ddof=1) - 1)) < 1e-9, f\"{column}: стандартное отклонение должно быть 1.\"\nassert len(result.collections) == 2, \"Два набора точек: ушедшие и оставшиеся.\"\nexpected = sorted(\n    (round(float(a), 6), round(float(b), 6)) for a, b in zip(z[columns[0]], z[columns[1]])\n)\npoints = sorted(\n    (round(float(a), 6), round(float(b), 6))\n    for c in result.collections for a, b in np.asarray(c.get_offsets())\n)\nassert points == expected, \"На графике — стандартизованные значения, а не исходные.\"\nsizes = sorted(len(c.get_offsets()) for c in result.collections)\nassert sizes == sorted(df[\"Churn\"].value_counts().tolist()), \"Группы должны быть разделены по Churn.\"\n",
+      "final": true
+    },
+    {
+      "id": 2126,
+      "prompt": "Итоговое задание. Раздели клиентов по числу звонков в поддержку на группы `0-1`, `2-3` и `4+` (`pd.cut`). В result сохрани таблицу: индекс — группа, столбцы `share` (доля ушедших) и `clients` (число клиентов в группе). Затем нарисуй столбцы долей на осях `ax`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "visual_churn": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 213,
+      "starter": "# Доля ушедших по группам звонков; столбцы долей — на осях ax\nresult = None\n",
+      "setup": "import matplotlib\nmatplotlib.use(\"Agg\")\nimport matplotlib.pyplot as plt\nimport numpy as np\nimport pandas as pd\n\ndf = pd.DataFrame({\n    \"Customer service calls\": [0, 1, 1, 2, 0, 3, 4, 1, 2, 5, 0, 2, 7, 1, 3, 4, 0, 6, 2, 1],\n    \"Churn\": [False, False, False, False, False, True, True, False, False, True,\n              False, False, True, False, True, False, False, True, False, False],\n})\nfig, ax = plt.subplots()\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and isinstance(result, pd.DataFrame), \"result — таблица (DataFrame).\"\nassert [str(i) for i in result.index] == [\"0-1\", \"2-3\", \"4+\"], \"Индекс — группы 0-1, 2-3, 4+ (0 звонков должен попасть в первую).\"\nassert {\"share\", \"clients\"} <= set(result.columns), \"Нужны столбцы share и clients.\"\ngroups = pd.cut(df[\"Customer service calls\"], [-1, 1, 3, float(\"inf\")], labels=[\"0-1\", \"2-3\", \"4+\"])\nby_group = df.groupby(groups, observed=False)[\"Churn\"]\nassert np.allclose(result[\"share\"].astype(float).values, by_group.mean().values), \"share — доля ушедших в группе.\"\nassert result[\"clients\"].astype(int).tolist() == by_group.size().tolist(), \"clients — число клиентов в группе.\"\nheights = [p.get_height() for p in ax.patches]\nassert len(heights) == 3 and np.allclose(heights, result[\"share\"].astype(float).values), \"На графике — столбцы share по группам, по порядку.\"\n",
+      "final": true
     }
   ],
   "rubrics": [
     {
       "id": 201,
       "name": "Визуальная проверка связи признака с целевой"
+    },
+    {
+      "id": 202,
+      "name": "Код: гистограмма на осях"
+    },
+    {
+      "id": 203,
+      "name": "Код: частоты категорий столбцами"
+    },
+    {
+      "id": 204,
+      "name": "Код: самая сильная корреляция"
+    },
+    {
+      "id": 205,
+      "name": "Код: квартили по группам"
+    },
+    {
+      "id": 206,
+      "name": "Код: ближайший сосед после масштабирования"
+    },
+    {
+      "id": 207,
+      "name": "Код: числа-категории"
+    },
+    {
+      "id": 208,
+      "name": "Итог: два графика рядом"
+    },
+    {
+      "id": 209,
+      "name": "Итог: выбросы по Тьюки"
+    },
+    {
+      "id": 210,
+      "name": "Итог: рассеяние по группам"
+    },
+    {
+      "id": 211,
+      "name": "Итог: сводная таблица и heatmap"
+    },
+    {
+      "id": 212,
+      "name": "Итог: стандартизация и рассеяние"
+    },
+    {
+      "id": 213,
+      "name": "Итог: отток по группам звонков"
     }
   ],
   "criteria": [
@@ -1293,6 +1596,198 @@
       "weight": 1.0,
       "positive_example": "ушедших мало, так что это гипотеза — проверю ещё",
       "negative_example": "по графику сразу понятно, что признак главный"
+    },
+    {
+      "id": 204,
+      "rubric_id": 202,
+      "criterion": "Гистограмма строится по столбцу Total day minutes с заданным числом корзин",
+      "weight": 1.0,
+      "positive_example": "ax.hist(df['Total day minutes'], bins=6)",
+      "negative_example": "ax.hist(df, bins=6)"
+    },
+    {
+      "id": 205,
+      "rubric_id": 202,
+      "criterion": "Результат — оси (Axes) с заголовком",
+      "weight": 1.0,
+      "positive_example": "ax.set_title('Минуты днём'); result = ax",
+      "negative_example": "result = df['Total day minutes']"
+    },
+    {
+      "id": 206,
+      "rubric_id": 203,
+      "criterion": "Берутся три самых частых значения через value_counts (в порядке убывания)",
+      "weight": 1.0,
+      "positive_example": "df['State'].value_counts().head(3)",
+      "negative_example": "df['State'].unique()[:3]"
+    },
+    {
+      "id": 207,
+      "rubric_id": 203,
+      "criterion": "Высота столбца — число клиентов, подписи — названия штатов, результат — оси",
+      "weight": 1.0,
+      "positive_example": "top.plot(kind='bar', ax=ax)",
+      "negative_example": "ax.bar([0, 1, 2], values)"
+    },
+    {
+      "id": 208,
+      "rubric_id": 204,
+      "criterion": "Матрица корреляций берётся по модулю (связь может быть отрицательной)",
+      "weight": 1.0,
+      "positive_example": "df.corr().abs()",
+      "negative_example": "df.corr()"
+    },
+    {
+      "id": 209,
+      "rubric_id": 204,
+      "criterion": "Из пары исключена диагональ (столбец с самим собой)",
+      "weight": 1.0,
+      "positive_example": "из пар убрана диагональ (corr.where(~np.eye(n, dtype=bool)))",
+      "negative_example": "idxmax по всей матрице: победит единица на диагонали"
+    },
+    {
+      "id": 210,
+      "rubric_id": 205,
+      "criterion": "Данные группируются по Churn, статистики считаются внутри групп",
+      "weight": 1.0,
+      "positive_example": "df.groupby('Churn')['Total intl minutes']",
+      "negative_example": "df['Total intl minutes'].quantile(0.25)"
+    },
+    {
+      "id": 211,
+      "rubric_id": 205,
+      "criterion": "Квартили считаются через quantile(0.25) и quantile(0.75), медиана — median",
+      "weight": 1.0,
+      "positive_example": "g.quantile(0.25), g.median(), g.quantile(0.75)",
+      "negative_example": "g.mean() вместо медианы"
+    },
+    {
+      "id": 212,
+      "rubric_id": 206,
+      "criterion": "Признаки стандартизуются: вычитается среднее и делится на стандартное отклонение",
+      "weight": 1.0,
+      "positive_example": "z = (df - df.mean()) / df.std()",
+      "negative_example": "расстояния по сырым столбцам"
+    },
+    {
+      "id": 213,
+      "rubric_id": 206,
+      "criterion": "Расстояние считается до клиента 0, сам клиент исключён, возвращается индекс",
+      "weight": 1.0,
+      "positive_example": "dist.drop(0).idxmin()",
+      "negative_example": "dist.idxmin() — вернёт 0"
+    },
+    {
+      "id": 214,
+      "rubric_id": 207,
+      "criterion": "Берутся только числовые столбцы, булевы и строковые отбрасываются",
+      "weight": 1.0,
+      "positive_example": "df.select_dtypes('number')",
+      "negative_example": "df.nunique() без отбора по типу"
+    },
+    {
+      "id": 215,
+      "rubric_id": 207,
+      "criterion": "Уникальные значения считаются через nunique и сравниваются с порогом 4",
+      "weight": 1.0,
+      "positive_example": "nunique() <= 4",
+      "negative_example": "len(df) <= 4"
+    },
+    {
+      "id": 216,
+      "rubric_id": 208,
+      "criterion": "Слева гистограмма минут в 8 корзин, справа столбцы частот тарифа",
+      "weight": 1.0,
+      "positive_example": "axes[0].hist(..., bins=8); value_counts().plot(kind='bar', ax=axes[1])",
+      "negative_example": "оба графика на одних осях"
+    },
+    {
+      "id": 217,
+      "rubric_id": 208,
+      "criterion": "Оба графика подписаны заголовками, результат — фигура",
+      "weight": 1.0,
+      "positive_example": "axes[0].set_title(...); result = fig",
+      "negative_example": "result = axes"
+    },
+    {
+      "id": 218,
+      "rubric_id": 209,
+      "criterion": "Границы считаются по квартилям: Q1 − 1,5·IQR и Q3 + 1,5·IQR",
+      "weight": 1.0,
+      "positive_example": "iqr = q3 - q1; q1 - 1.5 * iqr",
+      "negative_example": "mean ± 3·std"
+    },
+    {
+      "id": 219,
+      "rubric_id": 209,
+      "criterion": "Выбросы ищутся с обеих сторон, таблица clean без них",
+      "weight": 1.0,
+      "positive_example": "(x < low) | (x > high)",
+      "negative_example": "только x > high"
+    },
+    {
+      "id": 220,
+      "rubric_id": 210,
+      "criterion": "Ушедшие и оставшиеся рисуются отдельными наборами точек с нужными осями",
+      "weight": 1.0,
+      "positive_example": "ax.scatter(g['Total day minutes'], g['Customer service calls'])",
+      "negative_example": "один scatter без деления на группы"
+    },
+    {
+      "id": 221,
+      "rubric_id": 210,
+      "criterion": "Корреляция Пирсона считается по всей таблице",
+      "weight": 1.0,
+      "positive_example": "df['Total day minutes'].corr(df['Customer service calls'])",
+      "negative_example": "method='spearman' или корреляция по группе"
+    },
+    {
+      "id": 222,
+      "rubric_id": 211,
+      "criterion": "Сводная таблица считает среднее Churn по комбинациям тарифа и признака many_calls",
+      "weight": 1.0,
+      "positive_example": "df.pivot_table(values='Churn', index='International plan', columns='many_calls')",
+      "negative_example": "aggfunc='sum' или перепутаны строки и столбцы"
+    },
+    {
+      "id": 223,
+      "rubric_id": 211,
+      "criterion": "Тепловая карта рисуется на осях через imshow по значениям table",
+      "weight": 1.0,
+      "positive_example": "ax.imshow(table.values)",
+      "negative_example": "график по другим данным"
+    },
+    {
+      "id": 224,
+      "rubric_id": 212,
+      "criterion": "Каждый признак приводится к среднему 0 и стандартному отклонению 1",
+      "weight": 1.0,
+      "positive_example": "(df[cols] - df[cols].mean()) / df[cols].std()",
+      "negative_example": "только вычитание среднего или min-max"
+    },
+    {
+      "id": 225,
+      "rubric_id": 212,
+      "criterion": "На графике стандартизованные значения, ушедшие и оставшиеся — отдельными наборами",
+      "weight": 1.0,
+      "positive_example": "ax.scatter(z[mask][c0], z[mask][c1]) для каждой группы",
+      "negative_example": "рисуются исходные значения"
+    },
+    {
+      "id": 226,
+      "rubric_id": 213,
+      "criterion": "Звонки разбиты на группы через pd.cut с правильными границами (0 звонков попадает в первую)",
+      "weight": 1.0,
+      "positive_example": "pd.cut(calls, [-1, 1, 3, inf], labels=[...])",
+      "negative_example": "bins=[0, 1, 3, 10] — ноль выпадает"
+    },
+    {
+      "id": 227,
+      "rubric_id": 213,
+      "criterion": "share — среднее Churn, clients — размер группы, столбцы рисуются по share",
+      "weight": 1.0,
+      "positive_example": "groupby(...)['Churn'].agg(share='mean', clients='size')",
+      "negative_example": "число ушедших вместо доли"
     }
   ],
   "legacy": {

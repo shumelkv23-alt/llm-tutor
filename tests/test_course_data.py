@@ -77,9 +77,10 @@ def test_legacy_covers_all_103_old_topics() -> None:
     assert course.legacy["visualization_basics"].node == "viz_intro"
 
 
-def test_only_module_1_is_published_for_now() -> None:
+def test_modules_are_published_in_order() -> None:
+    """Модули открываются по порядку срезов 57–61; остальные — «скоро» (срез 58: 1 и 2)."""
     assert [topic.published for topic in load_course_data().topics] == [
-        True, False, False, False, False
+        True, True, False, False, False
     ]
 
 

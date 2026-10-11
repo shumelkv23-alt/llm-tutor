@@ -52,7 +52,7 @@ async def test_lesson_button_gives_the_question(enrolled) -> None:
 
 
 async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
-    """Настоящий курс (срез 56): модули 2–5 — «скоро», без занятий и без раскрытия."""
+    """Настоящий курс (срез 58): модули 1 и 2 открыты, 3–5 — «скоро» без занятий."""
     page = enrolled
     await _survey(page)
 
@@ -60,10 +60,38 @@ async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
     await page.wait_for_selector("#route-dialog[open]")
     headers = page.locator(".route-module")
     assert await headers.count() == 5
-    await expect(headers.nth(1)).to_contain_text("Модуль 2")
-    await expect(headers.nth(1)).to_contain_text("скоро")
-    await expect(page.locator('.route-module-toggle[data-module="2"]')).to_have_count(0)
+    await expect(page.locator('.route-module-toggle[data-module="2"]')).to_have_count(1)
+    for number in (3, 4, 5):
+        header = headers.nth(number - 1)
+        await expect(header).to_contain_text(f"Модуль {number}")
+        await expect(header).to_contain_text("скоро")
+        await expect(
+            page.locator(f'.route-module-toggle[data-module="{number}"]')
+        ).to_have_count(0)
+    # Раскрыт только модуль текущего занятия: в DOM занятия модуля 1.
     await expect(page.locator(".route-topic")).to_have_count(7)
+    assert page.errors == []
+
+
+async def test_module_2_opens_after_module_1_on_the_real_course(enrolled) -> None:
+    """Настоящий курс: занятие модуля 2 из маршрута ведёт через анкету модуля к уроку."""
+    page = enrolled
+    await _survey(page)
+
+    await page.click("#route-open")
+    await page.wait_for_selector("#route-dialog[open]")
+    await page.locator('.route-module-toggle[data-module="2"]').click()
+    target = page.locator('.route-topic[data-node="viz_intro"]')
+    async with page.expect_response("**/lesson/switch"):
+        await target.click()
+    await page.wait_for_selector("#pane-left.surveying")
+    await expect(page.locator("#survey .eyebrow")).to_have_text("Модуль 2")
+    await expect(page.locator("#survey h2")).to_contain_text("Визуальный анализ")
+
+    await _survey(page)
+
+    await expect(page.locator("#lesson-next")).to_be_visible()
+    await expect(page.locator("#tab-theory")).to_contain_text("Графики на всех этапах ML")
     assert page.errors == []
 
 
