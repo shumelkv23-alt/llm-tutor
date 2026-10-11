@@ -69,7 +69,7 @@
         "t04_ols"
       ]
     },
-    "published": false
+    "published": true
   },
   "nodes": [
     {
@@ -1237,12 +1237,292 @@
       "answer": null,
       "rubric_id": 401,
       "section": "reg_c"
+    },
+    {
+      "id": 4111,
+      "prompt": "Напиши код: найди веса линейной регрессии по нормальному уравнению. `X` — признаки без столбца из единиц, `y` — ответы. Добавь к `X` столбец единиц (свободный член) и сохрани в result вектор весов длины 3: сначала свободный член.",
+      "answer_type": "code",
+      "concept_weights": {
+        "linreg": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 402,
+      "starter": "import numpy as np\n\n# Нормальное уравнение\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(2)\nn = 80\nX = rng.normal(size=(n, 2))\ny = 1.0 + 2.0 * X[:, 0] - 3.0 * X[:, 1] + rng.normal(0, 0.3, n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nX1 = np.column_stack([np.ones(len(X)), X])\nexpected = np.linalg.lstsq(X1, y, rcond=None)[0]\nresult = np.asarray(result, dtype=float)\nassert result.shape == (3,), \"Нужны три веса: свободный член и по одному на признак.\"\nassert np.allclose(result, expected, atol=1e-8), \"Веса: решение (XᵀX)w = Xᵀy для матрицы со столбцом единиц; первый вес — свободный член.\"\n",
+      "section": "normal_eq"
+    },
+    {
+      "id": 4112,
+      "prompt": "Напиши код: `predictions` — прогнозы модели в точке `x0`, обученной на 200 разных выборках, `truth` — истинное значение в этой точке. Найди квадрат смещения и разброс прогноза. Сохрани в result кортеж `(bias2, variance)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "linreg_stats": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 403,
+      "starter": "import numpy as np\n\n# Смещение² и разброс\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(5)\ntruth = 1.0\npredictions = truth + 0.4 + rng.normal(0, 0.3, 200)   # модель смещена и разбросана\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nbias2, variance = result\nb2 = (predictions.mean() - truth) ** 2\nassert abs(float(bias2) - b2) < 1e-9, \"bias² = (среднее прогноза − истина)².\"\nassert min(abs(float(variance) - predictions.var(ddof=0)), abs(float(variance) - predictions.var(ddof=1))) < 1e-9, \"Разброс — дисперсия прогнозов вокруг их среднего.\"\n",
+      "section": "bias_variance"
+    },
+    {
+      "id": 4113,
+      "prompt": "Напиши код: определи функцию `ridge_weights(X, y, lam)` — веса гребневой регрессии без свободного члена: решение системы `(XᵀX + λ·I)·w = Xᵀy`. Сохрани в result `ridge_weights(X, y, 10.0)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ridge": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 404,
+      "starter": "import numpy as np\n\n\ndef ridge_weights(X, y, lam):\n    ...\n\n\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(2)\nn = 80\nX = rng.normal(size=(n, 2))\ny = 1.0 + 2.0 * X[:, 0] - 3.0 * X[:, 1] + rng.normal(0, 0.3, n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.linear_model import Ridge\nfor lam in (0.0, 1.0, 10.0, 100.0):\n    expected = Ridge(alpha=lam, fit_intercept=False).fit(X, y).coef_ if lam else np.linalg.lstsq(X, y, rcond=None)[0]\n    got = np.asarray(ridge_weights(X, y, lam), dtype=float)\n    assert np.allclose(got, expected, atol=1e-8), f\"lam={lam}: нужно (XᵀX + λ·I)⁻¹Xᵀy, единичная матрица I умножается на λ.\"\nassert np.allclose(np.asarray(result, dtype=float), Ridge(alpha=10.0, fit_intercept=False).fit(X, y).coef_, atol=1e-8), \"result = ridge_weights(X, y, 10.0).\"\n",
+      "section": "l2"
+    },
+    {
+      "id": 4114,
+      "prompt": "Напиши код: `z` — выходы линейной части модели (логиты), `y` — метки классов `−1` и `+1`. Посчитай отступы объектов и среднюю логистическую потерю `ln(1 + e^(−M))`. Сохрани потерю в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "logreg": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 405,
+      "starter": "import numpy as np\n\n# Средняя логистическая потеря\nresult = None\n",
+      "setup": "import numpy as np\n\nz = np.array([2.5, -1.0, 0.3, -3.0, 1.2, -0.4, 4.0, -2.2])\ny = np.array([1, 1, -1, -1, 1, -1, 1, 1])\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nmargin = y * z\nexpected = np.log1p(np.exp(-margin)).mean()\nassert abs(float(result) - expected) < 1e-9, \"Отступ M = y·z; потеря ln(1 + e^(−M)) усредняется по объектам.\"\n",
+      "section": "loss"
+    },
+    {
+      "id": 4115,
+      "prompt": "Напиши код: получи из матрицы `X` (два признака) полиномиальные признаки степени 2 — `x₁, x₂, x₁², x₁·x₂, x₂²` — без столбца из единиц. Сохрани матрицу в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "nonlinear": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 406,
+      "starter": "from sklearn.preprocessing import PolynomialFeatures\n\n# Полиномиальные признаки степени 2\nresult = None\n",
+      "setup": "import numpy as np\n\nX = np.array([[1.0, 2.0], [3.0, -1.0], [0.5, 4.0], [-2.0, 1.5]])\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nresult = np.asarray(result, dtype=float)\nassert result.shape == (4, 5), \"Нужно 5 столбцов: x₁, x₂, x₁², x₁·x₂, x₂² (без единиц).\"\nexpected = np.column_stack([X[:, 0], X[:, 1], X[:, 0] ** 2, X[:, 0] * X[:, 1], X[:, 1] ** 2])\ngot = sorted(tuple(np.round(column, 9)) for column in result.T)\nwant = sorted(tuple(np.round(column, 9)) for column in expected.T)\nassert got == want, \"В столбцах должны быть x₁, x₂, x₁², x₁·x₂ и x₂² (порядок не важен).\"\n",
+      "section": "poly"
+    },
+    {
+      "id": 4116,
+      "prompt": "Напиши код: собери `Pipeline` из `CountVectorizer` и `LogisticRegression(max_iter=1000)`, обучи его на сырых текстах `texts` и метках `labels` и сохрани обученный пайплайн в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "text": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 407,
+      "starter": "from sklearn.feature_extraction.text import CountVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\n\n# Пайплайн для текста\nresult = None\n",
+      "setup": "texts = [\n    \"хороший номер приятный персонал\", \"ужасный сервис грубый персонал\",\n    \"отличный завтрак хороший вид\", \"скучный район плохой номер\",\n    \"приятный вид добрый персонал\", \"плохой завтрак ужасный сервис\",\n    \"добрый сервис отличный номер\", \"грубый персонал скучный вид\",\n]\nlabels = [1, 0, 1, 0, 1, 0, 1, 0]\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните пайплайн в переменную result.\"\nsteps = getattr(result, \"named_steps\", None)\nassert steps is not None and len(steps) == 2, \"Нужен Pipeline из двух шагов: векторизатор и модель.\"\nassert \"countvectorizer\" in steps and \"logisticregression\" in steps, \"Шаги: CountVectorizer и LogisticRegression.\"\ntry:\n    predicted = list(result.predict([\"отличный хороший сервис\", \"ужасный плохой номер\", \"приятный добрый вид\"]))\nexcept Exception as exc:\n    raise AssertionError(f\"Пайплайн нужно обучить на texts и labels, а predict принимает сырые тексты ({type(exc).__name__}).\")\nassert predicted == [1, 0, 1], \"Пайплайн, обученный на всех текстах, должен узнавать тональность по словам.\"\n",
+      "section": "pipeline"
+    },
+    {
+      "id": 4117,
+      "prompt": "Напиши код: с помощью `validation_curve` оцени `Ridge()` на `X`, `y` для `alpha` из `alphas` (кросс-валидация `cv=5`, метрика по умолчанию). Сохрани в result значение `alpha` с наибольшей средней оценкой на валидации.",
+      "answer_type": "code",
+      "concept_weights": {
+        "curves": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 408,
+      "starter": "import numpy as np\nfrom sklearn.linear_model import Ridge\nfrom sklearn.model_selection import validation_curve\n\n# Лучшее alpha по кривой валидации\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(21)\nn, d = 60, 40\nX = rng.normal(size=(n, d))\ny = X[:, 0] - 2 * X[:, 1] + rng.normal(0, 1.0, n)\nalphas = [0.01, 0.1, 1.0, 10.0, 100.0]\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.linear_model import Ridge\nfrom sklearn.model_selection import validation_curve\ntrain, valid = validation_curve(Ridge(), X, y, param_name=\"alpha\", param_range=alphas, cv=5)\nbest = alphas[int(valid.mean(axis=1).argmax())]\nassert train.mean(axis=1).argmax() != valid.mean(axis=1).argmax(), \"внутренняя ошибка задания\"\nassert float(result) == best, \"Лучшее alpha выбирают по оценке на валидации (valid), а не по обучающей.\"\n",
+      "section": "validation_curve"
+    },
+    {
+      "id": 4121,
+      "prompt": "Итоговое задание. `X` — признаки без столбца единиц, `y` — ответы. Найди веса по нормальному уравнению (со свободным членом) и посчитай среднеквадратичную ошибку модели на этих данных. Сохрани в result словарь: `w` — вектор весов (сначала свободный член), `mse` — число.",
+      "answer_type": "code",
+      "concept_weights": {
+        "linreg": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 409,
+      "starter": "import numpy as np\n\n# Веса и MSE\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(2)\nn = 80\nX = rng.normal(size=(n, 2))\ny = 1.0 + 2.0 * X[:, 0] - 3.0 * X[:, 1] + rng.normal(0, 0.3, n)\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами w и mse.\"\nassert {\"w\", \"mse\"} <= set(result), \"Нужны ключи w и mse.\"\nX1 = np.column_stack([np.ones(len(X)), X])\nw = np.linalg.lstsq(X1, y, rcond=None)[0]\nassert np.asarray(result[\"w\"], dtype=float).shape == (3,), \"w — три веса: свободный член и по одному на признак.\"\nassert np.allclose(np.asarray(result[\"w\"], dtype=float), w, atol=1e-8), \"w: веса со свободным членом первым.\"\nmse = float(np.mean((y - X1 @ w) ** 2))\nassert abs(float(result[\"mse\"]) - mse) < 1e-9, \"mse — среднее квадратов остатков, а не их сумма.\"\n",
+      "final": true
+    },
+    {
+      "id": 4122,
+      "prompt": "Итоговое задание. Функция `draw()` возвращает новую обучающую выборку `(X, y)` из линейной модели `y = 2 − x + ошибка` (`X` уже со столбцом единиц). Вызови `draw()` ровно 500 раз и для каждой выборки найди веса МНК. Сохрани в result словарь: `mean` — средний вектор весов по выборкам, `std` — стандартное отклонение весов по выборкам (`np.std`, по выборкам).",
+      "answer_type": "code",
+      "concept_weights": {
+        "linreg_stats": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 410,
+      "starter": "import numpy as np\n\n# Эксперимент: оценки МНК на 500 выборках\nresult = None\n",
+      "setup": "import numpy as np\n\n_rng = np.random.default_rng(3)\n\n\ndef draw(n=50):\n    x = _rng.uniform(0, 5, n)\n    X = np.column_stack([np.ones(n), x])\n    y = 2.0 - 1.0 * x + _rng.normal(0, 1.0, n)\n    return X, y\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами mean и std.\"\nassert {\"mean\", \"std\"} <= set(result), \"Нужны ключи mean и std.\"\nrng = np.random.default_rng(3)\nestimates = []\nfor _ in range(500):\n    x = rng.uniform(0, 5, 50)\n    X = np.column_stack([np.ones(50), x])\n    y = 2.0 - 1.0 * x + rng.normal(0, 1.0, 50)\n    estimates.append(np.linalg.lstsq(X, y, rcond=None)[0])\nestimates = np.array(estimates)\nassert np.allclose(np.asarray(result[\"mean\"], dtype=float), estimates.mean(axis=0), atol=1e-8), \"mean — средние веса по 500 выборкам (draw() вызывается ровно 500 раз).\"\nassert np.allclose(np.asarray(result[\"std\"], dtype=float), estimates.std(axis=0), atol=1e-8), \"std — стандартное отклонение каждого веса по выборкам.\"\n",
+      "final": true
+    },
+    {
+      "id": 4123,
+      "prompt": "Итоговое задание. Признаки `X` почти дублируют друг друга. `boot` — индексы 200 бутстрэп-выборок (массив 200 × n). Для каждой выборки обучи `LinearRegression()` и `Ridge(alpha=1.0)` на `X[idx]`, `y[idx]`. Сохрани в result словарь: `ols_std` и `ridge_std` — стандартное отклонение весов (`np.std`) по выборкам для каждой из моделей.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ridge": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 411,
+      "starter": "import numpy as np\nfrom sklearn.linear_model import LinearRegression, Ridge\n\n# Устойчивость весов\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(6)\nn = 100\nx1 = rng.normal(size=n)\nx2 = x1 + rng.normal(0, 0.02, n)\nX = np.column_stack([x1, x2])\ny = 3 * x1 + rng.normal(0, 0.5, n)\nboot = np.array([np.random.default_rng(s).choice(n, size=n, replace=True) for s in range(200)])\n",
+      "tests": "import numpy as np\nfrom sklearn.linear_model import LinearRegression, Ridge\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами ols_std и ridge_std.\"\nassert {\"ols_std\", \"ridge_std\"} <= set(result), \"Нужны ключи ols_std и ridge_std.\"\nols = np.array([LinearRegression().fit(X[i], y[i]).coef_ for i in boot])\nridge = np.array([Ridge(alpha=1.0).fit(X[i], y[i]).coef_ for i in boot])\nassert np.allclose(np.asarray(result[\"ols_std\"], dtype=float), ols.std(axis=0), atol=1e-8), \"ols_std: разброс весов LinearRegression по 200 выборкам.\"\nassert np.allclose(np.asarray(result[\"ridge_std\"], dtype=float), ridge.std(axis=0), atol=1e-8), \"ridge_std: разброс весов Ridge(alpha=1.0) по 200 выборкам.\"\nassert (ridge.std(axis=0) < ols.std(axis=0)).all(), \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 4124,
+      "prompt": "Итоговое задание. Обучи `LogisticRegression()` на `X_train`, `y_train` (метки 0/1). Сохрани в result словарь: `proba` — вероятности класса 1 для `X_test`, полученные вручную как сигмоида от `decision_function`; `logloss` — среднюю логистическую потерю на `X_test`, посчитанную через отступы (метки переведи в −1/+1).",
+      "answer_type": "code",
+      "concept_weights": {
+        "logreg": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 412,
+      "starter": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\n\n# Вероятности и потеря вручную\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(10)\nX = rng.normal(size=(300, 2))\ny = (X[:, 0] - 0.7 * X[:, 1] + rng.normal(0, 0.8, 300) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n",
+      "tests": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import log_loss\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами proba и logloss.\"\nassert {\"proba\", \"logloss\"} <= set(result), \"Нужны ключи proba и logloss.\"\nmodel = LogisticRegression().fit(X_train, y_train)\nproba = model.predict_proba(X_test)[:, 1]\nassert np.allclose(np.asarray(result[\"proba\"], dtype=float), proba, atol=1e-9), \"proba = 1 / (1 + exp(−z)), где z — decision_function на X_test.\"\nassert abs(float(result[\"logloss\"]) - float(log_loss(y_test, proba))) < 1e-9, \"logloss = среднее ln(1 + exp(−M)) при M = y·z, где y ∈ {−1, +1}.\"\n",
+      "final": true
+    },
+    {
+      "id": 4125,
+      "prompt": "Итоговое задание. Данные `X_train`, `y_train` устроены как XOR. Сохрани в result словарь: `linear_accuracy` — точность на `X_test` обычной `LogisticRegression()`, обученной на `X_train`; `best_C` — значение `C` из `[0.01, 0.1, 1, 10]`, лучшее по 5-кратной кросс-валидации на `X_train` для пайплайна `PolynomialFeatures(degree=2)` → `LogisticRegression(C=C)`; `poly_accuracy` — точность на `X_test` этого пайплайна с лучшим `C`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "nonlinear": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": null,
+      "rubric_id": 413,
+      "starter": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import PolynomialFeatures\n\n# XOR: прямая против полиномиальных признаков\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(12)\nX = rng.uniform(-1, 1, size=(300, 2))\ny = (X[:, 0] * X[:, 1] > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n",
+      "tests": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import PolynomialFeatures\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами linear_accuracy, best_C, poly_accuracy.\"\nassert {\"linear_accuracy\", \"best_C\", \"poly_accuracy\"} <= set(result), \"Нужны ключи linear_accuracy, best_C и poly_accuracy.\"\nlinear = LogisticRegression().fit(X_train, y_train).score(X_test, y_test)\ngrid = GridSearchCV(\n    make_pipeline(PolynomialFeatures(degree=2), LogisticRegression()),\n    {\"logisticregression__C\": [0.01, 0.1, 1, 10]}, cv=5,\n).fit(X_train, y_train)\nassert abs(float(result[\"linear_accuracy\"]) - linear) < 1e-9, \"linear_accuracy: LogisticRegression() на исходных признаках, точность на X_test.\"\nassert float(result[\"best_C\"]) == grid.best_params_[\"logisticregression__C\"], \"best_C: лучшее C по 5-кратной кросс-валидации на X_train.\"\nassert abs(float(result[\"poly_accuracy\"]) - grid.score(X_test, y_test)) < 1e-9, \"poly_accuracy: пайплайн с полиномиальными признаками и лучшим C на X_test.\"\nassert grid.score(X_test, y_test) > linear + 0.2, \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 4126,
+      "prompt": "Итоговое задание. `texts` и `labels` — отзывы и их тональность. Раздели их на обучающую и тестовую части (`test_size=0.3`, `random_state=17`, `stratify=labels`). Подбери на обучающей части через `GridSearchCV` (`cv=5`) пайплайн `CountVectorizer` → `LogisticRegression(max_iter=1000)`: `logisticregression__C` из `[0.1, 1, 10]` и `countvectorizer__ngram_range` из `[(1, 1), (1, 2)]`. Сохрани в result словарь: `best_params` и `test_accuracy` (точность найденной модели на тестовой части).",
+      "answer_type": "code",
+      "concept_weights": {
+        "text": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 414,
+      "starter": "from sklearn.feature_extraction.text import CountVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV, train_test_split\nfrom sklearn.pipeline import make_pipeline\n\n# Поиск параметров текстового пайплайна\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(14)\npositive = [\"хороший\", \"отличный\", \"приятный\", \"добрый\"]\nnegative = [\"ужасный\", \"скучный\", \"плохой\", \"грубый\"]\nneutral = [\"сервис\", \"номер\", \"завтрак\", \"вид\", \"персонал\", \"район\"]\n\n\ndef make_review(label):\n    own = positive if label else negative\n    other = negative if label else positive\n    words = list(rng.choice(neutral, 4)) + list(rng.choice(own, rng.integers(1, 3)))\n    words += list(rng.choice(other, rng.integers(0, 2)))\n    rng.shuffle(words)\n    return \" \".join(words)\n\n\nlabels = rng.integers(0, 2, 240)\ntexts = [make_review(label) for label in labels]\n",
+      "tests": "from sklearn.feature_extraction.text import CountVectorizer\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import GridSearchCV, train_test_split\nfrom sklearn.pipeline import make_pipeline\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами best_params и test_accuracy.\"\nassert {\"best_params\", \"test_accuracy\"} <= set(result), \"Нужны ключи best_params и test_accuracy.\"\na, b, c, d = train_test_split(texts, labels, test_size=0.3, random_state=17, stratify=labels)\ngrid = GridSearchCV(\n    make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000)),\n    {\"logisticregression__C\": [0.1, 1, 10], \"countvectorizer__ngram_range\": [(1, 1), (1, 2)]},\n    cv=5,\n).fit(a, c)\nassert dict(result[\"best_params\"]) == grid.best_params_, \"best_params_ после поиска по указанной сетке на обучающей части.\"\nassert abs(float(result[\"test_accuracy\"]) - grid.score(b, d)) < 1e-9, \"test_accuracy — точность найденного пайплайна на тестовой части.\"\n",
+      "final": true
+    },
+    {
+      "id": 4127,
+      "prompt": "Итоговое задание. Для пайплайна `PolynomialFeatures(degree=4)` → `StandardScaler` → `LogisticRegression(C=10, max_iter=5000)` построй кривую обучения на `X`, `y`: `train_sizes=[0.2, 0.5, 1.0]`, `cv=5`. Сохрани в result словарь: `sizes` — число объектов, `train` и `valid` — средние оценки по фолдам (списки), а в `gap` — разрыв `train − valid` на самом большом размере.",
+      "answer_type": "code",
+      "concept_weights": {
+        "curves": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 415,
+      "starter": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import learning_curve\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import PolynomialFeatures, StandardScaler\n\n# Кривая обучения\nresult = None\ngap = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(16)\nX = rng.normal(size=(300, 2))\ny = ((X[:, 0] ** 2 + X[:, 1] ** 2 + rng.normal(0, 0.7, 300)) > 1.6).astype(int)\n",
+      "tests": "import numpy as np\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.model_selection import learning_curve\nfrom sklearn.pipeline import make_pipeline\nfrom sklearn.preprocessing import PolynomialFeatures, StandardScaler\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами sizes, train и valid.\"\nassert {\"sizes\", \"train\", \"valid\"} <= set(result), \"Нужны ключи sizes, train и valid.\"\npipe = make_pipeline(PolynomialFeatures(degree=4), StandardScaler(), LogisticRegression(C=10, max_iter=5000))\nsizes, train, valid = learning_curve(pipe, X, y, train_sizes=[0.2, 0.5, 1.0], cv=5)\nassert list(map(int, result[\"sizes\"])) == sizes.tolist(), \"sizes — фактические размеры обучающих выборок из learning_curve.\"\nassert np.allclose(np.asarray(result[\"train\"], dtype=float), train.mean(axis=1), atol=1e-9), \"train — средняя оценка на обучающих фолдах для каждого размера.\"\nassert np.allclose(np.asarray(result[\"valid\"], dtype=float), valid.mean(axis=1), atol=1e-9), \"valid — средняя оценка на валидационных фолдах для каждого размера.\"\nassert gap is not None and abs(float(gap) - float(train.mean(axis=1)[-1] - valid.mean(axis=1)[-1])) < 1e-9, \"gap = train − valid на самом большом размере.\"\n",
+      "final": true
     }
   ],
   "rubrics": [
     {
       "id": 401,
       "name": "Подбор регуляризации и диагностика переобучения"
+    },
+    {
+      "id": 402,
+      "name": "Код: нормальное уравнение"
+    },
+    {
+      "id": 403,
+      "name": "Код: смещение и разброс"
+    },
+    {
+      "id": 404,
+      "name": "Код: гребневое решение"
+    },
+    {
+      "id": 405,
+      "name": "Код: логистическая потеря"
+    },
+    {
+      "id": 406,
+      "name": "Код: полиномиальные признаки"
+    },
+    {
+      "id": 407,
+      "name": "Код: пайплайн для текста"
+    },
+    {
+      "id": 408,
+      "name": "Код: кривая валидации"
+    },
+    {
+      "id": 409,
+      "name": "Итог: МНК и MSE"
+    },
+    {
+      "id": 410,
+      "name": "Итог: эксперимент с оценками МНК"
+    },
+    {
+      "id": 411,
+      "name": "Итог: устойчивость весов"
+    },
+    {
+      "id": 412,
+      "name": "Итог: вероятности и логистическая потеря"
+    },
+    {
+      "id": 413,
+      "name": "Итог: XOR и параметр C"
+    },
+    {
+      "id": 414,
+      "name": "Итог: поиск параметров для текста"
+    },
+    {
+      "id": 415,
+      "name": "Итог: кривая обучения"
     }
   ],
   "criteria": [
@@ -1269,6 +1549,230 @@
       "weight": 1.0,
       "positive_example": "кривые сошлись на плохом уровне — добавлю полиномиальные признаки или увеличу C",
       "negative_example": "просто залью побольше данных, авось поможет"
+    },
+    {
+      "id": 404,
+      "rubric_id": 402,
+      "criterion": "К матрице признаков добавлен столбец из единиц",
+      "weight": 1.0,
+      "positive_example": "X1 = np.column_stack([np.ones(len(X)), X])",
+      "negative_example": "решение без свободного члена"
+    },
+    {
+      "id": 405,
+      "rubric_id": 402,
+      "criterion": "Веса найдены из системы XᵀX·w = Xᵀy",
+      "weight": 1.0,
+      "positive_example": "np.linalg.solve(X1.T @ X1, X1.T @ y)",
+      "negative_example": "X1 @ y или обращение XXᵀ"
+    },
+    {
+      "id": 406,
+      "rubric_id": 403,
+      "criterion": "Смещение² — квадрат разности среднего прогноза и истины",
+      "weight": 1.0,
+      "positive_example": "(predictions.mean() - truth) ** 2",
+      "negative_example": "mean((predictions - truth)**2) — полная ошибка"
+    },
+    {
+      "id": 407,
+      "rubric_id": 403,
+      "criterion": "Разброс — дисперсия прогнозов вокруг их среднего",
+      "weight": 1.0,
+      "positive_example": "predictions.var()",
+      "negative_example": "дисперсия вокруг истины"
+    },
+    {
+      "id": 408,
+      "rubric_id": 404,
+      "criterion": "К XᵀX добавляется λ·I (единичная матрица, умноженная на λ)",
+      "weight": 1.0,
+      "positive_example": "X.T @ X + lam * np.eye(X.shape[1])",
+      "negative_example": "X.T @ X + lam"
+    },
+    {
+      "id": 409,
+      "rubric_id": 404,
+      "criterion": "Веса получены решением системы с Xᵀy",
+      "weight": 1.0,
+      "positive_example": "np.linalg.solve(A, X.T @ y)",
+      "negative_example": "решение без Xᵀy"
+    },
+    {
+      "id": 410,
+      "rubric_id": 405,
+      "criterion": "Отступ — произведение метки и логита",
+      "weight": 1.0,
+      "positive_example": "margin = y * z",
+      "negative_example": "z без учёта метки"
+    },
+    {
+      "id": 411,
+      "rubric_id": 405,
+      "criterion": "Потеря — ln(1 + exp(−M)), усреднённая по объектам",
+      "weight": 1.0,
+      "positive_example": "np.log1p(np.exp(-margin)).mean()",
+      "negative_example": "np.log(1 + np.exp(margin)).mean()"
+    },
+    {
+      "id": 412,
+      "rubric_id": 406,
+      "criterion": "Использован PolynomialFeatures со степенью 2",
+      "weight": 1.0,
+      "positive_example": "PolynomialFeatures(degree=2, include_bias=False)",
+      "negative_example": "степень 3"
+    },
+    {
+      "id": 413,
+      "rubric_id": 406,
+      "criterion": "Нет столбца из единиц, есть произведение x₁·x₂",
+      "weight": 1.0,
+      "positive_example": "include_bias=False; fit_transform(X)",
+      "negative_example": "include_bias по умолчанию добавит единицы"
+    },
+    {
+      "id": 414,
+      "rubric_id": 407,
+      "criterion": "Векторизатор и модель объединены в Pipeline",
+      "weight": 1.0,
+      "positive_example": "make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000))",
+      "negative_example": "LogisticRegression без векторизатора"
+    },
+    {
+      "id": 415,
+      "rubric_id": 407,
+      "criterion": "Пайплайн обучен на сырых текстах и метках",
+      "weight": 1.0,
+      "positive_example": "pipe.fit(texts, labels)",
+      "negative_example": "fit на заранее векторизованной матрице вне пайплайна"
+    },
+    {
+      "id": 416,
+      "rubric_id": 408,
+      "criterion": "Оценки получены через validation_curve по параметру alpha с cv=5",
+      "weight": 1.0,
+      "positive_example": "validation_curve(Ridge(), X, y, param_name='alpha', param_range=alphas, cv=5)",
+      "negative_example": "score на обучении"
+    },
+    {
+      "id": 417,
+      "rubric_id": 408,
+      "criterion": "Выбрано alpha с наибольшей средней оценкой на валидации",
+      "weight": 1.0,
+      "positive_example": "alphas[valid.mean(axis=1).argmax()]",
+      "negative_example": "argmax по обучающим оценкам"
+    },
+    {
+      "id": 418,
+      "rubric_id": 409,
+      "criterion": "Веса найдены нормальным уравнением на матрице со столбцом единиц",
+      "weight": 1.0,
+      "positive_example": "np.linalg.solve(X1.T @ X1, X1.T @ y)",
+      "negative_example": "веса без свободного члена"
+    },
+    {
+      "id": 419,
+      "rubric_id": 409,
+      "criterion": "MSE — среднее квадратов отклонений прогноза от ответа",
+      "weight": 1.0,
+      "positive_example": "np.mean((y - X1 @ w) ** 2)",
+      "negative_example": "сумма квадратов без деления на n"
+    },
+    {
+      "id": 420,
+      "rubric_id": 410,
+      "criterion": "Для каждой из 500 выборок веса найдены МНК",
+      "weight": 1.0,
+      "positive_example": "[np.linalg.lstsq(*draw(), rcond=None)[0] for _ in range(500)]",
+      "negative_example": "одна выборка"
+    },
+    {
+      "id": 421,
+      "rubric_id": 410,
+      "criterion": "Среднее и разброс считаются по выборкам (ось 0)",
+      "weight": 1.0,
+      "positive_example": "estimates.mean(axis=0), estimates.std(axis=0)",
+      "negative_example": "среднее по всем числам матрицы"
+    },
+    {
+      "id": 422,
+      "rubric_id": 411,
+      "criterion": "Обе модели обучаются на каждой бутстрэп-выборке X[idx], y[idx]",
+      "weight": 1.0,
+      "positive_example": "for idx in boot: LinearRegression().fit(X[idx], y[idx])",
+      "negative_example": "обучение на всех данных один раз"
+    },
+    {
+      "id": 423,
+      "rubric_id": 411,
+      "criterion": "Разброс считается по выборкам для каждого веса; Ridge с alpha=1.0",
+      "weight": 1.0,
+      "positive_example": "np.std(weights, axis=0)",
+      "negative_example": "Ridge с другим alpha"
+    },
+    {
+      "id": 424,
+      "rubric_id": 412,
+      "criterion": "Вероятности получены сигмоидой от decision_function для класса 1",
+      "weight": 1.0,
+      "positive_example": "1 / (1 + np.exp(-model.decision_function(X_test)))",
+      "negative_example": "predict без вероятностей"
+    },
+    {
+      "id": 425,
+      "rubric_id": 412,
+      "criterion": "Потеря считается через отступы при метках −1/+1",
+      "weight": 1.0,
+      "positive_example": "np.log1p(np.exp(-(2*y_test-1) * z)).mean()",
+      "negative_example": "метки 0/1 в формуле отступа"
+    },
+    {
+      "id": 426,
+      "rubric_id": 413,
+      "criterion": "Обычная логистическая регрессия оценена на тесте как базовый уровень",
+      "weight": 1.0,
+      "positive_example": "LogisticRegression().fit(X_train, y_train).score(X_test, y_test)",
+      "negative_example": "оценка на обучающей части"
+    },
+    {
+      "id": 427,
+      "rubric_id": 413,
+      "criterion": "C подобран кросс-валидацией для пайплайна с PolynomialFeatures(degree=2); точность — на тесте",
+      "weight": 1.0,
+      "positive_example": "GridSearchCV(make_pipeline(PolynomialFeatures(2), LogisticRegression()), {...}, cv=5)",
+      "negative_example": "C выбран по тесту"
+    },
+    {
+      "id": 428,
+      "rubric_id": 414,
+      "criterion": "Пайплайн с векторизатором внутри GridSearchCV; параметры шагов записаны как шаг__параметр",
+      "weight": 1.0,
+      "positive_example": "{'logisticregression__C': [...], 'countvectorizer__ngram_range': [...]}",
+      "negative_example": "векторизация всего корпуса до поиска"
+    },
+    {
+      "id": 429,
+      "rubric_id": 414,
+      "criterion": "Поиск идёт по обучающей части, итог проверен на тестовой",
+      "weight": 1.0,
+      "positive_example": "grid.fit(X_train, y_train); grid.score(X_test, y_test)",
+      "negative_example": "оценка на обучающей части"
+    },
+    {
+      "id": 430,
+      "rubric_id": 415,
+      "criterion": "Кривая получена через learning_curve для заданного пайплайна с cv=5",
+      "weight": 1.0,
+      "positive_example": "learning_curve(pipe, X, y, train_sizes=[0.2, 0.5, 1.0], cv=5)",
+      "negative_example": "другой пайплайн или cv"
+    },
+    {
+      "id": 431,
+      "rubric_id": 415,
+      "criterion": "Оценки усреднены по фолдам (ось 1), разрыв — train − valid на последнем размере",
+      "weight": 1.0,
+      "positive_example": "train.mean(axis=1)[-1] - valid.mean(axis=1)[-1]",
+      "negative_example": "разрыв на первом размере"
     }
   ],
   "legacy": {

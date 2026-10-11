@@ -246,7 +246,7 @@ def test_stale_pending_item_is_dropped(conn, settings) -> None:
     assert _state(conn).pending_item_id is None
 
 
-# --- БД бота с прогрессом в модуле 3/4 через import-legacy ---
+# --- БД бота с прогрессом в модулях 3 и 5 через import-legacy ---
 
 
 def _import_bot_db(web_settings, tmp_path, *, closed, current, mastery):
@@ -272,22 +272,22 @@ def _import_bot_db(web_settings, tmp_path, *, closed, current, mastery):
     return pool.open(user.id, "mlcourse"), pool
 
 
-async def test_bot_db_with_module4_progress_via_import_legacy(web_settings, tmp_path) -> None:
-    module4 = ["linear_regression", "ols_mse", "normal_equation",
-               "gauss_markov", "maximum_likelihood", "mle_normal_mse"]
+async def test_bot_db_with_module5_progress_via_import_legacy(web_settings, tmp_path) -> None:
+    module5 = ["ensembles", "bootstrapping", "bagging", "bagging_variance",
+               "rf_variance_decorrelation", "rf_bias"]
     student, pool = _import_bot_db(
-        web_settings, tmp_path, closed=module4, current="multicollinearity", mastery="gauss_markov"
+        web_settings, tmp_path, closed=module5, current="random_subspace", mastery="rf_bias"
     )
 
     state = repos.get_session_state(student, repos.get_open_session(student))
-    # Модуль 4 пока «скоро»: его занятие не может быть текущим…
+    # Модуль 5 пока «скоро»: его занятие не может быть текущим…
     assert state.current_node_id is None
-    assert repos.get_mastery(student, "linreg_stats") is not None
+    assert repos.get_mastery(student, "rf_theory") is not None
     # …а пройденное в нём (и закрытое целиком) ждёт в факте, пока модуль не откроют.
-    assert legacy_mod.legacy_passed(student, "linreg") == (["model", "ols", "normal_eq"], [])
-    assert legacy_mod.legacy_passed(student, "linreg_stats") == (
-        ["gauss_markov", "likelihood"], []
+    assert legacy_mod.legacy_passed(student, "bagging_basics") == (
+        ["crowd", "bootstrap", "bagging", "variance"], []
     )
+    assert legacy_mod.legacy_passed(student, "rf_theory") == (["decorrelation", "bias"], [])
     assert repos.get_fact(student, legacy_mod.LAYOUT_FACT) == legacy_mod.LAYOUT_VERSION
     # Модуль 1 закрыт по-прежнему (кроме занятий с разделами «нов.»).
     closed = {s.concept_id for s in state.route.steps if s.status == "closed"}

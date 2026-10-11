@@ -52,7 +52,7 @@ async def test_lesson_button_gives_the_question(enrolled) -> None:
 
 
 async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
-    """Настоящий курс (срез 59): модули 1–3 открыты, 4–5 — «скоро» без занятий."""
+    """Настоящий курс (срез 60): модули 1–4 открыты, 5 — «скоро» без занятий."""
     page = enrolled
     await _survey(page)
 
@@ -60,11 +60,11 @@ async def test_route_shows_unpublished_modules_as_soon(enrolled) -> None:
     await page.wait_for_selector("#route-dialog[open]")
     headers = page.locator(".route-module")
     assert await headers.count() == 5
-    for number in (2, 3):
+    for number in (2, 3, 4):
         await expect(
             page.locator(f'.route-module-toggle[data-module="{number}"]')
         ).to_have_count(1)
-    for number in (4, 5):
+    for number in (5,):
         header = headers.nth(number - 1)
         await expect(header).to_contain_text(f"Модуль {number}")
         await expect(header).to_contain_text("скоро")

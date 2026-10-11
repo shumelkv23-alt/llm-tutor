@@ -466,9 +466,9 @@ async def test_state_lists_modules_and_topic_modules(enrolled) -> None:
     first = state["modules"][0]
     assert first["survey_done"] and not state["modules"][1]["survey_done"]
     assert first["total"] == sum(1 for topic in state["topics"] if topic["module"] == 1)
-    # Модули 4–5 ещё «скоро» (срез 59): в маршруте занятия модулей 1–3.
-    assert [module["published"] for module in state["modules"]] == [True] * 3 + [False] * 2
-    assert {topic["module"] for topic in state["topics"]} == {1, 2, 3}
+    # Модуль 5 ещё «скоро» (срез 60): в маршруте занятия модулей 1–4.
+    assert [module["published"] for module in state["modules"]] == [True] * 4 + [False]
+    assert {topic["module"] for topic in state["topics"]} == {1, 2, 3, 4}
 
 
 async def test_jump_to_next_module_goes_through_its_survey(monkeypatch, student, web_app) -> None:

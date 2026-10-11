@@ -797,6 +797,340 @@ ALTERNATIVES += [
     ),
 ]
 
+# Модуль 4 (срез 60): задания внутри занятий (4111–4117) и итоговые (4121–4127).
+_NE = "X1 = np.column_stack([np.ones(len(X)), X])\n"
+
+SOLUTIONS.update({
+    4111: _NE + "result = np.linalg.solve(X1.T @ X1, X1.T @ y)",
+    4112: "result = ((predictions.mean() - truth) ** 2, predictions.var())",
+    4113: (
+        "def ridge_weights(X, y, lam):\n"
+        "    A = X.T @ X + lam * np.eye(X.shape[1])\n"
+        "    return np.linalg.solve(A, X.T @ y)\n"
+        "result = ridge_weights(X, y, 10.0)"
+    ),
+    4114: "margin = y * z\nresult = np.log1p(np.exp(-margin)).mean()",
+    4115: (
+        "from sklearn.preprocessing import PolynomialFeatures\n"
+        "result = PolynomialFeatures(degree=2, include_bias=False).fit_transform(X)"
+    ),
+    4116: (
+        "from sklearn.feature_extraction.text import CountVectorizer\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "result = make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000)).fit(texts, labels)"
+    ),
+    4117: (
+        "from sklearn.linear_model import Ridge\n"
+        "from sklearn.model_selection import validation_curve\n"
+        "train, valid = validation_curve(Ridge(), X, y, param_name='alpha', param_range=alphas, cv=5)\n"
+        "result = alphas[int(valid.mean(axis=1).argmax())]"
+    ),
+    4121: (
+        _NE
+        + "w = np.linalg.solve(X1.T @ X1, X1.T @ y)\n"
+        "result = {'w': w, 'mse': float(np.mean((y - X1 @ w) ** 2))}"
+    ),
+    4122: (
+        "estimates = np.array([np.linalg.lstsq(*draw(), rcond=None)[0] for _ in range(500)])\n"
+        "result = {'mean': estimates.mean(axis=0), 'std': estimates.std(axis=0)}"
+    ),
+    4123: (
+        "from sklearn.linear_model import LinearRegression, Ridge\n"
+        "ols = np.array([LinearRegression().fit(X[i], y[i]).coef_ for i in boot])\n"
+        "ridge = np.array([Ridge(alpha=1.0).fit(X[i], y[i]).coef_ for i in boot])\n"
+        "result = {'ols_std': ols.std(axis=0), 'ridge_std': ridge.std(axis=0)}"
+    ),
+    4124: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "model = LogisticRegression().fit(X_train, y_train)\n"
+        "z = model.decision_function(X_test)\n"
+        "margin = (2 * y_test - 1) * z\n"
+        "result = {'proba': 1 / (1 + np.exp(-z)), 'logloss': float(np.log1p(np.exp(-margin)).mean())}"
+    ),
+    4125: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import PolynomialFeatures\n"
+        "linear = LogisticRegression().fit(X_train, y_train).score(X_test, y_test)\n"
+        "grid = GridSearchCV(make_pipeline(PolynomialFeatures(degree=2), LogisticRegression()),\n"
+        "                    {'logisticregression__C': [0.01, 0.1, 1, 10]}, cv=5).fit(X_train, y_train)\n"
+        "result = {'linear_accuracy': linear, 'best_C': grid.best_params_['logisticregression__C'],\n"
+        "          'poly_accuracy': grid.score(X_test, y_test)}"
+    ),
+    4126: (
+        "from sklearn.feature_extraction.text import CountVectorizer\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import GridSearchCV, train_test_split\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "a, b, c, d = train_test_split(texts, labels, test_size=0.3, random_state=17, stratify=labels)\n"
+        "grid = GridSearchCV(make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000)),\n"
+        "                    {'logisticregression__C': [0.1, 1, 10],\n"
+        "                     'countvectorizer__ngram_range': [(1, 1), (1, 2)]}, cv=5).fit(a, c)\n"
+        "result = {'best_params': grid.best_params_, 'test_accuracy': grid.score(b, d)}"
+    ),
+    4127: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import learning_curve\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import PolynomialFeatures, StandardScaler\n"
+        "pipe = make_pipeline(PolynomialFeatures(degree=4), StandardScaler(),\n"
+        "                     LogisticRegression(C=10, max_iter=5000))\n"
+        "sizes, train, valid = learning_curve(pipe, X, y, train_sizes=[0.2, 0.5, 1.0], cv=5)\n"
+        "result = {'sizes': sizes.tolist(), 'train': train.mean(axis=1).tolist(), 'valid': valid.mean(axis=1).tolist()}\n"
+        "gap = float(train.mean(axis=1)[-1] - valid.mean(axis=1)[-1])"
+    ),
+})
+
+WRONG.update({
+    4111: "result = np.linalg.solve(X.T @ X, X.T @ y)",
+    4112: "result = (predictions.mean() - truth, predictions.var())",
+    4113: (
+        "def ridge_weights(X, y, lam):\n"
+        "    A = X.T @ X + lam\n"
+        "    return np.linalg.solve(A, X.T @ y)\n"
+        "result = ridge_weights(X, y, 10.0)"
+    ),
+    4114: "result = np.log(1 + np.exp(y * z)).mean()",
+    4115: (
+        "from sklearn.preprocessing import PolynomialFeatures\n"
+        "result = PolynomialFeatures(degree=2).fit_transform(X)"
+    ),
+    4116: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "result = LogisticRegression(max_iter=1000)"
+    ),
+    4117: (
+        "from sklearn.linear_model import Ridge\n"
+        "from sklearn.model_selection import validation_curve\n"
+        "train, valid = validation_curve(Ridge(), X, y, param_name='alpha', param_range=alphas, cv=5)\n"
+        "result = alphas[int(train.mean(axis=1).argmax())]"
+    ),
+    4121: (
+        _NE
+        + "w = np.linalg.solve(X1.T @ X1, X1.T @ y)\n"
+        "result = {'w': w, 'mse': float(np.sum((y - X1 @ w) ** 2))}"
+    ),
+    4122: (
+        "estimates = np.array([np.linalg.lstsq(*draw(), rcond=None)[0] for _ in range(499)])\n"
+        "result = {'mean': estimates.mean(axis=0), 'std': estimates.std(axis=0)}"
+    ),
+    4123: (
+        "from sklearn.linear_model import LinearRegression, Ridge\n"
+        "ols = np.array([LinearRegression().fit(X[i], y[i]).coef_ for i in boot])\n"
+        "ridge = np.array([Ridge(alpha=0.01).fit(X[i], y[i]).coef_ for i in boot])\n"
+        "result = {'ols_std': ols.std(axis=0), 'ridge_std': ridge.std(axis=0)}"
+    ),
+    4124: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "model = LogisticRegression().fit(X_train, y_train)\n"
+        "z = model.decision_function(X_test)\n"
+        "margin = y_test * z\n"
+        "result = {'proba': 1 / (1 + np.exp(-z)), 'logloss': float(np.log1p(np.exp(-margin)).mean())}"
+    ),
+    4125: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import PolynomialFeatures\n"
+        "linear = LogisticRegression().fit(X_train, y_train).score(X_test, y_test)\n"
+        "def pipe(C):\n"
+        "    return make_pipeline(PolynomialFeatures(degree=2), LogisticRegression(C=C))\n"
+        "scores = {C: pipe(C).fit(X_train, y_train).score(X_test, y_test) for C in [0.01, 0.1, 1, 10]}\n"
+        "best = max(scores, key=scores.get)\n"
+        "result = {'linear_accuracy': linear, 'best_C': best, 'poly_accuracy': scores[best]}"
+    ),
+    4126: (
+        "from sklearn.feature_extraction.text import CountVectorizer\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import GridSearchCV, train_test_split\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "a, b, c, d = train_test_split(texts, labels, test_size=0.3, random_state=17)\n"
+        "grid = GridSearchCV(make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000)),\n"
+        "                    {'logisticregression__C': [0.1, 1, 10],\n"
+        "                     'countvectorizer__ngram_range': [(1, 1), (1, 2)]}, cv=5).fit(a, c)\n"
+        "result = {'best_params': grid.best_params_, 'test_accuracy': grid.score(b, d)}"
+    ),
+    4127: (
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import learning_curve\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import PolynomialFeatures, StandardScaler\n"
+        "pipe = make_pipeline(PolynomialFeatures(degree=4), StandardScaler(),\n"
+        "                     LogisticRegression(C=0.001, max_iter=5000))\n"
+        "sizes, train, valid = learning_curve(pipe, X, y, train_sizes=[0.2, 0.5, 1.0], cv=5)\n"
+        "result = {'sizes': sizes.tolist(), 'train': train.mean(axis=1).tolist(), 'valid': valid.mean(axis=1).tolist()}\n"
+        "gap = float(train.mean(axis=1)[-1] - valid.mean(axis=1)[-1])"
+    ),
+})
+
+MORE_WRONG += [
+    (
+        4111,
+        "X1 = np.column_stack([X, np.ones(len(X))])\n"
+        "result = np.linalg.solve(X1.T @ X1, X1.T @ y)",
+    ),
+    (4112, "result = ((predictions.mean() - truth) ** 2, ((predictions - truth) ** 2).mean())"),
+    (
+        4113,
+        "def ridge_weights(X, y, lam):\n"
+        "    A = X.T @ X - lam * np.eye(X.shape[1])\n"
+        "    return np.linalg.solve(A, X.T @ y)\n"
+        "result = ridge_weights(X, y, 10.0)",
+    ),
+    (4114, "result = np.log1p(np.exp(-z)).mean()"),
+    (
+        4115,
+        "from sklearn.preprocessing import PolynomialFeatures\n"
+        "result = PolynomialFeatures(degree=3, include_bias=False).fit_transform(X)",
+    ),
+    (
+        4116,
+        "from sklearn.feature_extraction.text import CountVectorizer\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "result = make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000))",
+    ),
+    (4117, "result = alphas[0]"),
+    (
+        4121,
+        "w = np.linalg.solve(X.T @ X, X.T @ y)\n"
+        "result = {'w': w, 'mse': float(np.mean((y - X @ w) ** 2))}",
+    ),
+    (
+        4122,
+        "estimates = np.array([np.linalg.lstsq(*draw(), rcond=None)[0] for _ in range(500)])\n"
+        "result = {'mean': estimates.mean(axis=0), 'std': estimates.std(axis=0, ddof=1)}",
+    ),
+    (
+        4123,
+        "from sklearn.linear_model import LinearRegression, Ridge\n"
+        "ols = np.array([LinearRegression().fit(X, y).coef_ for i in boot])\n"
+        "ridge = np.array([Ridge(alpha=1.0).fit(X, y).coef_ for i in boot])\n"
+        "result = {'ols_std': ols.std(axis=0), 'ridge_std': ridge.std(axis=0)}",
+    ),
+    (
+        4124,
+        "from sklearn.linear_model import LogisticRegression\n"
+        "model = LogisticRegression().fit(X_train, y_train)\n"
+        "z = model.decision_function(X_test)\n"
+        "margin = (2 * y_test - 1) * z\n"
+        "result = {'proba': model.predict_proba(X_test)[:, 0], 'logloss': float(np.log1p(np.exp(-margin)).mean())}",
+    ),
+    (
+        4125,
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import GridSearchCV\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "linear = LogisticRegression().fit(X_train, y_train).score(X_test, y_test)\n"
+        "grid = GridSearchCV(make_pipeline(LogisticRegression()),\n"
+        "                    {'logisticregression__C': [0.01, 0.1, 1, 10]}, cv=5).fit(X_train, y_train)\n"
+        "result = {'linear_accuracy': linear, 'best_C': grid.best_params_['logisticregression__C'],\n"
+        "          'poly_accuracy': grid.score(X_test, y_test)}",
+    ),
+    (
+        4126,
+        "from sklearn.feature_extraction.text import CountVectorizer\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import GridSearchCV, train_test_split\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "a, b, c, d = train_test_split(texts, labels, test_size=0.3, random_state=17, stratify=labels)\n"
+        "grid = GridSearchCV(make_pipeline(CountVectorizer(), LogisticRegression(max_iter=1000)),\n"
+        "                    {'logisticregression__C': [0.1, 1, 10]}, cv=5).fit(a, c)\n"
+        "result = {'best_params': grid.best_params_, 'test_accuracy': grid.score(b, d)}",
+    ),
+    (
+        4127,
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import learning_curve\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import PolynomialFeatures, StandardScaler\n"
+        "pipe = make_pipeline(PolynomialFeatures(degree=4), StandardScaler(),\n"
+        "                     LogisticRegression(C=10, max_iter=5000))\n"
+        "sizes, train, valid = learning_curve(pipe, X, y, train_sizes=[0.2, 0.5, 1.0], cv=5)\n"
+        "result = {'sizes': sizes.tolist(), 'train': train.mean(axis=1).tolist(), 'valid': valid.mean(axis=1).tolist()}\n"
+        "gap = float(train.mean(axis=1)[0] - valid.mean(axis=1)[0])",
+    ),
+]
+
+ALTERNATIVES += [
+    (4111, _NE + "result = np.linalg.inv(X1.T @ X1) @ X1.T @ y"),
+    (4111, _NE + "result = np.linalg.lstsq(X1, y, rcond=None)[0]"),
+    (
+        4112,
+        "bias = np.mean(predictions) - truth\n"
+        "spread = np.mean((predictions - np.mean(predictions)) ** 2)\n"
+        "result = [abs(bias) ** 2, spread]",
+    ),
+    (
+        4113,
+        "def ridge_weights(X, y, lam):\n"
+        "    return np.linalg.inv(X.T @ X + lam * np.identity(X.shape[1])) @ (X.T @ y)\n"
+        "result = ridge_weights(X, y, 10.0)",
+    ),
+    (4114, "result = float(np.mean(np.logaddexp(0.0, -y * z)))"),
+    (
+        4115,
+        "result = np.column_stack([X[:, 0] ** 2, X[:, 0] * X[:, 1], X[:, 1] ** 2, X[:, 0], X[:, 1]])",
+    ),
+    (
+        4116,
+        "from sklearn.feature_extraction.text import CountVectorizer\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.pipeline import Pipeline\n"
+        "result = Pipeline([('countvectorizer', CountVectorizer()),\n"
+        "                   ('logisticregression', LogisticRegression(max_iter=1000))])\n"
+        "result.fit(texts, labels)",
+    ),
+    (
+        4117,
+        "from sklearn.linear_model import Ridge\n"
+        "from sklearn.model_selection import cross_val_score\n"
+        "scores = [cross_val_score(Ridge(alpha=a), X, y, cv=5).mean() for a in alphas]\n"
+        "result = alphas[scores.index(max(scores))]",
+    ),
+    (
+        4121,
+        "from sklearn.metrics import mean_squared_error\n"
+        "w = np.linalg.lstsq(np.c_[np.ones(len(X)), X], y, rcond=None)[0]\n"
+        "pred = w[0] + X @ w[1:]\n"
+        "result = {'w': list(w), 'mse': mean_squared_error(y, pred)}",
+    ),
+    (
+        4122,
+        "weights = []\n"
+        "for _ in range(500):\n"
+        "    X_, y_ = draw()\n"
+        "    weights.append(np.linalg.solve(X_.T @ X_, X_.T @ y_))\n"
+        "weights = np.array(weights)\n"
+        "result = {'mean': np.mean(weights, axis=0), 'std': np.std(weights, axis=0)}",
+    ),
+    (
+        4124,
+        "from scipy.special import expit\n"
+        "from sklearn.linear_model import LogisticRegression\n"
+        "model = LogisticRegression().fit(X_train, y_train)\n"
+        "z = model.decision_function(X_test)\n"
+        "signed = np.where(y_test == 1, 1, -1)\n"
+        "result = {'proba': expit(z), 'logloss': float(np.mean(np.logaddexp(0, -signed * z)))}",
+    ),
+    (
+        4125,
+        "from sklearn.linear_model import LogisticRegression\n"
+        "from sklearn.model_selection import cross_val_score\n"
+        "from sklearn.pipeline import make_pipeline\n"
+        "from sklearn.preprocessing import PolynomialFeatures\n"
+        "def pipe(C):\n"
+        "    return make_pipeline(PolynomialFeatures(degree=2), LogisticRegression(C=C))\n"
+        "Cs = [0.01, 0.1, 1, 10]\n"
+        "best = max(Cs, key=lambda C: cross_val_score(pipe(C), X_train, y_train, cv=5).mean())\n"
+        "result = {'linear_accuracy': LogisticRegression().fit(X_train, y_train).score(X_test, y_test),\n"
+        "          'best_C': best,\n"
+        "          'poly_accuracy': pipe(best).fit(X_train, y_train).score(X_test, y_test)}",
+    ),
+]
+
 ITEMS = {item.id: item for item in load_course_data().items if item.answer_type == "code"}
 
 
