@@ -1,0 +1,80 @@
+/* Админка: вкладки, поиск, таблицы. Остальное — общие стили приложения. */
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.admin-tabs a {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-tabs a:hover {
+  background: var(--surface-2);
+}
+
+.admin-tabs a[aria-current="page"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.admin-search {
+  display: flex;
+  flex: 1 1 280px;
+  gap: 8px;
+  max-width: 460px;
+}
+
+.admin-snapshot {
+  font-size: 13px;
+}
+
+.admin-table th,
+.admin-table td {
+  white-space: nowrap;
+}
+
+.admin-name,
+.admin-email {
+  display: block;
+}
+
+.admin-email {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.admin-table .mastery {
+  min-width: 140px;
+}
+
+.admin-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* Строка, по которой мало данных, — приглушённая. */
+.admin-table tr.dim {
+  color: var(--muted);
+}

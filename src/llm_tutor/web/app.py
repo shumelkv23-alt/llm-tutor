@@ -198,6 +198,8 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     app.state.accounts = accounts_db
     app.state.login_limiter = security.LoginLimiter()
     app.state.userdbs = userdbs
+    # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.
+    app.state.admin_cache = {}
 
     # Порядок важен: добавленный позже middleware — внешний. Заголовки
     # безопасности должны лечь и на отказы api_guard.

@@ -389,6 +389,60 @@ def enrolled_courses(conn: sqlite3.Connection, user_id: int) -> list[str]:
     return [row["course_id"] for row in rows]
 
 
+@dataclass(frozen=True)
+class AccountRow:
+    """Строка списка аккаунтов для админки (без хеша пароля)."""
+
+    id: int
+    email: str
+    name: str
+    created_at: float
+    last_login_at: float | None
+    is_admin: bool
+
+
+def list_users(conn: sqlite3.Connection, q: str = "") -> list[AccountRow]:
+    """Аккаунты, чьё имя или email содержат ``q`` (новые регистрации — первыми).
+
+    Фильтр в Python, а не в ``LIKE``: SQLite сравнивает без учёта регистра
+    только ASCII, а имена — по-русски; заодно ``%`` и ``_`` ищутся буквально.
+    """
+    needle = q.strip().casefold()
+    rows = conn.execute(
+        "SELECT id, email, name, created_at, last_login_at, is_admin FROM users "
+        "ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+    return [
+        AccountRow(
+            id=row["id"],
+            email=row["email"],
+            name=row["name"],
+            created_at=row["created_at"],
+            last_login_at=row["last_login_at"],
+            is_admin=bool(row["is_admin"]),
+        )
+        for row in rows
+        if not needle or needle in row["name"].casefold() or needle in row["email"].casefold()
+    ]
+
+
+def active_sessions(conn: sqlite3.Connection, user_id: int, now: float | None = None) -> int:
+    """Сколько веб-сессий ученика ещё не истекло."""
+    stamp = time.time() if now is None else now
+    row = conn.execute(
+        "SELECT COUNT(*) FROM web_sessions WHERE user_id = ? AND expires_at > ?", (user_id, stamp)
+    ).fetchone()
+    return int(row[0])
+
+
+def enrolled_user_ids(conn: sqlite3.Connection, course_id: str) -> list[int]:
+    """Ученики, записанные на курс (по возрастанию id)."""
+    rows = conn.execute(
+        "SELECT user_id FROM enrollments WHERE course_id = ? ORDER BY user_id", (course_id,)
+    ).fetchall()
+    return [row["user_id"] for row in rows]
+
+
 def find_user(conn: sqlite3.Connection, email: str) -> User | None:
     """Ученик по email (для CLI); некорректный email — ``None``."""
     try:
