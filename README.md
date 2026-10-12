@@ -47,6 +47,15 @@ uv run python -m llm_tutor.web        # http://127.0.0.1:8000
 uv run python -m llm_tutor.web.cli import-legacy --email ann@example.com --db data/llm_tutor.sqlite3
 ```
 
+**Админка.** Владелец курса получает раздел `/admin` (ученики с прогрессом,
+карточка ученика, воронка по занятиям и трудные задания, сброс пароля). Роль
+выдаётся только из командной строки — сначала зарегистрируйтесь, затем:
+
+```bash
+uv run python -m llm_tutor.web.cli make-admin --email ann@example.com
+uv run python -m llm_tutor.web.cli revoke-admin --email ann@example.com
+```
+
 ## Страницы
 
 - **Главная** — для гостя рассказ о тьюторе; для ученика — продолжить занятие,
@@ -56,6 +65,7 @@ uv run python -m llm_tutor.web.cli import-legacy --email ann@example.com --db da
   тьютором. Соотношение 70/30 меняется ползунком (мышью или клавиатурой) и
   запоминается. На телефоне — переключатель «Урок / Чат».
 - **Профиль** — имя, пароль, тема оформления, итог анкеты и прогресс по темам.
+- **Админка** (только админам) — ученики, карточка ученика, аналитика курса.
 
 ## Как идёт занятие
 

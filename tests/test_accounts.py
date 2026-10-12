@@ -240,3 +240,126 @@ def test_enrollment_moves_to_renamed_course(tmp_path) -> None:
 
     assert accounts.enrolled_courses(db, 1) == ["mlcourse"]
     db.close()
+
+
+# --- Роль админа и последний вход (Срез 63) ---
+
+
+def _version_2_db(path) -> None:
+    """БД аккаунтов версии 2 с данными — как до миграции 003."""
+    import sqlite3
+
+    old = sqlite3.connect(path)
+    for name in ("001_accounts.sql", "002_course_rename.sql"):
+        old.executescript((accounts.MIGRATIONS_DIR / name).read_text(encoding="utf-8"))
+    old.execute("PRAGMA user_version = 2")
+    old.execute(
+        "INSERT INTO users (id, email, name, password_hash, created_at) "
+        "VALUES (1, 'ann@example.com', 'Аня', 'x', 7.0)"
+    )
+    old.execute("INSERT INTO web_sessions VALUES ('hash', 1, 1.0, 9999999999.0)")
+    old.execute("INSERT INTO enrollments VALUES (1, 'mlcourse', 5.0)")
+    old.commit()
+    old.close()
+
+
+def test_schema_has_admin_tables_and_columns(db) -> None:
+    columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
+    log = {row[1] for row in db.execute("PRAGMA table_info(admin_log)")}
+
+    assert accounts.SCHEMA_VERSION == 3
+    assert {"is_admin", "last_login_at"} <= columns
+    assert {"ts", "admin_id", "action", "target_id", "details"} <= log
+
+
+def test_migration_003_keeps_existing_data(tmp_path) -> None:
+    path = tmp_path / "accounts.sqlite3"
+    _version_2_db(path)
+
+    db = accounts.open_accounts(str(path))
+
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+    user = accounts.get_user(db, 1)
+    assert (user.email, user.name, user.created_at, user.is_admin) == ("ann@example.com", "Аня", 7.0, False)
+    assert db.execute("SELECT last_login_at FROM users").fetchone()[0] is None
+    assert db.execute("SELECT COUNT(*) FROM web_sessions").fetchone()[0] == 1
+    assert accounts.enrolled_courses(db, 1) == ["mlcourse"]
+    db.close()
+
+    again = accounts.open_accounts(str(path))
+    assert again.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert again.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    again.close()
+
+
+def test_schema_newer_than_the_app_is_refused(tmp_path) -> None:
+    path = tmp_path / "accounts.sqlite3"
+    accounts.open_accounts(str(path)).close()
+    import sqlite3
+
+    newer = sqlite3.connect(path)
+    newer.execute("PRAGMA user_version = 4")
+    newer.commit()
+    newer.close()
+
+    with pytest.raises(RuntimeError):
+        accounts.open_accounts(str(path))
+
+
+def test_new_user_is_not_admin(db) -> None:
+    user = _user(db)
+
+    assert user.is_admin is False
+    assert accounts.get_user(db, user.id).is_admin is False
+
+
+def test_set_admin_is_idempotent_and_reversible(db) -> None:
+    user = _user(db)
+
+    accounts.set_admin(db, user.id, True)
+    accounts.set_admin(db, user.id, True)
+    assert accounts.get_user(db, user.id).is_admin is True
+
+    accounts.set_admin(db, user.id, False)
+    assert accounts.get_user(db, user.id).is_admin is False
+
+
+def test_set_admin_unknown_user(db) -> None:
+    with pytest.raises(LookupError):
+        accounts.set_admin(db, 999, True)
+
+
+def test_every_user_lookup_reads_the_role(db) -> None:
+    """Роль приходит из всех выборок: иначе где-то админ остался бы «учеником»."""
+    user = _user(db, email="root@example.com")
+    accounts.set_admin(db, user.id, True)
+    token = accounts.create_session(db, user.id, now=1000.0)
+
+    assert accounts.get_user(db, user.id).is_admin
+    assert accounts.find_user(db, "root@example.com").is_admin
+    assert accounts.credentials(db, "root@example.com")[0].is_admin
+    assert accounts.authenticate(db, "root@example.com", "секретный-пароль").is_admin
+    assert accounts.resolve_session(db, token, now=1001.0).is_admin
+    assert accounts.resolve_session_info(db, token, now=1001.0)[0].is_admin
+
+
+def test_login_time_is_recorded_by_create_session(db) -> None:
+    user = _user(db)
+    assert db.execute("SELECT last_login_at FROM users").fetchone()[0] is None
+
+    accounts.create_session(db, user.id, now=200.0)
+    assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 200.0
+
+    accounts.create_session(db, user.id, now=300.0)
+    assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 300.0
+
+
+def test_session_extension_is_not_a_login(db) -> None:
+    user = _user(db)
+    token = accounts.create_session(db, user.id, now=200.0)
+    late = 200.0 + accounts.SESSION_TTL * 0.6  # осталось меньше половины срока
+
+    _, extended = accounts.resolve_session_info(db, token, now=late)
+
+    assert extended
+    assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 200.0

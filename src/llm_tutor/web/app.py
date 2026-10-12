@@ -198,11 +198,14 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     app.state.accounts = accounts_db
     app.state.login_limiter = security.LoginLimiter()
     app.state.userdbs = userdbs
+    # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.
+    app.state.admin_cache = {}
 
     # Порядок важен: добавленный позже middleware — внешний. Заголовки
     # безопасности должны лечь и на отказы api_guard.
     app.middleware("http")(security.session_refresh)
     app.middleware("http")(security.api_guard)
+    app.middleware("http")(security.admin_cloak)
 
     @app.middleware("http")
     async def security_headers(
@@ -244,9 +247,11 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         return {"status": "ok"}
 
     # Локальный импорт: модули маршрутов берут зависимости из app.state.
-    from llm_tutor.web import api_auth, api_lesson, pages
+    from llm_tutor.web import api_admin, api_auth, api_lesson, pages, pages_admin
 
     app.include_router(api_auth.router)
     app.include_router(api_lesson.router)
+    app.include_router(api_admin.router)
+    app.include_router(pages_admin.router)
     app.include_router(pages.router)
     return app

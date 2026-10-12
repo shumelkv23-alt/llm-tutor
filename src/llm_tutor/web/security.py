@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from urllib.parse import quote, urlparse
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from llm_tutor.config import Settings
@@ -96,6 +96,55 @@ async def page_user(request: Request) -> User:
         target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         raise LoginRequired(target)
     return user
+
+
+# Не-админу админка отвечает как несуществующая страница — тем же телом, что и
+# FastAPI на неизвестный путь: раздел не выдаёт своего существования.
+NOT_FOUND = "Not Found"
+
+
+async def admin_user(user: User = Depends(require_user)) -> User:
+    """Зависимость API админки: гость — 401, вошедший не-админ — 404."""
+    if not user.is_admin:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return user
+
+
+async def admin_page_user(user: User = Depends(page_user)) -> User:
+    """Зависимость страницы админки: гость — на вход, не-админ — 404."""
+    if not user.is_admin:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return user
+
+
+_ADMIN_PREFIXES = ("/admin", "/api/admin")
+
+
+def _is_admin_path(path: str) -> bool:
+    return any(path == prefix or path.startswith(prefix + "/") for prefix in _ADMIN_PREFIXES)
+
+
+async def admin_cloak(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Middleware: вошедшему не-админу весь ``/admin*`` и ``/api/admin*`` — 404.
+
+    Зависимости ``admin_user``/``admin_page_user`` срабатывают после выбора
+    маршрута, и до них не-админ видел бы отличия от несуществующей страницы:
+    405 на «не тот» метод, 307 на слэш в конце. Здесь ответ один — как у
+    неизвестного пути. Гостю остаются вход/401 (спека админки §2, п. 2).
+
+    Страницы админки с чужими email не кэшируются браузером: «Назад» после
+    выхода не должно показывать список учеников.
+    """
+    if not _is_admin_path(request.url.path):
+        return await call_next(request)
+    user = optional_user(request)
+    if user is not None and not user.is_admin:
+        return JSONResponse({"detail": NOT_FOUND}, status_code=404)
+    response = await call_next(request)
+    response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 def set_session_cookie(response: Response, token: str, settings: Settings) -> None:

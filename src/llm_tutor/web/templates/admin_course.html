@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка{% endblock %}
+{% block heading %}Курс{% endblock %}
+{% block description %}Где ученики застревают и какие задания не решаются.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+
+<p class="admin-snapshot muted">Данные на {{ built_at }}, учеников на курсе: {{ students }} ·
+  <a href="?{{ {'module': chosen_module or '', 'type': chosen_type or '', 'refresh': 1}|urlencode }}">Обновить</a></p>
+
+<section class="panel" aria-labelledby="funnel-title">
+  <h2 id="funnel-title" class="section-title">Воронка по занятиям</h2>
+  <p class="muted admin-note">«Дошли» — закрыли занятие или учатся на нём сейчас (после анкеты). «Слабо» — закрыли после двух ошибок.</p>
+  <div class="table-wrap">
+    <table class="topics-table admin-table">
+      <thead><tr><th scope="col">Занятие</th><th scope="col">Дошли</th><th scope="col">Закрыли</th><th scope="col">Слабо</th><th scope="col">Доля закрытия</th></tr></thead>
+      <tbody>
+        {% for block in funnel %}
+        <tr class="module-row"><th scope="rowgroup" colspan="5">Модуль {{ block.number }} · {{ block.title }}</th></tr>
+        {% for lesson in block.lessons %}
+        <tr class="lesson-row" data-lesson="{{ lesson.id }}" data-reached="{{ lesson.reached }}" data-closed="{{ lesson.closed }}" data-weak="{{ lesson.weak }}">
+          <th scope="row">{{ lesson.name }}</th>
+          <td>{{ lesson.reached }}</td>
+          <td>{{ lesson.closed }}</td>
+          <td>{{ lesson.weak }}</td>
+          <td>{% if lesson.rate is none %}<span class="muted">—</span>{% else %}<div class="mastery" role="img" aria-label="Закрыли {{ (lesson.rate * 100)|round|int }}% из дошедших"><span class="progress-track"><span class="progress-fill" data-percent="{{ (lesson.rate * 100)|round|int }}"></span></span><small>{{ (lesson.rate * 100)|round|int }}%</small></div>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel" aria-labelledby="items-title">
+  <h2 id="items-title" class="section-title">Трудные задания</h2>
+  <form class="admin-filters" method="get" action="/admin/course">
+    <label>Модуль
+      <select name="module">
+        <option value="">Все</option>
+        {% for number, title in modules %}<option value="{{ number }}"{% if number == chosen_module %} selected{% endif %}>{{ number }} · {{ title }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Тип
+      <select name="type">
+        <option value="">Все</option>
+        {% for key, label in types.items() %}<option value="{{ key }}"{% if key == chosen_type %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <button class="btn" type="submit">Показать</button>
+  </form>
+  {% if items %}
+  <div class="table-wrap">
+    <table class="topics-table admin-table">
+      <thead><tr><th scope="col">Задание</th><th scope="col">Учеников</th><th scope="col">Ответов</th><th scope="col">Верно</th><th scope="col">С первой попытки</th><th scope="col">Попыток на ученика</th></tr></thead>
+      <tbody>
+        {% for item in items %}
+        <tr class="item-row{% if item.thin %} dim{% endif %}" data-item="{{ item.item_id }}">
+          <td class="admin-prompt">
+            <b>#{{ item.item_id }}</b> {{ item.prompt }}
+            <small class="admin-email muted">{{ item.lesson }}{% if item.part %} · {{ item.part }}{% endif %} · {{ types.get(item.type, item.type) }}{% if item.thin %} · мало данных{% endif %}</small>
+          </td>
+          <td>{{ item.students }}</td>
+          <td>{{ item.answers }}</td>
+          <td>{{ (item.right * 100)|round|int }}%</td>
+          <td>{{ (item.first_try * 100)|round|int }}%</td>
+          <td>{{ '%.1f'|format(item.attempts) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><strong>Данных пока нет</strong>Ответов на задания по выбранным условиям ещё нет.</div>
+  {% endif %}
+  <p class="muted admin-note">Это подсказка, а не вердикт. Низкая доля верных значит «проверь задание» (вариант ответа, эталон, тесты), а не «задание плохое». Строки, где меньше {{ min_answers }} ответов или меньше {{ min_students }} учеников, приглушены: делать по ним выводы рано.</p>
+</section>
+{% endblock %}

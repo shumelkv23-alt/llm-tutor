@@ -1,0 +1,174 @@
+/* Админка: вкладки, поиск, таблицы. Остальное — общие стили приложения. */
+
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.admin-tabs a {
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-tabs a:hover {
+  background: var(--surface-2);
+}
+
+.admin-tabs a[aria-current="page"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.admin-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.admin-search {
+  display: flex;
+  flex: 1 1 280px;
+  gap: 8px;
+  max-width: 460px;
+}
+
+.admin-snapshot {
+  font-size: 13px;
+}
+
+.admin-table th,
+.admin-table td {
+  white-space: nowrap;
+}
+
+.admin-name,
+.admin-email {
+  display: block;
+}
+
+.admin-email {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.admin-table .mastery {
+  min-width: 140px;
+}
+
+.admin-pages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+/* Строка, по которой мало данных, — приглушённая. */
+.admin-table tr.dim {
+  color: var(--muted);
+}
+
+/* Карточка ученика */
+.admin-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.admin-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.admin-solved {
+  margin: 12px 0;
+  font-weight: 600;
+}
+
+.admin-survey,
+.admin-log {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-survey li,
+.admin-log li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.admin-prompt {
+  max-width: 420px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+#password-value {
+  margin: 12px 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}
+
+/* Аналитика курса */
+.admin-note {
+  margin: 8px 0 16px;
+  font-size: 13px;
+}
+
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-filters label {
+  display: grid;
+  flex: 1 1 200px;
+  gap: 4px;
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Длинное имя без пробелов не должно раздвигать страницу (карточка ученика). */
+.page-heading h1,
+.page-description {
+  overflow-wrap: anywhere;
+}

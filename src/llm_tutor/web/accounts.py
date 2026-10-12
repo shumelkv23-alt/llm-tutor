@@ -10,6 +10,7 @@
 
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import sqlite3
@@ -23,7 +24,7 @@ from llm_tutor.db.connection import get_conn, migrate
 # Корень проекта (web/accounts.py → src → корень) — не зависит от cwd.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = _PROJECT_ROOT / "migrations_accounts"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Срок сессии; продлевается, когда прошло больше половины (скользящий срок).
 SESSION_TTL = 30 * 24 * 3600.0
@@ -75,6 +76,9 @@ class User:
     email: str
     name: str
     created_at: float
+    # Роль читается из БД с каждой выборкой пользователя: снятая роль
+    # действует сразу (спека админки §2).
+    is_admin: bool = False
 
     @property
     def initial(self) -> str:
@@ -161,6 +165,7 @@ def _user(row: sqlite3.Row) -> User:
         email=row["email"],
         name=row["name"],
         created_at=row["created_at"],
+        is_admin=bool(row["is_admin"]),
     )
 
 
@@ -199,7 +204,7 @@ def create_user(
 
 def get_user(conn: sqlite3.Connection, user_id: int) -> User | None:
     row = conn.execute(
-        "SELECT id, email, name, created_at FROM users WHERE id = ?", (user_id,)
+        "SELECT id, email, name, created_at, is_admin FROM users WHERE id = ?", (user_id,)
     ).fetchone()
     return None if row is None else _user(row)
 
@@ -215,7 +220,7 @@ def credentials(conn: sqlite3.Connection, email: str) -> tuple[User | None, str]
     except AccountError:
         return None, _dummy_hash()
     row = conn.execute(
-        "SELECT id, email, name, created_at, password_hash FROM users WHERE email = ?",
+        "SELECT id, email, name, created_at, is_admin, password_hash FROM users WHERE email = ?",
         (clean_email,),
     ).fetchone()
     if row is None:
@@ -245,6 +250,17 @@ def rename(conn: sqlite3.Connection, user_id: int, name: str) -> User:
     if user is None:
         raise LookupError(f"Нет пользователя {user_id}")
     return user
+
+
+def set_admin(conn: sqlite3.Connection, user_id: int, value: bool) -> None:
+    """Выдаёт или снимает роль админа (повтор ничего не меняет).
+
+    Зовёт только CLI: из веба роль не меняется.
+    """
+    cur = conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (int(value), user_id))
+    conn.commit()
+    if cur.rowcount == 0:
+        raise LookupError(f"Нет пользователя {user_id}")
 
 
 def password_hash_of(conn: sqlite3.Connection, user_id: int) -> str:
@@ -302,6 +318,9 @@ def create_session(conn: sqlite3.Connection, user_id: int, *, now: float | None 
         "INSERT INTO web_sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
         (_token_hash(token), user_id, stamp, stamp + SESSION_TTL),
     )
+    # Вход и регистрация создают сессию, продление срока — нет: «последний вход»
+    # не должен сдвигаться от каждого визита.
+    conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (stamp, user_id))
     conn.commit()
     return token
 
@@ -315,7 +334,7 @@ def resolve_session_info(
     stamp = time.time() if now is None else now
     digest = _token_hash(token)
     row = conn.execute(
-        "SELECT s.expires_at, u.id, u.email, u.name, u.created_at "
+        "SELECT s.expires_at, u.id, u.email, u.name, u.created_at, u.is_admin "
         "FROM web_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
         (digest,),
     ).fetchone()
@@ -371,6 +390,128 @@ def enrolled_courses(conn: sqlite3.Connection, user_id: int) -> list[str]:
     return [row["course_id"] for row in rows]
 
 
+@dataclass(frozen=True)
+class AccountRow:
+    """Строка списка аккаунтов для админки (без хеша пароля)."""
+
+    id: int
+    email: str
+    name: str
+    created_at: float
+    last_login_at: float | None
+    is_admin: bool
+
+
+def list_users(conn: sqlite3.Connection, q: str = "") -> list[AccountRow]:
+    """Аккаунты, чьё имя или email содержат ``q`` (новые регистрации — первыми).
+
+    Фильтр в Python, а не в ``LIKE``: SQLite сравнивает без учёта регистра
+    только ASCII, а имена — по-русски; заодно ``%`` и ``_`` ищутся буквально.
+    """
+    needle = q.strip().casefold()
+    rows = conn.execute(
+        "SELECT id, email, name, created_at, last_login_at, is_admin FROM users "
+        "ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+    return [
+        AccountRow(
+            id=row["id"],
+            email=row["email"],
+            name=row["name"],
+            created_at=row["created_at"],
+            last_login_at=row["last_login_at"],
+            is_admin=bool(row["is_admin"]),
+        )
+        for row in rows
+        if not needle or needle in row["name"].casefold() or needle in row["email"].casefold()
+    ]
+
+
+def get_account(conn: sqlite3.Connection, user_id: int) -> AccountRow | None:
+    """Аккаунт для админки или ``None``.
+
+    id вне диапазона SQLite INTEGER — «нет такого»: иначе ``OverflowError`` и 500.
+    """
+    if not 0 < user_id < 2**63:
+        return None
+    row = conn.execute(
+        "SELECT id, email, name, created_at, last_login_at, is_admin FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return AccountRow(
+        id=row["id"],
+        email=row["email"],
+        name=row["name"],
+        created_at=row["created_at"],
+        last_login_at=row["last_login_at"],
+        is_admin=bool(row["is_admin"]),
+    )
+
+
+@dataclass(frozen=True)
+class LogRow:
+    """Запись журнала действий админов над аккаунтом."""
+
+    ts: float
+    action: str
+    admin_name: str | None  # ``None``: аккаунт админа уже удалён
+
+
+def admin_log_for(conn: sqlite3.Connection, target_id: int, limit: int = 20) -> list[LogRow]:
+    """Последние действия админов над аккаунтом (новые — первыми)."""
+    rows = conn.execute(
+        "SELECT l.ts, l.action, u.name FROM admin_log l LEFT JOIN users u ON u.id = l.admin_id "
+        "WHERE l.target_id = ? ORDER BY l.ts DESC, l.id DESC LIMIT ?",
+        (target_id, limit),
+    ).fetchall()
+    return [LogRow(ts=row[0], action=row[1], admin_name=row[2]) for row in rows]
+
+
+def log_admin(
+    conn: sqlite3.Connection,
+    admin_id: int,
+    action: str,
+    target_id: int,
+    details: dict | None = None,
+    *,
+    now: float | None = None,
+) -> None:
+    """Пишет действие админа в журнал. ``details`` — без секретов (паролей, токенов)."""
+    stamp = time.time() if now is None else now
+    conn.execute(
+        "INSERT INTO admin_log (ts, admin_id, action, target_id, details) VALUES (?, ?, ?, ?, ?)",
+        (stamp, admin_id, action, target_id, json.dumps(details, ensure_ascii=False) if details else None),
+    )
+    conn.commit()
+
+
+def close_user_sessions(conn: sqlite3.Connection, user_id: int) -> int:
+    """Закрывает все веб-сессии ученика. Возвращает, сколько из них ещё не истекло."""
+    live = active_sessions(conn, user_id)
+    conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return live
+
+
+def active_sessions(conn: sqlite3.Connection, user_id: int, now: float | None = None) -> int:
+    """Сколько веб-сессий ученика ещё не истекло."""
+    stamp = time.time() if now is None else now
+    row = conn.execute(
+        "SELECT COUNT(*) FROM web_sessions WHERE user_id = ? AND expires_at > ?", (user_id, stamp)
+    ).fetchone()
+    return int(row[0])
+
+
+def enrolled_user_ids(conn: sqlite3.Connection, course_id: str) -> list[int]:
+    """Ученики, записанные на курс (по возрастанию id)."""
+    rows = conn.execute(
+        "SELECT user_id FROM enrollments WHERE course_id = ? ORDER BY user_id", (course_id,)
+    ).fetchall()
+    return [row["user_id"] for row in rows]
+
+
 def find_user(conn: sqlite3.Connection, email: str) -> User | None:
     """Ученик по email (для CLI); некорректный email — ``None``."""
     try:
@@ -378,6 +519,6 @@ def find_user(conn: sqlite3.Connection, email: str) -> User | None:
     except AccountError:
         return None
     row = conn.execute(
-        "SELECT id, email, name, created_at FROM users WHERE email = ?", (clean,)
+        "SELECT id, email, name, created_at, is_admin FROM users WHERE email = ?", (clean,)
     ).fetchone()
     return None if row is None else _user(row)

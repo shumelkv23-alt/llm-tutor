@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка{% endblock %}
+{% block heading %}Ученики{% endblock %}
+{% block description %}Кто учится и как далеко прошёл.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+
+<section class="panel stats-card" aria-label="Сводка">
+  <div class="stat"><span>Аккаунтов</span><strong>{{ summary.total }}</strong></div>
+  <div class="stat"><span>Активны за 7 дней</span><strong>{{ summary.active_week }}</strong></div>
+  <div class="stat"><span>Прошли курс</span><strong>{{ summary.finished }}</strong></div>
+</section>
+
+<div class="admin-toolbar">
+  <form class="admin-search" method="get" action="/admin/students" role="search">
+    <label class="visually-hidden" for="admin-q">Поиск по имени или email</label>
+    <input id="admin-q" type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Имя или email" autocomplete="off">
+    <button class="btn" type="submit">Найти</button>
+  </form>
+  <p class="admin-snapshot muted">Данные на {{ built_at }} ·
+    <a href="?{{ {'q': q, 'page': page, 'refresh': 1}|urlencode }}">Обновить</a></p>
+</div>
+
+{% if rows %}
+<div class="panel table-wrap">
+  <table class="topics-table admin-table">
+    <thead>
+      <tr>
+        <th scope="col">Ученик</th>
+        <th scope="col">Состояние</th>
+        <th scope="col">Прогресс</th>
+        <th scope="col">Слабых</th>
+        <th scope="col">Активность</th>
+        <th scope="col">Вход</th>
+        <th scope="col">Регистрация</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in rows %}
+      {% set account = item.account %}{% set row = item.row %}
+      <tr>
+        <th scope="row">
+          <a class="admin-name" href="/admin/students/{{ account.id }}">{{ account.name }}</a>{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}
+          <small class="admin-email muted">{{ account.email }}</small>
+        </th>
+        <td>
+          <span class="badge{% if item.status == 'done' %} success{% elif item.status in ('survey', 'in_progress') %} primary{% elif item.status == 'error' %} danger{% endif %}">{{ item.label }}</span>
+          {% if row and row.busy %}<small class="muted">идёт ход, данные прежние</small>{% endif %}
+        </td>
+        <td>
+          {% if row and row.closed is not none %}
+          <div class="mastery" role="img" aria-label="Закрыто занятий: {{ row.closed }} из {{ row.total }}"><span class="progress-track"><span class="progress-fill" data-percent="{{ row.percent }}"></span></span><small>{{ row.closed }} из {{ row.total }}</small></div>
+          {% else %}<span class="muted">—</span>{% endif %}
+        </td>
+        <td>{% if row and row.weak is not none %}{{ row.weak }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ format_time(row.last_activity if row else none) }}</td>
+        <td>{{ format_time(account.last_login_at) }}</td>
+        <td>{{ format_time(account.created_at) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if pages > 1 %}
+<nav class="admin-pages" aria-label="Страницы списка">
+  {% if page > 1 %}<a class="btn" href="?{{ {'q': q, 'page': page - 1}|urlencode }}">Назад</a>{% endif %}
+  <span class="muted">Страница {{ page }} из {{ pages }} · найдено {{ found }}</span>
+  {% if page < pages %}<a class="btn" href="?{{ {'q': q, 'page': page + 1}|urlencode }}">Дальше</a>{% endif %}
+</nav>
+{% endif %}
+{% else %}
+<div class="panel empty"><strong>Ничего не найдено</strong>Попробуйте другое имя или email.</div>
+{% endif %}
+{% endblock %}
