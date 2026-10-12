@@ -22,14 +22,16 @@ uv sync
 uv run pytest -q                       # весь набор без браузера, ~30 с
 uv run pytest -q -m e2e tests/e2e      # Playwright; Pyodide — из E2E_PYODIDE_DIR
 uv run python -m llm_tutor.web         # http://127.0.0.1:8000
+uv run python -m llm_tutor.web.cli make-admin --email ann@example.com   # раздел /admin
 ```
 
 ## Где что
 
 | Слой | Модули |
 |---|---|
-| `web/` | `app` (сборка, CSP, статика с `?v=`), `accounts` + `api_auth` + `security` (вход, сессии, Origin), `userdb` (пул БД учеников), `api_lesson` (ходы занятия), `views` (данные для шаблонов и API), `pages`, `markdown` (рендер без HTML), `courses`, `cli` (`import-legacy`) |
-| `web/static/js` | `app` (оболочка, запросы, тема и сайдбар), `prefs` (вид до отрисовки), `lesson` (ход занятия, `act`), `split`, `chat`, `theory`, `practice`, `code` + `pyodide-worker`, `survey`, `route`, `profile`, `courses`, `auth` |
+| `web/` | `app` (сборка, CSP, статика с `?v=`), `accounts` + `api_auth` + `security` (вход, сессии, Origin, роль админа), `userdb` (пул БД учеников), `api_lesson` (ходы занятия), `views` (данные для шаблонов и API), `pages`, `markdown` (рендер без HTML), `courses`, `cli` (`import-legacy`, `make-admin`, `revoke-admin`) |
+| `web/` админка | `admin` (снимок по всем ученикам с кэшем, воронка, трудные задания, карточка ученика), `pages_admin` (`/admin/students`, `/admin/students/{id}`, `/admin/course`), `api_admin` (сброс пароля, закрытие сессий) |
+| `web/static/js` | `app` (оболочка, запросы, тема и сайдбар), `prefs` (вид до отрисовки), `lesson` (ход занятия, `act`), `split`, `chat`, `theory`, `practice`, `code` + `pyodide-worker`, `survey`, `route`, `profile`, `courses`, `auth`, `admin` |
 | `core/` | `turn` (ход: ответ на задание / тьютор, вход в узел, закрытие, переход между модулями), `guided` (урок по частям, «ответ или реплика»), `verify` (проверочный проход), `lesson` (статусы тем, переход, анкета модуля, начало урока), `overview`, `context` (пакет промпта), `intents` |
 | `student/` | `survey` (адаптивная анкета по конфигу модуля, `Progress`), `route` (маршрут, рабочий участок модуля, статусы шагов), `planner` (приоритет, режимы), `beta` (модель владения), `guide` (критерий закрытия), `diagnostic` (выбор задания по узлу, запись свидетельств) |
 | `course/`, `rag/`, `grader/`, `llm/`, `db/` | граф и seed (`load_course` — все модули), поиск по материалам, автопроверка и рубрики, клиент и промпты, репозитории |
@@ -54,7 +56,8 @@ uv run python -m llm_tutor.web         # http://127.0.0.1:8000
 ## Документы
 
 - `llm-tutor-architecture.md` — архитектура (ссылки вида «§6.1» ведут сюда);
-- `docs/superpowers/specs/` — спеки доработок, `docs/superpowers/plans/` — планы;
+- `docs/superpowers/specs/` — спеки доработок, `docs/superpowers/plans/` — планы
+  (админка — `2026-10-12-admin-panel-design.md` и `2026-10-12-admin-panel.md`, срезы 63–68);
 - `.superpowers/sdd/<план>/progress.md` — журнал исполнения плана: решения
   (`Ruling:`), находки ревью, отложенное. Папка в git не попадает.
 
@@ -140,5 +143,24 @@ uv run python -m llm_tutor.web         # http://127.0.0.1:8000
   падать с `AssertionError` на заготовке и без `result`. Модули 3–5 — scikit-learn
   на данных из `setup` (API не новее 1.6, как в Pyodide); время проверки в
   браузере не меряется без `E2E_PYODIDE_DIR`.
+- **Админка** (срезы 63–68). Роль — `users.is_admin`, выдаёт её только CLI
+  `make-admin`, из веба — никак. Не-админу `/admin*` и `/api/admin*` отвечают
+  тем же 404, что и несуществующая страница (гость — редирект на вход / 401);
+  защита стоит зависимостью на роутере (`security.admin_user` /
+  `admin_page_user`), а не в каждой функции. Роль читается из БД на каждый
+  запрос — снятие действует сразу.
+- Снимок админки (`admin.snapshot`) читает БД учеников **синхронно, без
+  `await`**, и пропускает ученика, у которого идёт ход (`pool.lock(...)
+  .locked()`): соединение общее, а ход может не успеть закоммитить. Такой
+  ученик берётся из прошлого снимка. Кэш — `app.state.admin_cache`, 60 с;
+  по замеру (срез 67) около 6 мс на ученика, при ~200 учениках нужна сводная
+  таблица. Диалоги (`messages`) админка не показывает.
+- Временный пароль (`/api/admin/.../reset-password`) уходит только в ответе с
+  `no-store` и не пишется ни в лог, ни в `admin_log`. Диалог с паролем на
+  странице очищает поле синхронно: событие `close` у `<dialog>` приходит на
+  такт позже скрытия.
+- Тесты админки: пути маршрутов берутся из `app.openapi()` — в FastAPI 0.143
+  `app.routes` не раскрывает включённые роутеры. Модуль `llm_tutor.web.admin`
+  в тестах импортируется как `admin_data`: имя `admin` занято фикстурой.
 - Тесты не должны зависеть от `.env`: передавай фикстуру `settings` во всё, что
   иначе зовёт `get_settings()`.
