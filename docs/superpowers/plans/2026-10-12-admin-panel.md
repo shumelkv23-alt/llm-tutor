@@ -125,9 +125,9 @@
 
 ### Срез 63 — роль, миграция, каркас
 
-- [ ] **63.0** Журнал: `.superpowers/sdd/2026-10-12-admin-panel/progress.md`,
+- [x] **63.0** Журнал: `.superpowers/sdd/2026-10-12-admin-panel/progress.md`,
       база `uv run pytest -q` до правок.
-- [ ] **63.1 Тесты** (`tests/test_web_admin.py`, `tests/test_accounts.py`):
+- [x] **63.1 Тесты** (`tests/test_web_admin.py`, `tests/test_accounts.py`):
       - миграция 2 → 3 на БД с данными (§8: «Миграция»); `SCHEMA_VERSION == 3`;
         таблицы `admin_log`, колонки `is_admin`, `last_login_at`;
       - `User.is_admin` приходит из **всех** выборок (`resolve_session_info`,
@@ -141,31 +141,31 @@
         (страница и `/api/admin/…`); админ → 303 на `/admin/students`;
       - роль снимается — следующий запрос 404 без перелогина;
       - меню: пункт «Админка» есть только у админа (`nav`), `data-nav="admin"`.
-- [ ] **63.2 CLI** (`tests/test_web_cli.py` или рядом с тестами `import-legacy`):
+- [x] **63.2 CLI** (`tests/test_web_cli.py` или рядом с тестами `import-legacy`):
       `make-admin --email`, `revoke-admin --email`; идемпотентны; неизвестный
       email → код 1 и подсказка «сначала зарегистрируйтесь в браузере».
-- [ ] **63.3 Миграция** `migrations_accounts/003_admin.sql` (§3.1);
+- [x] **63.3 Миграция** `migrations_accounts/003_admin.sql` (§3.1);
       `accounts.SCHEMA_VERSION = 3`.
-- [ ] **63.4 `web/accounts.py`:** `User.is_admin: bool = False`; все `SELECT`
+- [x] **63.4 `web/accounts.py`:** `User.is_admin: bool = False`; все `SELECT`
       читают `is_admin`; `set_admin`; `create_session` пишет `last_login_at`.
-- [ ] **63.5 `web/security.py`:** `admin_user` (API: вошедший не-админ →
+- [x] **63.5 `web/security.py`:** `admin_user` (API: вошедший не-админ →
       `HTTPException(404)`, гость → 401 как у `require_user`) и
       `admin_page_user` (гость → `LoginRequired`, не-админ → 404).
-- [ ] **63.6 `web/pages.py`:** в `render` пункт `NavItem("admin", "/admin",
+- [x] **63.6 `web/pages.py`:** в `render` пункт `NavItem("admin", "/admin",
       "Админка", <иконка>)` добавляется в `nav`, если `user and user.is_admin`;
       `_TITLES["admin"]`. Иконка — в `icons.svg` (одна: щит или шестерёнка).
-- [ ] **63.7 `web/pages_admin.py`:** `APIRouter` с
+- [x] **63.7 `web/pages_admin.py`:** `APIRouter` с
       `dependencies=[Depends(admin_page_user)]`; `GET /admin` → 303 на
       `/admin/students`; временная заглушка `/admin/students`. Подключить в
       `app.create_app`.
-- [ ] **63.8 `web/api_admin.py`:** пустой `APIRouter(prefix="/api/admin",
+- [x] **63.8 `web/api_admin.py`:** пустой `APIRouter(prefix="/api/admin",
       dependencies=[Depends(admin_user)])`, подключён. Тест из Review Focus 1
       (перебор маршрутов) пишется здесь и растёт со срезами.
-- [ ] **63.9 CLI:** `make-admin`, `revoke-admin` в `web/cli.py` (общая
+- [x] **63.9 CLI:** `make-admin`, `revoke-admin` в `web/cli.py` (общая
       открывалка аккаунтов, как у `import-legacy`); в докстринге модуля —
       примеры команд.
-- [ ] **63.10** `uv run pytest -q` зелёный; коммит `Срез 63: …`.
-- [ ] **63.11 Ревью среза 63.**
+- [x] **63.10** `uv run pytest -q` зелёный; коммит `Срез 63: …`.
+- [x] **63.11 Ревью среза 63.**
 
 ### Срез 64 — снимок и список учеников
 
