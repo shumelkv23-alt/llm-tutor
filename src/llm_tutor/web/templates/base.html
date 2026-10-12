@@ -40,7 +40,6 @@
     <div class="workspace">
       <header class="topbar">
         <span class="breadcrumb">llm·tutor<span class="sep" aria-hidden="true">/</span><b>{% block breadcrumb %}{{ page_title }}{% endblock %}</b></span>
-        <span id="connection" class="connection" role="status">Подключение…</span>
       </header>
       <main id="main" tabindex="-1">
         {% block page_head %}
@@ -55,9 +54,8 @@
         {% endblock %}
         <div id="page-error" class="notice error" role="alert" hidden></div>
         {% block content %}{% endblock %}
-        {% block footer %}
-        <footer class="page-footer"><span>llm·tutor · по материалам mlcourse.ai</span><span>Модель объясняет, код проверяет.</span></footer>
-        {% endblock %}
+        {# Место для диалогов и прочего, что страница кладёт в конец <main>. #}
+        {% block footer %}{% endblock %}
       </main>
     </div>
   </div>

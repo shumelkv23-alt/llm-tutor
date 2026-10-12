@@ -382,32 +382,6 @@ small {
   font-weight: 650;
 }
 
-.connection {
-  flex: none;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--muted);
-}
-
-.connection::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--interactive);
-}
-
-.connection.online::before {
-  background: var(--success);
-}
-
-.connection.error::before {
-  background: var(--danger);
-}
-
 main {
   width: 100%;
   max-width: 1600px;
@@ -451,17 +425,6 @@ main {
 .page-description:empty,
 .eyebrow:empty {
   display: none;
-}
-
-.page-footer {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 40px;
-  padding-top: 16px;
-  border-top: 1px solid var(--border);
-  font-size: 12px;
-  color: var(--muted);
 }
 
 /* --- Блоки --- */
@@ -975,6 +938,10 @@ dialog p {
   gap: 12px;
 }
 
+.stats-card.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .stat {
   display: grid;
   gap: 4px;
@@ -1191,7 +1158,8 @@ dialog p {
   }
 
   .home-grid,
-  .stats-card {
+  .stats-card,
+  .stats-card.two {
     grid-template-columns: 1fr;
   }
 }
@@ -1535,11 +1503,6 @@ dialog p {
 
   .panel {
     padding: 16px;
-  }
-
-  .page-footer {
-    flex-direction: column;
-    gap: 4px;
   }
 }
 

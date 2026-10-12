@@ -66,18 +66,18 @@
     {% endif %}
   </section>
   {% if main.learning %}
-  <section class="panel stats-card" aria-label="Итоги">
-    {# «Закрыто занятий» уже есть в карточке курса — здесь то, чего там нет. #}
+  <section class="panel stats-card two" aria-label="Итоги">
+    {# «Закрыто занятий» уже есть в карточке курса — здесь то, чего там нет.
+       Знакомое по анкете (🔍) — внутренняя кухня маршрута, на главной не считается. #}
     <div class="stat"><span>Решено заданий</span><strong>{{ main.learning.solved }}</strong></div>
     <div class="stat"><span>Занятий впереди</span><strong>{{ main.card.topics - main.card.closed }}</strong></div>
-    <div class="stat"><span>Знакомых на проверку</span><strong>{{ main.learning.topics | selectattr('status', 'equalto', 'claimed') | list | length }}</strong></div>
   </section>
   <section class="panel next-card" aria-labelledby="next-title">
     <h2 id="next-title" class="section-title">Ближайшие шаги</h2>
     {% if main.learning.next_steps %}
     <ol class="next-steps">
       {% for step in main.learning.next_steps %}
-      <li class="{{ step.status }}"><span class="next-name">{{ step.name }}</span><span class="badge{% if step.status == 'current' %} primary{% elif step.status == 'claimed' %} accent{% endif %}">{{ step.label }}</span></li>
+      <li class="{{ step.status }}"><span class="next-name">{{ step.name }}</span>{% if step.status != 'claimed' %}<span class="badge{% if step.status == 'current' %} primary{% endif %}">{{ step.label }}</span>{% endif %}</li>
       {% endfor %}
     </ol>
     {% else %}

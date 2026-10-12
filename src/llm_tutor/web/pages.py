@@ -81,6 +81,21 @@ def _learning(request: Request, user: User) -> list[dict]:
     return result
 
 
+def _current_card(request: Request, user: User) -> dict | None:
+    """Карточка курса, который ученик проходит сейчас (последний записанный)."""
+    for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
+        course = get_course(course_id)
+        if course is not None:
+            return course_card(
+                course,
+                user_id=user.id,
+                enrolled=True,
+                pool=request.app.state.userdbs,
+                settings=request.app.state.settings,
+            )
+    return None
+
+
 @router.get("/", response_class=HTMLResponse)
 async def home(request: Request) -> HTMLResponse:
     user = optional_user(request)
@@ -144,8 +159,10 @@ async def lesson_page(
 @router.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
     joined = datetime.fromtimestamp(user.created_at).strftime("%d.%m.%Y")
+    # Профиль — только краткая сводка по текущему курсу; подробности (занятия,
+    # анкета) — в маршруте на странице занятия.
     return render(
-        request, "profile.html", "profile", user=user, joined=joined, courses=_learning(request, user)
+        request, "profile.html", "profile", user=user, joined=joined, card=_current_card(request, user)
     )
 
 

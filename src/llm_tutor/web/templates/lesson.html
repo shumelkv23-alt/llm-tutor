@@ -27,7 +27,6 @@
 {% endif %}
 {% endblock %}
 {% block page_head %}{% if not course.enrolled %}{{ super() }}{% endif %}{% endblock %}
-{% block footer %}{% if not course.enrolled %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
 {% if course.enrolled %}
 <div class="lesson" id="lesson" data-course="{{ course.id }}" data-view="lesson" aria-busy="true"

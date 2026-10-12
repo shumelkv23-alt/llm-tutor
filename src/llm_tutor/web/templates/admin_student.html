@@ -22,9 +22,14 @@
   <div class="admin-actions">
     <button class="btn" type="button" data-action="reset-password" data-user="{{ account.id }}" data-name="{{ account.name }}">Сбросить пароль</button>
     <button class="btn danger" type="button" data-action="close-sessions" data-user="{{ account.id }}" data-name="{{ account.name }}">Закрыть все сессии</button>
+    {% if account.is_admin %}
+    <button class="btn danger" type="button" data-action="revoke-admin" data-user="{{ account.id }}" data-name="{{ account.name }}">Снять роль админа</button>
+    {% else %}
+    <button class="btn" type="button" data-action="grant-admin" data-user="{{ account.id }}" data-name="{{ account.name }}">Сделать админом</button>
+    {% endif %}
   </div>
   {% else %}
-  <p class="muted">Это ваш аккаунт: пароль и сессии меняются в <a href="/profile">профиле</a>.</p>
+  <p class="muted">Это ваш аккаунт: пароль и сессии меняются в <a href="/profile">профиле</a>, а роль админа с себя снять нельзя.</p>
   {% endif %}
 </section>
 

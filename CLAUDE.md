@@ -30,7 +30,7 @@ uv run python -m llm_tutor.web.cli make-admin --email ann@example.com   # раз
 | Слой | Модули |
 |---|---|
 | `web/` | `app` (сборка, CSP, статика с `?v=`), `accounts` + `api_auth` + `security` (вход, сессии, Origin, роль админа), `userdb` (пул БД учеников), `api_lesson` (ходы занятия), `views` (данные для шаблонов и API), `pages`, `markdown` (рендер без HTML), `courses`, `cli` (`import-legacy`, `make-admin`, `revoke-admin`) |
-| `web/` админка | `admin` (снимок по всем ученикам с кэшем, воронка, трудные задания, карточка ученика), `pages_admin` (`/admin/students`, `/admin/students/{id}`, `/admin/course`), `api_admin` (сброс пароля, закрытие сессий) |
+| `web/` админка | `admin` (снимок по всем ученикам с кэшем, воронка по занятиям, карточка ученика), `pages_admin` (`/admin/students`, `/admin/students/{id}`, `/admin/course`), `api_admin` (сброс пароля, закрытие сессий, выдача и снятие роли) |
 | `web/static/js` | `app` (оболочка, запросы, тема и сайдбар), `prefs` (вид до отрисовки), `lesson` (ход занятия, `act`), `split`, `chat`, `theory`, `practice`, `code` + `pyodide-worker`, `survey`, `route`, `profile`, `courses`, `auth`, `admin` |
 | `core/` | `turn` (ход: ответ на задание / тьютор, вход в узел, закрытие, переход между модулями), `guided` (урок по частям, «ответ или реплика»), `verify` (проверочный проход), `lesson` (статусы тем, переход, анкета модуля, начало урока), `overview`, `context` (пакет промпта), `intents` |
 | `student/` | `survey` (адаптивная анкета по конфигу модуля, `Progress`), `route` (маршрут, рабочий участок модуля, статусы шагов), `planner` (приоритет, режимы), `beta` (модель владения), `guide` (критерий закрытия), `diagnostic` (выбор задания по узлу, запись свидетельств) |
@@ -143,8 +143,10 @@ uv run python -m llm_tutor.web.cli make-admin --email ann@example.com   # раз
   падать с `AssertionError` на заготовке и без `result`. Модули 3–5 — scikit-learn
   на данных из `setup` (API не новее 1.6, как в Pyodide); время проверки в
   браузере не меряется без `E2E_PYODIDE_DIR`.
-- **Админка** (срезы 63–68). Роль — `users.is_admin`, выдаёт её только CLI
-  `make-admin`, из веба — никак. Не-админу `/admin*` и `/api/admin*` отвечают
+- **Админка** (срезы 63–69). Роль — `users.is_admin`. Первого админа
+  назначает CLI `make-admin`; дальше роль выдаёт и снимает админ на карточке
+  ученика (срез 69), себе — нельзя (400): иначе можно остаться без админки.
+  Не-админу `/admin*` и `/api/admin*` отвечают
   тем же 404, что и несуществующая страница (гость — редирект на вход / 401);
   защита стоит зависимостью на роутере (`security.admin_user` /
   `admin_page_user`), а не в каждой функции. Роль читается из БД на каждый

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block eyebrow %}Аккаунт{% endblock %}
-{% block description %}Данные аккаунта, итог анкеты и прогресс по темам.{% endblock %}
+{% block description %}Данные аккаунта и прогресс по текущему курсу.{% endblock %}
 {% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
 {% block content %}
 <div class="profile-grid">
@@ -36,49 +36,26 @@
     </form>
   </section>
 
-  {% for entry in courses %}
-  <section class="panel learning" aria-labelledby="learning-{{ entry.card.id }}">
+  {% if card %}
+  <section class="panel learning" aria-labelledby="learning-title">
     <div class="panel-header">
-      <div><p class="eyebrow">{{ entry.card.subtitle }}</p><h2 id="learning-{{ entry.card.id }}">{{ entry.card.title }}</h2></div>
-      <a class="btn" href="{{ entry.card.href }}">К занятию{{ icon('arrow') }}</a>
+      <div><p class="eyebrow">Сейчас прохожу</p><h2 id="learning-title">{{ card.title }}</h2></div>
+      <a class="btn" href="{{ card.href }}">К занятию{{ icon('arrow') }}</a>
     </div>
-    {% if not entry.learning %}
+    {% if card.status == 'error' %}
     <p class="notice error">Данные курса сейчас не открываются. Сообщите администратору.</p>
+    {% elif card.status == 'survey' %}
+    <p class="muted">Курс начинается с короткой анкеты — она откроется на странице занятия.</p>
     {% else %}
-    <div class="learning-summary">
-      <div class="stat"><span>Закрыто тем</span><strong>{{ entry.card.closed }} из {{ entry.card.topics }}</strong></div>
-      <div class="stat"><span>Решено заданий</span><strong>{{ entry.learning.solved }}</strong></div>
-    </div>
-    <h3>Итог анкеты</h3>
-    {% if entry.learning.self_assessment %}
-    <ul class="survey-summary compact">{% for row in entry.learning.self_assessment %}<li><span>{{ row.title }}</span><b>{{ row.answer }}</b></li>{% endfor %}</ul>
-    {% else %}
-    <p class="muted">Анкета ещё не пройдена — она откроется на странице занятия.</p>
-    {% endif %}
-    <h3>Темы</h3>
-    <div class="table-wrap">
-      <table class="topics-table">
-        <thead><tr><th scope="col">Тема</th><th scope="col">Статус</th><th scope="col">Владение</th></tr></thead>
-        <tbody>
-          {% for module in entry.learning.modules %}
-          <tr class="module-row">
-            <th scope="rowgroup" colspan="3">Модуль {{ module.number }} · {{ module.title }} <span>{{ module.closed }} из {{ module.total }}</span></th>
-          </tr>
-          {% for topic in entry.learning.topics if topic.module == module.number %}
-          <tr class="topic-row {{ topic.status }}">
-            <th scope="row">{{ topic.name }}</th>
-            <td><span class="badge{% if topic.weak %} warning{% elif topic.status == 'closed' %} success{% elif topic.status == 'current' %} primary{% elif topic.status == 'claimed' %} accent{% endif %}">{{ topic.label }}</span></td>
-            <td><div class="mastery" role="img" aria-label="Владение {{ topic.mastery }}%, {{ topic.confidence }}"><span class="progress-track"><span class="progress-fill" data-percent="{{ topic.mastery }}"></span></span><small>{{ topic.mastery }}% · {{ topic.confidence }}</small></div></td>
-          </tr>
-          {% endfor %}
-          {% endfor %}
-        </tbody>
-      </table>
+    {% if card.current_topic %}<p class="course-current">Сейчас: <b>{{ card.current_topic }}</b></p>{% endif %}
+    <div class="progress" role="img" aria-label="Закрыто занятий: {{ card.closed }} из {{ card.topics }}">
+      <div class="progress-label"><span>Закрыто занятий</span><b>{{ card.closed }} из {{ card.topics }}</b></div>
+      <div class="progress-track"><span class="progress-fill" data-percent="{{ card.percent }}"></span></div>
     </div>
     {% endif %}
   </section>
   {% else %}
   <section class="panel"><div class="empty"><strong>Курсов пока нет</strong>Запишитесь на курс в разделе «Мои курсы» — здесь появится прогресс.</div></section>
-  {% endfor %}
+  {% endif %}
 </div>
 {% endblock %}

@@ -1,4 +1,4 @@
-"""API админки: действия над аккаунтами (срез 66).
+"""API админки: действия над аккаунтами (срезы 66, 69).
 
 Защита стоит на роутере, а не в каждой функции: новый маршрут не может её
 забыть. Изменяющие запросы идут через общий ``api_guard`` (только JSON и свой
@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(admin_user)])
 
 STUDENT_NOT_FOUND = "Ученик не найден."
-SELF_ACTION = "Своими паролем и сессиями управляйте в профиле."
+SELF_ACTION = "Над своим аккаунтом это действие недоступно: пароль меняется в профиле, а снять роль с себя нельзя."
 
 # 12 случайных байт в base64url — 16 символов, ~96 бит.
 _PASSWORD_BYTES = 12
@@ -73,3 +73,31 @@ async def close_sessions(
     accounts.log_admin(db, admin.id, "close_sessions", account.id, {"closed": closed})
     logger.info("Админ %s закрыл сессии аккаунта %s (%s)", admin.id, account.id, closed)
     return {"closed": closed}
+
+
+async def _set_role(request: Request, admin: User, user_id: int, value: bool) -> dict:
+    """Выдаёт или снимает роль админа (срез 69). Повтор ничего не меняет.
+
+    Над собой — 400 (через ``_target``): снять роль с себя значило бы
+    остаться без админки, а выдать себе — бессмысленно. Снятая роль
+    действует со следующего запроса того, у кого её сняли.
+    """
+    account = _target(request, admin, user_id)
+    db = accounts_db(request)
+    if account.is_admin != value:
+        accounts.set_admin(db, account.id, value)
+        accounts.log_admin(db, admin.id, "grant_admin" if value else "revoke_admin", account.id)
+        logger.info(
+            "Админ %s %s роль админа аккаунта %s", admin.id, "выдал" if value else "снял", account.id
+        )
+    return {"is_admin": value}
+
+
+@router.post("/students/{user_id}/grant-admin")
+async def grant_admin(user_id: int, request: Request, admin: User = Depends(admin_user)) -> dict:
+    return await _set_role(request, admin, user_id, True)
+
+
+@router.post("/students/{user_id}/revoke-admin")
+async def revoke_admin(user_id: int, request: Request, admin: User = Depends(admin_user)) -> dict:
+    return await _set_role(request, admin, user_id, False)
