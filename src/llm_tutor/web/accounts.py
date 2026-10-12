@@ -23,7 +23,7 @@ from llm_tutor.db.connection import get_conn, migrate
 # Корень проекта (web/accounts.py → src → корень) — не зависит от cwd.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = _PROJECT_ROOT / "migrations_accounts"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Срок сессии; продлевается, когда прошло больше половины (скользящий срок).
 SESSION_TTL = 30 * 24 * 3600.0
@@ -75,6 +75,9 @@ class User:
     email: str
     name: str
     created_at: float
+    # Роль читается из БД с каждой выборкой пользователя: снятая роль
+    # действует сразу (спека админки §2).
+    is_admin: bool = False
 
     @property
     def initial(self) -> str:
@@ -161,6 +164,7 @@ def _user(row: sqlite3.Row) -> User:
         email=row["email"],
         name=row["name"],
         created_at=row["created_at"],
+        is_admin=bool(row["is_admin"]),
     )
 
 
@@ -199,7 +203,7 @@ def create_user(
 
 def get_user(conn: sqlite3.Connection, user_id: int) -> User | None:
     row = conn.execute(
-        "SELECT id, email, name, created_at FROM users WHERE id = ?", (user_id,)
+        "SELECT id, email, name, created_at, is_admin FROM users WHERE id = ?", (user_id,)
     ).fetchone()
     return None if row is None else _user(row)
 
@@ -215,7 +219,7 @@ def credentials(conn: sqlite3.Connection, email: str) -> tuple[User | None, str]
     except AccountError:
         return None, _dummy_hash()
     row = conn.execute(
-        "SELECT id, email, name, created_at, password_hash FROM users WHERE email = ?",
+        "SELECT id, email, name, created_at, is_admin, password_hash FROM users WHERE email = ?",
         (clean_email,),
     ).fetchone()
     if row is None:
@@ -245,6 +249,17 @@ def rename(conn: sqlite3.Connection, user_id: int, name: str) -> User:
     if user is None:
         raise LookupError(f"Нет пользователя {user_id}")
     return user
+
+
+def set_admin(conn: sqlite3.Connection, user_id: int, value: bool) -> None:
+    """Выдаёт или снимает роль админа (повтор ничего не меняет).
+
+    Зовёт только CLI: из веба роль не меняется.
+    """
+    cur = conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (int(value), user_id))
+    conn.commit()
+    if cur.rowcount == 0:
+        raise LookupError(f"Нет пользователя {user_id}")
 
 
 def password_hash_of(conn: sqlite3.Connection, user_id: int) -> str:
@@ -302,6 +317,9 @@ def create_session(conn: sqlite3.Connection, user_id: int, *, now: float | None 
         "INSERT INTO web_sessions (token_hash, user_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
         (_token_hash(token), user_id, stamp, stamp + SESSION_TTL),
     )
+    # Вход и регистрация создают сессию, продление срока — нет: «последний вход»
+    # не должен сдвигаться от каждого визита.
+    conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (stamp, user_id))
     conn.commit()
     return token
 
@@ -315,7 +333,7 @@ def resolve_session_info(
     stamp = time.time() if now is None else now
     digest = _token_hash(token)
     row = conn.execute(
-        "SELECT s.expires_at, u.id, u.email, u.name, u.created_at "
+        "SELECT s.expires_at, u.id, u.email, u.name, u.created_at, u.is_admin "
         "FROM web_sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?",
         (digest,),
     ).fetchone()
@@ -378,6 +396,6 @@ def find_user(conn: sqlite3.Connection, email: str) -> User | None:
     except AccountError:
         return None
     row = conn.execute(
-        "SELECT id, email, name, created_at FROM users WHERE email = ?", (clean,)
+        "SELECT id, email, name, created_at, is_admin FROM users WHERE email = ?", (clean,)
     ).fetchone()
     return None if row is None else _user(row)

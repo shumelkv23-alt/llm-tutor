@@ -12,7 +12,7 @@ from collections import deque
 from collections.abc import Awaitable, Callable
 from urllib.parse import quote, urlparse
 
-from fastapi import HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from llm_tutor.config import Settings
@@ -95,6 +95,25 @@ async def page_user(request: Request) -> User:
     if user is None:
         target = request.url.path + (f"?{request.url.query}" if request.url.query else "")
         raise LoginRequired(target)
+    return user
+
+
+# Не-админу админка отвечает как несуществующая страница — тем же телом, что и
+# FastAPI на неизвестный путь: раздел не выдаёт своего существования.
+NOT_FOUND = "Not Found"
+
+
+async def admin_user(user: User = Depends(require_user)) -> User:
+    """Зависимость API админки: гость — 401, вошедший не-админ — 404."""
+    if not user.is_admin:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    return user
+
+
+async def admin_page_user(user: User = Depends(page_user)) -> User:
+    """Зависимость страницы админки: гость — на вход, не-админ — 404."""
+    if not user.is_admin:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
     return user
 
 

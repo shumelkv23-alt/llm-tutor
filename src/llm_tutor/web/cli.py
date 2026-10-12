@@ -4,6 +4,10 @@
 --db data/llm_tutor.sqlite3`` — перенести БД Telegram-бота (один ученик) в
 аккаунт веба: копия становится БД ученика на курсе, ученик записывается на
 курс. Аккаунт сначала регистрируется в браузере.
+
+``make-admin --email ann@example.com`` выдаёт аккаунту роль админа (раздел
+``/admin``), ``revoke-admin`` снимает её. Роль меняется только так, из веба —
+никак: захват аккаунта ученика не должен давать права админа.
 """
 
 import argparse
@@ -71,6 +75,19 @@ def import_legacy(settings: Settings, email: str, db_path: str, course_id: str) 
     return str(target)
 
 
+def set_admin_role(settings: Settings, email: str, *, admin: bool) -> str:
+    """Выдаёт или снимает роль админа. Возвращает имя; нет аккаунта — ``RuntimeError``."""
+    db = accounts.open_accounts(settings.accounts_db_path)
+    try:
+        user = accounts.find_user(db, email)
+        if user is None:
+            raise RuntimeError(f"Нет аккаунта {email!r} — сначала зарегистрируйтесь в браузере")
+        accounts.set_admin(db, user.id, admin)
+        return f"{user.name} <{user.email}>"
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m llm_tutor.web.cli")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -78,14 +95,25 @@ def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> 
     legacy.add_argument("--email", required=True)
     legacy.add_argument("--db", default="data/llm_tutor.sqlite3")
     legacy.add_argument("--course", default=COURSES[0].id)
+    for name, help_text in (
+        ("make-admin", "выдать аккаунту роль админа"),
+        ("revoke-admin", "снять с аккаунта роль админа"),
+    ):
+        commands.add_parser(name, help=help_text).add_argument("--email", required=True)
     args = parser.parse_args(argv)
+    settings = settings or get_settings()
 
     try:
-        target = import_legacy(settings or get_settings(), args.email, args.db, args.course)
+        if args.command == "import-legacy":
+            target = import_legacy(settings, args.email, args.db, args.course)
+            print(f"Готово: {target}")
+        else:
+            admin = args.command == "make-admin"
+            who = set_admin_role(settings, args.email, admin=admin)
+            print(f"Готово: {who} — {'админ' if admin else 'не админ'}")
     except RuntimeError as exc:
         print(f"Ошибка: {exc}")
         return 1
-    print(f"Готово: {target}")
     return 0
 
 

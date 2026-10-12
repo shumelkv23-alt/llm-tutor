@@ -244,9 +244,11 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         return {"status": "ok"}
 
     # Локальный импорт: модули маршрутов берут зависимости из app.state.
-    from llm_tutor.web import api_auth, api_lesson, pages
+    from llm_tutor.web import api_admin, api_auth, api_lesson, pages, pages_admin
 
     app.include_router(api_auth.router)
     app.include_router(api_lesson.router)
+    app.include_router(api_admin.router)
+    app.include_router(pages_admin.router)
     app.include_router(pages.router)
     return app
