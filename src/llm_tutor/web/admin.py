@@ -21,6 +21,8 @@ from dataclasses import dataclass, field, replace
 from datetime import datetime
 
 from llm_tutor.config import Settings
+from llm_tutor.course.seed import Course as CourseData
+from llm_tutor.course.seed import main_concept
 from llm_tutor.core.lesson import course_survey_done, is_closed
 from llm_tutor.core.overview import topic_rows
 from llm_tutor.course.graph import CourseGraph
@@ -138,7 +140,9 @@ def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData
             closed.add(current)
     lessons = {
         row.id: LessonMark(
-            reached=survey_done and (row.id in closed or row.status == "current"),
+            # Закрытое — всегда «дошёл» (иначе закрыли > дошли); текущее — только
+            # у прошедшего анкету: до неё статусы занятий ничего не значат.
+            reached=row.id in closed or (survey_done and row.status == "current"),
             closed=row.id in closed,
             weak=row.weak,
         )
@@ -329,3 +333,136 @@ def student_card(
         logger.exception("БД ученика %s по курсу %s не открывается", account.id, course.id)
         return StudentCard(state="error", **base)
     return StudentCard(state="ok", learning=learning, answers=answers, **base)
+
+
+# --- Аналитика курса ---
+
+# Меньше этого — «мало данных»: по двум ответам вывод о задании делать нельзя.
+MIN_ANSWERS = 5
+MIN_STUDENTS = 3
+FINAL_LABEL = "Итоговое задание"
+ANSWER_TYPES = {"open": "Открытый", "code": "Код", "choice": "Выбор", "short": "Короткий ответ"}
+
+
+@dataclass(frozen=True)
+class LessonFunnel:
+    id: str
+    name: str
+    reached: int  # учеников, дошедших до занятия
+    closed: int
+    weak: int  # из закрывших — закрыли после двух ошибок
+
+    @property
+    def rate(self) -> float | None:
+        """Доля закрытия среди дошедших; до занятия никто не дошёл — ``None``."""
+        return self.closed / self.reached if self.reached else None
+
+
+@dataclass(frozen=True)
+class ModuleFunnel:
+    number: int
+    title: str
+    lessons: tuple[LessonFunnel, ...]
+
+
+def _published(data: CourseData):
+    return [topic for topic in data.topics if topic.published and topic.active]
+
+
+def funnel(snap: Snapshot, data: CourseData) -> list[ModuleFunnel]:
+    """Воронка по занятиям в порядке курса; неопубликованные модули не показываются.
+
+    Занятия, до которых никто не дошёл, остаются — нулями. Ученики без данных
+    (нет БД, ошибка, ход без прежнего снимка) в подсчёт не входят.
+    """
+    marks = [row.lessons for row in snap.rows.values() if row.lessons]
+    result = []
+    for topic in _published(data):
+        lessons = []
+        for node in data.nodes:
+            if node.topic_id != topic.number:
+                continue
+            own = [lessons_of[node.id] for lessons_of in marks if node.id in lessons_of]
+            lessons.append(
+                LessonFunnel(
+                    id=node.id,
+                    name=node.name,
+                    reached=sum(1 for mark in own if mark.reached),
+                    closed=sum(1 for mark in own if mark.closed),
+                    weak=sum(1 for mark in own if mark.closed and mark.weak),
+                )
+            )
+        result.append(ModuleFunnel(number=topic.number, title=topic.title, lessons=tuple(lessons)))
+    return result
+
+
+@dataclass(frozen=True)
+class HardItem:
+    """Задание банка со статистикой ответов всех учеников."""
+
+    item_id: int
+    module: int
+    lesson: str
+    part: str | None  # «Итоговое задание» или название раздела
+    type: str
+    prompt: str
+    students: int
+    answers: int
+    right: float  # доля ответов с result >= 0.5
+    first_try: float  # доля учеников, чей первый ответ верный
+    attempts: float  # ответов на ученика
+    hints: float  # подсказок на ответ
+
+    @property
+    def thin(self) -> bool:
+        """Данных мало: вывод о задании делать рано."""
+        return self.answers < MIN_ANSWERS or self.students < MIN_STUDENTS
+
+
+def hard_items(
+    snap: Snapshot, data: CourseData, *, module: int | None = None, type: str | None = None
+) -> list[HardItem]:
+    """Задания с ответами: сначала с наименьшей долей верных, «мало данных» — в конце.
+
+    Задание привязано к занятию своего главного концепта. Ответы на задания,
+    которых нет в seed, не считаются; задания без ответов в таблицу не попадают.
+    """
+    published = {topic.number for topic in _published(data)}
+    nodes = {node.id: node for node in data.nodes}
+    by_item: dict[int, list[list[Answer]]] = {}
+    for row in snap.rows.values():
+        grouped: dict[int, list[Answer]] = {}
+        for answer in row.answers:
+            grouped.setdefault(answer.item_id, []).append(answer)
+        for item_id, answers in grouped.items():
+            by_item.setdefault(item_id, []).append(answers)
+    rows = []
+    for item in data.items:
+        per_student = by_item.get(item.id)
+        node = nodes.get(main_concept(item) or "")
+        if not per_student or node is None or node.topic_id not in published:
+            continue
+        if (module is not None and node.topic_id != module) or (type is not None and item.answer_type != type):
+            continue
+        answers = [answer for student in per_student for answer in student]
+        part = FINAL_LABEL if item.final else next(
+            (section.title for section in node.sections if section.id == item.section), None
+        )
+        rows.append(
+            HardItem(
+                item_id=item.id,
+                module=node.topic_id,
+                lesson=node.name,
+                part=part,
+                type=item.answer_type,
+                prompt=_preview(item.prompt),
+                students=len(per_student),
+                answers=len(answers),
+                right=sum(1 for answer in answers if answer.result >= 0.5) / len(answers),
+                first_try=sum(1 for student in per_student if student[0].result >= 0.5) / len(per_student),
+                attempts=len(answers) / len(per_student),
+                hints=sum(answer.hints_used for answer in answers) / len(answers),
+            )
+        )
+    rows.sort(key=lambda row: (row.thin, row.right, -row.answers, row.item_id))
+    return rows

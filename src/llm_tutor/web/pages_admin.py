@@ -102,3 +102,45 @@ async def student_card_page(
         format_time=admin.format_time,
         tab="students",
     )
+
+
+def _filter_number(raw: str, allowed: set[int]) -> int | None:
+    """Номер модуля из запроса; мусор и неизвестный модуль — без фильтра."""
+    try:
+        number = int(raw)
+    except ValueError:
+        return None
+    return number if number in allowed else None
+
+
+@router.get("/admin/course", response_class=HTMLResponse)
+async def course_analytics(
+    request: Request,
+    module: str = "",
+    type: str = "",
+    refresh: str = "",
+    user: User = Depends(admin_page_user),
+) -> HTMLResponse:
+    course = courses.COURSES[0]
+    data = courses.course_data(course)
+    snap = admin.snapshot(request.app.state, course, refresh=refresh not in ("", "0"))
+    funnel = admin.funnel(snap, data)
+    chosen_module = _filter_number(module, {block.number for block in funnel})
+    chosen_type = type if type in admin.ANSWER_TYPES else None
+    return render(
+        request,
+        "admin_course.html",
+        "admin",
+        user=user,
+        funnel=funnel,
+        items=admin.hard_items(snap, data, module=chosen_module, type=chosen_type),
+        modules=[(block.number, block.title) for block in funnel],
+        types=admin.ANSWER_TYPES,
+        chosen_module=chosen_module,
+        chosen_type=chosen_type,
+        students=len(snap.rows),
+        min_answers=admin.MIN_ANSWERS,
+        min_students=admin.MIN_STUDENTS,
+        built_at=admin.format_time(snap.built_at),
+        tab="course",
+    )

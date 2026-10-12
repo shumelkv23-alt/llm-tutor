@@ -1177,3 +1177,407 @@ async def test_card_has_action_buttons_for_others_but_not_for_self(admin, web_ap
     assert 'data-action="reset-password"' not in own
     assert "профил" in own  # подсказка, где менять свой пароль
     await client.aclose()
+
+
+# --- Аналитика курса (Срез 67) ---
+
+import re
+from dataclasses import replace
+
+from llm_tutor.web import courses as web_courses
+
+
+def _data():
+    return web_courses.course_data(COURSES[0])
+
+
+def _lesson_ids() -> list[str]:
+    return [node.id for node in _data().nodes]
+
+
+def _set_state(web_app, user, *, current: str | None, closed=(), weak=()) -> None:
+    """Состояние занятий ученика после анкеты: текущее, закрытые и слабые."""
+    conn = _db(web_app, user)
+    session_id = repos.ensure_open_session(conn)
+    state = repos.get_session_state(conn, session_id)
+    assert state.route is not None
+    steps = [
+        step.model_copy(
+            update={
+                "status": "closed" if step.concept_id in closed else step.status,
+                "weak": step.concept_id in weak,
+            }
+        )
+        for step in state.route.steps
+    ]
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(update={"current_node_id": current, "route": state.route.model_copy(update={"steps": steps})}),
+    )
+
+
+async def _funnel_students(web_app):
+    """Четыре ученика: у каждого своя картина прохождения первых занятий."""
+    l0, l1, l2, _ = _lesson_ids()[:4]
+    made = []
+    for name, state in (
+        ("Sa", dict(current=l2, closed=(l0, l1))),
+        ("Sb", dict(current=l1, closed=(l0,), weak=(l0,))),
+        ("Sc", dict(current=l0)),
+    ):
+        client, user = await _learner(web_app, name, survey_done=True)
+        _set_state(web_app, user, **state)
+        made.append(client)
+    client, _ = await _learner(web_app, "Sd")  # без анкеты
+    made.append(client)
+    return made
+
+
+def _lesson(funnel, lesson_id: str):
+    for module in funnel:
+        for lesson in module.lessons:
+            if lesson.id == lesson_id:
+                return lesson
+    raise AssertionError(lesson_id)
+
+
+async def test_funnel_counts_reached_closed_and_weak(web_app) -> None:
+    clients = await _funnel_students(web_app)
+    l0, l1, l2, l3 = _lesson_ids()[:4]
+
+    funnel = admin_data.funnel(_snapshot(web_app), _data())
+
+    first, second, third, untouched = (_lesson(funnel, lesson) for lesson in (l0, l1, l2, l3))
+    assert (first.reached, first.closed, first.weak) == (3, 2, 1)
+    assert first.rate == pytest.approx(2 / 3)
+    assert (second.reached, second.closed, second.weak) == (2, 1, 0)
+    assert (third.reached, third.closed, third.weak) == (1, 0, 0)
+    assert third.rate == 0.0
+    # До занятия никто не дошёл — нули, а не пропуск строки; доля не считается.
+    assert (untouched.reached, untouched.closed, untouched.weak, untouched.rate) == (0, 0, 0, None)
+    for client in clients:
+        await client.aclose()
+
+
+async def test_funnel_student_without_survey_never_reached_anything(web_app) -> None:
+    clients = await _funnel_students(web_app)
+
+    funnel = admin_data.funnel(_snapshot(web_app), _data())
+
+    assert max(lesson.reached for module in funnel for lesson in module.lessons) <= 3  # Sd не в счёте
+    for client in clients:
+        await client.aclose()
+
+
+async def test_funnel_invariants_and_agreement_with_the_list(web_app) -> None:
+    clients = await _funnel_students(web_app)
+    snap = _snapshot(web_app)
+
+    funnel = admin_data.funnel(snap, _data())
+
+    lessons = [lesson for module in funnel for lesson in module.lessons]
+    students = len(snap.rows)
+    for lesson in lessons:
+        assert 0 <= lesson.weak <= lesson.closed <= lesson.reached <= students
+    # Сумма закрытых по занятиям сходится с прогрессом учеников в списке.
+    assert sum(lesson.closed for lesson in lessons) == sum(row.closed for row in snap.rows.values())
+    for client in clients:
+        await client.aclose()
+
+
+async def test_funnel_follows_course_order_and_skips_unpublished_modules(web_app) -> None:
+    data = _data()
+    topics = tuple(topic.model_copy(update={"published": topic.number != 2}) for topic in data.topics)
+
+    funnel = admin_data.funnel(_snapshot(web_app), replace(data, topics=topics))
+
+    assert [module.number for module in funnel] == [topic.number for topic in data.topics if topic.number != 2]
+    published = {node.id for node in data.nodes if node.topic_id != 2}
+    assert [lesson.id for module in funnel for lesson in module.lessons] == [
+        node.id for node in data.nodes if node.id in published
+    ]
+    assert all(module.title for module in funnel)
+
+
+async def test_funnel_empty_course(web_app) -> None:
+    funnel = admin_data.funnel(_snapshot(web_app), _data())
+
+    lessons = [lesson for module in funnel for lesson in module.lessons]
+    assert lessons and all((lesson.reached, lesson.closed, lesson.weak) == (0, 0, 0) for lesson in lessons)
+    assert all(lesson.rate is None for lesson in lessons)
+
+
+async def test_funnel_ignores_students_without_data(web_app) -> None:
+    clients = await _funnel_students(web_app)
+    client, user = await _learner(web_app, "Broken", survey_done=True)
+    web_app.state.userdbs.close_all()
+    web_app.state.userdbs.path(user.id, COURSE).write_bytes(b"not a database")
+
+    funnel = admin_data.funnel(_snapshot(web_app, refresh=True), _data())
+
+    assert _lesson(funnel, _lesson_ids()[0]).reached == 3
+    for c in (*clients, client):
+        await c.aclose()
+
+
+def _pick_items(count: int):
+    return [item for item in _data().items if not item.final][:count]
+
+
+async def _answerers(web_app, count: int):
+    made = []
+    for index in range(count):
+        made.append(await _learner(web_app, f"U{index}"))
+    return made
+
+
+async def test_hard_items_statistics(web_app) -> None:
+    first, second, third = _pick_items(3)
+    people = await _answerers(web_app, 5)
+    users = [user for _, user in people]
+    # Задание 1: пять учеников по одному ответу — верно, верно, неверно, неверно, неверно.
+    for index, (user, result) in enumerate(zip(users, (1.0, 1.0, 0.0, 0.0, 0.0))):
+        _answer(web_app, user, first, 100.0 + index, result=result, hints=1 if index == 0 else 0)
+    # Задание 2: три ученика; первый ответ верный только у второго.
+    _answer(web_app, users[0], second, 200.0, result=0.0)
+    _answer(web_app, users[0], second, 201.0, result=1.0)
+    _answer(web_app, users[1], second, 202.0, result=1.0)
+    _answer(web_app, users[2], second, 203.0, result=0.0)
+    _answer(web_app, users[2], second, 204.0, result=0.0)
+    _answer(web_app, users[2], second, 205.0, result=1.0, hints=3)
+    # Задание 3: два ответа одного ученика.
+    _answer(web_app, users[0], third, 300.0, result=0.0)
+    _answer(web_app, users[0], third, 301.0, result=0.0)
+
+    rows = {row.item_id: row for row in admin_data.hard_items(_snapshot(web_app), _data())}
+
+    a, b, c = rows[first.id], rows[second.id], rows[third.id]
+    assert (a.students, a.answers) == (5, 5)
+    assert a.right == pytest.approx(0.4)
+    assert a.first_try == pytest.approx(0.4)
+    assert a.attempts == pytest.approx(1.0)
+    assert a.hints == pytest.approx(0.2)
+    assert (b.students, b.answers) == (3, 6)
+    assert b.right == pytest.approx(0.5)
+    assert b.first_try == pytest.approx(1 / 3)
+    assert b.attempts == pytest.approx(2.0)
+    assert b.hints == pytest.approx(0.5)
+    assert (c.students, c.answers) == (1, 2)
+    assert c.right == 0.0
+    assert not a.thin and not b.thin  # от 5 ответов и от 3 учеников — данные
+    assert c.thin
+    for client, _ in people:
+        await client.aclose()
+
+
+async def test_hard_items_thresholds_and_order(web_app) -> None:
+    first, second, third = _pick_items(3)
+    people = await _answerers(web_app, 5)
+    users = [user for _, user in people]
+    # first: 5 ответов, 5 учеников — данных достаточно, доля верных 80 %.
+    for index, user in enumerate(users):
+        _answer(web_app, user, first, 100.0 + index, result=1.0 if index else 0.0)
+    # second: 5 ответов, но всего 2 ученика — мало данных, хотя доля верных 0 %.
+    for index in range(5):
+        _answer(web_app, users[index % 2], second, 200.0 + index, result=0.0)
+    # third: 4 ответа у 4 учеников — мало данных (меньше 5 ответов).
+    for index in range(4):
+        _answer(web_app, users[index], third, 300.0 + index, result=0.0)
+
+    rows = admin_data.hard_items(_snapshot(web_app), _data())
+
+    by_id = {row.item_id: row for row in rows}
+    assert not by_id[first.id].thin
+    assert by_id[second.id].thin and by_id[third.id].thin
+    ordered = [row.item_id for row in rows]
+    assert ordered[0] == first.id  # приглушённые — в конце, несмотря на 0 % верных
+    assert set(ordered[1:]) == {second.id, third.id}
+    for client, _ in people:
+        await client.aclose()
+
+
+async def test_hard_items_count_only_answers_to_items(web_app) -> None:
+    item, = _pick_items(1)
+    people = await _answerers(web_app, 1)
+    user = people[0][1]
+    _answer(web_app, user, item, 100.0, result=1.0, source="autotest")
+    _answer(web_app, user, item, 101.0, result=0.0, source="dialogue")
+    _answer(web_app, user, item, 102.0, result=0.0, source="self")
+    repos.add_event(_db(web_app, user), Event(source="autotest", result=0.0, item_id=None, ts=103.0))
+
+    row, = admin_data.hard_items(_snapshot(web_app), _data())
+
+    assert (row.answers, row.right) == (1, 1.0)
+    await people[0][0].aclose()
+
+
+async def test_hard_items_skip_items_missing_from_the_seed(web_app) -> None:
+    item, = _pick_items(1)
+    people = await _answerers(web_app, 1)
+    user = people[0][1]
+    conn = _db(web_app, user)
+    _answer(web_app, user, item, 100.0)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute(
+        "INSERT INTO events (ts, concept_id, item_id, source, result) VALUES (101.0, NULL, 987654, 'autotest', 0.0)"
+    )
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    rows = admin_data.hard_items(_snapshot(web_app), _data())
+
+    assert [row.item_id for row in rows] == [item.id]
+    await people[0][0].aclose()
+
+
+async def test_hard_items_belong_to_main_concept_lesson(web_app) -> None:
+    item, = _pick_items(1)
+    people = await _answerers(web_app, 1)
+    _answer(web_app, people[0][1], item, 100.0)
+    main = max(item.concept_weights, key=item.concept_weights.__getitem__)
+    lesson = next(node for node in _data().nodes if node.id == main)
+
+    row, = admin_data.hard_items(_snapshot(web_app), _data())
+
+    assert row.lesson == lesson.name
+    assert row.module == lesson.topic_id
+    assert row.type == item.answer_type
+    assert row.prompt.startswith(" ".join(item.prompt.split())[:20])
+    await people[0][0].aclose()
+
+
+async def test_hard_items_filters(web_app) -> None:
+    first, = _pick_items(1)
+    people = await _answerers(web_app, 1)
+    _answer(web_app, people[0][1], first, 100.0)
+    snap = _snapshot(web_app)
+    data = _data()
+
+    main = max(first.concept_weights, key=first.concept_weights.__getitem__)
+    module = next(node.topic_id for node in data.nodes if node.id == main)
+    assert admin_data.hard_items(snap, data, module=module)
+    assert admin_data.hard_items(snap, data, module=99) == []
+    assert admin_data.hard_items(snap, data, type=first.answer_type)
+    other = next(kind for kind in ("open", "code", "choice", "short") if kind != first.answer_type)
+    assert admin_data.hard_items(snap, data, type=other) == []
+    await people[0][0].aclose()
+
+
+async def _course_page(admin_client, **params) -> str:
+    response = await admin_client.get("/admin/course", params=params)
+    assert response.status_code == 200
+    return response.text
+
+
+async def test_course_page_shows_funnel_rows(admin, web_app) -> None:
+    clients = await _funnel_students(web_app)
+    l0 = _lesson_ids()[0]
+
+    html = await _course_page(admin)
+
+    row = re.search(rf'<tr class="lesson-row"[^>]*data-lesson="{l0}"([^>]*)>', html)
+    assert row, "нет строки занятия"
+    attrs = row.group(1)
+    assert 'data-reached="3"' in attrs and 'data-closed="2"' in attrs and 'data-weak="1"' in attrs
+    assert "67%" in html  # доля закрытия первого занятия
+    assert "Модуль 1" in html
+    for client in clients:
+        await client.aclose()
+
+
+async def test_course_page_shows_hard_items_sorted_with_dimmed_thin_rows(admin, web_app) -> None:
+    first, second = _pick_items(2)
+    people = await _answerers(web_app, 5)
+    for index, (_, user) in enumerate(people):
+        _answer(web_app, user, first, 100.0 + index, result=1.0 if index else 0.0)
+    _answer(web_app, people[0][1], second, 200.0, result=0.0)
+
+    html = await _course_page(admin)
+
+    assert f'data-item="{first.id}"' in html and f'data-item="{second.id}"' in html
+    assert html.index(f'data-item="{first.id}"') < html.index(f'data-item="{second.id}"')
+    thin = re.search(rf'<tr class="item-row[^"]*"[^>]*data-item="{second.id}"', html)
+    assert thin and "dim" in thin.group(0)
+    assert "мало данных" in html
+    assert "80%" in html
+    assert "подсказка" in html.lower()  # пояснение «подсказка, а не вердикт»
+    for client, _ in people:
+        await client.aclose()
+
+
+async def test_course_page_filters_and_ignores_junk(admin, web_app) -> None:
+    first, = _pick_items(1)
+    people = await _answerers(web_app, 1)
+    _answer(web_app, people[0][1], first, 100.0)
+
+    assert f'data-item="{first.id}"' in await _course_page(admin, module=1)
+    assert f'data-item="{first.id}"' not in await _course_page(admin, module=2)  # другой модуль
+    assert f'data-item="{first.id}"' in await _course_page(admin, module=99)  # неизвестный — мусор
+    assert f'data-item="{first.id}"' in await _course_page(admin, module="abc", type="zzz")
+    assert f'data-item="{first.id}"' in await _course_page(admin, type=first.answer_type)
+    other = next(kind for kind in ("open", "code", "choice", "short") if kind != first.answer_type)
+    assert f'data-item="{first.id}"' not in await _course_page(admin, type=other)
+    await people[0][0].aclose()
+
+
+async def test_course_page_without_students(admin) -> None:
+    html = await _course_page(admin)
+
+    assert "Данных пока нет" in html
+    assert "Модуль 1" in html  # воронка строится и без учеников — нулями
+
+
+async def test_course_page_time_and_refresh(admin) -> None:
+    html = await _course_page(admin)
+
+    assert "Данные на" in html
+    assert "refresh=1" in html
+
+
+async def test_course_page_and_students_page_share_one_snapshot(admin, web_app, monkeypatch) -> None:
+    client, _ = await _learner(web_app, "Ann", survey_done=True)
+    calls = []
+    real_open = web_app.state.userdbs.open
+    monkeypatch.setattr(web_app.state.userdbs, "open", lambda *a: calls.append(a) or real_open(*a))
+
+    await _students_page(admin, refresh=1)
+    opened = len(calls)
+    assert opened > 0
+    await _course_page(admin)
+    assert len(calls) == opened  # снимок общий и свежий
+
+    await _course_page(admin, refresh=1)
+    assert len(calls) > opened
+    await client.aclose()
+
+
+async def test_course_page_escapes_item_prompts(admin, web_app, monkeypatch) -> None:
+    item, = _pick_items(1)
+    people = await _answerers(web_app, 1)
+    _answer(web_app, people[0][1], item, 100.0)
+    data = _data()
+    hostile = tuple(
+        i.model_copy(update={"prompt": "<script>alert(3)</script> <img src=x onerror=1> условие"})
+        if i.id == item.id
+        else i
+        for i in data.items
+    )
+    monkeypatch.setattr(web_courses, "course_data", lambda course: replace(data, items=hostile))
+
+    html = await _course_page(admin)
+
+    assert "<script>alert(3)" not in html and "<img src=x" not in html
+    assert "&lt;script&gt;" in html
+    assert "scrypt$" not in html
+    await people[0][0].aclose()
+
+
+async def test_course_page_requires_admin(student) -> None:
+    assert (await student.get("/admin/course")).status_code == 404
+
+
+async def test_admin_tabs_link_to_the_course_page(admin) -> None:
+    html = await _students_page(admin)
+
+    assert 'href="/admin/course"' in html

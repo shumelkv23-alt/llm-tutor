@@ -143,3 +143,26 @@
   font-size: 16px;
   letter-spacing: 0.02em;
 }
+
+/* Аналитика курса */
+.admin-note {
+  margin: 8px 0 16px;
+  font-size: 13px;
+}
+
+.admin-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.admin-filters label {
+  display: grid;
+  flex: 1 1 200px;
+  gap: 4px;
+  max-width: 320px;
+  color: var(--muted);
+  font-size: 13px;
+}
