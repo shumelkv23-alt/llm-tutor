@@ -218,7 +218,7 @@ async def test_get_api_is_not_blocked_by_content_type(web) -> None:
 # --- Страницы ---
 
 
-@pytest.mark.parametrize("path", ["/courses", "/lesson", "/lesson/mlcourse-topic01", "/profile"])
+@pytest.mark.parametrize("path", ["/courses", "/lesson", "/lesson/mlcourse", "/profile"])
 async def test_private_pages_redirect_guest_to_login(web, path: str) -> None:
     response = await web.get(path)
 
@@ -290,7 +290,7 @@ def test_safe_next_rejects_foreign_targets(value: str) -> None:
     assert safe_next(value) == "/"
 
 
-@pytest.mark.parametrize("value", ["/", "/profile", "/lesson/mlcourse-topic01?tab=code"])
+@pytest.mark.parametrize("value", ["/", "/profile", "/lesson/mlcourse?tab=code"])
 def test_safe_next_keeps_own_paths(value: str) -> None:
     assert safe_next(value) == value
 

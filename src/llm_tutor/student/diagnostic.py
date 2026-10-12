@@ -10,11 +10,12 @@
 
 import sqlite3
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
 from llm_tutor.schemas import Event, EventSource, Item
 from llm_tutor.student import beta
@@ -69,9 +70,50 @@ def _available_items(
     return items
 
 
-def _best_item(items: Iterable[Item], concept_id: str, target_difficulty: float) -> Item | None:
+def _concept_topics(conn: sqlite3.Connection) -> dict[str, int]:
+    """Модуль каждой темы курса (для отсева заданий будущих модулей)."""
+    return {concept.id: concept.topic_id for concept in repos.get_concepts(conn)}
+
+
+def _native(item: Item, concept_id: str, topics: Mapping[str, int]) -> bool:
+    """Задание годится для темы: его главная тема не из более позднего модуля.
+
+    Задание модуля N со вторичным весом на теме модуля N−1 живёт в уроках
+    модуля N: в уроке N−1 оно спросило бы то, чего ученик ещё не проходил, и
+    записало бы свидетельство по теме будущего модуля (аудит среза 24, M3).
+    """
+    main = max(item.concept_weights, key=item.concept_weights.get)
+    return topics.get(main, 1) <= topics.get(concept_id, 1)
+
+
+def _in_lesson_part(
+    item: Item, node_id: str, *, section_id: str | None, final: bool
+) -> bool:
+    """Задание из нужной части занятия: раздела ``section_id`` или итоговое.
+
+    Раздел — раздел ГЛАВНОГО концепта задания (seed), поэтому и узел сверяется
+    с главным концептом: id разделов уникальны только внутри занятия.
+    """
+    if section_id is None and not final:
+        return True
+    if main_concept(item) != node_id:
+        return False
+    return item.final if final else item.section == section_id
+
+
+def _best_item(
+    items: Iterable[Item],
+    concept_id: str,
+    target_difficulty: float,
+    topics: Mapping[str, int] | None = None,
+) -> Item | None:
     """Самое информативное задание по узлу: сложность ближе всего к цели."""
-    candidates = [item for item in items if concept_id in item.concept_weights]
+    candidates = [
+        item
+        for item in items
+        if concept_id in item.concept_weights
+        and (topics is None or _native(item, concept_id, topics))
+    ]
     if not candidates:
         return None
     return min(candidates, key=lambda item: (abs(item.difficulty - target_difficulty), item.id))
@@ -83,10 +125,15 @@ def verification_item(
     *,
     used_item_ids: frozenset[int] = frozenset(),
     include_rubric: bool = True,
+    section_id: str | None = None,
+    final: bool = False,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> DiagnosticQuestion | None:
     """Задание захода по узлу: объяснение приоритетнее автопроверки.
+
+    Занятие с разделами (срез 54): ``section_id`` — задание этого раздела,
+    ``final`` — итоговое задание занятия; без них — любое задание узла.
 
     Паузы перед повтором нет: ученик явно просит проверить, а банк по
     большинству узлов содержит пару заданий — с паузой проверять было бы
@@ -100,10 +147,14 @@ def verification_item(
     s = settings or get_settings()
     stamp = time.time() if now is None else now
 
+    topics = _concept_topics(conn)
     items = [
         item
         for item in _available_items(conn, include_rubric=include_rubric, include_runnable=True)
-        if item.id not in used_item_ids and node_id in item.concept_weights
+        if item.id not in used_item_ids
+        and node_id in item.concept_weights
+        and _native(item, node_id, topics)
+        and _in_lesson_part(item, node_id, section_id=section_id, final=final)
     ]
     if not items:
         return None

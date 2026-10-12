@@ -1,5 +1,6 @@
 """Итог тестов кода из браузера: API и ядро (Срез 46)."""
 
+from course_fixtures import WEB_T1 as T1
 import pytest
 
 from llm_tutor.db import repos
@@ -7,7 +8,7 @@ from llm_tutor.student import survey
 from llm_tutor.web import accounts
 from web_fakes import ScriptedTutor
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 
@@ -17,9 +18,9 @@ def web_llm():
 
 
 def _answers() -> list[int]:
-    progress, given = survey.Progress(), []
+    progress, given = survey.Progress(T1), []
     while (key := progress.next_key()) is not None:
-        index = min(1, len(survey.options_for(key)) - 1)
+        index = min(1, len(survey.options_for(T1, key)) - 1)
         progress, given = progress.answer(index), [*given, index]
     return given
 
@@ -37,7 +38,8 @@ def _db(web_app):
     return web_app.state.userdbs.open(user.id, COURSE)
 
 
-async def _runnable_item(client, node_id: str = "boolean_indexing") -> dict:
+async def _runnable_item(client, node_id: str = "transform") -> dict:
+    # Первый раздел занятия «transform» — «Сортировка» с заданием на код (45).
     await client.post(f"{BASE}/switch", json={"node_id": node_id})
     for _ in range(8):
         state = (await client.post(f"{BASE}/task", json={})).json()["state"]

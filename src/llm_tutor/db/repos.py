@@ -24,6 +24,8 @@ from llm_tutor.schemas import (
     Role,
     Rubric,
     SessionState,
+    SurveyConfig,
+    Topic,
 )
 
 # Роли, допустимые в messages — те же, что в доменной модели Role.
@@ -234,11 +236,13 @@ def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[
 def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     """Upsert концепта без коммита (для вызова внутри чужой транзакции)."""
     conn.execute(
-        "INSERT INTO concepts (id, name, difficulty, description, source_url, active) "
-        "VALUES (?, ?, ?, ?, ?, ?) "
+        "INSERT INTO concepts "
+        "(id, name, difficulty, description, source_url, topic_id, sections, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "name = excluded.name, difficulty = excluded.difficulty, "
         "description = excluded.description, source_url = excluded.source_url, "
+        "topic_id = excluded.topic_id, sections = excluded.sections, "
         # Вернувшийся в seed узел снова активен.
         "active = 1",
         (
@@ -247,6 +251,10 @@ def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
             concept.difficulty,
             concept.description,
             concept.source_url,
+            concept.topic_id,
+            json.dumps(
+                [section.model_dump() for section in concept.sections], ensure_ascii=False
+            ),
             int(concept.active),
         ),
     )
@@ -267,13 +275,14 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
     conn.execute(
         "INSERT INTO items "
         "(id, concept_weights, difficulty, answer_type, prompt, options, answer,"
-        " rubric_id, starter, setup, tests, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        " rubric_id, starter, setup, tests, section, final, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "concept_weights = excluded.concept_weights, difficulty = excluded.difficulty, "
         "answer_type = excluded.answer_type, prompt = excluded.prompt, "
         "options = excluded.options, answer = excluded.answer, rubric_id = excluded.rubric_id, "
         "starter = excluded.starter, setup = excluded.setup, tests = excluded.tests, "
+        "section = excluded.section, final = excluded.final, "
         # Вернувшееся в seed задание снова активно.
         "active = 1",
         (
@@ -288,6 +297,8 @@ def _write_item(conn: sqlite3.Connection, item: Item) -> None:
             item.starter,
             item.setup,
             item.tests,
+            item.section,
+            int(item.final),
             int(item.active),
         ),
     )
@@ -369,7 +380,7 @@ def get_criteria(conn: sqlite3.Connection, rubric_id: int) -> list[Criterion]:
 
 _ITEM_COLUMNS = (
     "id, concept_weights, difficulty, answer_type, prompt, options, answer, rubric_id,"
-    " starter, setup, tests, active"
+    " starter, setup, tests, section, final, active"
 )
 
 
@@ -386,6 +397,8 @@ def _row_to_item(row: sqlite3.Row) -> Item:
         starter=row["starter"],
         setup=row["setup"],
         tests=row["tests"],
+        section=row["section"],
+        final=bool(row["final"]),
         active=bool(row["active"]),
     )
 
@@ -422,6 +435,54 @@ def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
     return _row_to_item(row) if row else None
 
 
+# --- модули курса (срез 24) ---
+
+
+def _write_topic(conn: sqlite3.Connection, topic: Topic) -> None:
+    """Upsert модуля без коммита; анкета хранится JSON-ом."""
+    conn.execute(
+        "INSERT INTO topics (id, title, intro, survey, published, active) "
+        "VALUES (?, ?, ?, ?, ?, 1) "
+        "ON CONFLICT(id) DO UPDATE SET title = excluded.title, intro = excluded.intro, "
+        "survey = excluded.survey, published = excluded.published, active = 1",
+        (
+            topic.number,
+            topic.title,
+            topic.intro,
+            topic.survey.model_dump_json(),
+            int(topic.published),
+        ),
+    )
+
+
+def _row_to_topic(row: sqlite3.Row) -> Topic:
+    return Topic(
+        number=row["id"],
+        title=row["title"],
+        intro=row["intro"],
+        survey=SurveyConfig.model_validate_json(row["survey"]),
+        active=bool(row["active"]),
+        published=bool(row["published"]),
+    )
+
+
+def get_topics(conn: sqlite3.Connection) -> list[Topic]:
+    """Активные модули курса по возрастанию номера."""
+    rows = conn.execute(
+        "SELECT id, title, intro, survey, published, active FROM topics WHERE active = 1 ORDER BY id"
+    ).fetchall()
+    return [_row_to_topic(row) for row in rows]
+
+
+def get_topic(conn: sqlite3.Connection, topic_id: int) -> Topic | None:
+    """Активный модуль по номеру или ``None``."""
+    row = conn.execute(
+        "SELECT id, title, intro, survey, published, active FROM topics WHERE id = ? AND active = 1",
+        (topic_id,),
+    ).fetchone()
+    return _row_to_topic(row) if row else None
+
+
 def _deactivate_missing(
     conn: sqlite3.Connection, table: str, columns: tuple[str, ...], keep: set[tuple]
 ) -> None:
@@ -447,6 +508,7 @@ def replace_seed(
     rubrics: Sequence[Rubric] = (),
     criteria: Sequence[Criterion] = (),
     theory: Mapping[str, str] | None = None,
+    topics: Sequence[Topic] = (),
 ) -> None:
     """Атомарно приводит содержимое seed в БД к нему самому.
 
@@ -457,12 +519,15 @@ def replace_seed(
     чего в нём больше нет, гасится (``active = 0``). Физически удалять нельзя:
     на концепты ссылаются события, чанки и mastery, на задания — события, на
     рубрики — задания; журнал ученика не переписываем. Погашенное не попадает
-    в граф, банк и рубрики, но история остаётся целой.
+    в граф, банк и рубрики, но история остаётся целой. Модули курса — тоже
+    часть seed (срез 24).
 
     Рёбра удаляются по-настоящему: на них никто не ссылается.
     """
     edge_keys = {(edge.from_id, edge.to_id, edge.type) for edge in edges}
     try:
+        for topic in topics:
+            _write_topic(conn, topic)
         for concept in concepts:
             _write_concept(conn, concept)
             conn.execute(
@@ -488,6 +553,7 @@ def replace_seed(
         _deactivate_missing(conn, "rubrics", ("id",), {(r.id,) for r in rubrics})
         _deactivate_missing(conn, "criteria", ("id",), {(c.id,) for c in criteria})
         _deactivate_missing(conn, "items", ("id",), {(i.id,) for i in items})
+        _deactivate_missing(conn, "topics", ("id",), {(t.number,) for t in topics})
     except Exception:
         conn.rollback()
         raise
@@ -497,20 +563,29 @@ def replace_seed(
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
     """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(
-        "SELECT id, name, difficulty, description, source_url, active "
+        "SELECT id, name, difficulty, description, source_url, topic_id, sections, active "
         "FROM concepts WHERE active = 1 ORDER BY id"
     ).fetchall()
-    return [
-        Concept(
-            id=r["id"],
-            name=r["name"],
-            difficulty=r["difficulty"],
-            description=r["description"],
-            source_url=r["source_url"],
-            active=bool(r["active"]),
-        )
-        for r in rows
-    ]
+    concepts: list[Concept] = []
+    for r in rows:
+        try:
+            concepts.append(
+                Concept(
+                    id=r["id"],
+                    name=r["name"],
+                    difficulty=r["difficulty"],
+                    description=r["description"],
+                    source_url=r["source_url"],
+                    topic_id=r["topic_id"],
+                    sections=json.loads(r["sections"]),
+                    active=bool(r["active"]),
+                )
+            )
+        except (ValueError, ValidationError):
+            # Как с заданиями: из-за одной битой строки курс не должен падать
+            # целиком (аудит среза 53, L4). JSONDecodeError — подкласс ValueError.
+            logger.warning("Узел %s повреждён и пропущен", r["id"])
+    return concepts
 
 
 def get_edges(conn: sqlite3.Connection) -> list[Edge]:
@@ -609,9 +684,16 @@ def set_fact(
 # --- chunks (материалы курса для RAG, Срез 3) ---
 
 
-def count_chunks(conn: sqlite3.Connection) -> int:
-    """Сколько чанков курса загружено (0 — материалов нет вовсе)."""
-    return int(conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+def count_chunks(conn: sqlite3.Connection, *, max_topic: int | None = None) -> int:
+    """Сколько чанков курса загружено (0 — материалов нет вовсе).
+
+    ``max_topic`` — только материалы модулей до этого номера включительно.
+    """
+    if max_topic is None:
+        return int(conn.execute("SELECT count(*) FROM chunks").fetchone()[0])
+    return int(
+        conn.execute("SELECT count(*) FROM chunks WHERE topic_id <= ?", (max_topic,)).fetchone()[0]
+    )
 
 
 def replace_chunks(
@@ -626,14 +708,15 @@ def replace_chunks(
         conn.execute("DELETE FROM chunks WHERE source_url = ?", (source_url,))
         for chunk in chunks:
             conn.execute(
-                "INSERT INTO chunks (concept_id, source_url, section, seq, content) "
-                "VALUES (?, ?, ?, ?, ?)",
+                "INSERT INTO chunks (concept_id, source_url, section, seq, content, topic_id) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
                 (
                     chunk.concept_id,
                     chunk.source_url,
                     chunk.section,
                     chunk.seq,
                     chunk.content,
+                    chunk.topic_id,
                 ),
             )
     except Exception:

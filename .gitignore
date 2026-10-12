@@ -46,6 +46,7 @@ data/*.db
 data/*.db-wal
 data/*.db-shm
 data/*.sqlite
+data/raw/
 
 # --- Логи и временное ---
 *.log
@@ -53,3 +54,11 @@ data/*.sqlite
 .idea/
 .vscode/
 *.swp
+
+# --- БД учеников веба ---
+data/users/
+
+# Журналы исполнения планов (CLAUDE.md: в git не попадают)
+.superpowers/
+# Рабочие копии агентов-ревьюеров
+.claude/worktrees/

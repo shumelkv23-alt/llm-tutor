@@ -7,7 +7,7 @@
 
 import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 from llm_tutor.config import Settings, get_settings
@@ -26,6 +26,52 @@ class RouteChanges:
     added: tuple[str, ...]
     removed: tuple[str, ...]
     current_changed: bool
+
+
+# Модуль пройден — объявляется один раз (``Route.completed_topics``).
+TOPIC_DONE_NOTE = "🎉 Модуль {number} «{title}» пройден!"
+
+# Столько провалов ПОСЛЕ закрытия темы открывают её снова (§4.2 спеки модулей).
+REOPEN_FAILURES = 2
+
+
+def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> float:
+    """Неудачные свидетельства по теме позже момента ``since``.
+
+    Провал по заданию, где тема лишь вторична, считается долей: весом темы
+    относительно главной темы задания. Иначе вторичные веса модулей 2–10
+    открывали бы пройденное после пары промахов по чужой теме (25-L5).
+    """
+    total = 0.0
+    for event in repos.get_events(conn, concept_id):
+        if event.ts is None or event.ts <= since or event.result >= 0.5:
+            continue
+        item = repos.get_item(conn, event.item_id) if event.item_id is not None else None
+        if item is None or concept_id not in item.concept_weights:
+            total += 1.0
+        else:
+            total += item.concept_weights[concept_id] / max(item.concept_weights.values())
+    return total
+
+
+def _completed_topics(graph: CourseGraph, previous: Route | None) -> list[int]:
+    """Пройденные модули из прошлого снимка.
+
+    Модуль, все темы которого в снимке закрыты, считается пройденным и без
+    «🎉»: так снимок до среза 25, где topic01 закрыт целиком, при росте курса
+    не празднует модуль 1 задним числом (аудит среза 25, H1).
+    """
+    if previous is None:
+        return []
+    done = list(previous.completed_topics)
+    by_topic: dict[int, list[str]] = {}
+    for step in previous.steps:
+        if graph.has_node(step.concept_id):
+            by_topic.setdefault(graph.topic_of(step.concept_id), []).append(step.status)
+    for topic, statuses in sorted(by_topic.items()):
+        if topic not in done and all(status == "closed" for status in statuses):
+            done.append(topic)
+    return done
 
 
 def _scope(graph: CourseGraph, goal_concept_id: str | None) -> list[str]:
@@ -47,6 +93,127 @@ def _current_of(route: Route | None) -> str | None:
     return None
 
 
+def working_section(
+    graph: CourseGraph, route: Route, topic_id: int | None
+) -> list[str]:
+    """Рабочий участок модуля (§4.1 спеки модулей), в порядке маршрута.
+
+    Темы модуля плюс незакрытые темы прошлых модулей двух видов: предки тем
+    модуля (на них он опирается) и темы, открывшиеся снова после закрытия
+    (``closed_at`` у незакрытого шага — провал по заданию со вторичным весом
+    или просроченное повторение, §4.2): забытое проходится здесь же.
+    """
+    if topic_id is None:
+        return []
+    known = [step for step in route.steps if graph.has_node(step.concept_id)]
+    own = {step.concept_id for step in known if graph.topic_of(step.concept_id) == topic_id}
+    earlier_open = [
+        step
+        for step in known
+        if step.status != "closed" and graph.topic_of(step.concept_id) < topic_id
+    ]
+    reopened = {step.concept_id for step in earlier_open if step.closed_at is not None}
+    # Предки и тем модуля, и открывшихся снова: иначе жёсткий пререквизит
+    # открывшейся темы остался бы вне участка и запер его (аудит среза 25, M1).
+    ancestors: set[str] = set()
+    for node_id in own | reopened:
+        ancestors |= graph.ancestors(node_id)
+    pulled = reopened | {step.concept_id for step in earlier_open if step.concept_id in ancestors}
+    return [step.concept_id for step in known if step.concept_id in own | pulled]
+
+
+def topic_finished(graph: CourseGraph, route: Route, topic_id: int) -> bool:
+    """Пройден ли модуль: все темы его рабочего участка закрыты."""
+    status = {step.concept_id: step.status for step in route.steps}
+    return all(status[node_id] == "closed" for node_id in working_section(graph, route, topic_id))
+
+
+def choose_topic(
+    graph: CourseGraph, route: Route, *, previous_topic: int | None = None
+) -> int | None:
+    """Модуль, над которым идёт работа (§4.1 спеки модулей).
+
+    1. Текущая тема задаёт модуль — кроме незакрытого предка из прошлого
+       модуля: его подтянул участок модуля, где идёт работа.
+    2. Без текущей темы — прежний модуль, пока в его участке есть открытое.
+    3. Иначе первый по номеру ещё не пройденный модуль с открытыми темами; если
+       открытое осталось только в пройденных (повторение) — первый из них.
+    """
+    current = _current_of(route)
+    if current is not None and graph.has_node(current):
+        if previous_topic is not None and current in working_section(
+            graph, route, previous_topic
+        ):
+            return previous_topic
+        return graph.topic_of(current)
+    if previous_topic is not None and not topic_finished(graph, route, previous_topic):
+        return previous_topic
+    open_topics = sorted(
+        {
+            graph.topic_of(step.concept_id)
+            for step in route.steps
+            if step.status != "closed" and graph.has_node(step.concept_id)
+        }
+    )
+    fresh = [topic for topic in open_topics if topic not in route.completed_topics]
+    if fresh:
+        return fresh[0]
+    return open_topics[0] if open_topics else None
+
+
+def topic_for(graph: CourseGraph, state: SessionState) -> int | None:
+    """Модуль занятия — для анкеты, промпта, RAG и экранов."""
+    if state.route is not None:
+        if state.route.topic_id is not None:
+            return state.route.topic_id
+        return choose_topic(graph, state.route)
+    if state.current_node_id is not None and graph.has_node(state.current_node_id):
+        return graph.topic_of(state.current_node_id)
+    return graph.topic_ids[0] if graph.node_ids else None
+
+
+def section_route(graph: CourseGraph, route: Route) -> Route:
+    """Снимок, урезанный до рабочего участка модуля работы (экраны, промпт)."""
+    topic = route.topic_id if route.topic_id is not None else choose_topic(graph, route)
+    keep = set(working_section(graph, route, topic))
+    return route.model_copy(
+        update={
+            "steps": [step for step in route.steps if step.concept_id in keep],
+            "topic_id": topic,
+        }
+    )
+
+
+def mark_claimed(route: Route, concept_ids: Collection[str]) -> Route:
+    """Помечает заявленным то, что ещё впереди (анкета модуля, §4.1).
+
+    Закрытое и текущее не трогаем: самооценка не отменяет доказанного.
+    """
+    wanted = set(concept_ids)
+    return route.model_copy(
+        update={
+            "steps": [
+                step.model_copy(update={"status": "claimed"})
+                if step.concept_id in wanted and step.status == "ahead"
+                else step
+                for step in route.steps
+            ]
+        }
+    )
+
+
+def release_current(route: Route) -> Route:
+    """Снятая с позиции «текущая» тема снова впереди (урок с чистого листа)."""
+    return route.model_copy(
+        update={
+            "steps": [
+                step.model_copy(update={"status": "ahead"}) if step.status == "current" else step
+                for step in route.steps
+            ]
+        }
+    )
+
+
 def build_route(
     conn: sqlite3.Connection,
     graph: CourseGraph,
@@ -57,14 +224,15 @@ def build_route(
     now: float | None = None,
     settings: Settings | None = None,
 ) -> Route:
-    """Строит маршрут; узлы, закрытые раньше, сохраняют свой статус."""
+    """Строит маршрут; узлы, закрытые раньше, сохраняют свой статус.
+
+    Закрытая тема открывается снова, если повторение просрочено или после
+    закрытия по ней набралось ``REOPEN_FAILURES`` провалов (§4.2 спеки
+    модулей: путь «назад» через задания следующих модулей).
+    """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
-    closed_before = {
-        step.concept_id
-        for step in (previous.steps if previous is not None else [])
-        if step.status == "closed"
-    }
+    before = {step.concept_id: step for step in (previous.steps if previous else [])}
 
     # Заявленное в анкете: без снимка — из фактов, со снимком — из него. Узел,
     # переставший быть заявленным (стал текущим, проход не подтвердился),
@@ -78,10 +246,19 @@ def build_route(
     steps: list[RouteStep] = []
     for concept_id in _scope(graph, goal_concept_id):
         mode = planner.mode_for_node(conn, graph, concept_id, now=stamp, settings=s)
-        if mode == "skip" or (concept_id in closed_before and mode != "review"):
-            # Закрытый узел остаётся закрытым, пока владение держится. Как
-            # только повторение просрочено (§6.1 «повторение») — возвращаем
-            # узел в маршрут: забытое нельзя считать пройденным (§6.4).
+        old = before.get(concept_id)
+        was_closed = old is not None and old.status == "closed"
+        # Снимок до среза 25 времени закрытия не хранит: отсчёт — с этого пересчёта.
+        closed_at = old.closed_at if was_closed and old.closed_at is not None else stamp
+        # Закрытое остаётся закрытым, пока владение держится: просроченное
+        # повторение (§6.4) или провалы после закрытия — например, по заданиям
+        # следующих модулей, которые на тему опираются, — возвращают её.
+        stays_closed = (
+            was_closed
+            and mode != "review"
+            and _failures_since(conn, concept_id, closed_at) < REOPEN_FAILURES
+        )
+        if mode == "skip" or stays_closed:
             status = "closed"
         elif concept_id == current_node_id:
             status = "current"
@@ -89,14 +266,47 @@ def build_route(
             status = "claimed"
         else:
             status = "ahead"
-        steps.append(RouteStep(concept_id=concept_id, mode=mode, status=status))
-    return Route(goal_concept_id=goal_concept_id, steps=steps)
+        # Открывшаяся снова тема хранит время прошлого закрытия — метку для
+        # рабочего участка; никогда не закрытая — без метки.
+        if status == "closed" or was_closed:
+            mark = closed_at
+        else:
+            mark = old.closed_at if old is not None else None
+        # «Слабая» держится, пока тема закрыта и владение не стало уверенным.
+        weak = old is not None and old.weak and status == "closed" and mode != "skip"
+        steps.append(
+            RouteStep(
+                concept_id=concept_id, mode=mode, status=status, closed_at=mark, weak=weak
+            )
+        )
+    route = Route(
+        goal_concept_id=goal_concept_id,
+        steps=steps,
+        completed_topics=_completed_topics(graph, previous),
+    )
+    previous_topic = previous.topic_id if previous is not None else None
+    return route.model_copy(
+        update={"topic_id": choose_topic(graph, route, previous_topic=previous_topic)}
+    )
 
 
-def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
-    """Сравнивает снимок с новым расчётом."""
-    old = {step.concept_id: step for step in (previous.steps if previous is not None else [])}
-    new = {step.concept_id: step for step in current.steps}
+def diff_routes(
+    previous: Route | None, current: Route, *, within: Collection[str] | None = None
+) -> RouteChanges:
+    """Сравнивает снимок с новым расчётом; ``within`` — только эти темы."""
+    keep = None if within is None else set(within)
+
+    def _steps(route: Route | None) -> dict[str, RouteStep]:
+        return {
+            step.concept_id: step
+            for step in (route.steps if route is not None else [])
+            if keep is None or step.concept_id in keep
+        }
+
+    def _current(steps: dict[str, RouteStep]) -> str | None:
+        return next((node for node, step in steps.items() if step.status == "current"), None)
+
+    old, new = _steps(previous), _steps(current)
     return RouteChanges(
         closed=tuple(
             node_id
@@ -107,7 +317,7 @@ def diff_routes(previous: Route | None, current: Route) -> RouteChanges:
         ),
         added=tuple(node_id for node_id in new if node_id not in old),
         removed=tuple(node_id for node_id in old if node_id not in new),
-        current_changed=_current_of(previous) != _current_of(current),
+        current_changed=_current(old) != _current(new),
     )
 
 
@@ -134,10 +344,16 @@ def next_node_id(
     Приоритет считает планировщик — важность, пробел, готовность, срочность
     повторения, стоимость и штраф за провал. Маршрут задаёт путь, а не порядок
     прохода: пойти можно по любому узлу, у которого закрыты пререквизиты.
+    Выбор — только внутри рабочего участка модуля работы (§4.1 спеки модулей):
+    так модули идут по порядку.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
-    in_route = {step.concept_id for step in route.steps}
+    # Снимок до среза 25 модуля не знает — выбираем его по снимку.
+    topic = route.topic_id if route.topic_id is not None else choose_topic(graph, route)
+    if topic is None:
+        return None
+    section = set(working_section(graph, route, topic))
     closed = {step.concept_id for step in route.steps if step.status == "closed"}
     claimed = {step.concept_id for step in route.steps if step.status == "claimed"}
     # Заявленное — выполненный пререквизит: урок начинается с первого
@@ -146,31 +362,45 @@ def next_node_id(
         conn,
         graph,
         goal_concept_id=route.goal_concept_id,
-        limit=max(len(route.steps), 1),
+        limit=max(len(section), 1),
         now=stamp,
         settings=s,
         mastery_overrides=mastery_overrides,
         completed_ids=frozenset(closed | claimed),
+        scope=section,
     )
     for node in ready:
         # Готовый узел может быть уже закрытым — тогда он не «следующий».
-        if node.concept_id in in_route and node.concept_id not in closed | claimed:
+        if node.concept_id not in closed | claimed:
             return node.concept_id
     # Незаявленное кончилось — пора подтвердить заявленное, по порядку маршрута.
     return next(
-        (step.concept_id for step in route.steps if step.status == "claimed"), None
+        (
+            step.concept_id
+            for step in route.steps
+            if step.status == "claimed" and step.concept_id in section
+        ),
+        None,
     )
 
 
-def upcoming(route: Route, first: str | None, *, limit: int) -> list[RouteStep]:
+def upcoming(
+    route: Route,
+    first: str | None,
+    *,
+    limit: int,
+    section: Collection[str] | None = None,
+) -> list[RouteStep]:
     """Ближайшие шаги для списка: с какого начнём, потом незакрытые по порядку
     маршрута, в хвосте — заявленные (их проверим в конце)."""
+    allowed = None if section is None else set(section)
+    steps = [s for s in route.steps if allowed is None or s.concept_id in allowed]
     if first is None:
         return []
-    head = [step for step in route.steps if step.concept_id == first]
+    head = [step for step in steps if step.concept_id == first]
     rest = [
         step
-        for step in route.steps
+        for step in steps
         if step.status != "closed" and step.concept_id != first
     ]
     ahead = [step for step in rest if step.status != "claimed"]
@@ -224,10 +454,45 @@ def refresh(
         # Первый расчёт — это не «изменение»: сообщать не о чем.
         return fresh, None
 
-    changes = diff_routes(state.route, fresh)
+    # Модуль бывает пройден и без закрытия темы уроком: последнюю закрыло
+    # владение (режим skip) — «🎉» тогда здесь, иначе модуль сменился бы молча
+    # (аудит среза 25, 25-L1).
+    fresh, done_note = _celebrate_finished(conn, graph, fresh, state.route.topic_id)
+
+    # Ученику важен участок модуля: рост курса и чужие модули — не пересмотр
+    # его плана. Темы модулей, которых в снимке не было вовсе, — тоже рост
+    # курса, а не «добавилось» (аудит среза 25, H1).
+    previous_ids = {step.concept_id for step in state.route.steps}
+    known_topics = {
+        graph.topic_of(node_id) for node_id in previous_ids if graph.has_node(node_id)
+    }
+    within = [
+        node_id
+        for node_id in working_section(graph, fresh, fresh.topic_id)
+        if node_id in previous_ids or graph.topic_of(node_id) in known_topics
+    ]
+    changes = diff_routes(state.route, fresh, within=within)
     note = (
         format_route_change(changes)
         if is_significant(changes, min_steps=s.route_min_significant_changes)
         else None
     )
-    return fresh, note
+    notes = [part for part in (done_note, note) if part]
+    return fresh, "\n\n".join(notes) if notes else None
+
+
+def _celebrate_finished(
+    conn: sqlite3.Connection, graph: CourseGraph, route: Route, topic_id: int | None
+) -> tuple[Route, str | None]:
+    """Отмечает пройденным модуль прошлого снимка, если его участок закрыт."""
+    if (
+        topic_id is None
+        or topic_id in route.completed_topics
+        or topic_id not in graph.topic_ids
+        or not topic_finished(graph, route, topic_id)
+    ):
+        return route, None
+    topic = repos.get_topic(conn, topic_id)
+    title = topic.title if topic is not None else f"№{topic_id}"
+    marked = route.model_copy(update={"completed_topics": [*route.completed_topics, topic_id]})
+    return marked, TOPIC_DONE_NOTE.format(number=topic_id, title=title)

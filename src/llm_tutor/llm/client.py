@@ -22,12 +22,20 @@ class LLMError(RuntimeError):
     """Ошибка обращения к LLM-провайдеру (сеть, HTTP, парсинг).
 
     ``retryable`` помечает ошибки, которые имеет смысл повторить
-    (сеть, лимиты, временные сбои провайдера).
+    (сеть, лимиты, временные сбои провайдера). ``status`` — HTTP-код ответа
+    провайдера, если ответ был (``None`` — сеть или разбор).
     """
 
-    def __init__(self, message: str, *, retryable: bool = False) -> None:
+    def __init__(
+        self, message: str, *, retryable: bool = False, status: int | None = None
+    ) -> None:
         super().__init__(message)
         self.retryable = retryable
+        self.status = status
+
+
+# Ключ не принят: повтор не поможет, нужен новый ключ в .env.
+_AUTH_STATUS = {401, 403}
 
 
 class LLMClient:
@@ -80,7 +88,53 @@ class LLMClient:
         payload = self._build_payload(messages, model, temperature, json_mode=True)
         return await self._request(payload, schema=schema)
 
+    async def key_problem(self) -> str | None:
+        """Что не так с ключом OpenRouter (``None`` — ключ принят или проверить нельзя).
+
+        Запрос ``GET /key`` бесплатный и не тратит токены. Сеть и сбои
+        провайдера проблемой ключа не считаются: о них скажет первый ход.
+        """
+        if not self._api_key.isascii():
+            # Такой заголовок httpx не соберёт (UnicodeEncodeError) — ни здесь,
+            # ни в ходе тьютора. Сам символ в текст не кладём: он невидим.
+            return (
+                "В OPENROUTER_API_KEY есть не-ASCII символ — обычно невидимый "
+                "пробел, прилипший при копировании ключа"
+            )
+        try:
+            response = await self._http.get(
+                "/key", headers={"Authorization": f"Bearer {self._api_key}"}
+            )
+        except httpx.HTTPError:
+            return None
+        if response.status_code in _AUTH_STATUS:
+            return (
+                f"OpenRouter не принял ключ (HTTP {response.status_code}): "
+                f"{self._redact(response.text)[:200]}"
+            )
+        if response.status_code != 200:
+            return None
+        try:
+            data = response.json().get("data") or {}
+        except (ValueError, AttributeError):
+            return None
+        # Ключ управления (Provisioning / Management key) создаёт и гасит другие
+        # ключи, а модели им вызывать нельзя: /chat/completions отвечает 401
+        # «User not found», хотя сам ключ действителен.
+        if isinstance(data, dict) and (
+            data.get("is_management_key") or data.get("is_provisioning_key")
+        ):
+            return (
+                "В OPENROUTER_API_KEY лежит ключ управления (Provisioning / Management "
+                "key): им нельзя вызывать модели, OpenRouter отвечает 401 «User not found»"
+            )
+        return None
+
     # --- внутреннее ---
+
+    def _redact(self, text: str) -> str:
+        """Текст ответа провайдера — в лог, но без ключа (прокси может вернуть заголовок эхом)."""
+        return text.replace(self._api_key, "***") if self._api_key else text
 
     def _build_payload(
         self,
@@ -142,8 +196,10 @@ class LLMClient:
 
         if response.status_code >= 400:
             raise LLMError(
-                f"OpenRouter вернул HTTP {response.status_code}: {response.text[:200]}",
+                f"OpenRouter вернул HTTP {response.status_code}: "
+                f"{self._redact(response.text)[:200]}",
                 retryable=response.status_code in _RETRYABLE_STATUS,
+                status=response.status_code,
             )
         try:
             return response.json()

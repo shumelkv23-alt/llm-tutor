@@ -4,11 +4,12 @@
 с удалением Telegram они проверяются напрямую.
 """
 
+from course_fixtures import T1
 from web_fakes import ScriptedTutor
 
 from llm_tutor.core import lesson, overview, turn
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Route, RouteStep, SessionState
 from llm_tutor.student import survey
@@ -122,6 +123,25 @@ def test_switch_to_other_theme_starts_over(conn, settings) -> None:
     assert text == lesson.SWITCH_TEMPLATE.format(name=name)
 
 
+def test_switch_drops_lesson_parts_and_misses_of_old_theme(conn, settings) -> None:
+    """Аудит среза 51, M1: ошибка и части урока прежней темы не переходят на новую."""
+    load_seed(conn)
+    _set_state(
+        conn,
+        current_node_id="python_basics",
+        check_misses=1,
+        lesson_parts=["Идея.", "Пример."],
+        lesson_part=1,
+        close_requested=True,
+    )
+
+    lesson.switch_node(conn, "groupby", now=2.0, settings=settings)
+
+    state = _state(conn)
+    assert (state.check_misses, state.lesson_parts, state.lesson_part) == (0, [], 0)
+    assert not state.close_requested
+
+
 def test_reselecting_same_theme_keeps_progress(conn, settings) -> None:
     load_seed(conn)
     _set_state(conn, current_node_id="groupby", pending_item_id=6, lesson_item_ids=[1], node_streak=1, hint_level=2)
@@ -137,12 +157,15 @@ def test_reselecting_same_theme_keeps_progress(conn, settings) -> None:
 
 
 async def _finish(conn, settings, answers: list[int]):
-    progress = survey.Progress()
+    progress = survey.Progress(T1)
     for index in answers:
         progress = progress.answer(index)
     assert progress.next_key() is None
-    survey.apply_answers(conn, progress.final_answers(), level=progress.level, settings=settings)
-    return await lesson.begin_lesson(conn, ScriptedTutor("Объясняю."), "m", settings=settings)
+    survey.apply_answers(conn, T1, progress.final_answers(), level=progress.level, settings=settings)
+    return await lesson.begin_lesson(
+        conn, ScriptedTutor("Объясняю."), "m", settings=settings,
+        claimed=survey.claimed_concepts(conn, T1),
+    )
 
 
 def _said(reply) -> str:

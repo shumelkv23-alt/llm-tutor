@@ -19,8 +19,8 @@ from llm_tutor.schemas import SessionState
 logger = logging.getLogger(__name__)
 
 # Повод прохода: в журнале он виден как просьба ученика, а не как молчание.
-VERIFY_KICKOFF_TEXT = "Закрой тему — я её уже знаю."
-VERIFY_NO_NODE_REPLY = "Сейчас нечего закрывать — сначала выбери тему в маршруте."
+VERIFY_KICKOFF_TEXT = "Закрой занятие — я его уже знаю."
+VERIFY_NO_NODE_REPLY = "Сейчас нечего закрывать — сначала выбери занятие в маршруте."
 
 
 def _post_reply(
@@ -123,6 +123,7 @@ def start_verification(
     started = state.model_copy(
         update={
             "mode": "verify",
+            "close_requested": True,
             "node_streak": 0,
             "hint_level": 0,
             "task_hinted": False,

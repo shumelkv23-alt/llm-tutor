@@ -1,0 +1,1696 @@
+{
+  "course": "mlcourse.ai/topic05",
+  "comment": "Модуль 5 в формате занятий (срез 56, scripts/build_lessons.py): узел — занятие из 2–4 разделов.",
+  "topic": {
+    "number": 5,
+    "title": "Бэггинг и случайный лес",
+    "intro": "Собираем ансамбли: почему толпа ошибается реже одиночки, как бутстрэп и случайные подпространства признаков делают деревья некоррелированными и откуда лес берёт оценку качества прямо во время обучения.",
+    "survey": {
+      "level_key": "t05_level",
+      "level_question": "Как у тебя с ансамблями?",
+      "level_options": [
+        "С нуля",
+        "Немного слышал про ансамбли",
+        "Уверенно строю случайный лес"
+      ],
+      "blocks": [
+        {
+          "key": "t05_ensembles",
+          "title": "Ансамбли и бэггинг",
+          "question": "Знаешь, как ансамбль снижает ошибку?",
+          "example": "мудрость толпы, бутстрэп, бэггинг, снижение разброса, out-of-bag",
+          "concepts": [
+            "bagging_basics"
+          ]
+        },
+        {
+          "key": "t05_forest",
+          "title": "Случайный лес",
+          "question": "Объяснишь, чем лес отличается от бэггинга деревьев?",
+          "example": "случайные подпространства, max_features, гиперпараметры, разброс и смещение леса",
+          "concepts": [
+            "forest",
+            "rf_theory",
+            "rf_tuning"
+          ]
+        },
+        {
+          "key": "t05_practice",
+          "title": "Настройка и свойства леса",
+          "question": "Настраивал лес и знаешь, где он сдаёт?",
+          "example": "кривые по параметрам, Extra Trees, сходство с kNN, RandomTreesEmbedding, плюсы и минусы",
+          "concepts": [
+            "rf_properties"
+          ]
+        },
+        {
+          "key": "t05_importance",
+          "title": "Важность признаков",
+          "question": "Читаешь feature_importances_ и понимаешь, откуда числа?",
+          "example": "близость к корню, перестановочная важность, уменьшение неоднородности, разбор кейса",
+          "concepts": [
+            "feature_importance"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t05_ensembles"
+      ],
+      "foundation": [
+        "t05_ensembles"
+      ]
+    },
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "bagging_basics",
+      "name": "Ансамбли и бэггинг",
+      "difficulty": 0.44,
+      "description": "Мудрость толпы, бутстрэп, бэггинг и почему у него падает разброс.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part1_bagging.html",
+      "sections": [
+        {
+          "id": "crowd",
+          "title": "Мудрость толпы"
+        },
+        {
+          "id": "bootstrap",
+          "title": "Бутстрэп"
+        },
+        {
+          "id": "bagging",
+          "title": "Бэггинг"
+        },
+        {
+          "id": "variance",
+          "title": "Почему падает разброс"
+        }
+      ]
+    },
+    {
+      "id": "forest",
+      "name": "Случайный лес",
+      "difficulty": 0.48,
+      "description": "Случайные подпространства, алгоритм случайного леса и оценка out-of-bag.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html",
+      "sections": [
+        {
+          "id": "subspace",
+          "title": "Случайные подпространства"
+        },
+        {
+          "id": "algorithm",
+          "title": "Алгоритм леса"
+        },
+        {
+          "id": "oob",
+          "title": "Оценка out-of-bag"
+        }
+      ]
+    },
+    {
+      "id": "rf_theory",
+      "name": "Почему лес работает",
+      "difficulty": 0.62,
+      "description": "Декорреляция деревьев, смещение леса и Extremely Randomized Trees.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html",
+      "sections": [
+        {
+          "id": "decorrelation",
+          "title": "Декорреляция деревьев"
+        },
+        {
+          "id": "bias",
+          "title": "Смещение леса"
+        },
+        {
+          "id": "extra_trees",
+          "title": "Extremely Randomized Trees"
+        }
+      ]
+    },
+    {
+      "id": "rf_tuning",
+      "name": "Настройка леса",
+      "difficulty": 0.55,
+      "description": "max_features, гиперпараметры и кривые подбора.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html",
+      "sections": [
+        {
+          "id": "max_features",
+          "title": "max_features"
+        },
+        {
+          "id": "hyperparams",
+          "title": "Гиперпараметры"
+        },
+        {
+          "id": "curves",
+          "title": "Кривые подбора"
+        }
+      ]
+    },
+    {
+      "id": "rf_properties",
+      "name": "Свойства и применения леса",
+      "difficulty": 0.58,
+      "description": "Лес и kNN, RandomTreesEmbedding, плюсы и минусы случайного леса.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html",
+      "sections": [
+        {
+          "id": "vs_knn",
+          "title": "Лес и kNN"
+        },
+        {
+          "id": "embedding",
+          "title": "RandomTreesEmbedding"
+        },
+        {
+          "id": "pros_cons",
+          "title": "Плюсы и минусы леса"
+        }
+      ]
+    },
+    {
+      "id": "feature_importance",
+      "name": "Важность признаков",
+      "difficulty": 0.56,
+      "description": "Идея важности, перестановочная важность, важность по неоднородности и кейс.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part3_feature_importance.html",
+      "sections": [
+        {
+          "id": "idea",
+          "title": "Идея важности"
+        },
+        {
+          "id": "permutation",
+          "title": "Перестановочная важность"
+        },
+        {
+          "id": "impurity",
+          "title": "Важность по неоднородности"
+        },
+        {
+          "id": "case",
+          "title": "Кейс: отзывы о хостелах"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "linreg_stats",
+      "to_id": "bagging_basics",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "tree_criteria",
+      "to_id": "forest",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "validation",
+      "to_id": "forest",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "bagging_basics",
+      "to_id": "forest",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "linreg_stats",
+      "to_id": "rf_theory",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "forest",
+      "to_id": "rf_theory",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "tree_tuning",
+      "to_id": "rf_tuning",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "validation",
+      "to_id": "rf_tuning",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "forest",
+      "to_id": "rf_tuning",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "rf_theory",
+      "to_id": "rf_tuning",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "tree_tuning",
+      "to_id": "rf_properties",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "knn",
+      "to_id": "rf_properties",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "bagging_basics",
+      "to_id": "rf_properties",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "forest",
+      "to_id": "rf_properties",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "rf_theory",
+      "to_id": "rf_properties",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "rf_tuning",
+      "to_id": "rf_properties",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "tree_criteria",
+      "to_id": "feature_importance",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "forest",
+      "to_id": "feature_importance",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "rf_properties",
+      "to_id": "feature_importance",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 5001,
+      "prompt": "Что такое ансамбль в машинном обучении?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Одна очень сложная модель с большим числом параметров",
+        "Набор метрик, по которым сравнивают модели между собой",
+        "Набор моделей, чьи ответы объединяют в один общий",
+        "Набор признаков, отобранных для обучения модели"
+      ],
+      "answer": "2",
+      "section": "crowd"
+    },
+    {
+      "id": 5002,
+      "prompt": "Что утверждает теорема Кондорсе о присяжных?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Вероятность верного коллективного решения не зависит от числа судей",
+        "Если каждый прав чаще половины раза, толпа права реже",
+        "Если каждый прав чаще половины раза, толпа права ещё чаще",
+        "Коллективное решение всегда точнее самого точного из участников"
+      ],
+      "answer": "2",
+      "section": "crowd"
+    },
+    {
+      "id": 5003,
+      "prompt": "Как устроена бутстрэп-выборка?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Столько же объектов, сколько в исходной, но с возвращением",
+        "Половина объектов исходной выборки, взятая без возвращения",
+        "Все объекты исходной выборки в случайном порядке следования",
+        "Столько же объектов, сколько в исходной, но без повторений вовсе"
+      ],
+      "answer": "0",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5004,
+      "prompt": "Какая доля объектов исходной выборки обычно попадает в бутстрэп-выборку?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Ровно половина объектов исходной выборки",
+        "Около 63 процентов объектов исходной выборки",
+        "Все объекты исходной выборки, но с разными весами",
+        "Около 37 процентов объектов исходной выборки"
+      ],
+      "answer": "1",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5005,
+      "prompt": "Кто предложил метод бэггинга?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Лео Брейман, и это произошло в 1994 году",
+        "Фрэнсис Гальтон, и это произошло в 1906 году",
+        "Николас Кондорсе, и это произошло в 1784 году",
+        "Коррадо Джени, и это произошло в 1947 году"
+      ],
+      "answer": "0",
+      "section": "bagging"
+    },
+    {
+      "id": 5006,
+      "prompt": "Как ансамбль объединяет ответы базовых моделей в классификации?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Взвешиванием по числу параметров каждой модели",
+        "Голосованием: побеждает самый частый ответ моделей",
+        "Усреднением всех числовых меток классов моделей",
+        "Выбором ответа самой точной модели ансамбля"
+      ],
+      "answer": "1",
+      "section": "bagging"
+    },
+    {
+      "id": 5007,
+      "prompt": "Что такое bagging как расшифровка метода?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Binary aggregation — объединение двоичных ответов моделей",
+        "Bootstrap aggregation — бутстрэп и объединение ответов",
+        "Bagging adaptation — адаптация моделей под выборку",
+        "Batch averaging — усреднение ответов по всей выборке"
+      ],
+      "answer": "1",
+      "section": "bagging"
+    },
+    {
+      "id": 5008,
+      "prompt": "Почему усреднение ответов снижает среднюю квадратичную ошибку?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0,
+        "linreg_stats": 0.5
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Усреднение ускоряет обучение каждой базовой модели",
+        "Усреднение уменьшает смещение каждой отдельной модели",
+        "Усреднение убирает неустранимую ошибку шума в данных",
+        "Ошибки разных моделей гасят друг друга при усреднении"
+      ],
+      "answer": "3",
+      "section": "variance"
+    },
+    {
+      "id": 5009,
+      "prompt": "На каких данных бэггинг даёт наибольший эффект?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "На разреженных текстовых данных с огромным словарём",
+        "На малых выборках: базовые модели выходят очень разными",
+        "На очень больших выборках: базовых моделей становится много",
+        "На данных, где все признаки сильно коррелируют между собой"
+      ],
+      "answer": "1",
+      "section": "variance"
+    },
+    {
+      "id": 5010,
+      "prompt": "Зачем нужна оценка out-of-bag?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0,
+        "validation": 0.3
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Она отбирает признаки, которые не нужны для обучения",
+        "Она балансирует классы, подтягивая редкий класс к частому",
+        "Она ускоряет обучение, отбрасывая лишние деревья леса",
+        "Она даёт оценку качества без отдельной проверочной выборки"
+      ],
+      "answer": "3",
+      "section": "oob"
+    },
+    {
+      "id": 5011,
+      "prompt": "По каким объектам считают ошибку out-of-bag?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "По тем, что попали в бутстрэп-выборку повторно дважды",
+        "По всем объектам исходной выборки без всяких исключений",
+        "По объектам, которые модель классифицировала неверно",
+        "По тем, что не попали в бутстрэп-выборку этого дерева"
+      ],
+      "answer": "3",
+      "section": "oob"
+    },
+    {
+      "id": 5012,
+      "prompt": "Почему около трети объектов остаётся вне бутстрэп-выборки?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Потому что размер выборки намеренно сокращают на треть",
+        "Потому что объекты отбирают без возвращения и без повторов",
+        "Потому что треть объектов отбрасывают как выбросы в данных",
+        "Потому что вероятность не быть вытянутым стремится к 1/e"
+      ],
+      "answer": "3",
+      "section": "oob"
+    },
+    {
+      "id": 5013,
+      "prompt": "Зачем в случайном лесе берут случайное подмножество признаков?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Чтобы деревья меньше походили друг на друга при обучении",
+        "Чтобы каждое дерево обучалось на меньшем числе объектов",
+        "Чтобы отобрать самые важные признаки для всей задачи",
+        "Чтобы избавиться от мультиколлинеарности между признаками"
+      ],
+      "answer": "0",
+      "section": "subspace"
+    },
+    {
+      "id": 5014,
+      "prompt": "Что даёт снижение корреляции между деревьями ансамбля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0,
+        "rf_theory": 0.5
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Каждое отдельное дерево становится точнее на обучении",
+        "Разброс ансамбля падает сильнее, чем у похожих деревьев",
+        "Смещение ансамбля падает вместе с корреляцией деревьев",
+        "Ансамбль начинает лучше экстраполировать за пределы данных"
+      ],
+      "answer": "1",
+      "section": "subspace"
+    },
+    {
+      "id": 5015,
+      "prompt": "Чем случайный лес отличается от бэггинга деревьев?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0,
+        "tree_criteria": 0.5
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Лес ищет разбиение среди случайных подмножеств признаков",
+        "Лес использует не деревья, а линейные модели как основу",
+        "Лес обучает деревья на всей выборке без бутстрэпа вовсе",
+        "Лес объединяет ответы голосованием, а бэггинг усредняет их"
+      ],
+      "answer": "0",
+      "section": "algorithm"
+    },
+    {
+      "id": 5016,
+      "prompt": "Как лес объединяет ответы деревьев в задаче регрессии?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Усредняет числовые ответы всех деревьев ансамбля",
+        "Берёт медиану числовых ответов всех деревьев ансамбля",
+        "Голосует: побеждает самый частый числовой ответ деревьев",
+        "Выбирает ответ дерева с наименьшей ошибкой на обучении"
+      ],
+      "answer": "0",
+      "section": "algorithm"
+    },
+    {
+      "id": 5017,
+      "prompt": "До какого момента растят деревья в случайном лесе?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Пока число листьев не сравняется с числом признаков данных",
+        "Пока все деревья ансамбля не станут одинаковыми по структуре",
+        "Пока в листьях не останется заданное число объектов",
+        "Пока ошибка на out-of-bag объектах не перестанет падать"
+      ],
+      "answer": "2",
+      "section": "algorithm"
+    },
+    {
+      "id": 5018,
+      "prompt": "В задаче классификации 64 признака. Сколько признаков статья модуля рекомендует перебирать при каждом разбиении дерева случайного леса? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": "8",
+      "section": "max_features"
+    },
+    {
+      "id": 5019,
+      "prompt": "В задаче регрессии 60 признаков. Сколько признаков статья модуля рекомендует перебирать при каждом разбиении дерева случайного леса? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": "20",
+      "section": "max_features"
+    },
+    {
+      "id": 5020,
+      "prompt": "Как число деревьев в лесу влияет на качество?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_tuning": 1.0,
+        "tree_tuning": 0.5
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Качество колеблется случайно и от числа деревьев не зависит",
+        "Качество растёт и выходит на асимптоту по числу деревьев",
+        "Качество падает: слишком много деревьев ведёт к переобучению",
+        "Качество не меняется вовсе: важен только тип базовой модели"
+      ],
+      "answer": "1",
+      "section": "hyperparams"
+    },
+    {
+      "id": 5021,
+      "prompt": "Какие параметры леса регулируют переобучение деревьев?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Только случайное зерно и число потоков при обучении",
+        "Только число деревьев и способ объединения их ответов",
+        "Только число классов задачи и баланс классов в данных",
+        "Глубина, минимальное число объектов в листе и max_features"
+      ],
+      "answer": "3",
+      "section": "hyperparams"
+    },
+    {
+      "id": 5022,
+      "prompt": "Что означает стопроцентная точность леса на обучающей выборке?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Число деревьев в лесу подобрано оптимально",
+        "В данных не осталось шума и выбросов вообще",
+        "Модель идеальна и доработка ей уже не требуется",
+        "Модель переобучена и требует ограничения сложности"
+      ],
+      "answer": "3",
+      "section": "hyperparams"
+    },
+    {
+      "id": 5023,
+      "prompt": "Чему пропорционален разброс ответа случайного леса?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_theory": 1.0,
+        "linreg_stats": 0.5
+      },
+      "difficulty": 0.65,
+      "options": [
+        "Числу признаков, перебираемых при каждом разбиении",
+        "Числу деревьев в ансамбле и их общей глубине",
+        "Числу объектов, попавших в out-of-bag выборку",
+        "Корреляции между отдельными деревьями ансамбля"
+      ],
+      "answer": "3",
+      "section": "decorrelation"
+    },
+    {
+      "id": 5024,
+      "prompt": "Почему рост числа деревьев сам по себе не вредит лесу?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Добавление деревьев уменьшает размер модели в памяти",
+        "Добавление деревьев разброс не увеличивает, а снижает",
+        "Добавление деревьев снижает смещение ансамбля целиком",
+        "Добавление деревьев уменьшает корреляцию между признаками"
+      ],
+      "answer": "1",
+      "section": "decorrelation"
+    },
+    {
+      "id": 5025,
+      "prompt": "Как смещение случайного леса соотносится со смещением одного дерева?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_theory": 1.0,
+        "linreg_stats": 0.5
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Они примерно равны: выигрыш леса идёт от разброса",
+        "Смещение леса равно нулю, если деревьев достаточно много",
+        "Смещение леса всегда заметно меньше смещения дерева",
+        "Смещение леса всегда заметно больше смещения дерева"
+      ],
+      "answer": "0",
+      "section": "bias"
+    },
+    {
+      "id": 5026,
+      "prompt": "За счёт чего случайный лес повышает точность прогноза?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "За счёт снижения смещения при том же разбросе модели",
+        "За счёт одновременного снижения и разброса, и смещения",
+        "За счёт снижения разброса при том же смещении",
+        "За счёт снижения неустранимой ошибки шума в данных"
+      ],
+      "answer": "2",
+      "section": "bias"
+    },
+    {
+      "id": 5027,
+      "prompt": "Зачем строят кривые качества леса по отдельным параметрам?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_tuning": 1.0,
+        "validation": 0.5
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Чтобы посчитать out-of-bag ошибку без кросс-валидации",
+        "Чтобы увидеть, где качество выходит на асимптоту",
+        "Чтобы убедиться, что лес всегда лучше линейной модели",
+        "Чтобы подобрать число классов в задаче классификации"
+      ],
+      "answer": "1",
+      "section": "curves"
+    },
+    {
+      "id": 5028,
+      "prompt": "Какой из этих параметров леса ограничивает переобучение?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Случайное зерно генератора псевдослучайных чисел",
+        "Число потоков, используемых при обучении леса",
+        "Максимальная глубина дерева в ансамбле",
+        "Флаг oob_score, включающий оценку на out-of-bag"
+      ],
+      "answer": "2",
+      "section": "curves"
+    },
+    {
+      "id": 5029,
+      "prompt": "Чем Extremely Randomized Trees отличаются от случайного леса?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Ответы деревьев объединяют голосованием вместо усреднения",
+        "Признаки берут все подряд, без случайных подмножеств вовсе",
+        "Деревья строят по очереди, и каждое исправляет ошибки прошлых",
+        "Пороги разбиения выбирают случайно, а не ищут оптимальные"
+      ],
+      "answer": "3",
+      "section": "extra_trees"
+    },
+    {
+      "id": 5030,
+      "prompt": "Когда стоит попробовать Extremely Randomized Trees?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Когда в данных слишком мало признаков для случайных подмножеств",
+        "Когда случайный лес слишком сильно переобучается на данных",
+        "Когда случайный лес недообучается и качество слишком низко",
+        "Когда нужна модель, которую легко объяснить человеку по частям"
+      ],
+      "answer": "1",
+      "section": "extra_trees"
+    },
+    {
+      "id": 5031,
+      "prompt": "В чём случайный лес похож на метод ближайших соседей?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_properties": 1.0,
+        "knn": 0.5
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Оба метода требуют задать число соседей при обучении",
+        "Оба метода масштабируют признаки перед обучением модели",
+        "Оба метода строят дерево разбиения пространства признаков",
+        "Ответ собирается из похожих обучающих объектов по весам"
+      ],
+      "answer": "3",
+      "section": "vs_knn"
+    },
+    {
+      "id": 5032,
+      "prompt": "Что даёт номер листа, в который попал объект?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Признак, равный числу деревьев, где объект оказался листом",
+        "Признак, показывающий важность этого объекта в выборке",
+        "Признак, говорящий о похожести объектов друг на друга",
+        "Признак, равный предсказанному классу этого объекта"
+      ],
+      "answer": "2",
+      "section": "vs_knn"
+    },
+    {
+      "id": 5033,
+      "prompt": "Как называется класс sklearn, который без учителя кодирует объект номерами листьев случайных деревьев? Напиши только имя класса.",
+      "answer_type": "short",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "RandomTreesEmbedding",
+      "section": "embedding"
+    },
+    {
+      "id": 5034,
+      "prompt": "Какое представление данных получается в RandomTreesEmbedding?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Разреженное представление низкой размерности с учителем",
+        "Разреженное представление высокой размерности без учителя",
+        "Плотное представление низкой размерности с учителем",
+        "Плотное представление высокой размерности без учителя"
+      ],
+      "answer": "1",
+      "section": "embedding"
+    },
+    {
+      "id": 5035,
+      "prompt": "Какой недостаток случайного леса отмечает статья модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_properties": 1.0,
+        "tree_tuning": 0.3
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Ответ леса объяснить труднее, чем ответ одного дерева",
+        "Лес требует тонкой настройки параметров для нормальной работы",
+        "Лес чувствителен к масштабу признаков и их единицам измерения",
+        "Лес не умеет работать с категориальными признаками вообще"
+      ],
+      "answer": "0",
+      "section": "pros_cons"
+    },
+    {
+      "id": 5036,
+      "prompt": "На каких данных случайный лес проигрывает линейным моделям?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "На данных с сильным дисбалансом классов в выборке",
+        "На данных с большим числом числовых признаков",
+        "На разреженных данных вроде текстов и мешка слов",
+        "На табличных данных с небольшим числом признаков"
+      ],
+      "answer": "2",
+      "section": "pros_cons"
+    },
+    {
+      "id": 5037,
+      "prompt": "Что случайный лес делает хуже линейной регрессии за пределами обучающих данных?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "rf_properties": 1.0,
+        "tree_building": 0.3
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Не учитывает взаимодействия между признаками в данных",
+        "Не интерполирует: внутри данных даёт случайные ответы",
+        "Не работает с количественной целевой переменной вовсе",
+        "Не экстраполирует: за пределами данных даёт константу"
+      ],
+      "answer": "3",
+      "section": "pros_cons"
+    },
+    {
+      "id": 5038,
+      "prompt": "Как в статье объясняют важность признака на интуитивном уровне?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Чем ближе признак в среднем к корню деревьев, тем важнее",
+        "Чем чаще признак принимает редкие значения, тем важнее",
+        "Чем больше у признака пропусков в данных, тем важнее",
+        "Чем позже признак появился в наборе данных, тем важнее"
+      ],
+      "answer": "0",
+      "section": "idea"
+    },
+    {
+      "id": 5039,
+      "prompt": "На чём основана идея важности признака через прирост качества разбиения?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "На корреляции признака с остальными признаками выборки",
+        "На частоте, с которой признак встречается в наборе данных",
+        "На приросте информации, который даёт разбиение по признаку",
+        "На числе пропусков, которые есть в этом столбце данных"
+      ],
+      "answer": "2",
+      "section": "idea"
+    },
+    {
+      "id": 5040,
+      "prompt": "Что измеряет перестановочная важность признака?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0,
+        "forest": 0.5
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Падение точности на out-of-bag объектах после перемешивания",
+        "Прирост точности модели после добавления нового признака",
+        "Корреляцию признака с целевой переменной в обучающей выборке",
+        "Число разбиений дерева, выполненных по этому признаку"
+      ],
+      "answer": "0",
+      "section": "permutation"
+    },
+    {
+      "id": 5041,
+      "prompt": "Что происходит с признаком при вычислении перестановочной важности?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Его полностью удаляют из набора данных для обучения",
+        "Его значения перемешивают по объектам, ломая связи",
+        "Его значения заменяют средним по всей обучающей выборке",
+        "Его значения масштабируют к отрезку от нуля до единицы"
+      ],
+      "answer": "1",
+      "section": "permutation"
+    },
+    {
+      "id": 5042,
+      "prompt": "Чему равна перестановочная важность признака, которого нет в дереве?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Единице, по определению перестановочной важности",
+        "Нулю, ведь перемешивать в этом дереве нечего",
+        "Ошибке дерева на out-of-bag объектах целиком",
+        "Средней важности остальных признаков этого дерева"
+      ],
+      "answer": "1",
+      "section": "permutation"
+    },
+    {
+      "id": 5043,
+      "prompt": "Что накапливает sklearn в качестве важности признака?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0,
+        "tree_criteria": 0.3
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Уменьшение неоднородности в узлах разбиения по признаку",
+        "Уменьшение точности модели при перемешивании признака",
+        "Прирост числа листьев дерева после разбиения по признаку",
+        "Число узлов дерева, где признак использовался для разбиения"
+      ],
+      "answer": "0",
+      "section": "impurity"
+    },
+    {
+      "id": 5044,
+      "prompt": "Как важности признаков из sklearn нормируются в сумме?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Не нормируются вовсе и остаются в исходных единицах",
+        "В сумме дают число деревьев в обученном ансамбле",
+        "В сумме дают единицу по всем признакам модели",
+        "В сумме дают единицу отдельно по каждому классу задачи"
+      ],
+      "answer": "2",
+      "section": "impurity"
+    },
+    {
+      "id": 5045,
+      "prompt": "Кому важность по уменьшению неоднородности даёт завышенную оценку?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0,
+        "rf_properties": 0.3
+      },
+      "difficulty": 0.65,
+      "options": [
+        "Признакам, которые вообще не использовались в разбиениях",
+        "Признакам с малым числом уровней и повторяющихся значений",
+        "Признакам с большим числом уровней и уникальных значений",
+        "Признакам, которые коррелируют с целевой переменной слабо"
+      ],
+      "answer": "2",
+      "section": "impurity"
+    },
+    {
+      "id": 5046,
+      "prompt": "Какие признаки оказались важнее всего в кейсе с оценками хостелов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Условия в комнате и удобство заселения в хостел",
+        "Дополнительные услуги и общие условия проживания",
+        "Персонал и соотношение цены и качества проживания",
+        "Состояние кухни и общих пространств внутри хостела"
+      ],
+      "answer": "2",
+      "section": "case"
+    },
+    {
+      "id": 5047,
+      "prompt": "Какой вывод сделали по кейсу об оценках хостелов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Два первых признака полностью определяют итоговую оценку",
+        "Остальные признаки не влияют на итоговую оценку вообще",
+        "Разница между первыми признаками и остальными невелика",
+        "Важность признаков в этой задаче оказалась одинаковой"
+      ],
+      "answer": "2",
+      "section": "case"
+    },
+    {
+      "id": 5048,
+      "prompt": "Опиши, как ты оценишь качество случайного леса, не откладывая отдельную проверочную выборку, и как поймёшь, какие признаки важнее.",
+      "answer_type": "open",
+      "concept_weights": {
+        "forest": 1.0,
+        "feature_importance": 0.5
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 501,
+      "section": "oob"
+    },
+    {
+      "id": 5111,
+      "prompt": "Напиши код: с помощью генератора `rng` сделай 200 бутстрэп-выборок индексов объектов размера `n` (с возвращением) и найди среднюю долю различных объектов в выборке. Сохрани число в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 502,
+      "starter": "# Средняя доля уникальных объектов в бутстрэп-выборке\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(7)\nn = 500\n_state0 = rng.bit_generator.state\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert rng.bit_generator.state != _state0, \"Выборки нужно получать из генератора rng (rng.choice).\"\nshare = float(result)\nassert share < 0.665, \"Доля слишком велика: бутстрэп-выборка берётся с возвращением (replace=True), поэтому часть объектов повторяется.\"\nassert share > 0.60, \"Доля слишком мала: размер выборки должен быть равен n.\"\n",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5112,
+      "prompt": "Напиши код: обучи `RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17)` на `X_train`, `y_train`. Сохрани в result кортеж `(oob, test)`: оценку out-of-bag и точность на `X_test`, `y_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 503,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# OOB-оценка и точность на тесте\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nforest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)\noob, test = result\nassert abs(float(oob) - forest.oob_score_) < 1e-9, \"oob — атрибут oob_score_ леса с oob_score=True, n_estimators=50, random_state=17.\"\nassert abs(float(test) - forest.score(X_test, y_test)) < 1e-9, \"test — точность обученного леса на X_test, y_test.\"\n",
+      "section": "oob"
+    },
+    {
+      "id": 5113,
+      "prompt": "Напиши код: оцени 5-кратной кросс-валидацией на `X`, `y` `RandomForestClassifier` и `ExtraTreesClassifier` (у обоих `n_estimators=50`, `random_state=17`). Сохрани в result словарь со средними точностями: ключи `forest` и `extra`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 504,
+      "starter": "from sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier\nfrom sklearn.model_selection import cross_val_score\n\n# Лес против ExtraTrees\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import ExtraTreesClassifier, RandomForestClassifier\nfrom sklearn.model_selection import cross_val_score\nassert isinstance(result, dict) and {\"forest\", \"extra\"} <= set(result), \"result — словарь с ключами forest и extra.\"\nforest = cross_val_score(RandomForestClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean()\nextra = cross_val_score(ExtraTreesClassifier(n_estimators=50, random_state=17), X, y, cv=5).mean()\nassert abs(float(result[\"forest\"]) - forest) < 1e-9, \"forest: RandomForestClassifier(n_estimators=50, random_state=17), cv=5, среднее.\"\nassert abs(float(result[\"extra\"]) - extra) < 1e-9, \"extra: ExtraTreesClassifier(n_estimators=50, random_state=17), cv=5, среднее.\"\n",
+      "section": "extra_trees"
+    },
+    {
+      "id": 5114,
+      "prompt": "Напиши код: для `max_features` из `[1, 2, 4, 8]` обучи на всех `X`, `y` `RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17, max_features=…)`. Сохрани в result значение `max_features` с наибольшей оценкой `oob_score_`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 505,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# Лучшее max_features по OOB\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nscores = {}\nfor m in (1, 2, 4, 8):\n    scores[m] = RandomForestClassifier(\n        n_estimators=50, oob_score=True, random_state=17, max_features=m\n    ).fit(X, y).oob_score_\nbest = max(scores, key=lambda m: (scores[m], -m))\nassert best != 1, \"внутренняя ошибка задания\"\nassert result == best, \"Лучшее max_features выбирают по oob_score_ (а не по точности на обучающей выборке): \" + str({m: round(s, 3) for m, s in scores.items()})\n",
+      "section": "max_features"
+    },
+    {
+      "id": 5115,
+      "prompt": "Напиши код: `forest` уже обучен. Для каждого объекта `X` найди долю деревьев, в которых он попал в один лист с объектом 0 (метод `apply`). Сохрани в result индекс самого «похожего» на объект 0 объекта — не считая сам объект 0.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 506,
+      "starter": "# Ближайший к объекту 0 по лесу\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\n\nrng = np.random.default_rng(0)\nX = rng.normal(size=(200, 5))\ny = (X[:, 0] + X[:, 1] > 0).astype(int)\nforest = RandomForestClassifier(n_estimators=50, min_samples_leaf=5, random_state=17).fit(X, y)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nimport numpy as np\nleaves = forest.apply(X)\nsimilarity = (leaves == leaves[0]).mean(axis=1)\nsimilarity[0] = -1.0\nbest = np.flatnonzero(similarity == similarity.max())\nassert int(result) != 0, \"Сам объект 0 не считается.\"\nassert int(result) in best.tolist(), \"Нужен объект с наибольшей долей общих листьев с объектом 0 (forest.apply(X)).\"\n",
+      "section": "vs_knn"
+    },
+    {
+      "id": 5116,
+      "prompt": "Напиши код: `forest` обучен на таблице `X` (столбцы с названиями). Сохрани в result `pandas.Series` с важностями признаков по уменьшению неоднородности (`feature_importances_`): индекс — названия признаков, порядок — от самого важного к наименее важному.",
+      "answer_type": "code",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 507,
+      "starter": "import pandas as pd\n\n# Таблица важностей\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\nfrom sklearn.ensemble import RandomForestClassifier\n\nrng = np.random.default_rng(2)\nn = 400\nX = pd.DataFrame({\n    \"plan\": rng.integers(0, 2, n),\n    \"calls\": rng.integers(0, 8, n),\n    \"minutes\": rng.normal(180, 50, n),\n})\ny = ((2 * X[\"plan\"] + 1.5 * (X[\"calls\"] > 3) + rng.normal(0, 0.7, n)) > 1.5).astype(int)\nforest = RandomForestClassifier(n_estimators=50, random_state=17).fit(X, y)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nimport pandas as pd\nassert isinstance(result, pd.Series), \"Ожидается pandas.Series.\"\nassert sorted(result.index) == sorted(X.columns), \"Индекс — названия признаков таблицы X.\"\nexpected = pd.Series(forest.feature_importances_, index=X.columns)\nassert (result.values[:-1] >= result.values[1:]).all(), \"Сортировка — по убыванию важности.\"\nassert all(abs(float(result[c]) - float(expected[c])) < 1e-12 for c in X.columns), \"Значения — forest.feature_importances_.\"\n",
+      "section": "impurity"
+    },
+    {
+      "id": 5121,
+      "prompt": "Итоговое задание. `boot` — индексы 25 бутстрэп-выборок (массив 25 × n) для `X_train`. На каждой выборке обучи `DecisionTreeClassifier(random_state=17)`. Ответ ансамбля для `X_test` — голосование большинством (метки 0/1, моделей нечётное число). Сохрани в result словарь: `single` — точность одного дерева, обученного на всём `X_train`, `bagging` — точность ансамбля на `X_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 508,
+      "starter": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Бэггинг руками\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n\nboot = np.array([np.random.default_rng(s).choice(len(X_train), size=len(X_train), replace=True)\n                 for s in range(25)])\n",
+      "tests": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами single и bagging.\"\nassert {\"single\", \"bagging\"} <= set(result), \"Нужны ключи single и bagging.\"\nsingle = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\nvotes = np.array([\n    DecisionTreeClassifier(random_state=17).fit(X_train[i], y_train[i]).predict(X_test) for i in boot\n])\nbagging = float(((votes.mean(axis=0) > 0.5).astype(int) == y_test).mean())\nassert abs(float(result[\"single\"]) - single) < 1e-9, \"single: одно дерево, обученное на всём X_train, точность на X_test.\"\nassert abs(float(result[\"bagging\"]) - bagging) < 1e-9, \"bagging: 25 деревьев на выборках X_train[idx], голосование большинством, точность на X_test.\"\nassert bagging > single, \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 5122,
+      "prompt": "Итоговое задание. Обучи на `X_train`, `y_train` `RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)`. Сохрани в result словарь: `oob` — оценка out-of-bag, `test` — точность на `X_test`, `m` — сколько признаков перебирает каждое дерево при разбиении (`max_features_` первого дерева), `rule` — число признаков по правилу √d (целое, `int(np.sqrt(d))`).",
+      "answer_type": "code",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 509,
+      "starter": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\n\n# Лес, OOB и правило √d\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами oob, test, m и rule.\"\nassert {\"oob\", \"test\", \"m\", \"rule\"} <= set(result), \"Нужны ключи oob, test, m и rule.\"\nforest = RandomForestClassifier(n_estimators=60, max_features=\"sqrt\", oob_score=True, random_state=17).fit(X_train, y_train)\nassert abs(float(result[\"oob\"]) - forest.oob_score_) < 1e-9, \"oob — oob_score_ леса.\"\nassert abs(float(result[\"test\"]) - forest.score(X_test, y_test)) < 1e-9, \"test — точность на X_test.\"\nassert int(result[\"m\"]) == forest.estimators_[0].max_features_, \"m — forest.estimators_[0].max_features_.\"\nassert int(result[\"rule\"]) == int(np.sqrt(X_train.shape[1])), \"rule = int(np.sqrt(d)), где d — число признаков.\"\n",
+      "final": true
+    },
+    {
+      "id": 5123,
+      "prompt": "Итоговое задание. Для числа деревьев `B` из `[1, 5, 20, 60]` обучи `RandomForestClassifier(n_estimators=B, random_state=17)` на `X_train`, `y_train`. Сохрани в result список из четырёх точностей на `X_test` (в порядке `B`), а в `plateau` — наименьшее `B`, при котором точность не меньше `максимум − 0.01`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_theory": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 510,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# Качество и число деревьев\nresult = None\nplateau = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nsizes = [1, 5, 20, 60]\nexpected = [\n    RandomForestClassifier(n_estimators=b, random_state=17).fit(X_train, y_train).score(X_test, y_test)\n    for b in sizes\n]\nassert len(result) == 4, \"Нужны четыре точности — по одной на каждое B.\"\nassert all(abs(float(a) - b) < 1e-9 for a, b in zip(result, expected)), \"Точность каждого леса — на X_test, в порядке B = 1, 5, 20, 60.\"\nwant = next(b for b, v in zip(sizes, expected) if v >= max(expected) - 0.01)\nassert plateau == want, \"plateau — наименьшее B с точностью не ниже максимум − 0.01.\"\n",
+      "final": true
+    },
+    {
+      "id": 5124,
+      "prompt": "Итоговое задание. Подбери параметры леса `RandomForestClassifier(n_estimators=30, random_state=17)` через `GridSearchCV` (`cv=3`) на `X_train`, `y_train`: `max_features` из `[2, 8]` и `min_samples_leaf` из `[1, 10]`. Сохрани в result словарь: `best_params` и `test_score` — точность найденной модели на `X_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_tuning": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 511,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\nfrom sklearn.model_selection import GridSearchCV\n\n# Подбор параметров леса\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.model_selection import GridSearchCV\nassert isinstance(result, dict) and {\"best_params\", \"test_score\"} <= set(result), \"result — словарь с ключами best_params и test_score.\"\ngrid = GridSearchCV(\n    RandomForestClassifier(n_estimators=30, random_state=17),\n    {\"max_features\": [2, 8], \"min_samples_leaf\": [1, 10]}, cv=3,\n).fit(X_train, y_train)\nassert dict(result[\"best_params\"]) == grid.best_params_, \"best_params_ после перебора сетки max_features × min_samples_leaf с cv=3.\"\nassert abs(float(result[\"test_score\"]) - grid.score(X_test, y_test)) < 1e-9, \"test_score — точность лучшей модели на X_test.\"\n",
+      "final": true
+    },
+    {
+      "id": 5125,
+      "prompt": "Итоговое задание. Данные устроены как XOR. Сохрани в result словарь: `linear` — точность на `X_test` обычной `LogisticRegression(max_iter=1000)`, обученной на `X_train`; `embedding` — точность на `X_test` пайплайна `RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17)` → `LogisticRegression(max_iter=1000)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "rf_properties": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 512,
+      "starter": "from sklearn.ensemble import RandomTreesEmbedding\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\n\n# Прямая против эмбеддинга по листьям\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(1)\nX = rng.uniform(-1, 1, size=(400, 2))\ny = (X[:, 0] * X[:, 1] > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n",
+      "tests": "from sklearn.ensemble import RandomTreesEmbedding\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.pipeline import make_pipeline\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами linear и embedding.\"\nassert {\"linear\", \"embedding\"} <= set(result), \"Нужны ключи linear и embedding.\"\nlinear = LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_test, y_test)\nstacked = make_pipeline(\n    RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17),\n    LogisticRegression(max_iter=1000),\n).fit(X_train, y_train).score(X_test, y_test)\nassert abs(float(result[\"linear\"]) - linear) < 1e-9, \"linear: LogisticRegression(max_iter=1000) на исходных признаках.\"\nassert abs(float(result[\"embedding\"]) - stacked) < 1e-9, \"embedding: RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17) → LogisticRegression(max_iter=1000).\"\nassert stacked > linear + 0.2, \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 5126,
+      "prompt": "Итоговое задание. Обучи `RandomForestClassifier(n_estimators=60, random_state=17)` на `X_train`, `y_train`. Сохрани в result словарь: `sum` — сумма `feature_importances_`, `impurity_top` — номер признака с наибольшей важностью по неоднородности, `permutation_top` — номер признака с наибольшей перестановочной важностью на `X_test`, `y_test` (`permutation_importance(…, n_repeats=5, random_state=17)`).",
+      "answer_type": "code",
+      "concept_weights": {
+        "feature_importance": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 513,
+      "starter": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.inspection import permutation_importance\n\n# Две важности\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(2)\nn = 500\nuseful = rng.integers(0, 2, n)\nnoise_binary = rng.integers(0, 2, n)\nnoise_continuous = rng.normal(size=n)\ny = ((useful + rng.normal(0, 0.8, n)) > 0.5).astype(int)\nX = np.column_stack([useful, noise_binary, noise_continuous])\nX_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=17, stratify=y)\n",
+      "tests": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nfrom sklearn.inspection import permutation_importance\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами sum, impurity_top и permutation_top.\"\nassert {\"sum\", \"impurity_top\", \"permutation_top\"} <= set(result), \"Нужны ключи sum, impurity_top и permutation_top.\"\nforest = RandomForestClassifier(n_estimators=60, random_state=17).fit(X_train, y_train)\nperm = permutation_importance(forest, X_test, y_test, n_repeats=5, random_state=17)\nimpurity_top = int(np.argmax(forest.feature_importances_))\npermutation_top = int(np.argmax(perm.importances_mean))\nassert impurity_top != permutation_top, \"внутренняя ошибка задания\"\nassert abs(float(result[\"sum\"]) - 1.0) < 1e-9, \"Сумма feature_importances_ равна 1.\"\nassert int(result[\"impurity_top\"]) == impurity_top, \"impurity_top — argmax feature_importances_ (важность по неоднородности).\"\nassert int(result[\"permutation_top\"]) == permutation_top, \"permutation_top — argmax importances_mean перестановочной важности на X_test, y_test.\"\n",
+      "final": true
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 501,
+      "name": "Оценка леса по out-of-bag и важность признаков"
+    },
+    {
+      "id": 502,
+      "name": "Код: бутстрэп"
+    },
+    {
+      "id": 503,
+      "name": "Код: оценка out-of-bag"
+    },
+    {
+      "id": 504,
+      "name": "Код: лес и ExtraTrees"
+    },
+    {
+      "id": 505,
+      "name": "Код: подбор max_features по OOB"
+    },
+    {
+      "id": 506,
+      "name": "Код: близость по листьям леса"
+    },
+    {
+      "id": 507,
+      "name": "Код: важности по неоднородности"
+    },
+    {
+      "id": 508,
+      "name": "Итог: бэггинг руками"
+    },
+    {
+      "id": 509,
+      "name": "Итог: лес и правило √d"
+    },
+    {
+      "id": 510,
+      "name": "Итог: плато по числу деревьев"
+    },
+    {
+      "id": 511,
+      "name": "Итог: GridSearchCV для леса"
+    },
+    {
+      "id": 512,
+      "name": "Итог: эмбеддинг по листьям"
+    },
+    {
+      "id": 513,
+      "name": "Итог: две важности признаков"
+    }
+  ],
+  "criteria": [
+    {
+      "id": 501,
+      "rubric_id": 501,
+      "criterion": "Называет оценку out-of-bag: около трети объектов не попадает в бутстрэп-выборку, по ним и считается ошибка",
+      "weight": 1.0,
+      "positive_example": "включу oob_score и посмотрю ошибку по объектам, которых не было у каждого дерева",
+      "negative_example": "разобью данные пополам и посчитаю точность на второй половине"
+    },
+    {
+      "id": 502,
+      "rubric_id": 501,
+      "criterion": "Называет способ измерения важности: перестановочная важность по out-of-bag или уменьшение неоднородности (Джини/MSE)",
+      "weight": 1.0,
+      "positive_example": "перемешаю признак и посмотрю, насколько упадёт точность на out-of-bag",
+      "negative_example": "посмотрю на названия столбцов и решу, что важнее"
+    },
+    {
+      "id": 503,
+      "rubric_id": 501,
+      "criterion": "Оговаривает ограничение важности: признаки с большим числом уровней и коррелированные группы получают завышенную оценку",
+      "weight": 1.0,
+      "positive_example": "учту, что признаки с многими уровнями и коррелированные группы получат лишний вес",
+      "negative_example": "просто возьму топ-3 признака и выброшу остальные"
+    },
+    {
+      "id": 504,
+      "rubric_id": 502,
+      "criterion": "Выборка индексов берётся с возвращением, размером n",
+      "weight": 1.0,
+      "positive_example": "rng.choice(n, size=n, replace=True)",
+      "negative_example": "rng.choice(n, size=n, replace=False)"
+    },
+    {
+      "id": 505,
+      "rubric_id": 502,
+      "criterion": "Доля различных объектов считается через np.unique и усредняется по 200 выборкам",
+      "weight": 1.0,
+      "positive_example": "len(np.unique(idx)) / n; mean по 200 повторам",
+      "negative_example": "жёстко записанное число 0.632"
+    },
+    {
+      "id": 506,
+      "rubric_id": 503,
+      "criterion": "Лес обучен с oob_score=True и n_estimators=50 на обучающей части",
+      "weight": 1.0,
+      "positive_example": "RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)",
+      "negative_example": "oob_score по умолчанию (False)"
+    },
+    {
+      "id": 507,
+      "rubric_id": 503,
+      "criterion": "OOB берётся из oob_score_, тестовая точность — на X_test",
+      "weight": 1.0,
+      "positive_example": "forest.oob_score_, forest.score(X_test, y_test)",
+      "negative_example": "точность на обучении вместо OOB"
+    },
+    {
+      "id": 508,
+      "rubric_id": 504,
+      "criterion": "Обе модели оцениваются кросс-валидацией cv=5 на одних данных",
+      "weight": 1.0,
+      "positive_example": "cross_val_score(model, X, y, cv=5)",
+      "negative_example": "оценка на обучении"
+    },
+    {
+      "id": 509,
+      "rubric_id": 504,
+      "criterion": "В словаре — средние (.mean()) для ключей forest и extra",
+      "weight": 1.0,
+      "positive_example": "{'forest': ..., 'extra': ...}",
+      "negative_example": "массив оценок вместо среднего"
+    },
+    {
+      "id": 510,
+      "rubric_id": 505,
+      "criterion": "Для каждого значения max_features обучается свой лес с oob_score=True",
+      "weight": 1.0,
+      "positive_example": "for m in [1, 2, 4, 8]: RandomForestClassifier(max_features=m, oob_score=True, ...)",
+      "negative_example": "один лес для всех значений"
+    },
+    {
+      "id": 511,
+      "rubric_id": 505,
+      "criterion": "Выбрано значение с наибольшим oob_score_",
+      "weight": 1.0,
+      "positive_example": "max(scores, key=scores.get)",
+      "negative_example": "выбор по точности на обучении"
+    },
+    {
+      "id": 512,
+      "rubric_id": 506,
+      "criterion": "Номера листьев берутся через forest.apply(X) и сравниваются с листьями объекта 0",
+      "weight": 1.0,
+      "positive_example": "leaves == leaves[0]",
+      "negative_example": "евклидово расстояние между объектами"
+    },
+    {
+      "id": 513,
+      "rubric_id": 506,
+      "criterion": "Близость — доля деревьев с общим листом; объект 0 исключён",
+      "weight": 1.0,
+      "positive_example": "(leaves == leaves[0]).mean(axis=1); sim[0] = -1; argmax",
+      "negative_example": "argmax без исключения нулевого объекта"
+    },
+    {
+      "id": 514,
+      "rubric_id": 507,
+      "criterion": "Важности взяты из feature_importances_ и подписаны названиями столбцов",
+      "weight": 1.0,
+      "positive_example": "pd.Series(forest.feature_importances_, index=X.columns)",
+      "negative_example": "список без названий"
+    },
+    {
+      "id": 515,
+      "rubric_id": 507,
+      "criterion": "Серия отсортирована по убыванию",
+      "weight": 1.0,
+      "positive_example": ".sort_values(ascending=False)",
+      "negative_example": "порядок столбцов таблицы"
+    },
+    {
+      "id": 516,
+      "rubric_id": 508,
+      "criterion": "Каждое дерево обучается на своей бутстрэп-выборке X_train[idx], y_train[idx]",
+      "weight": 1.0,
+      "positive_example": "for idx in boot: tree.fit(X_train[idx], y_train[idx])",
+      "negative_example": "все деревья на одних и тех же данных"
+    },
+    {
+      "id": 517,
+      "rubric_id": 508,
+      "criterion": "Ответ — голосование большинством по 25 деревьям, точность на тесте",
+      "weight": 1.0,
+      "positive_example": "(votes.mean(axis=0) > 0.5)",
+      "negative_example": "ответ одного дерева"
+    },
+    {
+      "id": 518,
+      "rubric_id": 509,
+      "criterion": "Лес обучен с заданными параметрами на обучающей части",
+      "weight": 1.0,
+      "positive_example": "RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)",
+      "negative_example": "max_features=None"
+    },
+    {
+      "id": 519,
+      "rubric_id": 509,
+      "criterion": "OOB, точность на тесте, число признаков на разбиение и правило √d посчитаны",
+      "weight": 1.0,
+      "positive_example": "forest.oob_score_; forest.estimators_[0].max_features_; int(np.sqrt(d))",
+      "negative_example": "rule записан числом, не вычислен"
+    },
+    {
+      "id": 520,
+      "rubric_id": 510,
+      "criterion": "Для каждого B обучается лес с random_state=17 и считается точность на тесте",
+      "weight": 1.0,
+      "positive_example": "for b in [1, 5, 20, 60]: RandomForestClassifier(n_estimators=b, random_state=17)...",
+      "negative_example": "точность на обучении"
+    },
+    {
+      "id": 521,
+      "rubric_id": 510,
+      "criterion": "plateau — наименьшее B, достигающее максимум − 0.01",
+      "weight": 1.0,
+      "positive_example": "next(b for b, v in zip(sizes, scores) if v >= max(scores) - 0.01)",
+      "negative_example": "B с максимальной точностью без допуска"
+    },
+    {
+      "id": 522,
+      "rubric_id": 511,
+      "criterion": "Перебирается сетка max_features × min_samples_leaf по трём фолдам на обучающей части",
+      "weight": 1.0,
+      "positive_example": "GridSearchCV(RandomForestClassifier(n_estimators=30, random_state=17), {...}, cv=3).fit(X_train, y_train)",
+      "negative_example": "обучение на всех данных"
+    },
+    {
+      "id": 523,
+      "rubric_id": 511,
+      "criterion": "В результате — best_params_ и точность лучшей модели на тесте",
+      "weight": 1.0,
+      "positive_example": "grid.best_params_; grid.score(X_test, y_test)",
+      "negative_example": "best_score_ вместо точности на тесте"
+    },
+    {
+      "id": 524,
+      "rubric_id": 512,
+      "criterion": "Базовая линейная модель обучена на исходных признаках, точность — на тесте",
+      "weight": 1.0,
+      "positive_example": "LogisticRegression(max_iter=1000).fit(X_train, y_train).score(X_test, y_test)",
+      "negative_example": "оценка на обучающей части"
+    },
+    {
+      "id": 525,
+      "rubric_id": 512,
+      "criterion": "Пайплайн RandomTreesEmbedding → LogisticRegression с заданными параметрами",
+      "weight": 1.0,
+      "positive_example": "make_pipeline(RandomTreesEmbedding(n_estimators=30, max_depth=3, random_state=17), LogisticRegression(...))",
+      "negative_example": "другие параметры эмбеддинга"
+    },
+    {
+      "id": 526,
+      "rubric_id": 513,
+      "criterion": "Важность по неоднородности берётся из feature_importances_ (сумма равна 1)",
+      "weight": 1.0,
+      "positive_example": "forest.feature_importances_.sum(); argmax",
+      "negative_example": "важность по тестовым данным"
+    },
+    {
+      "id": 527,
+      "rubric_id": 513,
+      "criterion": "Перестановочная важность считается на X_test, y_test с n_repeats=5 и random_state=17",
+      "weight": 1.0,
+      "positive_example": "permutation_importance(forest, X_test, y_test, n_repeats=5, random_state=17).importances_mean",
+      "negative_example": "перестановочная важность на обучающих данных"
+    }
+  ],
+  "legacy": {
+    "ensembles": {
+      "node": "bagging_basics",
+      "section": "crowd"
+    },
+    "bootstrapping": {
+      "node": "bagging_basics",
+      "section": "bootstrap"
+    },
+    "bagging": {
+      "node": "bagging_basics",
+      "section": "bagging"
+    },
+    "bagging_variance": {
+      "node": "bagging_basics",
+      "section": "variance"
+    },
+    "oob_error": {
+      "node": "forest",
+      "section": "oob"
+    },
+    "random_subspace": {
+      "node": "forest",
+      "section": "subspace"
+    },
+    "random_forest": {
+      "node": "forest",
+      "section": "algorithm"
+    },
+    "rf_max_features": {
+      "node": "rf_tuning",
+      "section": "max_features"
+    },
+    "rf_hyperparams": {
+      "node": "rf_tuning",
+      "section": "hyperparams"
+    },
+    "rf_variance_decorrelation": {
+      "node": "rf_theory",
+      "section": "decorrelation"
+    },
+    "rf_bias": {
+      "node": "rf_theory",
+      "section": "bias"
+    },
+    "rf_tuning_curves": {
+      "node": "rf_tuning",
+      "section": "curves"
+    },
+    "extra_trees": {
+      "node": "rf_theory",
+      "section": "extra_trees"
+    },
+    "rf_vs_knn": {
+      "node": "rf_properties",
+      "section": "vs_knn"
+    },
+    "trees_embedding": {
+      "node": "rf_properties",
+      "section": "embedding"
+    },
+    "rf_pros_cons": {
+      "node": "rf_properties",
+      "section": "pros_cons"
+    },
+    "feature_importance_idea": {
+      "node": "feature_importance",
+      "section": "idea"
+    },
+    "permutation_importance": {
+      "node": "feature_importance",
+      "section": "permutation"
+    },
+    "impurity_importance": {
+      "node": "feature_importance",
+      "section": "impurity"
+    },
+    "feature_importance_case": {
+      "node": "feature_importance",
+      "section": "case"
+    }
+  }
+}

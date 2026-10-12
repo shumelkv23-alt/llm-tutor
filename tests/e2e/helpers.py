@@ -2,7 +2,7 @@
 
 import itertools
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 _ids = itertools.count(1)
 
 

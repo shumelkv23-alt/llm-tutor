@@ -3,24 +3,39 @@
 Ядро построено на инварианте «одна БД — один ученик» (спека веба §5): веб
 открывает ученику его файл и передаёт соединение в ``core`` как есть.
 
-Открытие: ``migrate`` → ``load_seed`` (идемпотентный upsert графа и банка) →
-сверка материалов RAG с общей БД материалов. Соединения кэшируются в
+Открытие: ``migrate`` → ``apply_course`` (идемпотентный upsert всех модулей
+курса) → сверка материалов RAG с общей БД материалов. Файл со старым id
+курса (``RENAMED_COURSES``) при первом открытии переименовывается. Соединения кэшируются в
 процессе; изменяющие запросы занятия идут под ``lock`` ученика.
 """
 
 import asyncio
 import hashlib
 import logging
+import os
 import sqlite3
 from pathlib import Path
 
-from llm_tutor.course.seed import load_seed
+from llm_tutor.config import Settings
+from llm_tutor.course.legacy import remap_progress
+from llm_tutor.course.seed import apply_course
 from llm_tutor.db.connection import get_conn, migrate
-from llm_tutor.web.courses import get_course
+from llm_tutor.web.courses import RENAMED_COURSES, course_data, get_course
 
 logger = logging.getLogger(__name__)
 
-_CHUNK_COLUMNS = "concept_id, source_url, section, seq, content"
+_CHUNK_COLUMNS = "concept_id, source_url, section, seq, content, topic_id"
+
+
+def _topic_column(conn: sqlite3.Connection, schema: str) -> str:
+    """Модуль чанка в SELECT: файл материалов старой схемы (до модулей) его не знает.
+
+    Общую БД материалов никто не мигрирует при открытии БД ученика — её
+    обновляет только ``course.ingest``. Чанки без модуля — материалы модуля 1:
+    других модулей до среза 51 не было.
+    """
+    columns = {row[1] for row in conn.execute(f"PRAGMA {schema}.table_info(chunks)")}
+    return "topic_id" if "topic_id" in columns else "1"
 
 
 def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
@@ -33,7 +48,8 @@ def _chunks_revision(conn: sqlite3.Connection, schema: str = "main") -> str:
     digest = hashlib.sha256()
     for row in conn.execute(
         "SELECT CASE WHEN concept_id IN (SELECT id FROM main.concepts) THEN concept_id END,"
-        f" source_url, section, seq, content FROM {schema}.chunks ORDER BY source_url, seq, id"
+        f" source_url, section, seq, content, {_topic_column(conn, schema)} FROM {schema}.chunks"
+        " ORDER BY source_url, seq, id"
     ):
         digest.update(repr(tuple(row)).encode("utf-8"))
     return digest.hexdigest()
@@ -57,7 +73,8 @@ def sync_materials(conn: sqlite3.Connection, materials_path: Path) -> bool:
             conn.execute(
                 f"INSERT INTO main.chunks ({_CHUNK_COLUMNS}) "
                 "SELECT CASE WHEN m.concept_id IN (SELECT id FROM main.concepts) "
-                "THEN m.concept_id END, m.source_url, m.section, m.seq, m.content "
+                "THEN m.concept_id END, m.source_url, m.section, m.seq, m.content, "
+                f"{_topic_column(conn, 'materials')} "
                 "FROM materials.chunks m ORDER BY m.id"
             )
         except sqlite3.Error:
@@ -72,9 +89,18 @@ def sync_materials(conn: sqlite3.Connection, materials_path: Path) -> bool:
 class UserDBPool:
     """Открытые БД учеников и их блокировки (на процесс)."""
 
-    def __init__(self, users_dir: str | Path, materials_path: str | Path) -> None:
+    def __init__(
+        self,
+        users_dir: str | Path,
+        materials_path: str | Path,
+        *,
+        settings: Settings | None = None,
+    ) -> None:
         self._users_dir = Path(users_dir)
         self._materials_path = Path(materials_path)
+        # Настройки — для переноса прогресса на занятия (срез 56). Без них —
+        # значения по умолчанию, не из .env: пул создают и тесты, и CLI.
+        self._settings = settings or Settings.model_construct()
         self._conns: dict[tuple[int, str], sqlite3.Connection] = {}
         self._locks: dict[tuple[int, str], asyncio.Lock] = {}
 
@@ -92,7 +118,38 @@ class UserDBPool:
         return self._users_dir / str(uid) / f"{cid}.sqlite3"
 
     def exists(self, user_id: int, course_id: str) -> bool:
+        self._adopt_renamed(user_id, course_id)
         return self.path(user_id, course_id).is_file()
+
+    def _adopt_renamed(self, user_id: int, course_id: str) -> None:
+        """БД под прежним id курса — переименовать в нынешний (с WAL и SHM).
+
+        Прогресс ученика не должен пропасть из-за смены id курса. Если файл с
+        новым id уже есть, старый не трогаем: перезаписывать нельзя.
+        """
+        target = self.path(user_id, course_id)
+        for old_id, new_id in RENAMED_COURSES.items():
+            if new_id != course_id:
+                continue
+            source = target.with_name(f"{old_id}.sqlite3")
+            if not source.is_file():
+                continue
+            if target.exists():
+                # Оба файла — прогресс под старым id не подхватится: пусть это
+                # будет видно в логе, а не пропадёт молча (аудит 52, L4).
+                logger.warning(
+                    "БД ученика %s: есть и %s, и %s — старая не подхвачена",
+                    user_id, source.name, target.name,
+                )
+                return
+            for suffix in ("", "-wal", "-shm"):
+                old = source.with_name(source.name + suffix)
+                if old.exists():
+                    # replace: осиротевший -wal/-shm без основного файла на
+                    # Windows иначе уронил бы rename (FileExistsError).
+                    os.replace(old, target.with_name(target.name + suffix))
+            logger.info("БД ученика %s: курс %s → %s", user_id, old_id, new_id)
+            return
 
     def open(self, user_id: int, course_id: str) -> sqlite3.Connection:
         """Соединение с БД ученика; первый вход создаёт её и грузит курс."""
@@ -102,10 +159,14 @@ class UserDBPool:
             return conn
         course = get_course(course_id)
         assert course is not None  # проверено в _key
+        self._adopt_renamed(user_id, course_id)
         conn = get_conn(str(self.path(user_id, course_id)), check_same_thread=False)
         try:
             migrate(conn)
-            load_seed(conn, course.seed_path)
+            data = course_data(course)
+            apply_course(conn, data)
+            # Старые темы → занятия (срез 56): один раз, отметка — факт в БД.
+            remap_progress(conn, data.legacy, settings=self._settings)
             if sync_materials(conn, self._materials_path):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:

@@ -5,7 +5,16 @@ import sqlite3
 import pytest
 
 from llm_tutor.db import repos
-from llm_tutor.schemas import Chunk, Event, Item, SessionState
+from llm_tutor.schemas import (
+    Chunk,
+    Concept,
+    Event,
+    Item,
+    SessionState,
+    SurveyBlock,
+    SurveyConfig,
+    Topic,
+)
 
 
 def _add_concept(conn, concept_id: str) -> None:
@@ -232,3 +241,48 @@ def test_special_characters_in_values_do_not_break_sql(conn) -> None:
     assert repos.get_messages(conn, session_id)[0].content == payload
     # инъекция не выполнилась — таблица на месте
     assert conn.execute("SELECT count(*) FROM messages").fetchone()[0] == 1
+
+
+def _topic(number: int) -> Topic:
+    return Topic(
+        number=number,
+        title=f"Модуль {number}",
+        intro="Вводная",
+        survey=SurveyConfig(
+            level_key=f"t{number:02d}_level",
+            level_question="Как ты?",
+            level_options=("С нуля", "Немного", "Уверенно"),
+            blocks=(
+                SurveyBlock(
+                    key=f"t{number:02d}_b",
+                    title="Блок",
+                    question="Знаешь?",
+                    example="пример",
+                    concepts=("a",),
+                ),
+            ),
+        ),
+    )
+
+
+def test_replace_seed_writes_topics_and_concept_module(conn) -> None:
+    repos.replace_seed(conn, [Concept(id="a", name="a", topic_id=2)], [], [], topics=[_topic(2)])
+
+    assert repos.get_topics(conn) == [_topic(2)]
+    assert repos.get_topic(conn, 2) == _topic(2)
+    assert repos.get_concepts(conn)[0].topic_id == 2
+
+
+def test_replace_seed_deactivates_missing_topic(conn) -> None:
+    repos.replace_seed(conn, [], [], [], topics=[_topic(1), _topic(2)])
+
+    repos.replace_seed(conn, [], [], [], topics=[_topic(1)])
+
+    assert [topic.number for topic in repos.get_topics(conn)] == [1]
+    assert repos.get_topic(conn, 2) is None
+
+
+def test_replace_chunks_keeps_module(conn) -> None:
+    repos.replace_chunks(conn, "u", [Chunk(source_url="u", content="x", seq=0, topic_id=3)])
+
+    assert conn.execute("SELECT topic_id FROM chunks").fetchone()[0] == 3

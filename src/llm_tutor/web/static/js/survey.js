@@ -11,8 +11,12 @@
   let started = false;
   let loading = false;
 
-  const INTRO_TITLE = "Привет! Я тьютор по теме «Pandas / EDA».";
   const INTRO_TEXT = "Пара коротких вопросов — и подберу, с чего начать. Это не экзамен: отвечайте как есть.";
+  // Модуль, анкету которого проходим (из состояния занятия).
+  let topic = null;
+  // Тема модуля с пройденной анкетой: из анкеты следующего модуля можно уйти
+  // назад (аудит среза 52, M2). null — первая анкета курса.
+  let wayBack = null;
   const CLAIMED_NOTE = "Знакомое не пропускаю — в конце проверим коротким тестом.";
 
   function el(tag, className, text) {
@@ -31,15 +35,34 @@
 
   function intro() {
     const card = el("div", "survey-card");
-    card.append(el("p", "eyebrow", "Знакомство"), el("h2", "", INTRO_TITLE), el("p", "survey-lead", INTRO_TEXT));
+    const eyebrow = topic ? `Модуль ${topic.number}` : "Знакомство";
+    const title = topic ? topic.title : "Привет! Я тьютор по курсу mlcourse.ai.";
+    card.append(el("p", "eyebrow", eyebrow), el("h2", "", title));
+    if (topic?.intro) card.append(el("p", "survey-lead", topic.intro));
+    card.append(el("p", "survey-lead", INTRO_TEXT));
     const go = button("Поехали", "primary", () => {
       started = true;
       step();
     });
     go.append(window.App.icon("arrow"));
     card.append(go);
+    appendWayBack(card);
     box.replaceChildren(card);
     go.focus();
+  }
+
+  function appendWayBack(card) {
+    if (!wayBack) return;
+    card.append(button(`‹ Вернуться к модулю ${wayBack.module}`, "ghost survey-leave", leave));
+  }
+
+  async function leave() {
+    if (loading || !wayBack) return;
+    const data = await window.Lesson.act("switch", { node_id: wayBack.node_id });
+    if (data) {
+      answers = [];
+      started = false;
+    }
   }
 
   function question(data) {
@@ -69,6 +92,7 @@
     if (data.can_back) {
       card.append(button("‹ Назад", "ghost survey-back", back));
     }
+    appendWayBack(card);
     box.replaceChildren(card);
     grid.querySelector("button")?.focus();
   }
@@ -139,12 +163,16 @@
     const data = await window.Lesson.act("survey/finish", { answers });
     if (data) {
       answers = [];
+      // Анкета следующего модуля начнётся с его приветствия.
+      started = false;
       window.Lesson.selectTab("theory");
     }
   }
 
   window.Lesson.onState((state) => {
     pane.classList.toggle("surveying", Boolean(state.survey));
+    topic = state.survey_topic || null;
+    wayBack = state.survey_back || null;
     if (state.survey && !started && !answers.length) intro();
   });
 })();

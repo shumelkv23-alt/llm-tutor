@@ -3,7 +3,7 @@
 import pytest
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Edge, Event
 from llm_tutor.student import beta
@@ -231,3 +231,11 @@ def test_mode_for_node_is_skip_for_confident_mastery(conn, settings) -> None:
     _set_mastery(conn, "a", 0.95, total=40.0)
 
     assert mode_for_node(conn, graph, "a", now=0.0, settings=settings) == "skip"
+
+
+def test_ready_nodes_respects_scope(conn, settings) -> None:
+    graph = CourseGraph([Concept(id="a", name="a"), Concept(id="b", name="b")], [])
+
+    ready = ready_nodes(conn, graph, scope={"b"}, now=0.0, settings=settings)
+
+    assert [node.concept_id for node in ready] == ["b"]

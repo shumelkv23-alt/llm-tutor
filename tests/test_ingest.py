@@ -128,7 +128,7 @@ def test_cli_main_ingests_file(tmp_path, capsys) -> None:
     md = tmp_path / "m.md"
     md.write_text("# T\n\n## S\n\ncontent alpha\n", encoding="utf-8")
 
-    code = main([str(md), "--db", str(tmp_path / "t.db")])
+    code = main([str(md), "--topic", "1", "--db", str(tmp_path / "t.db")])
 
     assert code == 0
     assert "Загружено чанков" in capsys.readouterr().out
@@ -139,7 +139,7 @@ def test_cli_main_ingests_url(tmp_path, capsys) -> None:
     respx.get("http://course/u.md").mock(
         return_value=httpx.Response(200, text="# T\n\n## S\n\nbeta\n")
     )
-    code = main(["http://course/u.md", "--db", str(tmp_path / "t.db")])
+    code = main(["http://course/u.md", "--topic", "1", "--db", str(tmp_path / "t.db")])
     assert code == 0
     assert "Загружено чанков" in capsys.readouterr().out
 
@@ -244,9 +244,33 @@ def test_cli_default_db_is_web_materials(monkeypatch) -> None:
     monkeypatch.setattr("llm_tutor.db.connection.get_conn", fake_get_conn)
     monkeypatch.delenv("MATERIALS_DB_PATH", raising=False)
     with pytest.raises(_Stop):
-        ingest_mod.main(["m.md"])
+        ingest_mod.main(["m.md", "--topic", "1"])
     monkeypatch.setenv("MATERIALS_DB_PATH", "elsewhere.sqlite3")
     with pytest.raises(_Stop):
-        ingest_mod.main(["m.md"])
+        ingest_mod.main(["m.md", "--topic", "1"])
 
     assert opened == ["data/materials.sqlite3", "elsewhere.sqlite3"]
+
+
+def test_ingest_text_marks_module(conn) -> None:
+    ingest_text(conn, "# T\n\n## S\n\nseaborn pairplot\n", "http://u", topic_id=2)
+
+    assert {r[0] for r in conn.execute("SELECT topic_id FROM chunks")} == {2}
+
+
+def test_ingest_text_rejects_topic_zero(conn) -> None:
+    """27-2: модуль 0 протёк бы в RAG всех модулей (фильтр topic_id <= N)."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ingest_text(conn, "# T\n\nseaborn\n", "http://u", topic_id=0)
+
+
+def test_cli_rejects_topic_out_of_range(tmp_path) -> None:
+    import pytest
+
+    md = tmp_path / "m.md"
+    md.write_text("# T\n\nseaborn\n", encoding="utf-8")
+    with pytest.raises(SystemExit):
+        main([str(md), "--topic", "99999999999999999999", "--db", str(tmp_path / "t.db")])

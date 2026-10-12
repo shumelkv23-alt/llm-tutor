@@ -9,6 +9,9 @@
 
 ``hard`` различает жёсткий пререквизит (блокирует узел) и мягкий (штраф к
 приоритету, не блокировка).
+
+Узел знает свой модуль (срез 24): межмодульные рёбра ведут только назад,
+порядок обхода — модуль за модулем.
 """
 
 import sqlite3
@@ -52,12 +55,25 @@ class CourseGraph:
                 self._graph.add_edge(
                     edge.from_id, edge.to_id, hard=edge.hard, weight=edge.weight
                 )
+        self._check_topic_direction()
         self.validate_dag()
+        # Граф неизменяем: порядок считаем один раз (маршрут зовёт его каждый ход).
+        self._topo = self._module_topo_order()
 
     @classmethod
     def load(cls, conn: sqlite3.Connection) -> "CourseGraph":
-        """Строит граф из БД (concepts + edges)."""
-        return cls(repos.get_concepts(conn), repos.get_edges(conn))
+        """Строит граф из БД (concepts + edges) — то, что видит ученик.
+
+        Узлы неопубликованных модулей (``Topic.published``, срез 55) в граф не
+        входят: маршрут, переходы и «следующий модуль» их не видят, войти в
+        «скоро» нельзя ни из меню, ни переходом после «🎉». Рёбра к ним
+        отбрасываются вместе с узлами.
+        """
+        hidden = {topic.number for topic in repos.get_topics(conn) if not topic.published}
+        concepts = [c for c in repos.get_concepts(conn) if c.topic_id not in hidden]
+        ids = {concept.id for concept in concepts}
+        edges = [e for e in repos.get_edges(conn) if e.from_id in ids and e.to_id in ids]
+        return cls(concepts, edges)
 
     def _check_endpoints(self, edge: Edge) -> None:
         for node_id in (edge.from_id, edge.to_id):
@@ -75,6 +91,41 @@ class CourseGraph:
             return
         edges = " -> ".join(f"{src}->{dst}" for src, dst, *_ in cycle)
         raise CourseGraphError(f"В графе курса цикл: {edges}")
+
+    def _check_topic_direction(self) -> None:
+        """Пререквизит не может лежать в модуле позже зависимой темы (срез 24).
+
+        На этом держится топопорядок модуль за модулем: ребро вперёд сделало бы
+        склейку порядков модулей неверной.
+        """
+        for src, dst in self._graph.edges:
+            src_topic = self._concepts[src].topic_id
+            dst_topic = self._concepts[dst].topic_id
+            if src_topic > dst_topic:
+                raise CourseGraphError(
+                    f"Ребро {src} -> {dst} ведёт вперёд: из модуля {src_topic} "
+                    f"в модуль {dst_topic}"
+                )
+
+    def _module_topo_order(self) -> list[str]:
+        """Модуль за модулем, внутри модуля — прежний ``nx.topological_sort``.
+
+        Подграф строится заново, а не через ``subgraph``: вид подграфа при малой
+        доле узлов перебирает их в порядке множества (хеш строк, меняется от
+        запуска к запуску). Узлы и рёбра добавляются в порядке исходного графа,
+        поэтому порядок topic01 тот же, что до появления модулей.
+        """
+        order: list[str] = []
+        for topic_id in self.topic_ids:
+            members = [n for n in self._graph if self._concepts[n].topic_id == topic_id]
+            inside = set(members)
+            module = nx.DiGraph()
+            module.add_nodes_from(members)
+            module.add_edges_from(
+                (src, dst) for src, dst in self._graph.edges if src in inside and dst in inside
+            )
+            order.extend(nx.topological_sort(module))
+        return order
 
     # --- интроспекция ---
 
@@ -127,9 +178,22 @@ class CourseGraph:
         data = self._graph.get_edge_data(from_id, to_id)
         return float(data["weight"]) if data else 0.0
 
+    @property
+    def topic_ids(self) -> list[int]:
+        """Номера модулей, у которых есть темы, по возрастанию."""
+        return sorted({concept.topic_id for concept in self._concepts.values()})
+
+    def topic_of(self, node_id: str) -> int:
+        """Модуль курса, к которому относится тема."""
+        return self.concept(node_id).topic_id
+
+    def topic_nodes(self, topic_id: int) -> list[str]:
+        """Темы модуля в топологическом порядке."""
+        return [node for node in self._topo if self._concepts[node].topic_id == topic_id]
+
     def topo_order(self) -> list[str]:
-        """Топологический порядок обхода (узел идёт после всех пререквизитов)."""
-        return list(nx.topological_sort(self._graph))
+        """Топологический порядок: модуль за модулем, внутри — по пререквизитам."""
+        return list(self._topo)
 
     def ancestors(self, node_id: str) -> set[str]:
         """Все (транзитивные) пререквизиты узла."""

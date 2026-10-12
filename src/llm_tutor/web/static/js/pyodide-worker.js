@@ -25,6 +25,9 @@ async function ensurePyodide(indexURL) {
       post({ type: "status", text: "Загружаем Python… (первый раз — до минуты)" });
       importScripts(`${indexURL}pyodide.js`);
       const instance = await self.loadPyodide({ indexURL });
+      // В воркере нет DOM: браузерный бэкенд matplotlib упал бы. Графики
+      // строятся в памяти (Agg) — задания проверяют данные графика и Axes.
+      instance.runPython("import os; os.environ['MPLBACKEND'] = 'Agg'");
       pyodide = instance;
       return instance;
     })();

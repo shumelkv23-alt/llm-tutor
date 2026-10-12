@@ -13,34 +13,36 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Literal
 
 from llm_tutor.config import Settings, get_settings
-from llm_tutor.core import intents
+from llm_tutor.core import guided, intents
 from llm_tutor.core.context import build_context
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.legacy import legacy_passed
 from llm_tutor.db import repos
 from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, GradeResult, Item, Route, SessionState
-from llm_tutor.student import beta, diagnostic, guide, hints, route as route_mod
+from llm_tutor.student import beta, diagnostic, guide, hints, survey
+from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
 
 # Задание уже неактуально (пропало из банка или не проверяется кодом).
 STALE_ITEM_REPLY = "Это задание уже неактуально — возьми новое."
 # Реплика «дай задание» попадает в журнал как обычная просьба ученика.
-PRACTICE_KICKOFF_TEXT = "Давай задание по текущей теме."
+PRACTICE_KICKOFF_TEXT = "Давай задание по текущему занятию."
 # Напоминание, что вопрос не сбросил выданное задание.
 PENDING_ITEM_NOTE = (
     "Задание всё ещё ждёт ответа — ответь на него или пропусти."
 )
 # Повод тьюторского хода при нажатии «Не понимаю».
-STUCK_KICKOFF_TEXT = "Не понял, давай подробнее по текущей теме."
+STUCK_KICKOFF_TEXT = "Не понял, давай подробнее."
 SKIP_KICKOFF_TEXT = "Пропустить задание."
 SKIP_REPLY = (
     "Пропустил — свидетельство не записано, вернёмся к этому узлу позже. "
@@ -57,8 +59,25 @@ NO_TASK_FOR_NODE_REPLY = (
 )
 # Узел закрыт — объявляем следующий шаг (имя подставит вызывающий код).
 STUCK_NOTE = "Ок, остаёмся на этом узле и разбираемся глубже."
-# Маршрут пройден до конца: заданий больше нет, и это не ошибка.
-ROUTE_DONE_REPLY = "Маршрут пройден до конца — в маршруте видно, что закрыто."
+# Курс пройден: открытых тем не осталось ни в одном модуле (§4.3 спеки модулей).
+ROUTE_DONE_REPLY = "🎓 Курс пройден — открытых занятий не осталось. Свериться можно в маршруте."
+# Модуль пройден: все темы его рабочего участка закрыты.
+TOPIC_DONE_NOTE = route_mod.TOPIC_DONE_NOTE
+# Переход в следующий модуль: с какой темы начинаем.
+NEXT_TOPIC_NOTE = "Дальше — модуль {number} «{title}», начинаем с «{name}»."
+# Закрыта последняя открытая тема курса.
+COURSE_DONE_NOTE = "🎓 Это был последний шаг — курс пройден! Свериться можно в маршруте."
+# Повтор уже закрытой темы, когда курс пройден: «🎓» второй раз не нужен.
+COURSE_STILL_DONE_NOTE = "Открытых занятий по-прежнему нет — свериться можно в маршруте."
+# Открытые модули пройдены, а следующие ещё «скоро» (срез 55): это не конец курса.
+MODULES_SOON_NOTE = (
+    "Открытые модули пройдены 🎉 Следующие скоро откроются — а пока пройденное "
+    "можно повторить в маршруте."
+)
+# Следующий модуль ещё без анкеты: урок продолжится после неё (§5.2 спеки модулей).
+NEXT_TOPIC_SURVEY_NOTE = (
+    "Дальше — модуль {number} «{title}». Сначала пара вопросов — подберу, с чего начать."
+)
 # Повод хода «Продолжить обучение» — в журнале виден как реплика ученика.
 RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 # Шапка шага проверочного прохода. Номер без общего числа: после неудачного
@@ -68,16 +87,16 @@ VERIFY_STEP_TEMPLATE = "🔎 Проверка «{name}» — шаг {step}"
 VERIFY_EXPLAIN_PREFIX = "Объясни своими словами:"
 # Проход исчерпал задания узла, а серия ещё не набрана.
 VERIFY_EXHAUSTED_REPLY = (
-    "Проверить нечем: по этой теме мало заданий, и мы их уже прошли. "
+    "Проверить нечем: по этому занятию мало заданий, и мы их уже прошли. "
     "Разберём её уроком — напиши что угодно, и продолжим."
 )
 # У узла нет ни одного задания.
 VERIFY_NO_ITEMS_REPLY = (
-    "По этой теме у меня нет проверочных заданий — "
+    "По этому занятию у меня нет проверочных заданий — "
     "закрою её, когда владение подтвердится по ходу."
 )
 # Проход не подтвердился — говорим честно и возвращаемся к разбору.
-VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к теме и разберёмся."
+VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернёмся к занятию и разберёмся."
 # Вход в заявленный в анкете узел: самооценку подтверждаем проходом (срез 23).
 CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — пара быстрых вопросов."
 
@@ -102,6 +121,8 @@ class TurnReply:
     options: list[str] | None = None
     tail: str | None = None
     item_id: int | None = None
+    # Кнопка урока (срез 28): подпись и данные «Дальше» / «Проверим».
+    button: tuple[str, str] | None = None
 
 
 def _render_item(item: Item) -> str:
@@ -122,21 +143,13 @@ def _normalize_choice_answer(item: Item, text: str) -> str:
     засчитала бы верный ответ неверным.
     """
     stripped = text.strip()
-    if item.answer_type != "choice" or not stripped.isdigit():
+    if item.answer_type != "choice" or not stripped.isdigit() or stripped in item.options:
+        # Вариант-число («150») — это текст варианта, а не номер (F-1).
         return text
     number = int(stripped)
     if 1 <= number <= len(item.options):
         return item.options[number - 1]
     return text
-
-
-def _looks_like_question(text: str) -> bool:
-    """Ученик спрашивает, а не отвечает.
-
-    Вопрос нельзя записывать в журнал как неверный ответ — иначе он теряется
-    безвозвратно вместе с висящим заданием.
-    """
-    return text.strip().endswith("?")
 
 
 def _feedback(item: Item, score: float) -> str:
@@ -347,7 +360,10 @@ async def _tutor_branch(
 
     try:
         answer = await client.chat_structured(package.messages, TutorReply, model=model)
-    except LLMError:
+    except LLMError as exc:
+        # Ученик видит только «не смог получить ответ», поэтому причина (сеть,
+        # лимит, отвергнутый ключ) должна остаться хотя бы в логе сервера.
+        logger.warning("Тьютор не получил ответ модели: %s", exc)
         return LLM_FAILURE_REPLY, [], [], idle_state, False
     except Exception:  # noqa: BLE001 — бот не должен молчать на неожиданный сбой
         logger.exception("Неожиданный сбой тьюторского хода")
@@ -376,12 +392,15 @@ async def _tutor_branch(
     return answer.reply, [], [], new_state, answer.wants_close_topic
 
 
-def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
-    """Урок с чистого листа: снимает узел, задание, режим и снимок маршрута.
+def reset_lesson(
+    conn: sqlite3.Connection, *, claimed: Collection[str] = (), now: float | None = None
+) -> None:
+    """Урок с чистого листа после анкеты модуля: снимает тему, задание и режим.
 
-    Зовётся в конце анкеты. Всё, что ученик успел до неё (задание, продолжение
-    урока), строилось без самооценки: снимок маршрута без заявленных узлов
-    отменил бы их навсегда (``build_route`` берёт заявленное из снимка).
+    Снимок маршрута НЕ обнуляется (срез 26): в нём закрытое прошлых модулей.
+    Текущая тема снова «впереди», а ``claimed`` — знакомое по только что
+    пройденной анкете — помечается заявленным (``route.mark_claimed``). Так
+    задание, взятое до анкеты, не отменяет «Уверенно» (срез 23).
     Свидетельства в журнале не трогаем — владение остаётся.
     """
     stamp = time.time() if now is None else now
@@ -389,6 +408,11 @@ def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
     if session_id is None:
         return
     state = repos.get_session_state(conn, session_id)
+    route = (
+        route_mod.mark_claimed(route_mod.release_current(state.route), claimed)
+        if state.route is not None
+        else None
+    )
     repos.update_session_state(
         conn,
         session_id,
@@ -398,13 +422,15 @@ def reset_lesson(conn: sqlite3.Connection, *, now: float | None = None) -> None:
                 "mode": None,
                 "hint_level": 0,
                 "pending_item_id": None,
-                "route": None,
+                "route": route,
                 "phase": "explain",
                 "node_streak": 0,
                 "task_hinted": False,
                 "verify_item_ids": [],
                 "lesson_item_ids": [],
                 "last_activity": stamp,
+                "jump_node_id": None,
+                **guide.SECTION_RESET,
             }
         ),
     )
@@ -417,12 +443,62 @@ def _is_claimed(route: Route | None, node_id: str) -> bool:
     )
 
 
+def _fresh_route(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    now: float,
+    settings: Settings,
+) -> Route:
+    """Снимок, достроенный до всего курса перед выбором темы.
+
+    Сохранённый снимок мог отстать от курса (снимок до среза 25, модуль
+    добавлен после «🎓»): решение по нему объявило бы конец курса, когда
+    в новом модуле есть темы (аудит среза 25, H1).
+    """
+    return route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=state.current_node_id,
+        previous=state.route,
+        now=now,
+        settings=settings,
+    )
+
+
+def _modules_soon(conn: sqlite3.Connection) -> bool:
+    """Есть модули, которые ещё не открыты ученикам (``Topic.published``)."""
+    return any(not topic.published for topic in repos.get_topics(conn))
+
+
+def _sections(graph: CourseGraph, node_id: str | None) -> list[str]:
+    """Разделы занятия (id по порядку); у темы без разделов — пусто."""
+    if node_id is None or not graph.has_node(node_id):
+        return []
+    return [section.id for section in graph.concept(node_id).sections]
+
+
+def _section_title(graph: CourseGraph, node_id: str, section_id: str) -> str:
+    return next(
+        (s.title for s in graph.concept(node_id).sections if s.id == section_id), section_id
+    )
+
+
+def _topic_title(conn: sqlite3.Connection, topic_id: int) -> str:
+    """Название модуля для объявлений (без модуля в БД — его номер)."""
+    topic = repos.get_topic(conn, topic_id)
+    return topic.title if topic is not None else f"№{topic_id}"
+
+
 def _checking(state: SessionState, node_id: str) -> SessionState:
     """Состояние входа в проверочный проход по заявленному узлу."""
     return state.model_copy(
         update={
             "current_node_id": node_id,
             "mode": "verify",
+            "close_requested": False,
             "node_streak": 0,
             "hint_level": 0,
             "task_hinted": False,
@@ -430,6 +506,7 @@ def _checking(state: SessionState, node_id: str) -> SessionState:
             "phase": "explain",
             "verify_item_ids": [],
             "lesson_item_ids": [],
+            **guide.SECTION_RESET,
         }
     )
 
@@ -524,114 +601,148 @@ async def handle_turn(
     # Второе сообщение хода — задание. Появится, если задание реально выдано:
     # отказ «заданий нет» остаётся в тексте, отдельным сообщением ему не быть.
     tail: str | None = None
+    button: tuple[str, str] | None = None
     answered_item_id = state.pending_item_id
 
-    is_answer = answer_mode == "answer" or (
-        answer_mode == "auto" and not _looks_like_question(user_text)
+    pending_item = (
+        repos.get_item(conn, state.pending_item_id)
+        if state.pending_item_id is not None
+        else None
     )
-    if state.pending_item_id is not None and not force_stuck and is_answer:
+    if state.pending_item_id is None or answer_mode == "tutor":
+        is_answer = False
+    elif answer_mode == "answer":
+        is_answer = True
+    else:
+        # Свободный текст (срез 28): ответ, только если похож на ответ.
+        # Намерения выключены — всегда ответ; задание пропало из банка —
+        # пусть ветка ответа скажет «неактуально».
+        is_answer = (
+            not allow_intents
+            or pending_item is None
+            or guided.answer_kind(pending_item, user_text) == "answer"
+        )
+    if is_answer and not force_stuck:
         reply, events, mastery, new_state, passed = await _answer_branch(
             conn, client, model, graph, user_text, state, now=stamp, settings=s, grade=grade
         )
         # Узел пройден? Только на ВЕРНОМ ответе: «не совсем верно» и «узёл
         # закрыт» в одном сообщении противоречат друг другу. Владение считаем
         # с учётом только что отвеченного задания, а не по старым данным.
-        if passed:
-            overrides = {
-                change.concept_id: beta.to_mastery(
-                    change.concept_id,
-                    change.alpha,
-                    change.beta,
-                    change.last_seen,
-                    change.next_review,
-                )
-                for change in mastery
-            }
+        closed_note: str | None = None
+        overrides = {
+            change.concept_id: beta.to_mastery(
+                change.concept_id,
+                change.alpha,
+                change.beta,
+                change.last_seen,
+                change.next_review,
+            )
+            for change in mastery
+        }
+        sections = _sections(graph, state.current_node_id)
+        if sections and state.mode != "verify" and passed is not None:
+            # Занятие с разделами (срез 54): ответ двигает раздел, а не тему.
+            reply, new_state, closed_note, button = await _section_answer(
+                conn, client, model, session_id, graph, state, new_state,
+                reply=reply, user_text=user_text, pending_item=pending_item,
+                passed=passed, sections=sections, overrides=overrides,
+                now=stamp, settings=s,
+            )
+        elif passed:
             new_state, closed_note = _close_node_if_ready(
                 conn, graph, new_state, overrides=overrides, now=stamp, settings=s
             )
-            if closed_note:
-                reply = f"{reply}\n\n{closed_note}"
-                # Следующий узел — заявленный: его не объясняем, а проверяем;
-                # задание выдаст общий `_issue_task` ниже.
-                if new_state.current_node_id is not None and new_state.mode != "verify":
-                    # Закрытие и переход — в одном ходу: сообщение должно быть не
-                    # «тема закрыта», а началом следующей темы (§5.1). Это второй
-                    # вызов модели за ход — осознанный размен.
-                    explanation, _, _, new_state, _ = await _tutor_branch(
-                        conn,
-                        client,
-                        model,
-                        session_id,
-                        user_text,
-                        new_state,
-                        graph,
-                        now=stamp,
-                        settings=s,
-                        # Флаг «застрял» здесь относился бы к узлу, которого
-                        # ученик ещё не видел: он только что верно ответил.
-                        allow_stuck=False,
-                    )
-                    if explanation != LLM_FAILURE_REPLY:
-                        # Сбой объяснения переход не отменяет: объявление и
-                        # задание нового узла уже есть, терять их незачем.
-                        reply = f"{reply}\n\n{explanation}"
-        # Проход не подтвердился: обрываем его, узел уходит в разбор. Ответ,
-        # который не удалось проверить (`None`), провалом не считается — это
-        # сбой задания, а не пробел в знаниях ученика.
-        if state.mode == "verify" and passed is False:
-            new_state = guide.on_verification_failed(new_state)
-            reply = f"{reply}\n\n{VERIFY_FAILED_NOTE}"
-            # «Разберёмся» — значит разбор, а не сразу следующий тест: тьютор
-            # объясняет узел заново (обычный урок), задание идёт следом.
+        elif (
+            passed is False
+            and state.mode != "verify"
+            and pending_item is not None
+            and pending_item.answer_type in diagnostic.AUTO_CHECKABLE
+        ):
+            # Урок за ручку (срез 28): ошибка — разбор от тьютора, затем второй
+            # шанс другим вопросом; вторая ошибка — тема слабая, ведём дальше.
+            correct = (
+                pending_item.options[int(pending_item.answer or 0)]
+                if pending_item.answer_type == "choice"
+                else str(pending_item.answer)
+            )
             explanation, _, _, new_state, _ = await _tutor_branch(
                 conn,
                 client,
                 model,
                 session_id,
-                user_text,
+                guided.MISTAKE_KICKOFF.format(given=user_text.strip(), correct=correct),
                 new_state,
                 graph,
                 now=stamp,
                 settings=s,
-                # Неверный ответ — не просьба о глубине: режим задан провалом.
                 allow_stuck=False,
             )
             if explanation != LLM_FAILURE_REPLY:
                 reply = f"{reply}\n\n{explanation}"
-        # Ведём дальше: следующий узел после закрытия или ещё задание по этому.
-        new_state, task_text, options = _issue_task(
-            conn,
-            graph,
-            new_state,
-            exclude_item_ids=(
-                frozenset({answered_item_id})
-                if answered_item_id is not None
-                else frozenset()
-            ),
-            now=stamp,
-            settings=s,
-        )
-        # Задание уходит отдельным сообщением: объяснение и тест в одном
-        # сообщении читаются стеной (§5.1). Признак выданного задания —
-        # заполненный ``pending_item_id``: у short-задания вариантов нет, и по
-        # ``options`` отличить его от отказа «заданий нет» нельзя.
-        tail = task_text if new_state.pending_item_id is not None else None
-        if tail is None:
-            reply = f"{reply}\n\n{task_text}"
+            if state.check_misses >= 1:
+                reply = f"{reply}\n\n{guided.WEAK_NOTE}"
+                new_state, closed_note = _close_node_if_ready(
+                    conn, graph, new_state, overrides=overrides, now=stamp, settings=s,
+                    force=True,
+                )
+            else:
+                new_state = new_state.model_copy(update={"check_misses": 1})
+        if closed_note:
+            reply = f"{reply}\n\n{closed_note}"
+            # Следующая тема — урок частями; заявленную (проход) не объясняем,
+            # её вопрос выдаст общий `_issue_task` ниже.
+            if new_state.current_node_id is not None and new_state.mode != "verify":
+                explanation, new_state = await _start_lesson(
+                    conn, client, model, session_id, new_state, graph, now=stamp, settings=s
+                )
+                reply = f"{reply}\n\n{explanation}"
+                button = guided.button(new_state)
+        # Проход не подтвердился: обрываем его, тема уходит в обычный урок
+        # частями. Ответ, который не удалось проверить (`None`), провалом не
+        # считается — это сбой задания, а не пробел в знаниях ученика.
+        if state.mode == "verify" and passed is False:
+            new_state = guide.on_verification_failed(new_state)
+            if sections and pending_item is not None:
+                # Урок начинается с раздела, где ошиблись (план §4): разделы до
+                # него в проходе подтверждены, итоговое — значит, все.
+                failed = None if pending_item.final else pending_item.section
+                done = sections[: sections.index(failed)] if failed in sections else sections
+                new_state = new_state.model_copy(
+                    update={**guide.SECTION_RESET, "passed_sections": done, "section_id": failed}
+                )
+            explanation, new_state = await _start_lesson(
+                conn, client, model, session_id, new_state, graph, now=stamp, settings=s
+            )
+            reply = f"{reply}\n\n{VERIFY_FAILED_NOTE}\n\n{explanation}"
+            button = guided.button(new_state)
+        # Задание: второй шанс или вопрос заявленной темы. После урока (кнопка)
+        # и когда следующей темы нет (курс пройден, анкета модуля) — не выдаём.
+        if button is None and not (closed_note and new_state.current_node_id is None):
+            new_state, task_text, options = _issue_task(
+                conn,
+                graph,
+                new_state,
+                exclude_item_ids=(
+                    frozenset({answered_item_id})
+                    if answered_item_id is not None
+                    else frozenset()
+                ),
+                now=stamp,
+                settings=s,
+            )
+            # Задание уходит отдельным сообщением: признак выданного —
+            # заполненный ``pending_item_id`` (у short вариантов нет).
+            tail = task_text if new_state.pending_item_id is not None else None
+            if tail is None and task_text:
+                reply = f"{reply}\n\n{task_text}"
     else:
         # Вход в узел (§5.1): занятия ещё нет. Код берёт первый шаг маршрута,
         # тьютор объясняет именно его, и в том же ходу выдаётся первый тест —
         # ученику не нужно ничего писать, чтобы получить задание.
         entering = state.current_node_id is None and state.pending_item_id is None
         if entering:
-            route = state.route or route_mod.build_route(
-                conn,
-                graph,
-                goal_concept_id=route_mod.goal_for(conn, graph),
-                now=stamp,
-                settings=s,
-            )
+            route = _fresh_route(conn, graph, state, now=stamp, settings=s)
             node_id = route_mod.next_node_id(conn, graph, route, now=stamp, settings=s)
             if node_id is None:
                 entering = False  # маршрут исчерпан — входить некуда
@@ -646,6 +757,18 @@ async def handle_turn(
                     update={"current_node_id": node_id, "route": route}
                 )
 
+        if entering:
+            # Урок за ручку (срез 28): тема объясняется частями, задание — только
+            # после «Проверим». Ученик этого узла ещё не видел, поэтому ни «не
+            # понял», ни «закрой тему» к нему не относятся.
+            reply, new_state = await _start_lesson(
+                conn, client, model, session_id, state, graph, now=stamp, settings=s
+            )
+            button = guided.button(new_state)
+            return _finish_turn(
+                conn, session_id, graph, user_text, reply, new_state, button=button,
+                now=stamp, settings=s,
+            )
         reply, events, mastery, new_state, wants_close = await _tutor_branch(
             conn,
             client,
@@ -656,13 +779,9 @@ async def handle_turn(
             graph,
             now=stamp,
             settings=s,
-            # Ученик этого узла ещё не видел: и «не понял», и «закрой тему» на
-            # ходу входа относятся не к нему, а узел выбрал код — так что ход
-            # остаётся обычным объяснением (§5.1).
-            force_stuck=force_stuck and not entering,
-            allow_stuck=not entering,
+            force_stuck=force_stuck,
         )
-        if wants_close and not entering:
+        if wants_close:
             # Модель заметила просьбу закрыть тему: реплика тьютора и слова
             # ученика уходят в проход, он же пишет ход — и в ответ, и в журнал.
             #
@@ -676,39 +795,14 @@ async def handle_turn(
             return verify.start_verification(
                 conn, now=stamp, settings=s, user_text=user_text, tutor_reply=reply
             )
-        # Ведём занятие дальше: на входе в узел — сразу после объяснения, на
-        # реплике без задания — по любой непустой реплике (§5.4). Кнопки
-        # «Продолжить» больше нет, её роль играет текст ученика.
-        moves_lesson = entering or (
-            state.pending_item_id is None
-            and not force_stuck
-            and not _looks_like_question(user_text)
-        )
-        # Сбой модели занятие не двигает: обещать задание после «не смог
-        # получить ответ» — значит выдать сбой за объяснение.
-        if (
-            moves_lesson
-            and new_state.current_node_id is not None
-            and reply != LLM_FAILURE_REPLY
-        ):
-            hint_level = new_state.hint_level
-            new_state, task_text, options = _issue_task(
-                conn, graph, new_state, now=stamp, settings=s
-            )
-            tail = task_text if new_state.pending_item_id is not None else None
-            if tail is None:
-                reply = f"{reply}\n\n{task_text}"
-            else:
-                # Объяснение и задание — один ход, поэтому уровень подсказки
-                # переносится в задание: `_issue_task` обнуляет лестницу
-                # (задание новое — помощи по нему не было), а обнуление стёрло
-                # бы подъём, и следующее «не понял» начинало бы лестницу
-                # заново — до разбора дело не дошло бы никогда.
-                new_state = new_state.model_copy(update={"hint_level": hint_level})
-        elif state.pending_item_id is not None and not force_stuck:
+        if state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
             # При «не понял» напоминание не нужно — его заменяет STUCK_NOTE.
             reply = f"{reply}\n\n{PENDING_ITEM_NOTE}"
+        else:
+            # Реплика посреди урока задание НЕ выдаёт (срез 28): ученик спросил —
+            # тьютор ответил, урок продолжается кнопкой с того же места.
+            button = guided.button(new_state)
 
     # Маршрут пересчитывается на каждом ходу, но ученику сообщается только
     # о значимом изменении (§6.4 — «малые различия» не тревожат план).
@@ -736,7 +830,237 @@ async def handle_turn(
         options=options,
         tail=tail,
         item_id=new_state.pending_item_id if tail else None,
+        button=button,
     )
+
+
+async def _section_answer(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    session_id: int,
+    graph: CourseGraph,
+    state: SessionState,
+    new_state: SessionState,
+    *,
+    reply: str,
+    user_text: str,
+    pending_item: Item | None,
+    passed: bool,
+    sections: list[str],
+    overrides: Mapping[str, beta.Mastery],
+    now: float,
+    settings: Settings,
+) -> tuple[str, SessionState, str | None, tuple[str, str] | None]:
+    """Ответ на вопрос раздела или итоговое задание урока (план §4).
+
+    Верно — раздел пройден; ошибка — разбор и второй вопрос того же раздела;
+    вторая ошибка — разбор, раздел слабый, урок идёт дальше. Затем: занятие
+    закрыто (все разделы и итоговое, или уверенное владение) — объявление
+    следующего; иначе урок следующего раздела или итоговое задание (его
+    выдаст вызывающий код). Отдаёт текст, состояние, заметку о закрытии и
+    кнопку урока.
+    """
+    node_id = state.current_node_id
+    assert node_id is not None
+    section = guide.current_section(state, sections)
+    new_state, outcome = guide.on_section_answer(new_state, correct=passed, sections=sections)
+    if not passed and pending_item is not None and pending_item.answer_type in diagnostic.AUTO_CHECKABLE:
+        correct = (
+            pending_item.options[int(pending_item.answer or 0)]
+            if pending_item.answer_type == "choice"
+            else str(pending_item.answer)
+        )
+        explanation, _, _, new_state, _ = await _tutor_branch(
+            conn,
+            client,
+            model,
+            session_id,
+            guided.MISTAKE_KICKOFF.format(given=user_text.strip(), correct=correct),
+            new_state,
+            graph,
+            now=now,
+            settings=settings,
+            allow_stuck=False,
+        )
+        if explanation != LLM_FAILURE_REPLY:
+            reply = f"{reply}\n\n{explanation}"
+    if outcome == "retry":
+        return reply, new_state, None, None
+    if outcome == "weak":
+        note = (
+            guided.FINAL_WEAK_NOTE
+            if section is None
+            else guided.SECTION_WEAK_NOTE.format(title=_section_title(graph, node_id, section))
+        )
+        reply = f"{reply}\n\n{note}"
+    new_state, closed_note = _close_node_if_ready(
+        conn, graph, new_state, overrides=overrides, now=now, settings=settings
+    )
+    if closed_note:
+        return reply, new_state, closed_note, None
+    if new_state.section_id is None:
+        # Все разделы пройдены — итоговое задание выдаст общий `_issue_task`.
+        name = graph.concept(node_id).name
+        return f"{reply}\n\n{guided.FINAL_TASK_NOTE.format(name=name)}", new_state, None, None
+    if section is not None:
+        reply = f"{reply}\n\n" + guided.SECTION_DONE_NOTE.format(
+            title=_section_title(graph, node_id, section),
+            next=_section_title(graph, node_id, new_state.section_id),
+        )
+    explanation, new_state = await _start_lesson(
+        conn, client, model, session_id, new_state, graph, now=now, settings=settings
+    )
+    return f"{reply}\n\n{explanation}", new_state, None, guided.button(new_state)
+
+
+async def _start_lesson(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    session_id: int,
+    state: SessionState,
+    graph: CourseGraph,
+    *,
+    now: float,
+    settings: Settings,
+) -> tuple[str, SessionState]:
+    """Вход в узел ``state.current_node_id``: урок частями, первая часть — сразу.
+
+    Один вызов тьютора на тему; части лежат в состоянии, «Дальше» показывает
+    их без модели. Сбой модели урок не блокирует: первой частью идёт описание
+    темы из графа, а дальше — проверка.
+    """
+    node_id = state.current_node_id
+    assert node_id is not None
+    concept = graph.concept(node_id)
+    fresh = state.model_copy(
+        update={"lesson_parts": [], "lesson_part": 0, "check_misses": 0, "phase": "explain"}
+    )
+    kickoff = guided.LESSON_KICKOFF.format(name=concept.name)
+    fallback = f"📘 {concept.name}\n\n{concept.description or concept.name}"
+    sections = [section.id for section in concept.sections]
+    if sections and not fresh.passed_sections and not fresh.weak_sections:
+        # Разделы, пройденные до перестройки курса (срез 56), не повторяем.
+        passed, weak = legacy_passed(conn, node_id)
+        passed = [section for section in passed if section in sections]
+        if passed:
+            fresh = fresh.model_copy(
+                update={
+                    "passed_sections": passed,
+                    "weak_sections": [section for section in weak if section in passed],
+                }
+            )
+    if sections:
+        # Занятие с разделами (срез 54): объясняется текущий раздел.
+        section = guide.current_section(fresh, sections)
+        fresh = fresh.model_copy(update={"section_id": section})
+        if section is None:
+            # Разделы пройдены: объяснять нечего, «Проверим» выдаст итоговое.
+            return guided.FINAL_TASK_NOTE.format(name=concept.name), fresh
+        title = _section_title(graph, node_id, section)
+        kickoff = guided.SECTION_KICKOFF.format(name=concept.name, section=title)
+        fallback = f"📘 {concept.name} · {title}\n\n{concept.description or concept.name}"
+    reply, _, _, new_state, _ = await _tutor_branch(
+        conn,
+        client,
+        model,
+        session_id,
+        kickoff,
+        fresh,
+        graph,
+        now=now,
+        settings=settings,
+        allow_stuck=False,
+    )
+    if reply == LLM_FAILURE_REPLY:
+        logger.warning("Урок «%s» без модели: показываю описание темы", node_id)
+        parts = [fallback]
+    else:
+        parts = guided.split_parts(reply)
+    new_state = new_state.model_copy(update={"lesson_parts": parts, "lesson_part": 1})
+    return parts[0], new_state
+
+
+def _finish_turn(
+    conn: sqlite3.Connection,
+    session_id: int,
+    graph: CourseGraph,
+    user_text: str,
+    reply: str,
+    state: SessionState,
+    *,
+    button: tuple[str, str] | None,
+    now: float,
+    settings: Settings,
+) -> TurnReply:
+    """Пересчёт маршрута, запись хода и ответ без задания (ход урока)."""
+    fresh_route, route_note = route_mod.refresh(conn, state, graph, now=now, settings=settings)
+    if route_note:
+        reply = f"{reply}\n\n{route_note}"
+    post_turn(
+        conn,
+        session_id,
+        user_text=user_text,
+        assistant_text=reply,
+        state=state.model_copy(update={"route": fresh_route}),
+        now=now,
+    )
+    return TurnReply(text=reply, button=button)
+
+
+def lesson_next_reply(
+    conn: sqlite3.Connection,
+    node_id: str,
+    part: int,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> TurnReply:
+    """Кнопка урока: следующая часть темы или, после последней, вопрос-проверка.
+
+    Без модели. Колбэк несёт тему и число показанных частей — старая или
+    повторная кнопка не совпадёт с состоянием и ничего не сдвинет.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    if (
+        state.current_node_id != node_id
+        or state.lesson_part != part
+        or state.pending_item_id is not None
+    ):
+        return TurnReply(text=guided.STALE_PART_REPLY)
+    if part < len(state.lesson_parts):
+        new_state = state.model_copy(update={"lesson_part": part + 1, "last_activity": stamp})
+        text = state.lesson_parts[part]
+        post_turn(
+            conn,
+            session_id,
+            user_text=guided.NEXT_KICKOFF_TEXT,
+            assistant_text=text,
+            state=new_state,
+            now=stamp,
+        )
+        return TurnReply(text=text, button=guided.button(new_state))
+    graph = CourseGraph.load(conn)
+    new_state, task_text, options = _issue_task(conn, graph, state, now=stamp, settings=s)
+    post_turn(
+        conn,
+        session_id,
+        user_text=guided.NEXT_KICKOFF_TEXT,
+        assistant_text=task_text,
+        state=new_state,
+        now=stamp,
+    )
+    # Инвариант TurnReply: выданное задание — в ``tail`` (веб кладёт его в
+    # «Практику»), отказ «заданий нет» — обычным текстом.
+    if new_state.pending_item_id is not None:
+        return TurnReply(
+            text="", options=options, tail=task_text, item_id=new_state.pending_item_id
+        )
+    return TurnReply(text=task_text)
 
 
 def _close_node_if_ready(
@@ -747,8 +1071,12 @@ def _close_node_if_ready(
     overrides: Mapping[str, beta.Mastery] | None = None,
     now: float,
     settings: Settings,
+    force: bool = False,
 ) -> tuple[SessionState, str | None]:
     """Закрывает пройденный узел и объявляет следующий.
+
+    ``force`` — закрыть без критерия: вторая ошибка на проверке темы в уроке
+    (срез 28) — ученика ведём дальше, тема остаётся слабым местом.
 
     Критерий считает код (``student/guide.py``), не модель: «понятно?» ответом
     доказательством не считается. ``overrides`` — владение С УЧЁТОМ только что
@@ -770,21 +1098,81 @@ def _close_node_if_ready(
     current = (overrides or {}).get(node_id) or beta.estimate(
         conn, node_id, now=now, settings=settings
     )
-    if not guide.is_node_closed(state, current, settings=settings):
+    sections = _sections(graph, node_id)
+    if not force and not guide.is_node_closed(
+        state, current, settings=settings, sections=sections
+    ):
         return state, None
+    # Занятие со слабым разделом или итоговым — тоже ⚠️ в маршруте (план §1.7).
+    weak = force or (bool(sections) and guide.lesson_weak(state))
 
     closed_name = graph.concept(node_id).name
-    route = state.route or route_mod.build_route(conn, graph, now=now, settings=settings)
+    # Снимок достраивается до всего курса: у снимка до среза 25 в нём только
+    # темы topic01, и закрытие последней объявило бы «курс пройден».
+    route = route_mod.build_route(
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        current_node_id=node_id,
+        previous=state.route,
+        now=now,
+        settings=settings,
+    )
+    topic = route.topic_id if route.topic_id is not None else route_mod.choose_topic(graph, route)
+    # Тема была закрыта и до этого хода (повтор из меню) — значит, это не
+    # «последний шаг курса», даже если открытых тем нет (аудит среза 25, 25-L2).
+    reclosed = any(
+        step.concept_id == node_id and step.status == "closed" for step in route.steps
+    )
     route = route.model_copy(
         update={
             "steps": [
-                step.model_copy(update={"status": "closed"})
+                step.model_copy(update={"status": "closed", "closed_at": now, "weak": weak})
                 if step.concept_id == node_id
                 else step
                 for step in route.steps
             ]
         }
     )
+    notes = [f"✅ Занятие «{closed_name}» закрыто."]
+    # «🎉» — один раз на модуль: возврат к пройденному его не повторяет.
+    if (
+        topic is not None
+        and route_mod.topic_finished(graph, route, topic)
+        and topic not in route.completed_topics
+    ):
+        route = route.model_copy(update={"completed_topics": [*route.completed_topics, topic]})
+        notes.append(TOPIC_DONE_NOTE.format(number=topic, title=_topic_title(conn, topic)))
+    next_topic = route_mod.choose_topic(graph, route, previous_topic=topic)
+    route = route.model_copy(update={"topic_id": next_topic})
+    if next_topic is not None and next_topic != topic:
+        config = survey.config_for(conn, next_topic)
+        if config is not None and not survey.is_completed(conn, config):
+            # Вход в модуль — через его анкету: тему выберет урок после неё.
+            notes.append(
+                NEXT_TOPIC_SURVEY_NOTE.format(
+                    number=next_topic, title=_topic_title(conn, next_topic)
+                )
+            )
+            return (
+                state.model_copy(
+                    update={
+                        "current_node_id": None,
+                        "node_streak": 0,
+                        "phase": "explain",
+                        "mode": None,
+                        "verify_item_ids": [],
+                        "lesson_item_ids": [],
+                        "hint_level": 0,
+                        "check_misses": 0,
+                        "lesson_parts": [],
+                        "lesson_part": 0,
+                        "route": route,
+                        **guide.SECTION_RESET,
+                    }
+                ),
+                "\n\n".join(notes),
+            )
     next_node_id = route_mod.next_node_id(
         conn, graph, route, now=now, settings=settings, mastery_overrides=overrides
     )
@@ -799,19 +1187,34 @@ def _close_node_if_ready(
             # Список выданного — про узел: новый узел начинает его заново.
             "lesson_item_ids": [],
             "hint_level": 0,
+            "check_misses": 0,
+            "lesson_parts": [],
+            "lesson_part": 0,
             "route": route,
+            **guide.SECTION_RESET,
         }
     )
     if next_node_id is None:
-        return new_state, f"✅ Тема «{closed_name}» закрыта — маршрут пройден до конца."
+        if reclosed:
+            notes.append(COURSE_STILL_DONE_NOTE)
+        elif _modules_soon(conn):
+            notes.append(MODULES_SOON_NOTE)
+        else:
+            notes.append(COURSE_DONE_NOTE)
+        return new_state, "\n\n".join(notes)
     next_name = graph.concept(next_node_id).name
-    if _is_claimed(route, next_node_id):
-        return (
-            _checking(new_state, next_node_id),
-            f"✅ Тема «{closed_name}» закрыта.\n\n"
-            + CLAIMED_CHECK_NOTE.format(name=next_name),
+    if next_topic != topic:
+        notes.append(
+            NEXT_TOPIC_NOTE.format(
+                number=next_topic, title=_topic_title(conn, next_topic), name=next_name
+            )
         )
-    return new_state, f"✅ Тема «{closed_name}» закрыта — идём дальше: {next_name}."
+    if _is_claimed(route, next_node_id):
+        notes.append(CLAIMED_CHECK_NOTE.format(name=next_name))
+        return _checking(new_state, next_node_id), "\n\n".join(notes)
+    if len(notes) == 1:
+        return new_state, f"✅ Занятие «{closed_name}» закрыто — идём дальше: {next_name}."
+    return new_state, "\n\n".join(notes)
 
 
 def _issue_task(
@@ -829,9 +1232,7 @@ def _issue_task(
     события ещё не записаны (запись идёт одним коммитом после), поэтому защита
     от повтора должна учитывать их явно.
     """
-    route = state.route or route_mod.build_route(
-        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), now=now, settings=settings
-    )
+    route = _fresh_route(conn, graph, state, now=now, settings=settings)
     # Узел задан маршрутом: если его нет — берём следующий по приоритету.
     node_id = state.current_node_id or route_mod.next_node_id(
         conn, graph, route, now=now, settings=settings
@@ -850,6 +1251,21 @@ def _issue_task(
     lesson_used = (
         frozenset(state.lesson_item_ids) if state.current_node_id == node_id else frozenset()
     )
+    # Занятие с разделами (срез 54): в уроке — задание текущего раздела или
+    # итоговое; в проходе — по заданию на каждый раздел по порядку, затем итоговое.
+    sections = _sections(graph, node_id)
+    part: dict = {}
+    section_id = state.section_id
+    if sections and state.mode == "verify":
+        step = len(state.verify_item_ids)
+        part = {"section_id": sections[step]} if step < len(sections) else {"final": True}
+    elif sections:
+        section_id = (
+            guide.current_section(state, sections)
+            if state.current_node_id == node_id
+            else sections[0]
+        )
+        part = {"section_id": section_id} if section_id is not None else {"final": True}
 
     if state.mode == "verify":
         # Проход: задание берём без паузы повтора, но не повторяем внутри прохода.
@@ -859,6 +1275,7 @@ def _issue_task(
             used_item_ids=frozenset(state.verify_item_ids),
             now=now,
             settings=settings,
+            **part,
         )
     else:
         # Урок: пауза повтора не применяется, рубричные задания остаются проходу
@@ -867,9 +1284,11 @@ def _issue_task(
             conn,
             node_id,
             used_item_ids=lesson_used | exclude_item_ids,
-            include_rubric=False,
+            # Итоговое задание проверяют и рубрикой: оно цельное, а не вопрос.
+            include_rubric=bool(part.get("final")),
             now=now,
             settings=settings,
+            **part,
         )
         if question is None and lesson_used:
             # Задания узла кончились, а серия ещё не набрана (например, оба
@@ -879,10 +1298,12 @@ def _issue_task(
             question = diagnostic.verification_item(
                 conn,
                 node_id,
-                used_item_ids=exclude_item_ids,
-                include_rubric=False,
+                # Итоговое у занятия обычно одно: второй шанс — то же задание.
+                used_item_ids=frozenset() if part.get("final") else exclude_item_ids,
+                include_rubric=bool(part.get("final")),
                 now=now,
                 settings=settings,
+                **part,
             )
     if question is None:
         if state.mode == "verify":
@@ -912,6 +1333,7 @@ def _issue_task(
         update={
             "pending_item_id": question.item.id,
             "current_node_id": question.concept_id,
+            "section_id": section_id if sections and state.mode != "verify" else state.section_id,
             "hint_level": 0,
             # Новое задание — помощь по нему ещё не оказана.
             "task_hinted": False,
@@ -1013,14 +1435,7 @@ async def resume_reply(
         )
         return TurnReply(text=PENDING_ITEM_NOTE)
 
-    route = state.route or route_mod.build_route(
-        conn,
-        graph,
-        goal_concept_id=route_mod.goal_for(conn, graph),
-        current_node_id=state.current_node_id,
-        now=stamp,
-        settings=s,
-    )
+    route = _fresh_route(conn, graph, state, now=stamp, settings=s)
     node_id = (
         state.current_node_id
         or start_node_id
@@ -1044,53 +1459,22 @@ async def resume_reply(
         )
 
     if state.phase == "explain":
-        # Вход в узел (§5.1): тьютор объясняет, и в том же ходу выдаётся первый
-        # тест — ждать реплики ученика не нужно.
-        explaining = state.model_copy(update={"current_node_id": node_id})
-        reply, events, mastery, new_state, _ = await _tutor_branch(
-            conn,
-            client,
-            model,
-            session_id,
-            RESUME_KICKOFF_TEXT,
-            explaining,
-            graph,
-            now=stamp,
-            settings=s,
-        )
-        if reply == LLM_FAILURE_REPLY:
-            # Сбой модели не двигает занятие (см. `handle_turn`): фазу оставляем
-            # объяснением, задание выдаст следующая реплика ученика.
-            new_state = new_state.model_copy(update={"phase": "explain"})
-        else:
-            hint_level = new_state.hint_level
-            new_state, task_text, options = _issue_task(
-                conn, graph, new_state, now=stamp, settings=s
+        # Урок уже идёт — повторяем последнюю показанную часть, модель не зовём.
+        if state.current_node_id == node_id and 0 < state.lesson_part <= len(state.lesson_parts):
+            text = state.lesson_parts[state.lesson_part - 1]
+            return _finish_turn(
+                conn, session_id, graph, RESUME_KICKOFF_TEXT, text, state,
+                button=guided.button(state), now=stamp, settings=s,
             )
-            tail = task_text if new_state.pending_item_id is not None else None
-            if tail is None:
-                reply = f"{reply}\n\n{task_text}"
-            else:
-                # См. `handle_turn`: объяснение и задание — один ход, лестницу
-                # подсказок обнулять нельзя.
-                new_state = new_state.model_copy(update={"hint_level": hint_level})
-        fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
-        post_turn(
-            conn,
-            session_id,
-            user_text=RESUME_KICKOFF_TEXT,
-            assistant_text=f"{reply}\n\n{tail}" if tail else reply,
-            task_text=tail,
-            state=new_state.model_copy(update={"route": fresh_route}),
-            events=events,
-            mastery=mastery,
-            now=stamp,
+        # Вход в узел: урок частями (срез 28), задание — после «Проверим».
+        reply, new_state = await _start_lesson(
+            conn, client, model, session_id,
+            state.model_copy(update={"current_node_id": node_id}), graph,
+            now=stamp, settings=s,
         )
-        return TurnReply(
-            text=reply,
-            options=options,
-            tail=tail,
-            item_id=new_state.pending_item_id if tail else None,
+        return _finish_turn(
+            conn, session_id, graph, RESUME_KICKOFF_TEXT, reply, new_state,
+            button=guided.button(new_state), now=stamp, settings=s,
         )
 
     return start_practice_reply(conn, now=stamp, settings=s)

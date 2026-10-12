@@ -1,5 +1,7 @@
 """Тесты обработчика хода (Срез 5.5)."""
 
+from course_fixtures import T1
+
 import sqlite3
 
 import pytest
@@ -21,7 +23,7 @@ from llm_tutor.core.turn import (
     start_practice_reply,
 )
 from llm_tutor.course.ingest import ingest_text
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 from llm_tutor.llm.client import LLMError
@@ -167,10 +169,19 @@ async def test_llm_failure_is_reported_and_turn_persisted(conn, settings) -> Non
     assert len(repos.get_messages(conn, repos.get_open_session(conn))) == 2
 
 
+async def test_llm_failure_reason_is_logged(conn, settings, caplog) -> None:
+    """Ученик видит «не смог получить ответ», а причина остаётся в логе сервера."""
+    with caplog.at_level("WARNING", logger="llm_tutor.core.turn"):
+        await handle_turn(conn, _FailingTutor(), "m", "groupby?", now=1.0, settings=settings)
+
+    assert "сбой" in caplog.text
+
+
 # --- ответ на задание ---
 
 
 async def test_answer_is_checked_without_llm(conn, settings) -> None:
+    settings = settings.model_copy(update={"guide_success_streak": 2})  # серия как механизм
     load_seed(conn)
     client = _FakeTutor("тьютор не должен вызываться")
 
@@ -249,6 +260,7 @@ def test_post_turn_rolls_back_everything_on_failure(conn, settings) -> None:
 
 async def test_typed_option_number_is_accepted(conn, settings) -> None:
     """Номер пункта из списка задания (нумерация с 1) — верный ответ."""
+    settings = settings.model_copy(update={"guide_success_streak": 2})  # серия как механизм
     load_seed(conn)
     client = _FakeTutor("тьютор не должен вызываться")
     start_practice_reply(conn, now=1.0, settings=settings)
@@ -276,6 +288,21 @@ async def test_question_while_task_pending_keeps_task(conn, settings) -> None:
     assert "ждёт ответа" in reply.text  # ученику сказали, что задание не сброшено
     assert _state(conn).pending_item_id == pending_before
     assert repos.get_events(conn) == []  # свидетельство не записано
+
+
+async def test_side_question_without_mark_keeps_task(conn, settings) -> None:
+    """Посторонний вопрос без «?» — реплика тьютору, а не неверный ответ (срез 28)."""
+    load_seed(conn)
+    start_practice_reply(conn, now=1.0, settings=settings)
+    pending_before = _state(conn).pending_item_id
+
+    reply = await handle_turn(
+        conn, _FakeTutor("объясняю"), "m", "а что такое groupby", now=2.0, settings=settings
+    )
+
+    assert "объясняю" in reply.text
+    assert _state(conn).pending_item_id == pending_before
+    assert repos.get_events(conn) == []
 
 
 def test_skip_pending_clears_without_evidence(conn, settings) -> None:
@@ -370,7 +397,7 @@ async def test_two_clean_answers_close_node_and_move_on(conn, settings) -> None:
     load_seed(conn)
     item = repos.get_item(conn, 6)  # задание по python_basics, верный вариант первый
 
-    for now in (1.0, 2.0):
+    for now in (1.0,):  # срез 28: тема закрывается одним верным ответом
         _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
         reply = await handle_turn(
             conn, _FakeTutor(), "m", item.options[0], now=now, settings=settings
@@ -378,9 +405,10 @@ async def test_two_clean_answers_close_node_and_move_on(conn, settings) -> None:
 
     state = _state(conn)
     assert state.current_node_id != "python_basics"  # ушли с закрытого узла
-    assert state.phase == "practice"  # и сразу получили задание по новому узлу
-    assert state.pending_item_id is not None
-    assert "Тема «Основы Python» закрыта — идём дальше" in reply.text
+    # Срез 28: следующая тема — урок частями, задание после «Проверим».
+    assert state.phase == "explain" and state.lesson_parts
+    assert state.pending_item_id is None
+    assert "Занятие «Основы Python» закрыто — идём дальше" in reply.text
 
 
 async def test_stuck_keeps_student_on_the_same_node(conn, settings) -> None:
@@ -516,10 +544,17 @@ async def test_node_missing_from_graph_does_not_lock_turn(conn, settings) -> Non
 
 def test_route_done_hands_no_task(conn, settings) -> None:
     """Маршрут исчерпан — заданий больше нет, и это не ошибка."""
-    load_seed(conn)
+    seed = load_seed(conn)
+    # Курс пройден честно: закрыты все темы (снимок из одной темы теперь
+    # достраивается до всего курса — аудит среза 25, H1).
     _set_state(
         conn,
-        route=Route(steps=[RouteStep(concept_id="python_basics", mode="full", status="closed")]),
+        route=Route(
+            steps=[
+                RouteStep(concept_id=node.id, mode="full", status="closed")
+                for node in seed.nodes
+            ]
+        ),
     )
 
     reply = start_practice_reply(conn, now=1.0, settings=settings)
@@ -756,16 +791,38 @@ async def test_resume_explains_first_then_gives_task(conn, settings) -> None:
     reply = await resume_reply(conn, client, "m", now=1.0, settings=settings)
 
     assert "groupby собирает строки" in reply.text  # объяснение без задания
-    assert reply.tail  # задание отдельным сообщением
-    assert _state(conn).phase == "practice"
-    assert _state(conn).pending_item_id is not None
-    assert reply.options is not None
+    # Срез 28: урок частями — задание только после «Проверим», не сразу.
+    assert reply.button is not None
+    assert _state(conn).pending_item_id is None
+
+
+async def test_resume_survives_llm_failure(conn, settings) -> None:
+    """Сбой модели на входе в узел — описание темы и «Проверим», а не исключение.
+
+    Раньше ветка сбоя не заводила ``tail``, и первый урок после анкеты падал
+    с UnboundLocalError: ученик видел «Что-то пошло не так» (срез 50). С
+    уроком частями (срез 28) сбой модели урок не блокирует.
+    """
+    load_seed(conn)
+
+    reply = await resume_reply(conn, _FailingTutor(), "m", now=1.0, settings=settings)
+
+    assert reply.text.startswith("📘")
+    assert reply.button is not None
+    assert reply.tail is None and reply.item_id is None
+    state = _state(conn)
+    assert state.phase == "explain"  # задание ещё не выдано
+    assert state.pending_item_id is None
+    messages = repos.get_messages(conn, repos.get_open_session(conn))
+    assert messages[-1].content == reply.text  # ход записан
 
 
 async def test_resume_reports_finished_route(conn, settings) -> None:
     """Маршрут исчерпан — честное сообщение, а не пустое задание."""
-    load_seed(conn)
-    route = Route(steps=[RouteStep(concept_id="pandas_intro", mode="skip", status="closed")])
+    seed = load_seed(conn)
+    route = Route(
+        steps=[RouteStep(concept_id=node.id, mode="skip", status="closed") for node in seed.nodes]
+    )
     _set_state(conn, current_node_id=None, route=route, phase="practice")
 
     reply = await resume_reply(conn, _FakeTutor(), "m", now=1.0, settings=settings)
@@ -796,9 +853,9 @@ async def test_entering_node_explains_and_gives_first_test(conn, settings) -> No
     reply = await handle_turn(conn, client, "m", "давай учиться", now=1.0, settings=settings)
 
     assert reply.text == "Сейчас разберём Python"  # объяснение без задания
-    assert reply.tail  # задание отдельным сообщением
-    assert _state(conn).pending_item_id is not None
-    assert _state(conn).phase == "practice"
+    # Срез 28: вместо задания — кнопка урока «Проверим» (часть одна).
+    assert reply.button is not None
+    assert _state(conn).pending_item_id is None
 
 
 async def test_stuck_phrase_on_first_reply_starts_lesson_normally(conn, settings) -> None:
@@ -809,7 +866,7 @@ async def test_stuck_phrase_on_first_reply_starts_lesson_normally(conn, settings
 
     assert STUCK_NOTE not in reply.text  # «остаёмся на этом узле» здесь неуместно
     assert _state(conn).mode is None  # узел не ушёл в усиленный проход
-    assert reply.tail  # ученик получил объяснение первого узла и сразу задание
+    assert reply.button is not None  # урок первого узла начался (срез 28)
 
 
 async def test_close_flag_on_first_reply_starts_lesson(conn, settings) -> None:
@@ -821,7 +878,7 @@ async def test_close_flag_on_first_reply_starts_lesson(conn, settings) -> None:
         conn, client, "m", "давай закроем, я тут все знаю уже", now=1.0, settings=settings
     )
 
-    assert reply.tail  # урок начался
+    assert reply.button is not None  # урок начался (срез 28)
     assert _state(conn).current_node_id is not None
     assert _state(conn).mode is None  # проверочного прохода нет
 
@@ -835,7 +892,7 @@ async def test_closing_explanation_ignores_stuck_flag(conn, settings) -> None:
     load_seed(conn)
     item = repos.get_item(conn, 6)  # python_basics
     client = _FakeTutor("Теперь про Series и DataFrame", student_stuck=True)
-    for now in (1.0, 2.0):
+    for now in (1.0,):  # срез 28: тема закрывается одним верным ответом
         _set_state(conn, pending_item_id=item.id, current_node_id="python_basics")
         reply = await handle_turn(
             conn, client, "m", item.options[0], now=now, settings=settings
@@ -855,8 +912,9 @@ async def test_plain_reply_moves_lesson_forward(conn, settings) -> None:
         conn, _FakeTutor(), "m", "ага, понятно", now=1.0, settings=settings
     )
 
-    assert reply.tail  # выдали следующее задание
-    assert _state(conn).pending_item_id is not None
+    # Срез 28: реплика задание не выдаёт — урок идёт кнопкой.
+    assert reply.tail is None and reply.button is not None
+    assert _state(conn).pending_item_id is None
 
 
 async def test_question_does_not_move_lesson(conn, settings) -> None:
@@ -888,9 +946,9 @@ async def test_closed_node_leads_into_next_lesson(conn, settings) -> None:
             conn, client, "m", item.options[0], now=now, settings=settings
         )
 
-    assert "закрыта" in reply.text
+    assert "закрыто" in reply.text
     assert "Теперь про Series и DataFrame" in reply.text  # объяснение следующего
-    assert reply.tail  # и его первый тест
+    assert reply.button is not None  # урок частями, тест после «Проверим» (срез 28)
     assert _state(conn).current_node_id != "python_basics"
 
 
@@ -907,7 +965,7 @@ async def test_lesson_answer_after_help_still_counts(conn, settings) -> None:
 
     # Ответ после помощи дошёл до порога серии и закрыл узел: в уроке серию
     # считают верные ответы, а не только чистые.
-    assert "закрыта" in reply.text
+    assert "закрыто" in reply.text
     assert _state(conn).current_node_id != "groupby"
 
 
@@ -925,7 +983,7 @@ async def test_verify_pass_answer_after_help_does_not_count(conn, settings) -> N
     )
 
     assert _state(conn).node_streak == 0
-    assert "закрыта" not in reply.text
+    assert "закрыто" not in reply.text
     assert _state(conn).current_node_id == "groupby"
 
 
@@ -940,23 +998,6 @@ async def test_lesson_second_test_differs_from_first(conn, settings) -> None:
 
     assert reply.tail  # следующее задание выдано
     assert _state(conn).pending_item_id not in (None, first_id)
-
-
-async def test_lesson_cycles_tests_when_exhausted(conn, settings) -> None:
-    """Оба задания выданы, серия нулевая — идём по второму кругу, не залипаем."""
-    load_seed(conn)
-    _set_state(conn, current_node_id="groupby", phase="practice")
-    start_practice_reply(conn, now=1.0, settings=settings)
-    issued = {_state(conn).pending_item_id}
-
-    for now in (2.0, 3.0, 4.0):
-        reply = await handle_turn(
-            conn, _FakeTutor(), "m", "мимо", now=now, settings=settings
-        )
-        issued.add(_state(conn).pending_item_id)
-
-    assert reply.tail  # задание есть всегда: узел не залипает
-    assert len(issued) < 4  # третий заход — повтор, а не четвёртое «новое» задание
 
 
 def test_lesson_item_ids_defaults_to_empty() -> None:
@@ -984,11 +1025,11 @@ async def test_stuck_raises_hint_level_by_one_step(conn, settings, model_level) 
 
 def _claim(conn, settings, *keys: str) -> None:
     survey.apply_answers(
-        conn, {key: survey.CONFIDENT_INDEX for key in keys}, now=0.0, settings=settings
+        conn, T1, {key: survey.CONFIDENT_INDEX for key in keys}, now=0.0, settings=settings
     )
 
 
-ALL_BLOCKS = tuple(block.key for block in survey.BLOCKS)
+ALL_BLOCKS = tuple(block.key for block in T1.blocks)
 
 
 def _wrong(item) -> str:
@@ -1054,7 +1095,7 @@ async def test_closing_last_unclaimed_node_moves_to_claimed_check(conn, settings
     item = repos.get_item(conn, 6)  # задание по python_basics, верный вариант первый
     tutor = _FakeTutor()
 
-    for now in (1.0, 2.0):
+    for now in (1.0,):  # срез 28: тема закрывается одним верным ответом
         _set_state(conn, pending_item_id=item.id, current_node_id="python_basics", route=route)
         reply = await handle_turn(conn, tutor, "m", item.options[0], now=now, settings=settings)
         route = _state(conn).route
@@ -1111,7 +1152,7 @@ async def test_failed_claimed_check_explains_before_next_task(conn, settings) ->
 
     assert len(tutor.calls) == 1
     assert "Разбираем тему" in reply.text
-    assert reply.tail is not None  # и задание урока следом
+    assert reply.button is not None  # и урок частями (срез 28)
 
 
 async def test_tutor_mode_leaves_pending_item(conn, settings) -> None:

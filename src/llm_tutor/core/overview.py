@@ -4,10 +4,10 @@
 """
 
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from llm_tutor.config import Settings
-from llm_tutor.core.lesson import NodeStatus, is_closed, node_status
+from llm_tutor.core.lesson import NodeStatus, course_survey_done, is_closed, node_status
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import RouteStep, SessionState
@@ -43,7 +43,7 @@ def course_progress(
     return CourseProgress(
         total=len(nodes),
         closed=closed,
-        survey_done=survey.is_completed(conn),
+        survey_done=course_survey_done(conn),
         current_name=graph.concept(current).name if current and graph.has_node(current) else None,
     )
 
@@ -58,6 +58,9 @@ class TopicRow:
     status: NodeStatus
     mastery: float
     uncertainty: float
+    # Модуль темы и «закрыта после двух ошибок» (срез 28, ⚠️ в маршруте).
+    topic_id: int = 1
+    weak: bool = False
 
     @property
     def confident(self) -> bool:
@@ -71,6 +74,7 @@ def topic_rows(
     """Все темы курса в порядке изучения: статус и оценка владения."""
     graph = CourseGraph.load(conn)
     state = _state(conn)
+    weak = {step.concept_id for step in state.route.steps if step.weak} if state.route else set()
     rows: list[TopicRow] = []
     for node_id in graph.topo_order():
         concept = graph.concept(node_id)
@@ -83,9 +87,46 @@ def topic_rows(
                 status=node_status(conn, graph, node_id, state, now=now, settings=settings),
                 mastery=estimate.mean,
                 uncertainty=estimate.uncertainty,
+                topic_id=graph.topic_of(node_id),
             )
         )
-    return rows
+    # Слабой тема остаётся, пока закрыта: открытая снова — просто «впереди».
+    return [
+        row if not (row.id in weak and row.status == "closed")
+        else replace(row, weak=True)
+        for row in rows
+    ]
+
+
+@dataclass(frozen=True)
+class ModuleRow:
+    """Модуль курса для маршрута и профиля: сколько тем закрыто."""
+
+    number: int
+    title: str
+    closed: int
+    total: int
+    survey_done: bool
+    # Модуль ещё не открыт ученикам (срез 55): в маршруте — «скоро».
+    published: bool = True
+
+
+def module_rows(conn: sqlite3.Connection, rows: list[TopicRow]) -> list[ModuleRow]:
+    """Модули курса с прогрессом по уже посчитанным строкам тем."""
+    result = []
+    for topic in repos.get_topics(conn):
+        own = [row for row in rows if row.topic_id == topic.number]
+        result.append(
+            ModuleRow(
+                number=topic.number,
+                title=topic.title,
+                closed=sum(1 for row in own if row.status == "closed"),
+                total=len(own),
+                survey_done=survey.is_completed(conn, topic.survey),
+                published=topic.published,
+            )
+        )
+    return result
 
 
 @dataclass(frozen=True)

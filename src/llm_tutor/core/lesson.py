@@ -6,6 +6,7 @@
 
 import sqlite3
 import time
+from collections.abc import Collection
 from dataclasses import dataclass
 from typing import Literal
 
@@ -14,14 +15,14 @@ from llm_tutor.core.turn import TurnReply, post_turn, reset_lesson, resume_reply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
-from llm_tutor.schemas import RouteStep, SessionState
-from llm_tutor.student import beta
+from llm_tutor.schemas import RouteStep, SessionState, Topic
+from llm_tutor.student import beta, guide, survey
 from llm_tutor.student import route as route_mod
 from llm_tutor.student.planner import CONFIDENT_UNCERTAINTY
 
 NodeStatus = Literal["closed", "current", "claimed", "available", "ahead"]
 
-SWITCH_TEMPLATE = "Ок, тема — «{name}». Спроси, что непонятно, — объясню."
+SWITCH_TEMPLATE = "Ок, занятие — «{name}». Спроси, что непонятно, — объясню."
 
 
 def closed_from_route(state: SessionState) -> set[str]:
@@ -121,6 +122,15 @@ def switch_node(
             # Список выданного в уроке — про узел: на новой теме он начинает
             # заход заново (спека §5.3).
             "lesson_item_ids": [],
+            # Урок частями и счёт ошибок (срез 28) — тоже про узел: иначе
+            # ошибка прежней темы сделала бы первую ошибку новой «второй», а
+            # кнопка «Дальше» показала бы части чужого урока (аудит среза 51, M1).
+            "check_misses": 0,
+            "lesson_parts": [],
+            "lesson_part": 0,
+            "close_requested": False,
+            # Разделы — про занятие: в другом занятии прогресс начинается заново.
+            **guide.SECTION_RESET,
         }
     new_state = state.model_copy(
         update={
@@ -129,17 +139,100 @@ def switch_node(
             # Переход на другую тему снимает проверочный проход (спека §5.2).
             "verify_item_ids": [],
             "last_activity": stamp,
+            # Тема выбрана напрямую — прыжок через анкету больше не ждёт.
+            "jump_node_id": None,
             **keep,
         }
     )
     fresh_route, _ = route_mod.refresh(conn, new_state, graph, now=stamp, settings=s)
+    # Модуль работы с непройденной анкетой (прыжок туда и сразу назад) не
+    # должен удерживать тему из другого модуля: любая реплика снова открыла бы
+    # его анкету (финальное ревью ветки course-modules, F-2).
+    working = repos.get_topic(conn, fresh_route.topic_id) if fresh_route.topic_id else None
+    if working is not None and not survey.is_completed(conn, working.survey):
+        fresh_route = fresh_route.model_copy(update={"topic_id": graph.topic_of(node_id)})
     text = SWITCH_TEMPLATE.format(name=name)
     post_turn(
         conn,
         session_id,
-        user_text=f"Перейти к теме «{name}»",
+        user_text=f"Перейти к занятию «{name}»",
         assistant_text=text,
         state=new_state.model_copy(update={"route": fresh_route}),
+        now=stamp,
+    )
+    return text
+
+
+# Прыжок в модуль, анкета которого не пройдена: сначала она (§5.2 спеки модулей).
+MODULE_SURVEY_FIRST = (
+    "«{name}» — из модуля {number} «{title}». Сначала пара вопросов о модуле — "
+    "подберу, с чего начать."
+)
+
+
+def survey_first(conn: sqlite3.Connection, node_id: str) -> Topic | None:
+    """Модуль темы, анкета которого не пройдена, иначе ``None``."""
+    graph = CourseGraph.load(conn)
+    topic = repos.get_topic(conn, graph.topic_of(node_id))
+    if topic is None or survey.is_completed(conn, topic.survey):
+        return None
+    return topic
+
+
+def enter_module(
+    conn: sqlite3.Connection,
+    node_id: str,
+    *,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> str:
+    """Прыжок в модуль с непройденной анкетой: он становится модулем работы.
+
+    Текущая тема и висящее задание прошлого модуля снимаются — как при
+    обычном переходе к теме. Тему прыжка запоминаем в сессии
+    (``jump_node_id``): урок после анкеты начнётся с неё (ветка
+    course-modules, ревью 26-2 и F-3). Отдаёт реплику для чата.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id = repos.ensure_open_session(conn, stamp)
+    state = repos.get_session_state(conn, session_id)
+    graph = CourseGraph.load(conn)
+    topic_id = graph.topic_of(node_id)
+    topic = repos.get_topic(conn, topic_id)
+    route = state.route or route_mod.build_route(
+        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), now=stamp, settings=s
+    )
+    name = graph.concept(node_id).name
+    text = MODULE_SURVEY_FIRST.format(
+        name=name, number=topic_id, title=topic.title if topic else ""
+    )
+    post_turn(
+        conn,
+        session_id,
+        user_text=f"Перейти к занятию «{name}»",
+        assistant_text=text,
+        state=state.model_copy(
+            update={
+                "current_node_id": None,
+                "pending_item_id": None,
+                "mode": None,
+                "phase": "explain",
+                "node_streak": 0,
+                "verify_item_ids": [],
+                "lesson_item_ids": [],
+                "check_misses": 0,
+                "lesson_parts": [],
+                "lesson_part": 0,
+                "close_requested": False,
+                "route": route_mod.release_current(route).model_copy(
+                    update={"topic_id": topic_id}
+                ),
+                "last_activity": stamp,
+                "jump_node_id": node_id,
+                **guide.SECTION_RESET,
+            }
+        ),
         now=stamp,
     )
     return text
@@ -166,21 +259,113 @@ class LessonStart:
         return bool(self.upcoming) and self.upcoming[0].status == "claimed"
 
 
-def prepare_lesson(
-    conn: sqlite3.Connection, *, settings: Settings, limit: int = UPCOMING_STEPS
-) -> LessonStart:
-    """Сброс захода и маршрут после анкеты (без модели).
+def pending_survey_topic(conn: sqlite3.Connection) -> Topic | None:
+    """Модуль занятия, анкета которого ещё не пройдена (§5.2 спеки модулей).
 
-    Первый шаг списка — ровно тот узел, с которого начнётся урок: его же
-    передают в ``resume_reply``, иначе планировщик мог бы выбрать другой.
+    Это чтение, а не ход: сессию не заводим. ``None`` — анкету проходить не
+    нужно (или курс пуст).
     """
-    reset_lesson(conn)
     graph = CourseGraph.load(conn)
+    if not graph.node_ids:
+        return None
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    topic_id = route_mod.topic_for(graph, state)
+    topic = repos.get_topic(conn, topic_id) if topic_id is not None else None
+    if topic is None or survey.is_completed(conn, topic.survey):
+        return None
+    return topic
+
+
+def course_survey_done(conn: sqlite3.Connection) -> bool:
+    """Первая анкета курса пройдена: анкета следующего модуля — уже не «начало».
+
+    Ученик посреди курса перед анкетой модуля N > 1 продолжает занятие, а не
+    «начинает с анкеты» (аудит среза 52, L1).
+    """
+    pending = pending_survey_topic(conn)
+    if pending is None:
+        return True
+    topics = repos.get_topics(conn)
+    return bool(topics) and pending.number != topics[0].number
+
+
+def survey_way_back(conn: sqlite3.Connection) -> tuple[str, Topic] | None:
+    """Куда вернуться из анкеты модуля: тема последнего модуля с пройденной анкетой.
+
+    Ученик мог прыгнуть в чужой модуль из маршрута случайно — анкета не
+    должна запирать его там (аудит среза 52, M2). Тема — первая незакрытая
+    в маршруте, а если закрыты все — последняя. ``None`` — анкеты нет или
+    возвращаться некуда (первая анкета курса).
+    """
+    pending = pending_survey_topic(conn)
+    if pending is None:
+        return None
+    done = [
+        topic
+        for topic in repos.get_topics(conn)
+        if topic.number < pending.number and survey.is_completed(conn, topic.survey)
+    ]
+    if not done:
+        return None
+    topic = done[-1]
+    graph = CourseGraph.load(conn)
+    nodes = [node for node in graph.topo_order() if graph.topic_of(node) == topic.number]
+    if not nodes:
+        return None
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    closed = {
+        step.concept_id
+        for step in (state.route.steps if state.route else [])
+        if step.status == "closed"
+    }
+    return next((node for node in nodes if node not in closed), nodes[-1]), topic
+
+
+def prepare_lesson(
+    conn: sqlite3.Connection,
+    *,
+    settings: Settings,
+    claimed: Collection[str] = (),
+    limit: int = UPCOMING_STEPS,
+) -> LessonStart:
+    """Сброс захода и маршрут после анкеты модуля (без модели).
+
+    ``claimed`` — темы, которые анкета модуля только что назвала знакомыми.
+    Снимок маршрута не обнуляется: в нём закрытое прошлых модулей. Первый шаг
+    списка — ровно тот узел, с которого начнётся урок: его же передают в
+    ``resume_reply``, иначе планировщик мог бы выбрать другой. Тема прыжка в
+    модуль (``jump_node_id``) — первая, если она есть.
+    """
+    session_id = repos.get_open_session(conn)
+    jump = repos.get_session_state(conn, session_id).jump_node_id if session_id else None
+    reset_lesson(conn, claimed=claimed)
+    graph = CourseGraph.load(conn)
+    previous = repos.get_session_state(conn, session_id).route if session_id else None
     route = route_mod.build_route(
-        conn, graph, goal_concept_id=route_mod.goal_for(conn, graph), settings=settings
+        conn,
+        graph,
+        goal_concept_id=route_mod.goal_for(conn, graph),
+        previous=previous,
+        settings=settings,
     )
-    first = route_mod.next_node_id(conn, graph, route, settings=settings)
-    return LessonStart(first=first, upcoming=route_mod.upcoming(route, first, limit=limit))
+    first = (
+        jump
+        if jump is not None and graph.has_node(jump)
+        else route_mod.next_node_id(conn, graph, route, settings=settings)
+    )
+    # Список — по участку модуля работы: первой темой может быть подтянутый
+    # предок из прошлого модуля, и участок его модуля был бы не тот.
+    topic = (
+        route.topic_id
+        if jump is None and route.topic_id is not None
+        else graph.topic_of(first) if first is not None else None
+    )
+    section = route_mod.working_section(graph, route, topic) if first is not None else []
+    return LessonStart(
+        first=first, upcoming=route_mod.upcoming(route, first, limit=limit, section=section)
+    )
 
 
 async def begin_lesson(
@@ -189,10 +374,11 @@ async def begin_lesson(
     model: str,
     *,
     settings: Settings,
+    claimed: Collection[str] = (),
     limit: int = UPCOMING_STEPS,
 ) -> tuple[LessonStart, TurnReply | None]:
     """Подготовка и первый ход урока. ``None`` вместо хода — учить уже нечему."""
-    start = prepare_lesson(conn, settings=settings, limit=limit)
+    start = prepare_lesson(conn, settings=settings, claimed=claimed, limit=limit)
     if not start.upcoming:
         return start, None
     reply = await resume_reply(conn, client, model, settings=settings, start_node_id=start.first)

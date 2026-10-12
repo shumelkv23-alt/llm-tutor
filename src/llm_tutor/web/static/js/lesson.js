@@ -46,16 +46,61 @@ window.Lesson = (() => {
       title.textContent = state.node.name;
       const badge = document.createElement("span");
       badge.className = state.mode === "verify" ? "badge accent" : "badge primary";
-      badge.textContent = state.mode === "verify" ? "Проверка темы" : "Урок";
-      meta.append(badge, `Закрыто тем: ${state.closed} из ${state.topics.length}`);
+      badge.textContent = state.mode === "verify" ? "Проверка занятия" : "Урок";
+      meta.append(badge, place(state.node.lesson));
     } else {
-      title.textContent = "Тема не выбрана";
-      meta.textContent = "Откройте маршрут и выберите тему.";
+      title.textContent = "Занятие не выбрано";
+      meta.textContent = "Откройте маршрут и выберите занятие.";
     }
+    renderSections(state);
     $("#route-open").disabled = Boolean(state.survey);
     // Во время хода кнопка не выключается (фокус ушёл бы на body): повтор
     // отсекает act(), а вид «занято» даёт aria-disabled у [data-turn].
     $("#verify-topic").disabled = Boolean(state.survey) || !state.node;
+  }
+
+  /** «Модуль N · Занятие k из m · Раздел j из r: …» — где ученик в курсе (срез 55). */
+  function place(lesson) {
+    if (!lesson) return "";
+    const parts = [`Модуль ${lesson.module.number}`, `Занятие ${lesson.index} из ${lesson.total}`];
+    if (lesson.sections.length) {
+      const current = lesson.sections[lesson.section_index - 1];
+      parts.push(
+        current
+          ? `Раздел ${lesson.section_index} из ${lesson.sections.length}: ${current.title}`
+          : lesson.final.title
+      );
+    }
+    return parts.join(" · ");
+  }
+
+  const SECTION_MARKS = { passed: "✓", weak: "⚠️", current: "▶", ahead: "·" };
+  const SECTION_LABELS = { passed: "пройден", weak: "слабое место", current: "сейчас", ahead: "впереди" };
+
+  /** Полоса разделов над вкладками: разделы занятия и итоговое со статусами. */
+  function renderSections(current) {
+    const strip = $("#section-strip");
+    strip.replaceChildren();
+    const lesson = current.survey ? null : current.node?.lesson;
+    strip.hidden = !lesson || !lesson.sections.length;
+    if (strip.hidden) return;
+    [...lesson.sections, lesson.final].forEach((part, index) => {
+      const item = document.createElement("li");
+      item.className = `section-step ${part.status}`;
+      if (part.status === "current") item.setAttribute("aria-current", "step");
+      const mark = document.createElement("span");
+      mark.className = "section-mark";
+      mark.setAttribute("aria-hidden", "true");
+      mark.textContent = SECTION_MARKS[part.status] || "·";
+      const name = document.createElement("span");
+      name.className = "section-name";
+      name.textContent = index < lesson.sections.length ? `${index + 1}. ${part.title}` : part.title;
+      const label = document.createElement("span");
+      label.className = "visually-hidden";
+      label.textContent = ` — ${SECTION_LABELS[part.status] || ""}`;
+      item.append(mark, name, label);
+      strip.append(item);
+    });
   }
 
   async function load() {

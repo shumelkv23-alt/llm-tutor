@@ -6,13 +6,20 @@
   <h2>{{ card.title }}</h2>
   <p class="course-description">{{ card.description }}</p>
   {% if card.enrolled %}
-  <div class="progress" role="img" aria-label="Закрыто тем: {{ card.closed }} из {{ card.topics }}">
-    <div class="progress-label"><span>Закрыто тем</span><b>{{ card.closed }} из {{ card.topics }}</b></div>
+  <div class="progress" role="img" aria-label="Закрыто занятий: {{ card.closed }} из {{ card.topics }}">
+    <div class="progress-label"><span>Закрыто занятий</span><b>{{ card.closed }} из {{ card.topics }}</b></div>
     <div class="progress-track"><span class="progress-fill" data-percent="{{ card.percent }}"></span></div>
   </div>
+  {% if card.modules %}
+  <ul class="course-modules" aria-label="Модули курса">
+    {% for module in card.modules %}
+    <li{% if not module.published %} class="soon"{% endif %}><span>Модуль {{ module.number }}</span><b>{% if not module.published %}скоро{% elif module.total and module.closed >= module.total %}🎉 пройден{% else %}{{ module.closed }} из {{ module.total }}{% endif %}</b></li>
+    {% endfor %}
+  </ul>
+  {% endif %}
   {% if card.current_topic %}<p class="course-current">Сейчас: <b>{{ card.current_topic }}</b></p>{% endif %}
   {% else %}
-  <p class="course-meta">{{ icon('book') }}<span>{{ card.topics }} тем · теория, практика и проверка кода</span></p>
+  <p class="course-meta">{{ icon('book') }}<span>{{ card.topics }} занятий · теория, практика и проверка кода</span></p>
   {% endif %}
   <div class="course-actions">
     {% if card.enrolled %}

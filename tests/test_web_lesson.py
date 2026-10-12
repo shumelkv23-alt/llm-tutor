@@ -1,16 +1,19 @@
 """API занятия: анкета, ходы, задания (Срез 41)."""
 
+from course_fixtures import WEB_T1 as T1
 import asyncio
 
 import pytest
 
 from llm_tutor.core.turn import STALE_ITEM_REPLY
 from llm_tutor.db import repos
+from llm_tutor.llm.client import LLMError
+from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.student import survey
 from llm_tutor.web import accounts
 from web_fakes import ScriptedTutor
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 
@@ -28,10 +31,10 @@ async def enrolled(student):
 
 def _answers(choice: int) -> list[int]:
     """Полная анкета: на каждый вопрос — вариант ``choice`` (или последний)."""
-    progress = survey.Progress()
+    progress = survey.Progress(T1)
     given: list[int] = []
     while (key := progress.next_key()) is not None:
-        index = min(choice, len(survey.options_for(key)) - 1)
+        index = min(choice, len(survey.options_for(T1, key)) - 1)
         progress = progress.answer(index)
         given.append(index)
     return given
@@ -77,18 +80,18 @@ async def test_state_before_survey(enrolled) -> None:
 async def test_survey_next_walks_questions(enrolled) -> None:
     first = (await enrolled.post(f"{BASE}/survey/next", json={"answers": []})).json()
 
-    assert first["question"]["key"] == survey.LEVEL_KEY
-    assert first["question"]["options"] == list(survey.LEVEL_OPTIONS)
+    assert first["question"]["key"] == T1.level_key
+    assert first["question"]["options"] == list(T1.level_options)
     assert first["question"]["can_back"] is False
 
     second = (await enrolled.post(f"{BASE}/survey/next", json={"answers": [1]})).json()
-    assert second["question"]["key"] != survey.LEVEL_KEY
+    assert second["question"]["key"] != T1.level_key
     assert second["question"]["number"] == 1
     assert second["question"]["can_back"] is True
 
     done = (await enrolled.post(f"{BASE}/survey/next", json={"answers": _answers(1)})).json()
     assert done["question"] is None
-    assert len(done["summary"]["items"]) == len(survey.BLOCKS)
+    assert len(done["summary"]["items"]) == len(T1.blocks)
 
 
 @pytest.mark.parametrize("answers", [[9], [1, 99], [-1], [True]])
@@ -105,13 +108,13 @@ async def test_survey_finish_requires_complete_answers(enrolled, web_app) -> Non
     response = await enrolled.post(f"{BASE}/survey/finish", json={"answers": [1]})
 
     assert response.status_code == 422
-    assert not survey.is_completed(_user_db(web_app))
+    assert not survey.is_completed(_user_db(web_app), T1)
 
 
 async def test_survey_finish_starts_lesson(enrolled, web_app, web_llm) -> None:
     body = await _finish(enrolled)
 
-    assert survey.is_completed(_user_db(web_app))
+    assert survey.is_completed(_user_db(web_app), T1)
     texts = [message["html"] for message in body["messages"]]
     assert "Ближайшие шаги" in texts[0]
     assert any("groupby разбивает" in text for text in texts)
@@ -119,6 +122,37 @@ async def test_survey_finish_starts_lesson(enrolled, web_app, web_llm) -> None:
     assert state["survey"] is False
     assert state["node"] is not None
     assert body["summary"]["items"]
+
+
+class _DeadModel:
+    """Модель недоступна: так ведёт себя клиент с отвергнутым ключом OpenRouter."""
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        raise LLMError("OpenRouter вернул HTTP 401: User not found.", status=401)
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        raise LLMError("OpenRouter вернул HTTP 401: User not found.", status=401)
+
+
+async def test_survey_finish_without_model_reports_model_failure(enrolled, web_app) -> None:
+    """Первый урок без модели — описание темы из графа, а не общий сбой (срезы 28, 50)."""
+    web_app.state.client = _DeadModel()
+
+    body = await _finish(enrolled)
+
+    texts = [message["html"] for message in body["messages"]]
+    assert any("📘" in text for text in texts)
+    assert not any(FAILURE_REPLY in text for text in texts)
+    assert body["state"]["node"] is not None  # урок начат, тема выбрана
+
+
+async def test_chat_without_model_reports_model_failure(enrolled, web_app) -> None:
+    await _finish(enrolled)
+    web_app.state.client = _DeadModel()
+
+    body = (await enrolled.post(f"{BASE}/chat", json={"text": "что такое groupby?"})).json()
+
+    assert LLM_FAILURE_REPLY in body["messages"][-1]["html"]
 
 
 async def test_survey_finish_twice_is_rejected(enrolled) -> None:
@@ -275,21 +309,24 @@ async def test_parallel_chat_turns_are_serialized(enrolled, web_app, web_llm) ->
 async def test_switch_topic(enrolled) -> None:
     await _finish(enrolled)
 
-    body = (await enrolled.post(f"{BASE}/switch", json={"node_id": "groupby"})).json()
+    body = (await enrolled.post(f"{BASE}/switch", json={"node_id": "grouping"})).json()
 
-    assert body["state"]["node"]["id"] == "groupby"
-    assert "Перейти к теме" in body["messages"][0]["html"]
+    assert body["state"]["node"]["id"] == "grouping"
+    assert "Перейти к занятию" in body["messages"][0]["html"]
     assert (await enrolled.post(f"{BASE}/switch", json={"node_id": "nope"})).status_code == 404
 
 
 async def test_verify_starts_check(enrolled) -> None:
     await _finish(enrolled)
-    await enrolled.post(f"{BASE}/switch", json={"node_id": "pandas_intro"})
+    await enrolled.post(f"{BASE}/switch", json={"node_id": "pandas_structures"})
 
     state = (await enrolled.post(f"{BASE}/verify", json={})).json()["state"]
 
     assert state["mode"] == "verify"
     assert state["item"] is not None
+    # Аудит среза 51, L1: счётчик — цель прохода, а не урока. У занятия из трёх
+    # разделов — по вопросу на раздел и итоговое (срез 54).
+    assert state["streak_target"] == 4
 
 
 async def test_core_failure_is_a_reply_not_500(enrolled, web_llm) -> None:
@@ -319,22 +356,30 @@ async def test_students_lessons_are_isolated(enrolled, web, web_app) -> None:
 
 
 async def test_closing_a_node_end_to_end(enrolled, web_app) -> None:
-    """Сквозной сценарий: анкета → урок → верные ответы → тема закрыта."""
-    await _finish(enrolled, choice=0)
-    closed_before = (await enrolled.get(f"{BASE}/state")).json()["state"]["closed"]
+    """Сквозной сценарий: анкета → разделы занятия → итоговое с кодом → занятие закрыто."""
+    from course_fixtures import correct_answer
 
-    state = None
-    for _ in range(12):
-        item = await _pending_choice(enrolled, web_app)
-        state = (
-            await enrolled.post(
-                f"{BASE}/answer", json={"item_id": item.id, "answer": int(item.answer)}
-            )
-        ).json()["state"]
+    await _finish(enrolled, choice=0)
+    state = (await enrolled.get(f"{BASE}/state")).json()["state"]
+    closed_before = state["closed"]
+    first = state["node"]["id"]
+
+    for _ in range(20):
+        if state["item"] is None:
+            state = (await enrolled.post(f"{BASE}/task", json={})).json()["state"]
+        item = repos.get_item(_user_db(web_app), state["item"]["id"])
+        if item.runnable:
+            body = {"item_id": item.id, "code": "result = 1", "passed": True, "report": ""}
+            state = (await enrolled.post(f"{BASE}/code-result", json=body)).json()["state"]
+        else:
+            answer = int(item.answer) if item.answer_type == "choice" else correct_answer(item)
+            body = {"item_id": item.id, "answer": answer}
+            state = (await enrolled.post(f"{BASE}/answer", json=body)).json()["state"]
         if state["closed"] > closed_before:
             break
 
-    assert state is not None and state["closed"] > closed_before
+    assert state["closed"] > closed_before
+    assert state["node"]["id"] != first
 
 
 async def test_chat_while_task_pending_goes_to_tutor(enrolled, web_app, web_llm) -> None:
@@ -348,3 +393,126 @@ async def test_chat_while_task_pending_goes_to_tutor(enrolled, web_app, web_llm)
     assert len(web_llm.calls) == calls + 1
     assert body["state"]["item"]["id"] == item.id
     assert not [e for e in repos.get_events(_user_db(web_app)) if e.item_id == item.id]
+
+
+# --- урок частями: «Дальше» и «Проверим» (срез 52) ---
+
+
+@pytest.fixture
+def parts_llm():
+    return ScriptedTutor("Идея: groupby делит строки.\n---\nПример: df.groupby('a').size()")
+
+
+async def test_lesson_button_walks_parts_then_gives_task(enrolled, web_app, parts_llm) -> None:
+    web_app.state.client = parts_llm
+    body = await _finish(enrolled)
+    button = body["state"]["lesson_button"]
+    assert button["label"] == "Дальше ▶️" and button["part"] == 1 and not button["check"]
+    assert body["state"]["item"] is None
+
+    second = (await enrolled.post(f"{BASE}/next", json=button)).json()
+    assert "Пример" in second["messages"][-1]["html"]
+    check = second["state"]["lesson_button"]
+    assert check["check"] and check["part"] == 2
+
+    task = (await enrolled.post(f"{BASE}/next", json=check)).json()
+    assert task["state"]["item"] is not None  # вопрос — в «Практике»
+    assert task["state"]["lesson_button"] is None
+
+
+async def test_stale_lesson_button_moves_nothing(enrolled, web_app, parts_llm) -> None:
+    web_app.state.client = parts_llm
+    button = (await _finish(enrolled))["state"]["lesson_button"]
+    await enrolled.post(f"{BASE}/next", json=button)
+
+    again = (await enrolled.post(f"{BASE}/next", json=button)).json()
+
+    assert "уже позади" in again["messages"][-1]["html"]
+    assert again["state"]["lesson_button"]["part"] == 2
+
+
+async def test_lesson_button_needs_survey(enrolled) -> None:
+    response = await enrolled.post(f"{BASE}/next", json={"node_id": "groupby", "part": 0})
+
+    assert response.status_code == 409
+
+
+@pytest.mark.parametrize("part", [-1, "1", True, 10**6])
+async def test_lesson_button_rejects_bad_part(enrolled, part) -> None:
+    await _finish(enrolled)
+
+    response = await enrolled.post(f"{BASE}/next", json={"node_id": "groupby", "part": part})
+
+    assert response.status_code == 422
+
+
+# --- модули в вебе (срез 52) ---
+
+
+def _module_answers(config, choice: int = 1) -> list[int]:
+    progress = survey.Progress(config)
+    given: list[int] = []
+    while (key := progress.next_key()) is not None:
+        index = min(choice, len(survey.options_for(config, key)) - 1)
+        progress = progress.answer(index)
+        given.append(index)
+    return given
+
+
+async def test_state_lists_modules_and_topic_modules(enrolled) -> None:
+    state = (await _finish(enrolled))["state"]
+
+    assert [module["number"] for module in state["modules"]] == [1, 2, 3, 4, 5]
+    first = state["modules"][0]
+    assert first["survey_done"] and not state["modules"][1]["survey_done"]
+    assert first["total"] == sum(1 for topic in state["topics"] if topic["module"] == 1)
+    # Все модули открыты (срез 61): в маршруте занятия модулей 1–5.
+    assert [module["published"] for module in state["modules"]] == [True] * 5
+    assert {topic["module"] for topic in state["topics"]} == {1, 2, 3, 4, 5}
+
+
+async def test_jump_to_next_module_goes_through_its_survey(monkeypatch, student, web_app) -> None:
+    """Прыжок в модуль 2 — через его анкету (курс-фикстура: оба модуля открыты)."""
+    from course_fixtures import use_lessons_course
+
+    use_lessons_course(monkeypatch)
+    await student.post(f"/api/courses/{COURSE}/enroll", json={})
+    conn = _user_db(web_app)
+    await student.post(
+        f"{BASE}/survey/finish",
+        json={"answers": _module_answers(repos.get_topic(conn, 1).survey)},
+    )
+
+    body = (await student.post(f"{BASE}/switch", json={"node_id": "l2_box"})).json()
+
+    assert "из модуля 2" in body["messages"][-1]["html"]
+    state = body["state"]
+    assert state["survey"] is True and state["survey_topic"]["number"] == 2
+
+    topic = repos.get_topic(conn, 2)
+    finished = await student.post(
+        f"{BASE}/survey/finish", json={"answers": _module_answers(topic.survey)}
+    )
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["state"]["node"]["id"] == "l2_box"  # урок — с занятия прыжка
+
+
+async def test_weak_topic_is_marked_in_state(enrolled, web_app) -> None:
+    await _finish(enrolled)
+    conn = _user_db(web_app)
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id)
+    steps = [
+        step.model_copy(update={"status": "closed", "weak": True})
+        if step.concept_id == "load_inspect"
+        else step
+        for step in state.route.steps
+    ]
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"route": state.route.model_copy(update={"steps": steps})})
+    )
+
+    topics = (await enrolled.get(f"{BASE}/state")).json()["state"]["topics"]
+
+    row = next(topic for topic in topics if topic["id"] == "load_inspect")
+    assert row["weak"] and row["status"] == "closed"

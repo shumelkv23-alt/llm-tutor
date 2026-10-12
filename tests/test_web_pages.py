@@ -1,5 +1,6 @@
 """Главная и профиль (Срез 47)."""
 
+from course_fixtures import WEB_T1 as T1
 import time
 
 import pytest
@@ -8,7 +9,15 @@ from llm_tutor.student import survey
 from llm_tutor.web import accounts
 from web_fakes import ScriptedTutor
 
-COURSE = "mlcourse-topic01"
+from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
+
+# Занятий в открытых ученикам модулях (неопубликованные — «скоро», срез 55).
+_PUBLISHED = {t.number for t in _course_data(_COURSES[0]).topics if t.published}
+TOPICS = sum(1 for n in _course_data(_COURSES[0]).nodes if n.topic_id in _PUBLISHED)
+TITLE = _COURSES[0].title
+
+
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 
@@ -18,7 +27,7 @@ def web_llm():
 
 
 def _answers() -> list[int]:
-    progress, given = survey.Progress(), []
+    progress, given = survey.Progress(T1), []
     while progress.next_key() is not None:
         progress, given = progress.answer(1), [*given, 1]
     return given
@@ -30,7 +39,7 @@ async def test_guest_home_is_a_landing(web) -> None:
     assert "Начать учиться" in html
     assert 'href="/register"' in html
     assert "Как это работает" in html
-    assert "Pandas и разведочный анализ данных" in html
+    assert TITLE in html
 
 
 async def test_student_without_courses_is_sent_to_catalog(student) -> None:
@@ -63,7 +72,8 @@ async def test_profile_shows_account_survey_and_topics(student) -> None:
     assert "ann@example.com" in html
     assert 'id="rename-form"' in html and 'id="password-form"' in html
     assert "Итог анкеты" in html
-    assert html.count('<tr class="') == 21
+    assert html.count('<tr class="topic-row') == TOPICS
+    assert html.count('<tr class="module-row') == 5
     assert "Текущая" in html
 
 
@@ -73,7 +83,7 @@ async def test_profile_of_two_students_differs(student, web, web_app) -> None:
     ann = accounts.find_user(web_app.state.accounts, "ann@example.com")
     conn = web_app.state.userdbs.open(ann.id, COURSE)
     conn.execute(
-        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('groupby', 80, 1, ?)",
+        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('grouping', 80, 1, ?)",
         (time.time(),),
     )
     conn.commit()

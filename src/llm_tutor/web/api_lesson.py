@@ -16,18 +16,18 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
-from llm_tutor.core import lesson, turn, verify
+from llm_tutor.core import guided, lesson, turn, verify
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
-from llm_tutor.schemas import CriterionResult, GradeResult, SessionState
+from llm_tutor.schemas import CriterionResult, GradeResult, SessionState, Topic
 from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
 from llm_tutor.web.accounts import User
-from llm_tutor.web.courses import COURSES, Course, get_course
+from llm_tutor.web.courses import COURSES, RENAMED_COURSES, Course, get_course
 from llm_tutor.web.security import accounts_db, require_user
 from llm_tutor.web.views import course_card
 
@@ -37,7 +37,14 @@ logger = logging.getLogger(__name__)
 COURSE_NOT_FOUND = "Такого курса нет."
 
 
-def course_or_404(course_id: str) -> Course:
+def course_or_404(course_id: str, request: Request) -> Course:
+    if course_id in RENAMED_COURSES:
+        # Вкладка, открытая до переименования курса, ходит по прежнему адресу
+        # API: 308 сохраняет метод и тело, fetch пойдёт следом (аудит 52, L3).
+        prefix = f"/courses/{course_id}/"
+        path = request.url.path.replace(prefix, f"/courses/{RENAMED_COURSES[course_id]}/", 1)
+        query = f"?{request.url.query}" if request.url.query else ""
+        raise HTTPException(status_code=308, headers={"Location": path + query})
     course = get_course(course_id)
     if course is None:
         raise HTTPException(status_code=404, detail={"message": COURSE_NOT_FOUND})
@@ -65,7 +72,7 @@ async def list_courses(request: Request, user: User = Depends(require_user)) -> 
 
 @router.post("/courses/{course_id}/enroll")
 async def enroll(course_id: str, request: Request, user: User = Depends(require_user)) -> dict:
-    course = course_or_404(course_id)
+    course = course_or_404(course_id, request)
     pool = request.app.state.userdbs
     async with pool.lock(user.id, course.id):
         # Сначала БД ученика: запись без БД оставила бы курс, который не открыть.
@@ -107,7 +114,7 @@ class LessonContext:
 async def lesson_context(
     course_id: str, request: Request, user: User = Depends(require_user)
 ) -> LessonContext:
-    course = course_or_404(course_id)
+    course = course_or_404(course_id, request)
     if course.id not in accounts.enrolled_courses(accounts_db(request), user.id):
         raise HTTPException(status_code=403, detail={"message": NOT_ENROLLED})
     pool = request.app.state.userdbs
@@ -148,8 +155,23 @@ def turn_response(ctx: LessonContext, user_text: str | None, reply: TurnReply | 
 
 
 def _require_survey(ctx: LessonContext) -> None:
-    if not survey.is_completed(ctx.conn):
+    if lesson.pending_survey_topic(ctx.conn) is not None:
         raise HTTPException(status_code=409, detail={"message": SURVEY_NOT_DONE})
+
+
+def _survey_topic(ctx: LessonContext) -> Topic:
+    """Модуль, анкету которого проходит ученик; анкеты нет — 409."""
+    topic = lesson.pending_survey_topic(ctx.conn)
+    if topic is None:
+        raise HTTPException(status_code=409, detail={"message": SURVEY_DONE})
+    return topic
+
+
+def _progress(topic: Topic, answers: list[int]) -> "survey.Progress":
+    try:
+        return views.survey_progress(topic.survey, answers)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID}) from exc
 
 
 async def _safe(call: Awaitable[TurnReply], failure: str) -> TurnReply:
@@ -191,6 +213,13 @@ class SwitchBody(BaseModel):
     node_id: str = Field(max_length=200)
 
 
+class NextBody(BaseModel):
+    """Кнопка урока: тема и число показанных частей (как в колбэке бота)."""
+
+    node_id: str = Field(max_length=200)
+    part: StrictInt = Field(ge=0, le=100)
+
+
 @router.get("/courses/{course_id}/lesson/state")
 async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
     return {"state": views.lesson_state(ctx.conn, settings=ctx.settings)}
@@ -198,34 +227,37 @@ async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/survey/next")
 async def survey_next(body: SurveyBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    if survey.is_completed(ctx.conn):
-        raise HTTPException(status_code=409, detail={"message": SURVEY_DONE})
-    try:
-        progress = views.survey_progress(body.answers)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID}) from exc
+    topic = _survey_topic(ctx)
+    progress = _progress(topic, body.answers)
     if progress.next_key() is None:
-        return {"question": None, "summary": views.survey_summary(progress.final_answers())}
+        return {
+            "question": None,
+            "summary": views.survey_summary(topic.survey, progress.final_answers()),
+        }
     return {"question": views.survey_question(progress), "summary": None}
 
 
 @router.post("/courses/{course_id}/lesson/survey/finish")
 async def survey_finish(body: SurveyBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    try:
-        progress = views.survey_progress(body.answers)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID}) from exc
-    if progress.next_key() is not None:
-        raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID})
     async with ctx.lock:
-        # Проверка под замком: второй параллельный finish увидит пройденную анкету.
-        if survey.is_completed(ctx.conn):
-            raise HTTPException(status_code=409, detail={"message": SURVEY_DONE})
+        # Модуль и проверка — под замком: второй параллельный finish увидит
+        # пройденную анкету, а не начнёт урок второй раз.
+        topic = _survey_topic(ctx)
+        progress = _progress(topic, body.answers)
+        if progress.next_key() is not None:
+            raise HTTPException(status_code=422, detail={"message": SURVEY_INVALID})
+        config = topic.survey
         final = progress.final_answers()
-        survey.apply_answers(ctx.conn, final, level=progress.level, settings=ctx.settings)
+        survey.apply_answers(
+            ctx.conn, config, final, level=progress.level, settings=ctx.settings
+        )
         try:
             start, reply = await lesson.begin_lesson(
-                ctx.conn, ctx.client, ctx.model, settings=ctx.settings
+                ctx.conn,
+                ctx.client,
+                ctx.model,
+                settings=ctx.settings,
+                claimed=survey.claimed_concepts(ctx.conn, config),
             )
         except Exception:  # noqa: BLE001 — анкета записана, урок продолжится ходом
             logger.exception("Сбой первого хода урока")
@@ -234,7 +266,7 @@ async def survey_finish(body: SurveyBody, ctx: LessonContext = Depends(lesson_co
     lead = _lesson_lead(ctx.conn, start) if start is not None else None
     if lead:
         response["messages"].insert(0, views.message_view("assistant", lead))
-    response["summary"] = views.survey_summary(final)
+    response["summary"] = views.survey_summary(config, final)
     return response
 
 
@@ -367,6 +399,28 @@ async def code_result(body: CodeResultBody, ctx: LessonContext = Depends(lesson_
         return response
 
 
+@router.post("/courses/{course_id}/lesson/next")
+async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Урок частями (срез 28): следующая часть темы или, после последней, вопрос.
+
+    Без модели. Старая или повторная кнопка (тема или часть не совпали с
+    состоянием) получает «Эта часть уже позади» и ничего не сдвигает.
+    """
+    _require_survey(ctx)
+    async with ctx.lock:
+        reply = await _safe(
+            _sync(
+                turn.lesson_next_reply,
+                ctx.conn,
+                body.node_id,
+                body.part,
+                settings=ctx.settings,
+            ),
+            FAILURE_REPLY,
+        )
+        return turn_response(ctx, guided.NEXT_KICKOFF_TEXT, reply)
+
+
 @router.post("/courses/{course_id}/lesson/task")
 async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
@@ -423,15 +477,24 @@ async def verify_topic(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/switch")
 async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
         graph = CourseGraph.load(ctx.conn)
         if not graph.has_node(body.node_id):
             raise HTTPException(status_code=404, detail={"message": "Такой темы нет."})
+        first = lesson.survey_first(ctx.conn, body.node_id)
+        # Из анкеты модуля можно уйти к теме модуля с пройденной анкетой —
+        # иначе случайный прыжок в модуль запирал бы ученика в его анкете
+        # (аудит среза 52, M2). В модуль с непройденной анкетой — только после.
+        if first is not None and lesson.pending_survey_topic(ctx.conn) is not None:
+            raise HTTPException(status_code=409, detail={"message": SURVEY_NOT_DONE})
         try:
-            text = lesson.switch_node(ctx.conn, body.node_id, settings=ctx.settings)
+            if first is not None:
+                # Модуль темы без анкеты: сначала она, тема — следом (jump_node_id).
+                text = lesson.enter_module(ctx.conn, body.node_id, settings=ctx.settings)
+            else:
+                text = lesson.switch_node(ctx.conn, body.node_id, settings=ctx.settings)
         except Exception:  # noqa: BLE001
             logger.exception("Сбой перехода к теме")
             text = FAILURE_REPLY
         name = graph.concept(body.node_id).name
-        return turn_response(ctx, f"Перейти к теме «{name}»", text)
+        return turn_response(ctx, f"Перейти к занятию «{name}»", text)

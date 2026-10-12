@@ -1,10 +1,12 @@
 """Регрессии по ревью срезов 38–41."""
 
+from course_fixtures import WEB_T1 as T1
 import sqlite3
+import sys
 
 import pytest
 
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.student import survey
@@ -14,7 +16,7 @@ from llm_tutor.web.security import LoginLimiter
 from llm_tutor.web.userdb import UserDBPool
 from web_fakes import ScriptedTutor
 
-COURSE = "mlcourse-topic01"
+COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 
@@ -24,7 +26,7 @@ def web_llm():
 
 
 def _answers() -> list[int]:
-    progress, given = survey.Progress(), []
+    progress, given = survey.Progress(T1), []
     while progress.next_key() is not None:
         progress, given = progress.answer(1), [*given, 1]
     return given
@@ -69,11 +71,11 @@ async def test_closed_count_matches_course_card(lesson, web_app) -> None:
 
     conn = _db(web_app)
     conn.execute(
-        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('groupby', 80, 1, ?)",
+        "INSERT OR REPLACE INTO mastery (concept_id, alpha, beta, last_seen) VALUES ('grouping', 80, 1, ?)",
         (time.time(),),
     )
     conn.commit()
-    await lesson.post(f"{BASE}/switch", json={"node_id": "groupby"})
+    await lesson.post(f"{BASE}/switch", json={"node_id": "grouping"})
 
     state = (await lesson.get(f"{BASE}/state")).json()["state"]
     card = (await lesson.get("/api/courses")).json()["courses"][0]
@@ -165,7 +167,16 @@ def test_import_legacy_bad_source_leaves_nothing_behind(web_settings, tmp_path) 
     assert not list(target.parent.glob(".*.import")) if target.parent.exists() else True
 
 
-@pytest.mark.parametrize("folder", ["a#b", "a?b"])
+@pytest.mark.parametrize(
+    "folder",
+    [
+        "a#b",
+        # На Windows «?» в имени каталога запрещён: проверять там нечего.
+        pytest.param(
+            "a?b", marks=pytest.mark.skipif(sys.platform == "win32", reason="«?» в имени на Windows")
+        ),
+    ],
+)
 def test_import_legacy_path_with_uri_characters(web_settings, tmp_path, folder: str) -> None:
     user = _register(web_settings)
     source_dir = tmp_path / folder

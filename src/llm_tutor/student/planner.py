@@ -10,7 +10,7 @@
 import sqlite3
 import time
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.course.graph import CourseGraph
@@ -197,6 +197,7 @@ def ready_nodes(
     settings: Settings | None = None,
     mastery_overrides: Mapping[str, beta.Mastery] | None = None,
     completed_ids: frozenset[str] = frozenset(),
+    scope: Collection[str] | None = None,
 ) -> list[PlannedNode]:
     """Узлы границы готовности, отсортированные по приоритету (топ-``limit``).
 
@@ -205,12 +206,19 @@ def ready_nodes(
 
     Пустой результат при непустом графе означает, что всё доступное уже
     освоено: фронт готовности всегда содержит хотя бы корневые узлы.
+
+    ``scope`` — рабочий участок модуля: кандидаты берутся только из него.
     """
     s = settings or get_settings()
     stamp = time.time() if now is None else now
     if limit <= 0:
         return []
 
+    allowed = _scope(graph, goal_concept_id)
+    if scope is not None:
+        allowed = allowed & set(scope)
+    # Владение нужно кандидатам и их пререквизитам — не всему курсу.
+    needed = allowed | {p for node_id in allowed for p in graph.prerequisites(node_id)}
     # Переопределения — владение с учётом свидетельств текущего хода: запись
     # идёт одним коммитом после, и без них решение принималось бы по старым
     # данным (узел закрыт, а следующий по нему ещё «не готов»).
@@ -218,11 +226,11 @@ def ready_nodes(
     means = {
         node_id: overrides.get(node_id)
         or beta.estimate(conn, node_id, now=stamp, settings=s)
-        for node_id in graph.node_ids
+        for node_id in needed
     }
     candidates = [
         node_id
-        for node_id in _scope(graph, goal_concept_id)
+        for node_id in allowed
         if _eligible(graph, means, s.mastery_verify_threshold, node_id, completed_ids)
     ]
     if not candidates:

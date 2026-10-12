@@ -222,3 +222,28 @@ def test_get_conn_anchors_relative_path_to_project_root(monkeypatch, tmp_path) -
         assert (tmp_path / "sub" / "data.db").exists()
     finally:
         conn.close()
+
+
+def test_migration_004_puts_existing_rows_into_first_module(monkeypatch, tmp_path) -> None:
+    """Всё, что было до модулей, — первый модуль (topic01)."""
+    for name in ("001_init.sql", "002_seed_active.sql", "003_rubrics_active.sql"):
+        (tmp_path / name).write_text(
+            (connection.MIGRATIONS_DIR / name).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+    monkeypatch.setattr(connection, "MIGRATIONS_DIR", tmp_path)
+    monkeypatch.setattr(connection, "SCHEMA_VERSION", 3)
+    old = get_conn(":memory:")
+    try:
+        migrate(old)
+        old.execute("INSERT INTO concepts (id, name) VALUES ('groupby', 'groupby')")
+        old.execute("INSERT INTO chunks (source_url, seq, content) VALUES ('u', 0, 'groupby')")
+        old.commit()
+
+        monkeypatch.undo()
+        migrate(old)
+
+        assert old.execute("SELECT topic_id FROM concepts").fetchone()[0] == 1
+        assert old.execute("SELECT topic_id FROM chunks").fetchone()[0] == 1
+        assert old.execute("SELECT count(*) FROM topics").fetchone()[0] == 0
+    finally:
+        old.close()

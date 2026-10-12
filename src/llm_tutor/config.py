@@ -59,7 +59,7 @@ class Settings(BaseSettings):
 
     llm_temperature: float = 0.4
     llm_max_retries: int = 1
-    llm_max_tokens: int = 2048
+    llm_max_tokens: int = 3072
 
     # --- Веб-приложение, Срез 37 ---
     web_host: str = "127.0.0.1"
@@ -114,7 +114,10 @@ class Settings(BaseSettings):
     # Сколько заданий подряд без подсказок закрывают узел (§6.1). В серию
     # идут только задания, отвеченные ВПЕРВЫЕ: повтор после показа ответа
     # независимым свидетельством не является.
-    guide_success_streak: int = Field(default=2, ge=1)
+    guide_success_streak: int = Field(default=1, ge=1)
+    # Проход «закрой тему» — та же серия, но длиннее: ученик сам
+    # просит засчитать тему, одного ответа мало (отложенное среза 28, D2).
+    close_success_streak: int = Field(default=2, ge=1)
     # Вес повторного ответа на уже отвеченное задание: знания могло и не
     # прибавиться, поэтому свидетельство слабее.
     repeat_evidence_weight: float = Field(default=0.3, ge=0.0, le=1.0)

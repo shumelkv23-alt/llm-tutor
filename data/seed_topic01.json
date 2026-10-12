@@ -1,386 +1,291 @@
 {
   "course": "mlcourse.ai/topic01",
-  "comment": "Граф концептов topic01 «Pandas / EDA» + банк заданий. Рёбра: from -> to означает «from требуется для to». hard=false — мягкий пререквизит (штраф, не блокировка). items: для choice answer — индекс варианта (строкой), для short — эталонный текст.",
+  "comment": "Модуль 1 в формате занятий (срез 56, scripts/build_lessons.py): узел — занятие из 2–4 разделов.",
+  "topic": {
+    "number": 1,
+    "title": "Первичный анализ данных с Pandas",
+    "intro": "Знакомимся с pandas: загружаем таблицу, осматриваем её, фильтруем, группируем и ищем закономерности в данных об оттоке клиентов.",
+    "survey": {
+      "level_key": "survey_level",
+      "level_question": "Для начала — как у тебя с pandas?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно работаю с pandas"
+      ],
+      "blocks": [
+        {
+          "key": "block_tables",
+          "title": "Таблицы pandas",
+          "question": "Создаёшь Series и DataFrame?",
+          "example": "индекс, столбцы, pd.DataFrame",
+          "concepts": [
+            "pandas_structures"
+          ]
+        },
+        {
+          "key": "block_loading",
+          "title": "Чтение и осмотр",
+          "question": "Загружаешь и осматриваешь данные?",
+          "example": "read_csv, info, describe, astype",
+          "concepts": [
+            "load_inspect",
+            "types_stats"
+          ]
+        },
+        {
+          "key": "block_selection",
+          "title": "Выборка и сортировка",
+          "question": "Фильтруешь и сортируешь таблицы?",
+          "example": "loc / iloc, условия, sort_values, value_counts",
+          "concepts": [
+            "selection",
+            "transform"
+          ]
+        },
+        {
+          "key": "block_analysis",
+          "title": "Группировки и EDA",
+          "question": "Группируешь и исследуешь данные?",
+          "example": "apply, groupby + agg, pivot_table, графики",
+          "concepts": [
+            "grouping",
+            "eda_case"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "block_tables",
+        "block_loading"
+      ],
+      "foundation": [
+        "block_tables"
+      ]
+    },
+    "published": true
+  },
   "nodes": [
     {
-      "id": "python_basics",
-      "name": "Основы Python",
-      "difficulty": 0.25,
-      "description": "Списки, словари, циклы, функции, срезы — база, без которой pandas не читается.",
-      "source_url": null
-    },
-    {
-      "id": "numpy_basics",
-      "name": "Основы NumPy",
-      "difficulty": 0.35,
-      "description": "ndarray, векторные операции, broadcasting. Серия и DataFrame стоят на NumPy.",
-      "source_url": null
-    },
-    {
-      "id": "pandas_intro",
+      "id": "pandas_structures",
       "name": "Series и DataFrame",
-      "difficulty": 0.25,
-      "description": "Две базовые структуры pandas: одномерная Series и двумерный DataFrame.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "difficulty": 0.28,
+      "description": "Зачем pandas, Series с индексом и DataFrame — таблица из столбцов-Series.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "why",
+          "title": "Зачем pandas"
+        },
+        {
+          "id": "series",
+          "title": "Series: значения и индекс"
+        },
+        {
+          "id": "dataframe",
+          "title": "DataFrame: строки, столбцы, индекс"
+        }
+      ]
     },
     {
-      "id": "pandas_series",
-      "name": "Series",
-      "difficulty": 0.3,
-      "description": "Одномерный индексированный массив одного типа; столбец DataFrame — это Series.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "id": "load_inspect",
+      "name": "Загрузка и первый осмотр",
+      "difficulty": 0.32,
+      "description": "read_csv и первый взгляд на таблицу: head, shape, info, пропуски и уникальные значения.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "read",
+          "title": "Чтение таблиц"
+        },
+        {
+          "id": "inspect",
+          "title": "head, shape, info, dtypes"
+        },
+        {
+          "id": "missing",
+          "title": "Пропуски и уникальные значения"
+        }
+      ]
     },
     {
-      "id": "pandas_dataframe",
-      "name": "DataFrame",
-      "difficulty": 0.3,
-      "description": "Двумерная таблица: строки — объекты, столбцы — признаки.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "id": "types_stats",
+      "name": "Типы данных и описательные статистики",
+      "difficulty": 0.42,
+      "description": "Приведение типов, describe и ручные статистики, частоты значений.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "dtypes",
+          "title": "Типы и приведение"
+        },
+        {
+          "id": "describe",
+          "title": "describe и ручные статистики"
+        },
+        {
+          "id": "counts",
+          "title": "Частоты значений"
+        }
+      ]
     },
     {
-      "id": "read_csv",
-      "name": "Загрузка данных: read_csv",
-      "difficulty": 0.3,
-      "description": "Чтение таблиц из csv/tsv/xlsx в DataFrame.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "id": "selection",
+      "name": "Выборка данных",
+      "difficulty": 0.53,
+      "description": "loc, iloc и срезы; булевы маски и составные условия.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "loc",
+          "title": "loc, iloc и срезы"
+        },
+        {
+          "id": "masks",
+          "title": "Булевы маски и условия"
+        }
+      ]
     },
     {
-      "id": "df_inspect",
-      "name": "Осмотр данных",
-      "difficulty": 0.35,
-      "description": "head, shape, info, dtypes — первые шаги знакомства с таблицей.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "describe_stats",
-      "name": "Описательные статистики",
-      "difficulty": 0.4,
-      "description": "describe и ручные сводки: среднее, медиана, квартили, разброс.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "dtype_conversion",
-      "name": "Типы данных и astype",
-      "difficulty": 0.45,
-      "description": "Категориальные типы, приведение типов через astype, экономия памяти.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "indexing_loc_iloc",
-      "name": "Доступ к данным: loc и iloc",
+      "id": "transform",
+      "name": "Сортировка и преобразование столбцов",
       "difficulty": 0.5,
-      "description": "Выбор по метке (loc) и по позиции (iloc); отличие срезов от обычных списков.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "description": "Сортировка, apply/map/replace, новые и удалённые столбцы.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "sorting",
+          "title": "Сортировка"
+        },
+        {
+          "id": "apply",
+          "title": "apply, map и replace"
+        },
+        {
+          "id": "columns",
+          "title": "Новые и удалённые столбцы"
+        }
+      ]
     },
     {
-      "id": "boolean_indexing",
-      "name": "Булева индексация",
-      "difficulty": 0.55,
-      "description": "Фильтрация строк по условию, комбинация масок через & и |.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "sorting",
-      "name": "Сортировка",
-      "difficulty": 0.4,
-      "description": "sort_values / sort_index, порядок по нескольким столбцам.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "value_counts",
-      "name": "Частоты: value_counts",
-      "difficulty": 0.4,
-      "description": "Распределение значений категориального признака.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "apply_functions",
-      "name": "apply: функции к осям",
-      "difficulty": 0.55,
-      "description": "Применение функции к ячейкам, столбцам и строкам; когда это уместно.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "groupby",
-      "name": "Группировка: groupby",
+      "id": "grouping",
+      "name": "Группировка и сводные таблицы",
       "difficulty": 0.6,
-      "description": "Разбиение по ключу, применение агрегата, объединение результата (split-apply-combine).",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "description": "groupby по схеме split → apply → combine, агрегаты и agg, crosstab и pivot_table.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "groupby",
+          "title": "split → apply → combine"
+        },
+        {
+          "id": "agg",
+          "title": "Агрегаты и agg"
+        },
+        {
+          "id": "pivot",
+          "title": "crosstab и pivot_table"
+        }
+      ]
     },
     {
-      "id": "agg_functions",
-      "name": "Агрегации",
-      "difficulty": 0.55,
-      "description": "sum/mean/count и явные agg со словарём функций по столбцам.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "summary_tables",
-      "name": "Сводные таблицы: crosstab и pivot_table",
-      "difficulty": 0.65,
-      "description": "Двумерные сводки: crosstab для частот, pivot_table для агрегатов по двум осям.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "df_transformations",
-      "name": "Трансформации DataFrame",
-      "difficulty": 0.55,
-      "description": "Создание и удаление столбцов: assign/insert/drop, вычисляемые признаки.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "visualization_basics",
-      "name": "Базовая визуализация",
-      "difficulty": 0.5,
-      "description": "Matplotlib/Seaborn: гистограммы, ящики с усами, зависимость признака от целевой переменной.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "eda_workflow",
-      "name": "Процесс EDA",
-      "difficulty": 0.7,
-      "description": "Гипотеза → срез/сводка → вывод; как из таблицы делать наблюдения, а не просто числа.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
-    },
-    {
-      "id": "churn_eda_case",
-      "name": "Кейс: EDA оттока телеком-клиентов",
-      "difficulty": 0.75,
-      "description": "Сквозной разбор: от загрузки датасета до выводов о причинах оттока.",
-      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html"
+      "id": "eda_case",
+      "name": "EDA на практике: кейс оттока",
+      "difficulty": 0.72,
+      "description": "Гипотеза → срез → вывод на данных об оттоке и первое правило-прогноз.",
+      "source_url": "https://mlcourse.ai/book/topic01/topic01_pandas_data_analysis.html",
+      "sections": [
+        {
+          "id": "workflow",
+          "title": "Гипотеза → срез → вывод"
+        },
+        {
+          "id": "churn",
+          "title": "Разбор оттока"
+        },
+        {
+          "id": "first_model",
+          "title": "Первое правило-прогноз"
+        }
+      ]
     }
   ],
   "edges": [
     {
-      "from_id": "python_basics",
-      "to_id": "numpy_basics",
+      "from_id": "pandas_structures",
+      "to_id": "load_inspect",
       "type": "requires",
       "hard": true,
       "weight": 1.0
     },
     {
-      "from_id": "python_basics",
-      "to_id": "pandas_intro",
+      "from_id": "pandas_structures",
+      "to_id": "types_stats",
       "type": "requires",
       "hard": true,
       "weight": 1.0
     },
     {
-      "from_id": "numpy_basics",
-      "to_id": "pandas_series",
+      "from_id": "load_inspect",
+      "to_id": "types_stats",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "pandas_structures",
+      "to_id": "selection",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "types_stats",
+      "to_id": "selection",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "pandas_structures",
+      "to_id": "transform",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "selection",
+      "to_id": "transform",
       "type": "requires",
       "hard": false,
       "weight": 0.5
     },
     {
-      "from_id": "pandas_intro",
-      "to_id": "pandas_series",
+      "from_id": "pandas_structures",
+      "to_id": "grouping",
       "type": "requires",
       "hard": true,
       "weight": 1.0
     },
     {
-      "from_id": "pandas_intro",
-      "to_id": "pandas_dataframe",
+      "from_id": "transform",
+      "to_id": "grouping",
       "type": "requires",
-      "hard": true,
-      "weight": 1.0
+      "hard": false,
+      "weight": 0.3
     },
     {
-      "from_id": "pandas_series",
-      "to_id": "pandas_dataframe",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "read_csv",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "df_inspect",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "read_csv",
-      "to_id": "df_inspect",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "df_inspect",
-      "to_id": "describe_stats",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "df_inspect",
-      "to_id": "dtype_conversion",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "indexing_loc_iloc",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "indexing_loc_iloc",
-      "to_id": "boolean_indexing",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "sorting",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_series",
-      "to_id": "value_counts",
+      "from_id": "types_stats",
+      "to_id": "eda_case",
       "type": "requires",
       "hard": false,
       "weight": 0.5
     },
     {
-      "from_id": "pandas_dataframe",
-      "to_id": "value_counts",
+      "from_id": "grouping",
+      "to_id": "eda_case",
       "type": "requires",
       "hard": true,
       "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "apply_functions",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "boolean_indexing",
-      "to_id": "apply_functions",
-      "type": "requires",
-      "hard": false,
-      "weight": 0.5
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "groupby",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "groupby",
-      "to_id": "agg_functions",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "agg_functions",
-      "to_id": "summary_tables",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "groupby",
-      "to_id": "summary_tables",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "summary_tables",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "df_transformations",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "apply_functions",
-      "to_id": "df_transformations",
-      "type": "requires",
-      "hard": false,
-      "weight": 0.5
-    },
-    {
-      "from_id": "pandas_dataframe",
-      "to_id": "visualization_basics",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "describe_stats",
-      "to_id": "visualization_basics",
-      "type": "requires",
-      "hard": false,
-      "weight": 0.5
-    },
-    {
-      "from_id": "visualization_basics",
-      "to_id": "eda_workflow",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "groupby",
-      "to_id": "eda_workflow",
-      "type": "requires",
-      "hard": false,
-      "weight": 0.7
-    },
-    {
-      "from_id": "describe_stats",
-      "to_id": "eda_workflow",
-      "type": "requires",
-      "hard": false,
-      "weight": 0.5
-    },
-    {
-      "from_id": "eda_workflow",
-      "to_id": "churn_eda_case",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "summary_tables",
-      "to_id": "churn_eda_case",
-      "type": "requires",
-      "hard": true,
-      "weight": 1.0
-    },
-    {
-      "from_id": "groupby",
-      "to_id": "churn_eda_case",
-      "type": "requires",
-      "hard": false,
-      "weight": 0.7
     }
   ],
   "items": [
@@ -389,62 +294,65 @@
       "prompt": "Что такое DataFrame в pandas?",
       "answer_type": "choice",
       "concept_weights": {
-        "pandas_intro": 1.0,
-        "pandas_dataframe": 0.5
+        "pandas_structures": 1.0
       },
       "difficulty": 0.25,
       "options": [
         "Двумерная таблица, где каждый столбец хранит данные одного типа",
-        "Одномерный индексированный массив одного типа",
-        "Список словарей Python без индексов",
+        "Одномерный индексированный массив, где все значения одного типа",
+        "Список словарей Python, у которого нет ни индекса, ни имён столбцов",
         "Файл на диске с табличными данными"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "why"
     },
     {
       "id": 2,
       "prompt": "Каким методом pandas читается CSV-файл в DataFrame? (напиши имя метода)",
       "answer_type": "short",
       "concept_weights": {
-        "read_csv": 1.0
+        "load_inspect": 1.0
       },
       "difficulty": 0.3,
       "options": [],
-      "answer": "read_csv"
+      "answer": "read_csv",
+      "section": "read"
     },
     {
       "id": 3,
       "prompt": "Чем iloc отличается от loc при доступе к данным?",
       "answer_type": "choice",
       "concept_weights": {
-        "indexing_loc_iloc": 1.0
+        "selection": 1.0
       },
       "difficulty": 0.5,
       "options": [
         "iloc выбирает по позиции (целые индексы), loc — по метке",
-        "iloc выбирает по метке, loc — по позиции",
+        "iloc выбирает по метке строки, а loc — по её позиции (целому номеру)",
         "Это полные синонимы",
         "iloc работает только с Series, loc — только с DataFrame"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "loc"
     },
     {
       "id": 4,
       "prompt": "Какой метод pandas группирует строки по значению столбца, чтобы затем посчитать агрегат? (имя метода)",
       "answer_type": "short",
       "concept_weights": {
-        "groupby": 1.0
+        "grouping": 1.0
       },
       "difficulty": 0.6,
       "options": [],
-      "answer": "groupby"
+      "answer": "groupby",
+      "section": "groupby"
     },
     {
       "id": 5,
       "prompt": "Что вернёт df['col'].value_counts()?",
       "answer_type": "choice",
       "concept_weights": {
-        "value_counts": 1.0
+        "types_stats": 1.0
       },
       "difficulty": 0.4,
       "options": [
@@ -453,76 +361,45 @@
         "Столбец, отсортированный по возрастанию",
         "Число пропущенных значений"
       ],
-      "answer": "0"
-    },
-    {
-      "id": 6,
-      "prompt": "Что вернёт срез списка a[1:3] в Python?",
-      "answer_type": "choice",
-      "concept_weights": {
-        "python_basics": 1.0
-      },
-      "difficulty": 0.25,
-      "options": [
-        "Элементы с индексами 1 и 2",
-        "Элементы с индексами 1, 2 и 3",
-        "Список без элементов 1 и 2",
-        "Длину списка"
-      ],
-      "answer": "0"
-    },
-    {
-      "id": 7,
-      "prompt": "Что делает выражение np.array([1, 2, 3]) * 2?",
-      "answer_type": "choice",
-      "concept_weights": {
-        "numpy_basics": 1.0
-      },
-      "difficulty": 0.35,
-      "options": [
-        "Возвращает новый массив [2, 4, 6]",
-        "Падает: массив нельзя умножить на число",
-        "Возвращает строку '[1, 2, 3, 1, 2, 3]'",
-        "Возвращает число 12"
-      ],
-      "answer": "0"
+      "answer": "0",
+      "section": "counts"
     },
     {
       "id": 8,
       "prompt": "Чем Series отличается от DataFrame?",
       "answer_type": "choice",
       "concept_weights": {
-        "pandas_series": 1.0
+        "pandas_structures": 1.0
       },
       "difficulty": 0.3,
       "options": [
         "Series одномерная и хранит данные одного типа, DataFrame двумерный",
-        "Series быстрее, а по структуре они одинаковы",
+        "Series быстрее DataFrame, но по структуре это та же двумерная таблица",
         "Series умеет хранить только числа",
-        "DataFrame — это просто список списков Python"
+        "DataFrame — это обычный список списков Python с подписями столбцов"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "series"
     },
     {
       "id": 9,
       "prompt": "Объясни своими словами, что делает groupby и зачем после него применяют агрегат вроде agg.",
       "answer_type": "open",
       "concept_weights": {
-        "groupby": 1.0,
-        "agg_functions": 0.5
+        "grouping": 1.0
       },
       "difficulty": 0.6,
       "options": [],
       "answer": null,
-      "rubric_id": 1
+      "rubric_id": 1,
+      "section": "groupby"
     },
     {
       "id": 10,
       "prompt": "Напиши код: посчитать среднее значение столбца age отдельно по каждому городу из столбца city в таблице df. Сохрани результат в переменную result.",
       "answer_type": "code",
       "concept_weights": {
-        "groupby": 0.7,
-        "agg_functions": 0.5
+        "grouping": 0.7
       },
       "difficulty": 0.6,
       "options": [],
@@ -530,58 +407,67 @@
       "rubric_id": 2,
       "starter": "# Средний возраст по каждому городу\nresult = None\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"city\": [\"Казань\", \"Москва\", \"Казань\", \"Сочи\", \"Москва\", \"Казань\"],\n    \"age\": [20, 45, 22, 52, 39, 50],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: город → средний возраст (выберите столбец age).\"\nexpected = _source.groupby(\"city\")[\"age\"].mean()\nassert sorted(result.index) == sorted(expected.index), \"В индексе должны быть все города, и только они.\"\nassert (result.sort_index().round(6) == expected.sort_index().round(6)).all(), \"Средние не совпадают: нужен mean по столбцу age.\"\n"
-    },
-    {
-      "id": 11,
-      "prompt": "Каким ключевым словом в Python объявляется функция? (одно слово)",
-      "answer_type": "short",
-      "concept_weights": {"python_basics": 1.0},
-      "difficulty": 0.25,
-      "options": [],
-      "answer": "def"
-    },
-    {
-      "id": 12,
-      "prompt": "Что вернёт np.arange(3)?",
-      "answer_type": "choice",
-      "concept_weights": {"numpy_basics": 1.0},
-      "difficulty": 0.35,
-      "options": ["array([1, 2, 3])", "array([0, 1, 2])", "array([3])", "3"],
-      "answer": "1"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: город → средний возраст (выберите столбец age).\"\nexpected = _source.groupby(\"city\")[\"age\"].mean()\nassert sorted(result.index) == sorted(expected.index), \"В индексе должны быть все города, и только они.\"\nassert (result.sort_index().round(6) == expected.sort_index().round(6)).all(), \"Средние не совпадают: нужен mean по столбцу age.\"\n",
+      "section": "groupby"
     },
     {
       "id": 13,
       "prompt": "Какая библиотека даёт структуры Series и DataFrame?",
       "answer_type": "choice",
-      "concept_weights": {"pandas_intro": 1.0},
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
       "difficulty": 0.25,
-      "options": ["numpy", "matplotlib", "pandas", "scikit-learn"],
-      "answer": "2"
+      "options": [
+        "numpy",
+        "matplotlib",
+        "pandas",
+        "scikit-learn"
+      ],
+      "answer": "2",
+      "section": "why"
     },
     {
       "id": 14,
       "prompt": "Как у Series получить её значения без индекса?",
       "answer_type": "choice",
-      "concept_weights": {"pandas_series": 1.0},
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
       "difficulty": 0.3,
-      "options": [".index", ".values", ".columns", ".shape"],
-      "answer": "1"
+      "options": [
+        ".index",
+        ".values",
+        ".columns",
+        ".shape"
+      ],
+      "answer": "1",
+      "section": "series"
     },
     {
       "id": 15,
       "prompt": "Что вернёт df.shape для таблицы с 5 строками и 3 столбцами?",
       "answer_type": "choice",
-      "concept_weights": {"pandas_dataframe": 1.0},
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
       "difficulty": 0.3,
-      "options": ["(3, 5)", "5", "(5, 3)", "8"],
-      "answer": "2"
+      "options": [
+        "(3, 5)",
+        "5",
+        "(5, 3)",
+        "8"
+      ],
+      "answer": "2",
+      "section": "dataframe"
     },
     {
       "id": 16,
       "prompt": "Как прочитать CSV-файл, в котором поля разделены точкой с запятой?",
       "answer_type": "choice",
-      "concept_weights": {"read_csv": 1.0},
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
       "difficulty": 0.3,
       "options": [
         "pd.read_csv('file.csv', sep=';')",
@@ -589,13 +475,16 @@
         "pd.read_csv('file.csv', header=';')",
         "pd.read_csv('file.csv', index_col=';')"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "read"
     },
     {
       "id": 17,
       "prompt": "Что вернёт df.loc['a':'c'], если индекс состоит из меток 'a', 'b', 'c'?",
       "answer_type": "choice",
-      "concept_weights": {"indexing_loc_iloc": 1.0},
+      "concept_weights": {
+        "selection": 1.0
+      },
       "difficulty": 0.5,
       "options": [
         "Строки с метками 'a', 'b' и 'c' — обе границы включены",
@@ -603,13 +492,16 @@
         "Столбцы 'a', 'b' и 'c'",
         "Ошибку: срез по меткам невозможен"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "loc"
     },
     {
       "id": 18,
       "prompt": "Что вернёт df.groupby('city')['age'].mean()?",
       "answer_type": "choice",
-      "concept_weights": {"groupby": 1.0},
+      "concept_weights": {
+        "grouping": 1.0
+      },
       "difficulty": 0.6,
       "options": [
         "Средний age по всей таблице",
@@ -617,13 +509,16 @@
         "Отсортированный по городу df",
         "Средний age по каждому городу"
       ],
-      "answer": "3"
+      "answer": "3",
+      "section": "groupby"
     },
     {
       "id": 19,
       "prompt": "В каком порядке value_counts() возвращает значения по умолчанию?",
       "answer_type": "choice",
-      "concept_weights": {"value_counts": 1.0},
+      "concept_weights": {
+        "types_stats": 1.0
+      },
       "difficulty": 0.4,
       "options": [
         "По алфавиту",
@@ -631,13 +526,16 @@
         "По возрастанию частоты",
         "В порядке появления в данных"
       ],
-      "answer": "1"
+      "answer": "1",
+      "section": "counts"
     },
     {
       "id": 20,
       "prompt": "Что показывает df.head(3)?",
       "answer_type": "choice",
-      "concept_weights": {"df_inspect": 1.0},
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
       "difficulty": 0.35,
       "options": [
         "Первые три строки",
@@ -645,36 +543,45 @@
         "Три случайные строки",
         "Три столбца"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "inspect"
     },
     {
       "id": 21,
       "prompt": "Какой метод DataFrame показывает типы столбцов и число непустых значений? Напиши только имя метода — без точек и скобок.",
       "answer_type": "short",
-      "concept_weights": {"df_inspect": 1.0},
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
       "difficulty": 0.35,
       "options": [],
-      "answer": "info"
+      "answer": "info",
+      "section": "inspect"
     },
     {
       "id": 22,
       "prompt": "Что по умолчанию считает df.describe() для числовых столбцов?",
       "answer_type": "choice",
-      "concept_weights": {"describe_stats": 1.0},
+      "concept_weights": {
+        "types_stats": 1.0
+      },
       "difficulty": 0.4,
       "options": [
-        "count, mean, медиану и моду",
+        "count, mean, моду и число уникальных значений столбца",
         "Только mean и std",
         "count, mean, std, min, квартили и max",
-        "Пропуски и типы столбцов"
+        "Число пропусков, тип каждого столбца и объём памяти"
       ],
-      "answer": "2"
+      "answer": "2",
+      "section": "describe"
     },
     {
       "id": 23,
       "prompt": "Что вернёт df['age'].mean(), если в столбце есть пропуски (NaN)?",
       "answer_type": "choice",
-      "concept_weights": {"describe_stats": 1.0},
+      "concept_weights": {
+        "types_stats": 1.0
+      },
       "difficulty": 0.4,
       "options": [
         "Ошибку",
@@ -682,22 +589,28 @@
         "Среднее, где NaN считается нулём",
         "NaN"
       ],
-      "answer": "1"
+      "answer": "1",
+      "section": "describe"
     },
     {
       "id": 24,
       "prompt": "Каким методом столбцу pandas меняют тип данных? Напиши только имя метода — без точек и скобок.",
       "answer_type": "short",
-      "concept_weights": {"dtype_conversion": 1.0},
+      "concept_weights": {
+        "types_stats": 1.0
+      },
       "difficulty": 0.45,
       "options": [],
-      "answer": "astype"
+      "answer": "astype",
+      "section": "dtypes"
     },
     {
       "id": 25,
       "prompt": "Что сделает pd.to_numeric(col, errors='coerce') со значением, которое не парсится в число?",
       "answer_type": "choice",
-      "concept_weights": {"dtype_conversion": 1.0},
+      "concept_weights": {
+        "types_stats": 1.0
+      },
       "difficulty": 0.45,
       "options": [
         "Оставит строку как есть",
@@ -705,13 +618,16 @@
         "Заменит его на 0",
         "Заменит его на NaN"
       ],
-      "answer": "3"
+      "answer": "3",
+      "section": "dtypes"
     },
     {
       "id": 26,
       "prompt": "Что вернёт df[df['age'] > 30]?",
       "answer_type": "choice",
-      "concept_weights": {"boolean_indexing": 1.0},
+      "concept_weights": {
+        "selection": 1.0
+      },
       "difficulty": 0.55,
       "options": [
         "Столбцы, где есть значения больше 30",
@@ -719,213 +635,232 @@
         "Строки, где age больше 30",
         "Число строк с age больше 30"
       ],
-      "answer": "2"
+      "answer": "2",
+      "section": "masks"
     },
     {
       "id": 27,
       "prompt": "Как объединить два условия маски по «И»?",
       "answer_type": "choice",
-      "concept_weights": {"boolean_indexing": 1.0},
+      "concept_weights": {
+        "selection": 1.0
+      },
       "difficulty": 0.55,
       "options": [
         "Оператором &, и каждое условие — в скобках",
-        "Словом and",
-        "Символами &&",
-        "Словом AND"
+        "Словом and, как в обычных условиях Python внутри if",
+        "Символами &&, как в условиях языков C или Java",
+        "Словом AND заглавными буквами, как в запросах SQL"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "masks"
     },
     {
       "id": 28,
       "prompt": "Чем sort_values отличается от sort_index?",
       "answer_type": "choice",
-      "concept_weights": {"sorting": 1.0},
+      "concept_weights": {
+        "transform": 1.0
+      },
       "difficulty": 0.4,
       "options": [
         "Это синонимы",
         "sort_values — по значениям столбца, sort_index — по индексу",
-        "sort_values — по индексу, sort_index — по значениям",
-        "sort_index сортирует только строки"
+        "sort_values — по индексу таблицы, sort_index — по значениям столбца",
+        "sort_index сортирует только строки, а sort_values — только столбцы"
       ],
-      "answer": "1"
+      "answer": "1",
+      "section": "sorting"
     },
     {
       "id": 29,
       "prompt": "Как отсортировать таблицу по убыванию значений столбца age?",
       "answer_type": "choice",
-      "concept_weights": {"sorting": 1.0},
+      "concept_weights": {
+        "transform": 1.0
+      },
       "difficulty": 0.4,
       "options": [
         "df.sort_values('age', ascending=False)",
         "df.sort_values('age')",
         "df.sort_index('age', ascending=False)",
-        "df.sort_values('age', by='desc')"
+        "df.sort_values('age', order='descending')"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "sorting"
     },
     {
       "id": 30,
       "prompt": "Что делает df['name'].apply(str.upper)?",
       "answer_type": "choice",
-      "concept_weights": {"apply_functions": 1.0},
+      "concept_weights": {
+        "transform": 1.0
+      },
       "difficulty": 0.55,
       "options": [
-        "Переименовывает столбец в NAME",
+        "Переименовывает столбец name в NAME, не трогая значения",
         "Приводит столбец к типу str",
-        "Считает число заглавных букв",
+        "Считает в каждом значении число заглавных букв",
         "Применяет str.upper к каждому значению столбца"
       ],
-      "answer": "3"
+      "answer": "3",
+      "section": "apply"
     },
     {
       "id": 31,
       "prompt": "Что передаётся в функцию внутри Series.apply по умолчанию?",
       "answer_type": "choice",
-      "concept_weights": {"apply_functions": 1.0},
+      "concept_weights": {
+        "transform": 1.0
+      },
       "difficulty": 0.55,
       "options": [
         "Одно значение элемента",
-        "Вся Series целиком",
-        "Индекс элемента",
+        "Вся Series целиком, одним вызовом",
+        "Индекс элемента вместо значения",
         "Имя столбца"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "apply"
     },
     {
       "id": 32,
       "prompt": "Что вернёт df.groupby('city')['age'].agg(['mean', 'max'])?",
       "answer_type": "choice",
-      "concept_weights": {"agg_functions": 1.0},
+      "concept_weights": {
+        "grouping": 1.0
+      },
       "difficulty": 0.55,
       "options": [
-        "Два отдельных DataFrame",
+        "Два отдельных DataFrame — по одному на функцию",
         "Одно число",
         "Таблицу со столбцами mean и max по городам",
-        "Ошибку: agg берёт одну функцию"
+        "Ошибку: agg принимает только одну функцию за раз"
       ],
-      "answer": "2"
+      "answer": "2",
+      "section": "agg"
     },
     {
       "id": 33,
       "prompt": "В df есть столбцы city (строки), age и salary (числа). Что вернёт df.groupby('city').mean()?",
       "answer_type": "choice",
-      "concept_weights": {"agg_functions": 1.0},
+      "concept_weights": {
+        "grouping": 1.0
+      },
       "difficulty": 0.55,
       "options": [
         "Средние и по age, и по salary — по каждому городу",
-        "Средний age по каждому городу",
+        "Средний age по каждому городу, а salary отбросит",
         "Число строк по каждому городу",
-        "Упадёт: столбец city не числовой"
+        "Упадёт с ошибкой: столбец city не числовой, его не усреднить"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "agg"
     },
     {
       "id": 34,
       "prompt": "Какая функция pandas строит таблицу частот двух категориальных столбцов? Напиши только имя функции — без pd. и скобок.",
       "answer_type": "short",
-      "concept_weights": {"summary_tables": 1.0},
+      "concept_weights": {
+        "grouping": 1.0
+      },
       "difficulty": 0.65,
       "options": [],
-      "answer": "crosstab"
+      "answer": "crosstab",
+      "section": "pivot"
     },
     {
       "id": 35,
       "prompt": "Что вернёт df.pivot_table(values='age', index='city', columns='gender', aggfunc='mean')?",
       "answer_type": "choice",
-      "concept_weights": {"summary_tables": 1.0},
+      "concept_weights": {
+        "grouping": 1.0
+      },
       "difficulty": 0.65,
       "options": [
-        "Список городов",
+        "Список уникальных городов из столбца city",
         "Средний age по парам city × gender",
         "Отсортированный по возрасту df",
         "Число пропусков по городам"
       ],
-      "answer": "1"
+      "answer": "1",
+      "section": "pivot"
     },
     {
       "id": 36,
       "prompt": "Что делает df.assign(total=df['price'] * df['qty'])?",
       "answer_type": "choice",
-      "concept_weights": {"df_transformations": 1.0},
+      "concept_weights": {
+        "transform": 1.0
+      },
       "difficulty": 0.55,
       "options": [
-        "Меняет df на месте",
+        "Добавляет столбец total в сам df и ничего не возвращает",
         "Добавляет строку",
-        "Считает сумму столбцов",
+        "Считает сумму столбцов price и qty в новой строке",
         "Возвращает копию df с новым столбцом total"
       ],
-      "answer": "3"
+      "answer": "3",
+      "section": "columns"
     },
     {
       "id": 37,
       "prompt": "Чем df.rename(columns={'a': 'b'}) отличается от df.columns = ['b']?",
       "answer_type": "choice",
-      "concept_weights": {"df_transformations": 1.0},
+      "concept_weights": {
+        "transform": 1.0
+      },
       "difficulty": 0.55,
       "options": [
         "rename переименовывает по словарю и возвращает копию, а присваивание заменяет все имена сразу",
         "Это одно и то же",
-        "rename меняет данные, а присваивание — имена",
-        "rename работает только с индексом"
+        "rename меняет сами значения в столбце a на b, а присваивание df.columns переставляет столбцы",
+        "rename работает только с индексом строк, а для имён столбцов нужно присваивание"
       ],
-      "answer": "0"
-    },
-    {
-      "id": 38,
-      "prompt": "Какая библиотека строит графики и обычно используется вместе с pandas? Напиши только имя библиотеки — без точек.",
-      "answer_type": "short",
-      "concept_weights": {"visualization_basics": 1.0},
-      "difficulty": 0.5,
-      "options": [],
-      "answer": "matplotlib"
-    },
-    {
-      "id": 39,
-      "prompt": "Что рисует plt.scatter(x, y)?",
-      "answer_type": "choice",
-      "concept_weights": {"visualization_basics": 1.0},
-      "difficulty": 0.5,
-      "options": [
-        "Линию по точкам",
-        "Столбчатую диаграмму",
-        "Точки (x, y) на плоскости",
-        "Гистограмму"
-      ],
-      "answer": "2"
+      "answer": "0",
+      "section": "columns"
     },
     {
       "id": 40,
       "prompt": "С чего начинается разведочный анализ таблицы?",
       "answer_type": "choice",
-      "concept_weights": {"eda_workflow": 1.0},
+      "concept_weights": {
+        "eda_case": 1.0
+      },
       "difficulty": 0.7,
       "options": [
-        "С обучения модели",
+        "С обучения базовой модели на всех признаках",
         "С осмотра данных: размер, типы, пропуски",
-        "С удаления выбросов",
+        "С удаления выбросов и строк с пропусками",
         "С построения финальных графиков"
       ],
-      "answer": "1"
+      "answer": "1",
+      "section": "workflow"
     },
     {
       "id": 41,
       "prompt": "Зачем на этапе EDA смотрят describe() и распределения?",
       "answer_type": "choice",
-      "concept_weights": {"eda_workflow": 1.0},
+      "concept_weights": {
+        "eda_case": 1.0
+      },
       "difficulty": 0.7,
       "options": [
-        "Чтобы сразу обучить модель",
+        "Чтобы сразу выбрать модель и подобрать её гиперпараметры",
         "Чтобы удалить половину столбцов",
-        "Чтобы посчитать точность модели",
+        "Чтобы посчитать точность модели на отложенной выборке",
         "Чтобы заметить выбросы и странные значения до модели"
       ],
-      "answer": "3"
+      "answer": "3",
+      "section": "workflow"
     },
     {
       "id": 42,
       "prompt": "Что чаще всего предсказывают в задаче оттока клиентов (churn)?",
       "answer_type": "choice",
-      "concept_weights": {"churn_eda_case": 1.0},
+      "concept_weights": {
+        "eda_case": 1.0
+      },
       "difficulty": 0.75,
       "options": [
         "Уйдёт ли клиент",
@@ -933,28 +868,32 @@
         "Сколько клиентов всего",
         "Какой у клиента город"
       ],
-      "answer": "0"
+      "answer": "0",
+      "section": "churn"
     },
     {
       "id": 43,
       "prompt": "Что обычно делают с категориальным признаком перед подачей в модель?",
       "answer_type": "choice",
-      "concept_weights": {"churn_eda_case": 1.0},
+      "concept_weights": {
+        "eda_case": 1.0
+      },
       "difficulty": 0.75,
       "options": [
-        "Удаляют всегда",
+        "Удаляют всегда, чтобы не усложнять модель",
         "Кодируют числами (one-hot или метками)",
-        "Заменяют на среднее",
+        "Заменяют каждое значение на среднее по столбцу",
         "Оставляют строкой — модель поймёт"
       ],
-      "answer": "1"
+      "answer": "1",
+      "section": "churn"
     },
     {
       "id": 44,
       "prompt": "Напиши код: отбери из df клиентов, которые ушли (Churn равен True) и при этом звонили в поддержку больше 3 раз. Сохрани получившуюся таблицу в переменную result.",
       "answer_type": "code",
       "concept_weights": {
-        "boolean_indexing": 1.0
+        "selection": 1.0
       },
       "difficulty": 0.45,
       "options": [],
@@ -962,14 +901,15 @@
       "rubric_id": 3,
       "starter": "# Ушедшие клиенты с 4+ звонками в поддержку\nresult = df\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame), а не столбец.\"\nexpected = _source[(_source[\"Churn\"]) & (_source[\"Customer service calls\"] > 3)]\nassert len(result) == len(expected), f\"Должно остаться строк: {len(expected)}, а не {len(result)}.\"\nassert sorted(result.index) == sorted(expected.index), \"Отобраны не те клиенты: проверьте оба условия.\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame), а не столбец.\"\nexpected = _source[(_source[\"Churn\"]) & (_source[\"Customer service calls\"] > 3)]\nassert len(result) == len(expected), f\"Должно остаться строк: {len(expected)}, а не {len(result)}.\"\nassert sorted(result.index) == sorted(expected.index), \"Отобраны не те клиенты: проверьте оба условия.\"\n",
+      "section": "masks"
     },
     {
       "id": 45,
       "prompt": "Напиши код: отсортируй df по убыванию столбца Total day charge и сохрани в result первые три строки.",
       "answer_type": "code",
       "concept_weights": {
-        "sorting": 1.0
+        "transform": 1.0
       },
       "difficulty": 0.4,
       "options": [],
@@ -977,14 +917,15 @@
       "rubric_id": 4,
       "starter": "# Три клиента с самой большой дневной платой\nresult = df\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert len(result) == 3, f\"Нужны ровно три строки, а получилось {len(result)}.\"\nexpected = _source.sort_values(\"Total day charge\", ascending=False).head(3)\nassert \"Total day charge\" in result.columns, \"В таблице должен остаться столбец Total day charge.\"\nassert list(result[\"Total day charge\"]) == list(expected[\"Total day charge\"]), \"Строки не те или не в том порядке: нужны три самые большие платы, по убыванию.\"\nassert list(result[\"State\"]) == list(expected[\"State\"]), \"Значения платы верные, но строки перемешаны: сортируйте таблицу целиком, а не один столбец.\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert len(result) == 3, f\"Нужны ровно три строки, а получилось {len(result)}.\"\nexpected = _source.sort_values(\"Total day charge\", ascending=False).head(3)\nassert \"Total day charge\" in result.columns, \"В таблице должен остаться столбец Total day charge.\"\nassert list(result[\"Total day charge\"]) == list(expected[\"Total day charge\"]), \"Строки не те или не в том порядке: нужны три самые большие платы, по убыванию.\"\nassert list(result[\"State\"]) == list(expected[\"State\"]), \"Значения платы верные, но строки перемешаны: сортируйте таблицу целиком, а не один столбец.\"\n",
+      "section": "sorting"
     },
     {
       "id": 46,
       "prompt": "Напиши код: посчитай, какая доля клиентов ушла, а какая осталась, — доли значений столбца Churn (в сумме 1). Сохрани результат в result.",
       "answer_type": "code",
       "concept_weights": {
-        "value_counts": 1.0
+        "types_stats": 1.0
       },
       "difficulty": 0.35,
       "options": [],
@@ -992,14 +933,15 @@
       "rubric_id": 5,
       "starter": "# Доли ушедших и оставшихся\nresult = None\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: значение Churn → доля.\"\nassert abs(result.sum() - 1) < 1e-9, \"Доли должны давать в сумме 1: нужен normalize=True.\"\nexpected = _source[\"Churn\"].value_counts(normalize=True)\nassert set(result.index) == {True, False}, \"В индексе должны быть значения Churn — True и False: value_counts по столбцу Churn.\"\nshares = dict(zip(result.index, result.values))\nassert abs(shares[True] - expected[True]) < 1e-9, \"Доля ушедших не совпадает.\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: значение Churn → доля.\"\nassert abs(result.sum() - 1) < 1e-9, \"Доли должны давать в сумме 1: нужен normalize=True.\"\nexpected = _source[\"Churn\"].value_counts(normalize=True)\nassert set(result.index) == {True, False}, \"В индексе должны быть значения Churn — True и False: value_counts по столбцу Churn.\"\nshares = dict(zip(result.index, result.values))\nassert abs(shares[True] - expected[True]) < 1e-9, \"Доля ушедших не совпадает.\"\n",
+      "section": "counts"
     },
     {
       "id": 47,
       "prompt": "Напиши код: добавь в df столбец Total calls — сумму столбцов Total day calls, Total eve calls и Total night calls. Сохрани обновлённую таблицу в result.",
       "answer_type": "code",
       "concept_weights": {
-        "df_transformations": 1.0
+        "transform": 1.0
       },
       "difficulty": 0.4,
       "options": [],
@@ -1007,14 +949,15 @@
       "rubric_id": 6,
       "starter": "# Суммарное число звонков\nresult = df\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert \"Total calls\" in result.columns, \"В таблице нет столбца Total calls.\"\nexpected = _source[\"Total day calls\"] + _source[\"Total eve calls\"] + _source[\"Total night calls\"]\nassert (result[\"Total calls\"] == expected).all(), \"Total calls — это сумма дневных, вечерних и ночных звонков.\"\nassert len(result) == len(_source), \"Строк должно остаться столько же.\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert \"Total calls\" in result.columns, \"В таблице нет столбца Total calls.\"\nexpected = _source[\"Total day calls\"] + _source[\"Total eve calls\"] + _source[\"Total night calls\"]\nassert (result[\"Total calls\"] == expected).all(), \"Total calls — это сумма дневных, вечерних и ночных звонков.\"\nassert len(result) == len(_source), \"Строк должно остаться столько же.\"\n",
+      "section": "columns"
     },
     {
       "id": 48,
       "prompt": "Напиши код: построй таблицу сопряжённости International plan × Churn с долями внутри каждой строки (normalize по строкам). Сохрани её в result.",
       "answer_type": "code",
       "concept_weights": {
-        "summary_tables": 1.0
+        "grouping": 1.0
       },
       "difficulty": 0.55,
       "options": [],
@@ -1022,14 +965,15 @@
       "rubric_id": 7,
       "starter": "# Доли оттока по международному тарифу\nresult = None\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица: crosstab возвращает DataFrame.\"\nexpected = pd.crosstab(_source[\"International plan\"], _source[\"Churn\"], normalize=\"index\")\nassert sorted(result.index) == [\"No\", \"Yes\"], \"По строкам — значения International plan.\"\nassert all(abs(result.loc[row].sum() - 1) < 1e-9 for row in result.index), \"Каждая строка должна давать в сумме 1: normalize='index'.\"\nassert set(result.columns) == {True, False}, \"По столбцам — значения Churn: True и False.\"\nshares = dict(zip(result.columns, result.loc[\"Yes\"].values))\nassert abs(shares[True] - expected.loc[\"Yes\", True]) < 1e-9, \"Доля оттока с международным тарифом не совпадает.\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица: crosstab возвращает DataFrame.\"\nexpected = pd.crosstab(_source[\"International plan\"], _source[\"Churn\"], normalize=\"index\")\nassert sorted(result.index) == [\"No\", \"Yes\"], \"По строкам — значения International plan.\"\nassert all(abs(result.loc[row].sum() - 1) < 1e-9 for row in result.index), \"Каждая строка должна давать в сумме 1: normalize='index'.\"\nassert set(result.columns) == {True, False}, \"По столбцам — значения Churn: True и False.\"\nshares = dict(zip(result.columns, result.loc[\"Yes\"].values))\nassert abs(shares[True] - expected.loc[\"Yes\", True]) < 1e-9, \"Доля оттока с международным тарифом не совпадает.\"\n",
+      "section": "pivot"
     },
     {
       "id": 49,
       "prompt": "Напиши код: преврати столбец Churn в целые числа 0 и 1 (True → 1, False → 0) прямо в таблице df. Сохрани этот столбец в result.",
       "answer_type": "code",
       "concept_weights": {
-        "dtype_conversion": 1.0
+        "types_stats": 1.0
       },
       "difficulty": 0.35,
       "options": [],
@@ -1037,15 +981,16 @@
       "rubric_id": 8,
       "starter": "# Churn → 0/1\nresult = df['Churn']\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается столбец (Series).\"\nassert pd.api.types.is_integer_dtype(result), f\"Тип должен быть целым, а сейчас {result.dtype}.\"\nassert pd.api.types.is_integer_dtype(df[\"Churn\"]), \"Замените столбец в самой таблице: df['Churn'] = ...\"\nassert list(result) == [int(value) for value in _source[\"Churn\"]], \"True должно стать 1, а False — 0.\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается столбец (Series).\"\nassert pd.api.types.is_integer_dtype(result), f\"Тип должен быть целым, а сейчас {result.dtype}.\"\nassert pd.api.types.is_integer_dtype(df[\"Churn\"]), \"Замените столбец в самой таблице: df['Churn'] = ...\"\nassert list(result) == [int(value) for value in _source[\"Churn\"]], \"True должно стать 1, а False — 0.\"\n",
+      "section": "dtypes"
     },
     {
       "id": 50,
       "prompt": "Напиши код: найди медиану Total day minutes среди ушедших клиентов (Churn равен True). Сохрани число в result.",
       "answer_type": "code",
       "concept_weights": {
-        "describe_stats": 0.7,
-        "boolean_indexing": 0.3
+        "types_stats": 0.7,
+        "selection": 0.3
       },
       "difficulty": 0.45,
       "options": [],
@@ -1053,7 +998,254 @@
       "rubric_id": 9,
       "starter": "# Медиана дневных минут у ушедших\nresult = None\n",
       "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Total day charge\": [45.07, 27.47, 41.38, 50.90, 28.34, 37.98, 37.09, 26.69],\n    \"Total day calls\": [110, 123, 114, 71, 113, 98, 88, 79],\n    \"Total eve calls\": [99, 103, 110, 88, 122, 101, 108, 94],\n    \"Total night calls\": [91, 103, 104, 89, 121, 118, 118, 96],\n    \"Customer service calls\": [1, 1, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
-      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, (int, float)) and not isinstance(result, bool), \"Ожидается число.\"\nexpected = _source.loc[_source[\"Churn\"], \"Total day minutes\"].median()\nassert abs(result - expected) < 1e-9, \"Число не совпадает: медиана по ушедшим клиентам (не среднее и не по всем).\"\n"
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, (int, float)) and not isinstance(result, bool), \"Ожидается число.\"\nexpected = _source.loc[_source[\"Churn\"], \"Total day minutes\"].median()\nassert abs(result - expected) < 1e-9, \"Число не совпадает: медиана по ушедшим клиентам (не среднее и не по всем).\"\n",
+      "section": "describe"
+    },
+    {
+      "id": 1001,
+      "prompt": "Что вернёт `df['Churn']`, если `df` — DataFrame со столбцом Churn?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "DataFrame с единственным столбцом Churn",
+        "Обычный список значений столбца",
+        "Series со значениями столбца Churn",
+        "Первую строку таблицы df"
+      ],
+      "answer": "2",
+      "section": "dataframe"
+    },
+    {
+      "id": 1002,
+      "prompt": "Какой вызов посчитает число пропусков в каждом столбце `df`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "df.count()",
+        "df.isna().sum()",
+        "df.isna().any()",
+        "df.dropna().sum()"
+      ],
+      "answer": "1",
+      "section": "missing"
+    },
+    {
+      "id": 1003,
+      "prompt": "Что вернёт `df['State'].nunique()`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Массив различных значений столбца State",
+        "Число строк таблицы df",
+        "Число пропусков в столбце State",
+        "Число различных значений в State"
+      ],
+      "answer": "3",
+      "section": "missing"
+    },
+    {
+      "id": 1004,
+      "prompt": "Что делает `df.dropna()` без параметров?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Убирает строки, где есть хотя бы один пропуск",
+        "Убирает столбцы, где есть хотя бы один пропуск",
+        "Убирает строки, где пропущены все значения",
+        "Заменяет все пропуски нулями"
+      ],
+      "answer": "0",
+      "section": "missing"
+    },
+    {
+      "id": 1005,
+      "prompt": "Правило-прогноз: «клиент уйдёт, если у него международный тариф или он звонил в поддержку 4 раза и больше». Как получить прогноз для всех клиентов `df`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "eda_case": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "(df['International plan'] == 'Yes') & (df['Customer service calls'] >= 4)",
+        "df['International plan'] == 'Yes' or df['Customer service calls'] >= 4",
+        "(df['International plan'] == 'Yes') | (df['Customer service calls'] >= 4)",
+        "df[df['Customer service calls'] >= 4]"
+      ],
+      "answer": "2",
+      "section": "first_model"
+    },
+    {
+      "id": 1006,
+      "prompt": "`pred` — Series из True/False с прогнозом оттока. Как посчитать долю верных прогнозов относительно `df['Churn']`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "eda_case": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "pred.mean()",
+        "(pred == df['Churn']).mean()",
+        "(pred != df['Churn']).mean()",
+        "df['Churn'].mean()"
+      ],
+      "answer": "1",
+      "section": "first_model"
+    },
+    {
+      "id": 1011,
+      "prompt": "Итоговое задание. Создай DataFrame из словаря: столбец `city` — «Казань», «Москва», «Сочи», столбец `age` — 20, 45, 52; индекс строк — `a`, `b`, `c`. Сохрани таблицу в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 10,
+      "starter": "# Таблица из словаря с индексом a, b, c\nresult = None\n",
+      "setup": "import pandas as pd\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается DataFrame.\"\nassert list(result.columns) == [\"city\", \"age\"], \"Столбцы — city и age, в этом порядке.\"\nassert list(result.index) == [\"a\", \"b\", \"c\"], \"Индекс строк — a, b, c (параметр index).\"\nassert result[\"city\"].tolist() == [\"Казань\", \"Москва\", \"Сочи\"], \"Значения city не совпадают.\"\nassert result[\"age\"].tolist() == [20, 45, 52], \"Значения age не совпадают.\"\n",
+      "final": true
+    },
+    {
+      "id": 1012,
+      "prompt": "Итоговое задание. В строке `csv_text` — таблица, где столбцы разделены точкой с запятой. Прочитай её в DataFrame `df` (через `io.StringIO`) и сохрани в result число пропусков в каждом столбце.",
+      "answer_type": "code",
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 11,
+      "starter": "import io\n\n# Прочитайте csv_text и посчитайте пропуски по столбцам\ndf = None\nresult = None\n",
+      "setup": "import io\n\nimport pandas as pd\n\ncsv_text = \"\"\"State;Account length;Total day minutes;Churn\nKS;128;265.1;False\nOH;107;;False\nNJ;;243.4;False\nOH;84;299.4;\nOK;75;166.7;True\n\"\"\"\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(globals().get(\"df\"), pd.DataFrame), \"Прочитайте таблицу в переменную df.\"\nexpected_df = pd.read_csv(io.StringIO(csv_text), sep=\";\")\nassert list(df.columns) == list(expected_df.columns), \"Столбцы не разделились: укажите sep=';'.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: столбец → число пропусков.\"\nexpected = expected_df.isna().sum()\nassert result.to_dict() == expected.to_dict(), \"Число пропусков по столбцам не совпадает: isna().sum().\"\n",
+      "final": true
+    },
+    {
+      "id": 1013,
+      "prompt": "Итоговое задание. В `df` столбец `Churn` хранит строки «True» и «False». Приведи его к логическому типу (bool) прямо в df и сохрани в result долю ушедших клиентов.",
+      "answer_type": "code",
+      "concept_weights": {
+        "types_stats": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 12,
+      "starter": "# Приведите Churn к bool и посчитайте долю ушедших\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [\"False\", \"False\", \"False\", \"False\", \"True\", \"False\", \"True\", \"True\"],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert df[\"Churn\"].dtype == bool, \"Столбец Churn в df должен стать типа bool.\"\nassert df[\"Churn\"].tolist() == (_source[\"Churn\"] == \"True\").tolist(), \"Значения перепутались: astype(bool) делает True из любой непустой строки.\"\nassert result is not None and abs(float(result) - 3 / 8) < 1e-9, \"Доля ушедших — среднее по столбцу Churn.\"\n",
+      "final": true
+    },
+    {
+      "id": 1014,
+      "prompt": "Итоговое задание. С помощью `loc` отбери клиентов из штата OH и оставь только столбцы `Total day minutes` и `Churn`. Сохрани таблицу в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "selection": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 13,
+      "starter": "# Клиенты штата OH, два столбца\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert list(result.columns) == [\"Total day minutes\", \"Churn\"], \"Нужны ровно два столбца: Total day minutes и Churn.\"\nassert list(result.index) == [1, 3], \"Отобраны не те строки: условие State == 'OH'.\"\n",
+      "final": true
+    },
+    {
+      "id": 1015,
+      "prompt": "Итоговое задание. Замени в столбце `International plan` значения «Yes»/«No» на 1/0, отсортируй df по `Total day minutes` по убыванию и сохрани в result первые три строки.",
+      "answer_type": "code",
+      "concept_weights": {
+        "transform": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 14,
+      "starter": "# map, сортировка, первые три строки\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается таблица (DataFrame).\"\nassert len(result) == 3, \"Нужны первые три строки после сортировки.\"\nassert list(result.index) == [3, 0, 2], \"Порядок строк не тот: сортировка по убыванию Total day minutes.\"\nassert result[\"International plan\"].tolist() == [1, 0, 0], \"International plan: Yes → 1, No → 0 (map или replace).\"\n",
+      "final": true
+    },
+    {
+      "id": 1016,
+      "prompt": "Итоговое задание. Для каждого значения `International plan` посчитай долю ушедших (среднее `Churn`) и среднее число звонков в поддержку. result — DataFrame с индексом International plan и столбцами `Churn` и `Customer service calls`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "grouping": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 15,
+      "starter": "# Группировка по International plan, два средних\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.DataFrame), \"Ожидается DataFrame с двумя столбцами.\"\nexpected = _source.groupby(\"International plan\")[[\"Churn\", \"Customer service calls\"]].mean()\nassert sorted(result.columns) == sorted(expected.columns), \"Столбцы — Churn и Customer service calls.\"\nassert sorted(result.index) == [\"No\", \"Yes\"], \"Индекс — значения International plan.\"\ngot = result.loc[expected.index, expected.columns].astype(float).round(6)\nassert got.equals(expected.astype(float).round(6)), \"Средние не совпадают: нужен mean по группам.\"\n",
+      "final": true
+    },
+    {
+      "id": 1017,
+      "prompt": "Итоговое задание. Добавь в df столбец `pred` — прогноз оттока по правилу «уйдёт, если международный тариф или 4 и больше звонков в поддержку». В result сохрани долю верных прогнозов.",
+      "answer_type": "code",
+      "concept_weights": {
+        "eda_case": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 16,
+      "starter": "# Правило-прогноз и доля верных ответов\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\", \"OH\", \"OK\", \"AL\", \"MA\", \"MO\"],\n    \"International plan\": [\"No\", \"No\", \"No\", \"Yes\", \"Yes\", \"Yes\", \"No\", \"No\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4, 299.4, 166.7, 223.4, 218.2, 157.0],\n    \"Customer service calls\": [1, 4, 0, 2, 3, 0, 4, 5],\n    \"Churn\": [False, False, False, False, True, False, True, True],\n})\n_source = df.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert \"pred\" in df.columns, \"Добавьте в df столбец pred.\"\nexpected = (_source[\"International plan\"] == \"Yes\") | (_source[\"Customer service calls\"] >= 4)\nassert df[\"pred\"].astype(bool).tolist() == expected.tolist(), \"Прогноз не по правилу: нужно ИЛИ (|), а не И, и порог «4 и больше».\"\nassert result is not None and abs(float(result) - (expected == _source[\"Churn\"]).mean()) < 1e-9, \"Доля верных — среднее от (pred == Churn).\"\n",
+      "final": true
+    },
+    {
+      "id": 1021,
+      "prompt": "Напиши код: `day` и `eve` — минуты разговоров днём и вечером, индекс — номера клиентов, но клиенты идут в разном порядке. Посчитай суммарные минуты каждого клиента и сохрани Series в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "pandas_structures": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 17,
+      "starter": "# Сумма минут по каждому клиенту\nresult = None\n",
+      "setup": "import pandas as pd\n\nday = pd.Series({\"c1\": 265.1, \"c2\": 161.6, \"c3\": 243.4, \"c4\": 299.4})\neve = pd.Series({\"c3\": 121.2, \"c1\": 197.4, \"c4\": 61.9, \"c2\": 195.5})\n_day, _eve = day.copy(), eve.copy()\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert isinstance(result, pd.Series), \"Ожидается Series: клиент → сумма минут.\"\nexpected = (_day + _eve).sort_index()\nassert sorted(result.index) == sorted(expected.index), \"В индексе — номера клиентов c1…c4.\"\nassert (result.sort_index().round(6) == expected.round(6)).all(), \"Суммы не те: складывайте Series целиком — pandas выровняет их по индексу, а .values складываются по позициям.\"\n",
+      "section": "series"
+    },
+    {
+      "id": 1022,
+      "prompt": "Напиши код: найди в таблице df столбцы строкового типа (`object`) и сохрани список их названий в переменную result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "load_inspect": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 18,
+      "starter": "# Названия столбцов типа object\nresult = None\n",
+      "setup": "import pandas as pd\n\ndf = pd.DataFrame({\n    \"State\": [\"KS\", \"OH\", \"NJ\"],\n    \"Account length\": [128, 107, 137],\n    \"International plan\": [\"No\", \"No\", \"Yes\"],\n    \"Total day minutes\": [265.1, 161.6, 243.4],\n    \"Churn\": [False, True, False],\n})\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result is not None, \"Положите в result список названий столбцов.\"\ngot = sorted(result)\nassert got == [\"International plan\", \"State\"], \"Нужны только столбцы с dtype object — посмотрите df.dtypes.\"\n",
+      "section": "inspect"
     }
   ],
   "rubrics": [
@@ -1092,6 +1284,42 @@
     {
       "id": 9,
       "name": "Код: статистика по подвыборке"
+    },
+    {
+      "id": 10,
+      "name": "Итог: DataFrame из словаря"
+    },
+    {
+      "id": 11,
+      "name": "Итог: чтение и пропуски"
+    },
+    {
+      "id": 12,
+      "name": "Итог: приведение типа"
+    },
+    {
+      "id": 13,
+      "name": "Итог: выборка через loc"
+    },
+    {
+      "id": 14,
+      "name": "Итог: map и сортировка"
+    },
+    {
+      "id": 15,
+      "name": "Итог: группировка"
+    },
+    {
+      "id": 16,
+      "name": "Итог: правило-прогноз"
+    },
+    {
+      "id": 17,
+      "name": "Код: выравнивание Series по индексу"
+    },
+    {
+      "id": 18,
+      "name": "Код: столбцы по типу"
     }
   ],
   "criteria": [
@@ -1270,6 +1498,226 @@
       "weight": 1.0,
       "positive_example": ".median()",
       "negative_example": ".mean()"
+    },
+    {
+      "id": 23,
+      "rubric_id": 10,
+      "criterion": "Таблица создаётся из словаря «столбец → список значений»",
+      "weight": 1.0,
+      "positive_example": "pd.DataFrame({'city': [...], 'age': [...]})",
+      "negative_example": "собираю список строк и печатаю"
+    },
+    {
+      "id": 24,
+      "rubric_id": 10,
+      "criterion": "Индекс строк задан явно параметром index",
+      "weight": 1.0,
+      "positive_example": "index=['a', 'b', 'c']",
+      "negative_example": "индекс будет 0, 1, 2"
+    },
+    {
+      "id": 25,
+      "rubric_id": 11,
+      "criterion": "Таблица читается с разделителем точка с запятой",
+      "weight": 1.0,
+      "positive_example": "read_csv(..., sep=';')",
+      "negative_example": "read_csv без параметров"
+    },
+    {
+      "id": 26,
+      "rubric_id": 11,
+      "criterion": "Пропуски считаются по столбцам через isna().sum()",
+      "weight": 1.0,
+      "positive_example": "df.isna().sum()",
+      "negative_example": "df.count()"
+    },
+    {
+      "id": 27,
+      "rubric_id": 12,
+      "criterion": "Строки «True»/«False» превращаются в bool сравнением или map, а не astype(bool)",
+      "weight": 1.0,
+      "positive_example": "df['Churn'] = df['Churn'] == 'True'",
+      "negative_example": "df['Churn'].astype(bool)"
+    },
+    {
+      "id": 28,
+      "rubric_id": 12,
+      "criterion": "Доля ушедших — среднее по логическому столбцу",
+      "weight": 1.0,
+      "positive_example": "df['Churn'].mean()",
+      "negative_example": "df['Churn'].sum()"
+    },
+    {
+      "id": 29,
+      "rubric_id": 13,
+      "criterion": "Строки отбираются булевой маской по State",
+      "weight": 1.0,
+      "positive_example": "df.loc[df['State'] == 'OH', ...]",
+      "negative_example": "df.iloc[[1, 3]]"
+    },
+    {
+      "id": 30,
+      "rubric_id": 13,
+      "criterion": "Столбцы перечислены вторым аргументом loc",
+      "weight": 1.0,
+      "positive_example": "..., ['Total day minutes', 'Churn']]",
+      "negative_example": "все столбцы"
+    },
+    {
+      "id": 31,
+      "rubric_id": 14,
+      "criterion": "Значения Yes/No заменяются на 1/0 через map или replace",
+      "weight": 1.0,
+      "positive_example": "map({'Yes': 1, 'No': 0})",
+      "negative_example": "astype(int)"
+    },
+    {
+      "id": 32,
+      "rubric_id": 14,
+      "criterion": "Сортировка по убыванию и первые три строки",
+      "weight": 1.0,
+      "positive_example": "sort_values(..., ascending=False).head(3)",
+      "negative_example": "sort_values(...).head(3)"
+    },
+    {
+      "id": 33,
+      "rubric_id": 15,
+      "criterion": "Группировка по International plan",
+      "weight": 1.0,
+      "positive_example": "df.groupby('International plan')",
+      "negative_example": "df.groupby('Churn')"
+    },
+    {
+      "id": 34,
+      "rubric_id": 15,
+      "criterion": "Среднее по двум столбцам сразу",
+      "weight": 1.0,
+      "positive_example": "[['Churn', 'Customer service calls']].mean()",
+      "negative_example": "только Churn"
+    },
+    {
+      "id": 35,
+      "rubric_id": 16,
+      "criterion": "Условия соединены через ИЛИ (|) в скобках",
+      "weight": 1.0,
+      "positive_example": "(a == 'Yes') | (calls >= 4)",
+      "negative_example": "условия через &"
+    },
+    {
+      "id": 36,
+      "rubric_id": 16,
+      "criterion": "Доля верных — среднее от сравнения прогноза с Churn",
+      "weight": 1.0,
+      "positive_example": "(df['pred'] == df['Churn']).mean()",
+      "negative_example": "df['pred'].mean()"
+    },
+    {
+      "id": 37,
+      "rubric_id": 17,
+      "criterion": "Series складываются целиком, и pandas выравнивает их по индексу",
+      "weight": 1.0,
+      "positive_example": "result = day + eve",
+      "negative_example": "result = day.values + eve.values"
+    },
+    {
+      "id": 38,
+      "rubric_id": 17,
+      "criterion": "Результат — Series с номерами клиентов в индексе",
+      "weight": 1.0,
+      "positive_example": "индекс c1…c4",
+      "negative_example": "список чисел без индекса"
+    },
+    {
+      "id": 39,
+      "rubric_id": 18,
+      "criterion": "Типы столбцов берутся из df.dtypes",
+      "weight": 1.0,
+      "positive_example": "df.dtypes == 'object'",
+      "negative_example": "перебор df.head()"
+    },
+    {
+      "id": 40,
+      "rubric_id": 18,
+      "criterion": "В ответе — названия столбцов, а не их значения",
+      "weight": 1.0,
+      "positive_example": "df.columns[...]",
+      "negative_example": "df.select_dtypes('object')"
     }
-  ]
+  ],
+  "legacy": {
+    "python_basics": null,
+    "numpy_basics": null,
+    "pandas_intro": {
+      "node": "pandas_structures",
+      "section": "why"
+    },
+    "pandas_series": {
+      "node": "pandas_structures",
+      "section": "series"
+    },
+    "pandas_dataframe": {
+      "node": "pandas_structures",
+      "section": "dataframe"
+    },
+    "read_csv": {
+      "node": "load_inspect",
+      "section": "read"
+    },
+    "df_inspect": {
+      "node": "load_inspect",
+      "section": "inspect"
+    },
+    "describe_stats": {
+      "node": "types_stats",
+      "section": "describe"
+    },
+    "dtype_conversion": {
+      "node": "types_stats",
+      "section": "dtypes"
+    },
+    "indexing_loc_iloc": {
+      "node": "selection",
+      "section": "loc"
+    },
+    "boolean_indexing": {
+      "node": "selection",
+      "section": "masks"
+    },
+    "sorting": {
+      "node": "transform",
+      "section": "sorting"
+    },
+    "value_counts": {
+      "node": "types_stats",
+      "section": "counts"
+    },
+    "apply_functions": {
+      "node": "transform",
+      "section": "apply"
+    },
+    "groupby": {
+      "node": "grouping",
+      "section": "groupby"
+    },
+    "agg_functions": {
+      "node": "grouping",
+      "section": "agg"
+    },
+    "summary_tables": {
+      "node": "grouping",
+      "section": "pivot"
+    },
+    "df_transformations": {
+      "node": "transform",
+      "section": "columns"
+    },
+    "eda_workflow": {
+      "node": "eda_case",
+      "section": "workflow"
+    },
+    "churn_eda_case": {
+      "node": "eda_case",
+      "section": "churn"
+    }
+  }
 }

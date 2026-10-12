@@ -6,6 +6,7 @@
 сходятся.
 """
 
+from course_fixtures import T1
 import json
 
 import httpx
@@ -15,9 +16,9 @@ from web_fakes import GradingTutor
 
 from llm_tutor.config import Settings
 from llm_tutor.core import lesson, overview
-from llm_tutor.core.turn import handle_turn
+from llm_tutor.core.turn import handle_turn, lesson_next_reply
 from llm_tutor.course.ingest import ingest_text
-from llm_tutor.course.seed import load_seed
+from legacy_course import load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.llm.client import LLMClient
@@ -89,13 +90,22 @@ async def test_provider_error_is_reported_and_turn_persisted() -> None:
     respx.post(OPENROUTER).mock(return_value=httpx.Response(500, text="boom"))
     client = _client(settings)
     try:
-        reply = await handle_turn(
+        # Вход в тему без модели: урок не блокируется — описание темы из графа
+        # и «Проверим» (срез 28).
+        entering = await handle_turn(
             conn, client, "m", "как работает groupby?", now=1.0, settings=settings
         )
+        assert entering.text.startswith("📘")
+        assert entering.button is not None
 
-        assert reply.text == LLM_FAILURE_REPLY
+        # Вопрос посреди урока без модели — честное «не смог получить ответ».
+        reply = await handle_turn(
+            conn, client, "m", "а зачем это нужно?", now=2.0, settings=settings
+        )
+
+        assert reply.text.startswith(LLM_FAILURE_REPLY)
         session_id = repos.get_open_session(conn)
-        assert len(repos.get_messages(conn, session_id)) == 2
+        assert len(repos.get_messages(conn, session_id)) == 4
     finally:
         await client.aclose()
         conn.close()
@@ -104,7 +114,9 @@ async def test_provider_error_is_reported_and_turn_persisted() -> None:
 @respx.mock
 async def test_full_topic01_scenario() -> None:
     settings = Settings(
-        _env_file=None, openrouter_api_key="test-key"
+        _env_file=None,
+        openrouter_api_key="test-key",
+        guide_success_streak=2,  # сценарий проверяет конвейер, а не правило закрытия
     )
     conn = get_conn(":memory:")
     migrate(conn)
@@ -142,11 +154,12 @@ async def test_full_topic01_scenario() -> None:
         # 1. Анкета: профиль и слабый априор, без обращения к модели
         survey.apply_answers(
             conn,
-            {block.key: 1 for block in survey.BLOCKS},
+            T1,
+            {block.key: 1 for block in T1.blocks},
             now=0.0,
             settings=settings,
         )
-        assert survey.is_completed(conn)
+        assert survey.is_completed(conn, T1)
         assert repos.get_events(conn)  # самооценка записана в журнал
 
         # 2. Вопрос тьютору — структурированный ответ модели
@@ -206,12 +219,15 @@ def _state(conn) -> SessionState:
 
 async def _finish_survey(conn, settings, answers: list[int]):
     """Анкета ответами ``answers`` и первый ход урока — как после «Начать урок»."""
-    progress = survey.Progress()
+    progress = survey.Progress(T1)
     for index in answers:
         progress = progress.answer(index)
     assert progress.next_key() is None
-    survey.apply_answers(conn, progress.final_answers(), level=progress.level, settings=settings)
-    return await lesson.begin_lesson(conn, GradingTutor(conn, passed=True), "m", settings=settings)
+    survey.apply_answers(conn, T1, progress.final_answers(), level=progress.level, settings=settings)
+    return await lesson.begin_lesson(
+        conn, GradingTutor(conn, passed=True), "m", settings=settings,
+        claimed=survey.claimed_concepts(conn, T1),
+    )
 
 
 async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> None:
@@ -221,20 +237,38 @@ async def test_new_student_goes_from_start_to_closed_node(conn, settings) -> Non
     start, reply = await _finish_survey(conn, settings, [survey.LEVEL_FROM_SCRATCH])
 
     assert start.upcoming and reply is not None
-    assert _state(conn).pending_item_id is not None  # урок начался: первое задание
+    assert reply.button is not None  # урок начался первой частью (срез 28)
+    assert _state(conn).pending_item_id is None
     assert not _is_closed(conn, "python_basics")  # до ответов узел не закрыт
 
-    # Отвечаем верно на первый тест узла, за ним на второй — и узел закрывается.
+    # «Дальше» до «Проверим» — и вопрос по теме.
+    task = await _press_until_task(conn, settings)
+    assert task.item_id is not None
+
+    # Верный ответ закрывает тему (срез 28: один вопрос на тему).
     client = GradingTutor(conn, passed=True)
-    for now in (2.0, 3.0):
-        item = repos.get_item(conn, _state(conn).pending_item_id)
-        assert item is not None
-        assert "python_basics" in item.concept_weights
-        answer = item.options[int(item.answer)] if item.options else str(item.answer)
-        await handle_turn(conn, client, "m", answer, now=now, settings=settings)
+    item = repos.get_item(conn, _state(conn).pending_item_id)
+    assert "python_basics" in item.concept_weights
+    answer = item.options[int(item.answer)] if item.options else str(item.answer)
+    await handle_turn(
+        conn, client, "m", answer, now=3.0, settings=settings,
+        allow_intents=False, answer_mode="answer",
+    )
 
     assert _is_closed(conn, "python_basics")
     assert _state(conn).current_node_id != "python_basics"  # урок пошёл дальше
+
+
+async def _press_until_task(conn, settings):
+    """Жмёт кнопку урока («Дальше», затем «Проверим»), пока не выдан вопрос."""
+    for now in (2.0, 2.1, 2.2, 2.3):
+        state = _state(conn)
+        reply = lesson_next_reply(
+            conn, state.current_node_id, state.lesson_part, now=now, settings=settings
+        )
+        if reply.item_id is not None:
+            return reply
+    raise AssertionError("кнопка урока так и не дала вопрос")
 
 
 def _is_closed(conn, node_id: str) -> bool:
@@ -265,4 +299,5 @@ async def test_confident_student_skips_known_blocks(conn, settings) -> None:
     current = _state(conn).current_node_id
     assert current == start.first
     assert current not in survey.claimed_concepts(conn)
-    assert _state(conn).pending_item_id is not None  # урок начался с задания
+    assert reply.button is not None  # урок начался с первой части, а не с проверки
+    assert _state(conn).mode != "verify"

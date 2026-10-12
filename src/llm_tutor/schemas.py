@@ -6,7 +6,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Role = Literal["system", "user", "assistant"]
 
@@ -30,16 +30,35 @@ EdgeType = Literal["requires", "part_of", "leads_to"]
 AnswerType = Literal["open", "code", "choice", "short"]
 
 
+class Section(BaseModel):
+    """Раздел занятия (срез 53): шаг внутри узла со своим объяснением и заданиями.
+
+    Своих рёбер и владения у раздела нет — это не узел графа.
+    """
+
+    # Пробелы по краям снимаются: «Series » иначе не нашлось бы в конспекте
+    # заголовком «## Series» (аудит среза 53, L2).
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+
+
 class Concept(BaseModel):
-    """Узел графа курса (концепт)."""
+    """Узел графа курса (концепт); с разделами — занятие."""
 
     id: str
     name: str
     difficulty: float = Field(default=0.5, ge=0.0, le=1.0)
     description: str | None = None
     source_url: str | None = None
+    # Модуль курса (1–10). Проставляет загрузчик по seed-файлу модуля (срез 24);
+    # у узлов из тестов и данных до модулей — первый модуль.
+    topic_id: int = Field(default=1, ge=1)
     # Убранный из seed узел не удаляется (на него ссылаются события), а гасится.
     active: bool = True
+    # Разделы занятия по порядку; пусто — узел в старом формате (тема).
+    sections: list[Section] = Field(default_factory=list)
 
 
 class Edge(BaseModel):
@@ -86,6 +105,10 @@ class Item(BaseModel):
     tests: str | None = None
     # Убранное из seed задание не удаляется (на него ссылаются события), а гасится.
     active: bool = True
+    # Раздел главного концепта задания (срез 53); у итогового задания занятия
+    # (``final``) раздела нет.
+    section: str | None = None
+    final: bool = False
 
     @property
     def runnable(self) -> bool:
@@ -112,6 +135,8 @@ class Item(BaseModel):
             raise ValueError(f"у short-задания {self.id} должен быть непустой эталон")
         if self.answer_type != "code" and (self.starter or self.setup or self.tests):
             raise ValueError(f"starter/setup/tests — только у code-задания (задание {self.id})")
+        if self.final and self.section is not None:
+            raise ValueError(f"у итогового задания {self.id} не бывает раздела")
         return self
 
 
@@ -133,6 +158,87 @@ class Criterion(BaseModel):
     positive_example: str | None = None
     negative_example: str | None = None
     active: bool = True
+
+
+# Вопрос об общем уровне: «с нуля», «немного», «уверенно» (срез 22).
+SURVEY_LEVEL_OPTIONS = 3
+
+
+class SurveyBlock(BaseModel):
+    """Блок анкеты модуля: ключ факта, имя для сводки, вопрос, пример API, темы."""
+
+    model_config = ConfigDict(frozen=True)
+
+    key: str
+    title: str
+    question: str
+    example: str
+    # Блок без тем ничего не говорит о маршруте — это ошибка seed.
+    concepts: tuple[str, ...] = Field(min_length=1)
+
+
+class SurveyConfig(BaseModel):
+    """Анкета модуля: вопрос об общем уровне и вопросы по блокам (срез 26).
+
+    Живёт в seed модуля: у каждого модуля свои блоки, а правила ветвления
+    общие (``student/survey.py``).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    level_key: str
+    level_question: str
+    level_options: tuple[str, ...]
+    blocks: tuple[SurveyBlock, ...]
+    # «Уверенно» в вопросе об уровне: эти блоки знакомы без вопроса.
+    assumed_by_confident: tuple[str, ...] = ()
+    # Фундамент: «Впервые вижу» здесь — дальше всё тоже незнакомо.
+    foundation: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def _check(self) -> "SurveyConfig":
+        """Анкета согласована сама с собой: иначе бот упал бы посреди вопросов."""
+        if len(self.level_options) != SURVEY_LEVEL_OPTIONS:
+            raise ValueError("в вопросе об уровне должно быть три варианта")
+        if not self.blocks:
+            raise ValueError("в анкете модуля нет блоков")
+        keys = [self.level_key, *(block.key for block in self.blocks)]
+        if len(set(keys)) != len(keys):
+            raise ValueError(f"Дубли ключей анкеты: {keys}")
+        unknown = sorted(
+            (set(self.assumed_by_confident) | set(self.foundation))
+            - {block.key for block in self.blocks}
+        )
+        if unknown:
+            raise ValueError(f"анкета ссылается на неизвестные блоки: {unknown}")
+        return self
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        """Ключи фактов анкеты: вопрос об уровне и все блоки."""
+        return (self.level_key, *(block.key for block in self.blocks))
+
+    def block(self, key: str) -> SurveyBlock:
+        """Блок по ключу факта (``KeyError``, если такого нет)."""
+        for block in self.blocks:
+            if block.key == key:
+                return block
+        raise KeyError(f"Нет блока анкеты с ключом {key!r}")
+
+
+class Topic(BaseModel):
+    """Модуль курса: номер, название, вводная и анкета (срез 24)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    number: int = Field(ge=1)
+    title: str
+    intro: str
+    survey: SurveyConfig
+    active: bool = True
+    # Модуль открыт ученикам (срез 53): неопубликованный виден в маршруте как
+    # «скоро», но войти в него нельзя.
+    published: bool = True
 
 
 class Event(BaseModel):
@@ -197,6 +303,8 @@ class Chunk(BaseModel):
     id: int | None = None
     concept_id: str | None = None
     section: str | None = None
+    # Модуль, к которому относится материал: RAG не подмешивает будущие модули.
+    topic_id: int = Field(default=1, ge=1)
 
 
 class RouteStep(BaseModel):
@@ -205,6 +313,13 @@ class RouteStep(BaseModel):
     concept_id: str
     mode: NodeMode
     status: RouteStepStatus
+    # Когда тема закрыта последний раз (unix time). Провалы ПОСЛЕ закрытия
+    # открывают её снова, а у открывшейся время остаётся меткой «была закрыта»:
+    # по ней тема прошлого модуля попадает в рабочий участок текущего.
+    closed_at: float | None = None
+    # Закрыта после второй ошибки на проверке урока, а не доказательством
+    # (срез 28): в маршруте видна как ⚠️, пока владение не станет уверенным.
+    weak: bool = False
 
 
 class Route(BaseModel):
@@ -212,6 +327,11 @@ class Route(BaseModel):
 
     goal_concept_id: str | None = None
     steps: list[RouteStep] = Field(default_factory=list)
+    # Модуль, над которым идёт работа (None — открытых тем нет нигде).
+    topic_id: int | None = None
+    # Модули, о прохождении которых ученику уже сказали «🎉»: возврат к их
+    # темам не объявляет модуль пройденным повторно.
+    completed_topics: list[int] = Field(default_factory=list)
 
     @property
     def closed_count(self) -> int:
@@ -241,3 +361,23 @@ class SessionState(BaseModel):
     # задания идут по второму кругу (повтор — слабым свидетельством).
     lesson_item_ids: list[int] = Field(default_factory=list)
     last_activity: float | None = None
+    # Урок за ручку (срез 28): части объяснения текущей темы и сколько из них
+    # уже показано; ошибки на проверке темы (второй шанс, потом — дальше).
+    lesson_parts: list[str] = Field(default_factory=list)
+    lesson_part: int = 0
+    check_misses: int = 0
+    # Тема, к которой ученик прыгнул из меню в модуль с непройденной анкетой:
+    # урок после анкеты начнётся с неё, даже если FSM потерян (/start, рестарт).
+    jump_node_id: str | None = None
+    # Проход начат просьбой «закрой тему», а не проверкой знакомого
+    # по анкете: серия до закрытия у него длиннее (``close_success_streak``).
+    close_requested: bool = False
+    # Занятие с разделами (срез 53): текущий раздел, пройденные в этом заходе,
+    # пройденные после двух ошибок и сдано ли итоговое задание. Вход в новое
+    # занятие обнуляет все эти поля (``guide.SECTION_RESET``).
+    section_id: str | None = None
+    passed_sections: list[str] = Field(default_factory=list)
+    weak_sections: list[str] = Field(default_factory=list)
+    final_passed: bool = False
+    # Итоговое сдано после двух ошибок (срез 54): занятие закроется с ⚠️.
+    final_weak: bool = False
