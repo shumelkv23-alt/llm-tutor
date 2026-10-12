@@ -40,6 +40,11 @@ ACTIVE_WINDOW = 7 * 24 * 3600.0
 # События-ответы на задания; ``dialogue`` и ``self`` ответами не считаются.
 ANSWER_SOURCES = ("autotest", "checked", "rubric")
 
+# Что значит «БД ученика не читается»: файл битый (``sqlite3.Error``), схема
+# не та (``RuntimeError`` из ``migrate``) или в ней лежит неразбираемое
+# состояние сессии (pydantic ``ValidationError`` — это ``ValueError``).
+UNREADABLE = (sqlite3.Error, RuntimeError, ValueError, KeyError)
+
 STATUS_LABELS = {
     "survey": "Анкета",
     "in_progress": "В процессе",
@@ -58,7 +63,6 @@ class Answer:
     id: int
     item_id: int
     result: float
-    hints_used: int
     ts: float
 
 
@@ -152,11 +156,14 @@ def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData
         "SELECT MAX(ts) FROM (SELECT MAX(ts) AS ts FROM events UNION ALL SELECT MAX(ts) FROM messages)"
     ).fetchone()[0]
     placeholders = ", ".join("?" * len(ANSWER_SOURCES))
+    # Ядро пишет по событию на каждый концепт задания (``plan_evidence``), все с
+    # одним ``ts``: один ответ ученика — одна строка, а не по числу концептов.
     answers = tuple(
-        Answer(id=row[0], item_id=row[1], result=row[2], hints_used=row[3], ts=row[4])
+        Answer(id=row[0], item_id=row[1], result=row[2], ts=row[3])
         for row in conn.execute(
-            "SELECT id, item_id, result, hints_used, ts FROM events "
-            f"WHERE item_id IS NOT NULL AND source IN ({placeholders}) ORDER BY ts, id",
+            "SELECT MIN(id), item_id, result, ts FROM events "
+            f"WHERE item_id IS NOT NULL AND source IN ({placeholders}) "
+            "GROUP BY item_id, ts, source ORDER BY ts, MIN(id)",
             ANSWER_SOURCES,
         )
     )
@@ -182,7 +189,7 @@ def _row(state, course: Course, user_id: int, previous: StudentRow | None) -> St
         return StudentRow(user_id, "busy", busy=True)
     try:
         data = read_student(pool.open(user_id, course.id), settings=state.settings)
-    except (sqlite3.DatabaseError, RuntimeError):
+    except UNREADABLE:
         # Одна битая БД не должна ронять админку (как в ``views.course_card``).
         logger.exception("БД ученика %s по курсу %s не открывается", user_id, course.id)
         return StudentRow(user_id, "error")
@@ -230,8 +237,17 @@ def summarize(snap: Snapshot, *, total: int, now: float) -> Summary:
 
 
 def format_time(ts: float | None) -> str:
-    """Дата и время для таблиц; нет значения — прочерк."""
-    return "—" if ts is None else datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
+    """Дата и время для таблиц; нет значения или метка не разбирается — прочерк.
+
+    Время — по часам сервера. Метка в ``events`` бывает мусорной (``inf``, «из
+    будущего» за пределом платформы): такая строка не должна ронять страницу.
+    """
+    if ts is None:
+        return "—"
+    try:
+        return datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
+    except (OverflowError, OSError, ValueError):
+        return "—"
 
 
 # --- Карточка ученика ---
@@ -282,12 +298,17 @@ def _recent_answers(conn: sqlite3.Connection) -> list[dict]:
     """Последние события по заданиям: время, занятие, задание, источник, итог."""
     graph = CourseGraph.load(conn)
     result = []
-    for ts, concept_id, item_id, source, score, hints, spent in conn.execute(
-        "SELECT ts, concept_id, item_id, source, result, hints_used, time_spent FROM events "
-        "WHERE item_id IS NOT NULL ORDER BY ts DESC, id DESC LIMIT ?",
+    # Событие на концепт задания: один ответ — одна строка; занятие — по главному
+    # концепту задания, а не по тому, чьё событие оказалось первым.
+    for ts, concept_id, item_id, source, score in conn.execute(
+        "SELECT ts, concept_id, item_id, source, result FROM events "
+        "WHERE id IN (SELECT MIN(id) FROM events WHERE item_id IS NOT NULL "
+        "GROUP BY item_id, ts, source) ORDER BY ts DESC, id DESC LIMIT ?",
         (RECENT_ANSWERS,),
     ):
         item = repos.get_item(conn, item_id)
+        main = main_concept(item) if item is not None else None
+        concept_id = main or concept_id
         lesson = graph.concept(concept_id).name if concept_id and graph.has_node(concept_id) else None
         result.append(
             {
@@ -298,8 +319,6 @@ def _recent_answers(conn: sqlite3.Connection) -> list[dict]:
                 "source": source,
                 "result": _result_label(score),
                 "right": score >= 0.5,
-                "hints": hints,
-                "spent": None if spent is None else f"{round(spent)} с",
             }
         )
     return result
@@ -329,7 +348,7 @@ def student_card(
         conn = pool.open(account.id, course.id)
         learning = views.learning_view(conn, settings=state.settings)
         answers = _recent_answers(conn)
-    except (sqlite3.DatabaseError, RuntimeError):
+    except UNREADABLE:
         logger.exception("БД ученика %s по курсу %s не открывается", account.id, course.id)
         return StudentCard(state="error", **base)
     return StudentCard(state="ok", learning=learning, answers=answers, **base)
@@ -411,7 +430,6 @@ class HardItem:
     right: float  # доля ответов с result >= 0.5
     first_try: float  # доля учеников, чей первый ответ верный
     attempts: float  # ответов на ученика
-    hints: float  # подсказок на ответ
 
     @property
     def thin(self) -> bool:
@@ -461,7 +479,6 @@ def hard_items(
                 right=sum(1 for answer in answers if answer.result >= 0.5) / len(answers),
                 first_try=sum(1 for student in per_student if student[0].result >= 0.5) / len(per_student),
                 attempts=len(answers) / len(per_student),
-                hints=sum(answer.hints_used for answer in answers) / len(answers),
             )
         )
     rows.sort(key=lambda row: (row.thin, row.right, -row.answers, row.item_id))

@@ -428,7 +428,12 @@ def list_users(conn: sqlite3.Connection, q: str = "") -> list[AccountRow]:
 
 
 def get_account(conn: sqlite3.Connection, user_id: int) -> AccountRow | None:
-    """Аккаунт для админки или ``None``."""
+    """Аккаунт для админки или ``None``.
+
+    id вне диапазона SQLite INTEGER — «нет такого»: иначе ``OverflowError`` и 500.
+    """
+    if not 0 < user_id < 2**63:
+        return None
     row = conn.execute(
         "SELECT id, email, name, created_at, last_login_at, is_admin FROM users WHERE id = ?",
         (user_id,),

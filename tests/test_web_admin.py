@@ -10,7 +10,8 @@ from llm_tutor.web.cli import main as cli_main
 
 ANN = {"email": "ann@example.com", "name": "Аня", "password": "секретный-пароль"}
 BOB = {"email": "bob@example.com", "name": "Боб", "password": "другой-пароль-1"}
-ADMIN = {"email": "root@example.com", "name": "Админ", "password": "пароль-админа-1"}
+# Имя не должно быть подстрокой слов интерфейса («Админка»): иначе проверки «имя на странице» вхолостую.
+ADMIN = {"email": "root@example.com", "name": "Хозяин", "password": "пароль-админа-1"}
 
 
 def _set_admin(web_app, email: str, value: bool = True) -> None:
@@ -520,7 +521,7 @@ async def test_students_page_lists_progress(admin, web_app) -> None:
 
     html = await _students_page(admin)
 
-    for text in ("Ann", "ann@example.com", "Bob", "bob@example.com", "Админ"):
+    for text in ("Ann", "ann@example.com", "Bob", "bob@example.com", ADMIN["name"]):
         assert text in html
     assert "В процессе" in html and "Анкета" in html
     assert "1 из" in html
@@ -654,7 +655,7 @@ def _items(web_app, user, count: int):
     return [item for item in repos.get_items(_db(web_app, user)) if not item.final][:count]
 
 
-def _answer(web_app, user, item, ts: float, *, result: float = 1.0, source: str = "autotest", hints: int = 0, spent=None):
+def _answer(web_app, user, item, ts: float, *, result: float = 1.0, source: str = "autotest"):
     repos.add_event(
         _db(web_app, user),
         Event(
@@ -662,8 +663,6 @@ def _answer(web_app, user, item, ts: float, *, result: float = 1.0, source: str 
             result=result,
             item_id=item.id,
             concept_id=next(iter(item.concept_weights), None),
-            hints_used=hints,
-            time_spent=spent,
             ts=ts,
         ),
     )
@@ -784,7 +783,7 @@ async def test_card_answer_row_details(admin, web_app) -> None:
     conn = _db(web_app, user)
     conn.execute("UPDATE items SET prompt = ? WHERE id = ?", ("а" * 200, item.id))
     conn.commit()
-    _answer(web_app, user, item, 2000.0, result=1.0, source="autotest", hints=2, spent=12.0)
+    _answer(web_app, user, item, 2000.0, result=1.0, source="autotest")
     _answer(web_app, user, item, 2001.0, result=0.0, source="checked")
     _answer(web_app, user, item, 2002.0, result=0.4, source="rubric")
 
@@ -795,7 +794,6 @@ async def test_card_answer_row_details(admin, web_app) -> None:
     assert "верно" in html and "неверно" in html and "40%" in html
     for source in ("autotest", "checked", "rubric"):
         assert source in html
-    assert "12 с" in html
     await client.aclose()
 
 
@@ -908,7 +906,7 @@ async def test_card_admin_log_empty_and_filled(admin, web_app) -> None:
 
     assert "Действий не было" not in html
     assert "Сброс пароля" in html and "Закрытие сессий" in html
-    assert "Админ" in html  # имя админа из журнала
+    assert ADMIN["name"] in html  # имя админа из журнала
     assert html.count('class="log-row"') == 2
     await client.aclose()
 
@@ -1338,14 +1336,14 @@ async def test_hard_items_statistics(web_app) -> None:
     users = [user for _, user in people]
     # Задание 1: пять учеников по одному ответу — верно, верно, неверно, неверно, неверно.
     for index, (user, result) in enumerate(zip(users, (1.0, 1.0, 0.0, 0.0, 0.0))):
-        _answer(web_app, user, first, 100.0 + index, result=result, hints=1 if index == 0 else 0)
+        _answer(web_app, user, first, 100.0 + index, result=result)
     # Задание 2: три ученика; первый ответ верный только у второго.
     _answer(web_app, users[0], second, 200.0, result=0.0)
     _answer(web_app, users[0], second, 201.0, result=1.0)
     _answer(web_app, users[1], second, 202.0, result=1.0)
     _answer(web_app, users[2], second, 203.0, result=0.0)
     _answer(web_app, users[2], second, 204.0, result=0.0)
-    _answer(web_app, users[2], second, 205.0, result=1.0, hints=3)
+    _answer(web_app, users[2], second, 205.0, result=1.0)
     # Задание 3: два ответа одного ученика.
     _answer(web_app, users[0], third, 300.0, result=0.0)
     _answer(web_app, users[0], third, 301.0, result=0.0)
@@ -1357,12 +1355,10 @@ async def test_hard_items_statistics(web_app) -> None:
     assert a.right == pytest.approx(0.4)
     assert a.first_try == pytest.approx(0.4)
     assert a.attempts == pytest.approx(1.0)
-    assert a.hints == pytest.approx(0.2)
     assert (b.students, b.answers) == (3, 6)
     assert b.right == pytest.approx(0.5)
     assert b.first_try == pytest.approx(1 / 3)
     assert b.attempts == pytest.approx(2.0)
-    assert b.hints == pytest.approx(0.5)
     assert (c.students, c.answers) == (1, 2)
     assert c.right == 0.0
     assert not a.thin and not b.thin  # от 5 ответов и от 3 учеников — данные
@@ -1581,3 +1577,189 @@ async def test_admin_tabs_link_to_the_course_page(admin) -> None:
     html = await _students_page(admin)
 
     assert 'href="/admin/course"' in html
+
+
+# --- Аудит среза 68: находки общего ревью ---
+
+import math
+
+from llm_tutor.course.graph import CourseGraph
+from llm_tutor.student import diagnostic
+
+
+def _two_concept_item():
+    return next(item for item in _data().items if len(item.concept_weights) >= 2 and not item.final)
+
+
+def _core_answer(web_app, user, item, ts: float, score: float = 1.0) -> int:
+    """Ответ так, как его пишет ядро: по событию на каждый концепт задания."""
+    conn = _db(web_app, user)
+    main = max(item.concept_weights, key=item.concept_weights.__getitem__)
+    events, _ = diagnostic.plan_evidence(
+        conn, CourseGraph.load(conn), item, main, score, source="checked", now=ts, settings=web_app.state.settings
+    )
+    for event in events:
+        repos.add_event(conn, event)
+    return len(events)
+
+
+async def test_one_answer_to_a_multi_concept_item_is_one_answer(admin, web_app) -> None:
+    """M1: ядро пишет событие на каждый концепт, а ответ ученика — один."""
+    client, user = await _learner(web_app, "Ann")
+    item = _two_concept_item()
+    assert _core_answer(web_app, user, item, 5000.0) >= 2  # в журнале несколько событий
+
+    row, = admin_data.hard_items(_snapshot(web_app), _data())
+    html = (await _card(admin, user.id)).text
+
+    assert (row.students, row.answers, row.attempts) == (1, 1, 1.0)
+    assert html.count('class="answer-row"') == 1
+    await client.aclose()
+
+
+async def test_two_separate_answers_stay_two(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    item = _two_concept_item()
+    _core_answer(web_app, user, item, 5000.0, 0.0)
+    _core_answer(web_app, user, item, 5001.0, 1.0)
+
+    row, = admin_data.hard_items(_snapshot(web_app), _data())
+
+    assert (row.answers, row.right, row.first_try) == (2, 0.5, 0.0)
+    assert (await _card(admin, user.id)).text.count('class="answer-row"') == 2
+    await client.aclose()
+
+
+async def test_card_names_the_lesson_by_the_main_concept(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    item = _two_concept_item()
+    _core_answer(web_app, user, item, 5000.0)
+    main = max(item.concept_weights, key=item.concept_weights.__getitem__)
+    lesson = next(node.name for node in _data().nodes if node.id == main)
+
+    assert lesson in (await _card(admin, user.id)).text
+    await client.aclose()
+
+
+async def test_no_hint_or_time_columns_without_a_data_source(admin, web_app) -> None:
+    """M2: ``hints_used``/``time_spent`` нигде не пишутся — столбцов нет."""
+    client, user = await _learner(web_app, "Ann")
+    _answer(web_app, user, _pick_items(1)[0], 100.0)
+
+    for html in (await _card(admin, user.id)).text, await _course_page(admin):
+        assert "Подсказок" not in html and "Время решения" not in html
+    await client.aclose()
+
+
+@pytest.mark.parametrize("raw", ["99999999999999999999999", str(2**63), "-5", "0"])
+async def test_out_of_range_ids_are_not_found(admin, raw: str) -> None:
+    """M3: id вне диапазона SQLite — 404, а не 500."""
+    assert (await admin.get(f"/admin/students/{raw}")).status_code == 404
+    for action in ("reset-password", "close-sessions"):
+        response = await admin.post(f"/api/admin/students/{raw}/{action}", json={})
+        assert response.status_code == 404, (raw, action)
+
+
+@pytest.mark.parametrize("state", ["{garbage", '{"current_node_id": 123}', "null", "[]"])
+async def test_unreadable_session_state_does_not_break_the_pages(admin, web_app, state: str) -> None:
+    """M4: битое состояние сессии одного ученика не роняет списки и аналитику."""
+    good, _ = await _learner(web_app, "Ann", survey_done=True)
+    bad, bad_user = await _learner(web_app, "Bob", survey_done=True)
+    conn = _db(web_app, bad_user)
+    conn.execute("UPDATE sessions SET state = ?", (state,))
+    conn.commit()
+
+    listing = await admin.get("/admin/students", params={"refresh": 1})
+    course = await admin.get("/admin/course")
+    card = await _card(admin, bad_user.id)
+
+    assert listing.status_code == course.status_code == card.status_code == 200
+    assert "Недоступен" in listing.text and "ann@example.com" in listing.text
+    assert "недоступны" in card.text.lower()
+    await good.aclose()
+    await bad.aclose()
+
+
+@pytest.mark.parametrize("ts", [1.7e12, -5.0, 1e20, math.inf])  # NaN в SQLite — NULL, а ts NOT NULL
+async def test_garbage_timestamps_do_not_break_the_pages(admin, web_app, ts: float) -> None:
+    """L2: мусорная метка времени в журнале — прочерк, а не 500."""
+    client, user = await _learner(web_app, "Ann")
+    item, = _items(web_app, user, 1)
+    conn = _db(web_app, user)
+    conn.execute(
+        "INSERT INTO events (ts, concept_id, item_id, source, result) VALUES (?, NULL, ?, 'autotest', 1.0)",
+        (ts, item.id),
+    )
+    conn.commit()
+
+    assert (await admin.get("/admin/students", params={"refresh": 1})).status_code == 200
+    assert (await _card(admin, user.id)).status_code == 200
+    assert (await _course_page(admin))
+    await client.aclose()
+
+
+def test_format_time_survives_garbage() -> None:
+    for ts in (1e20, math.inf, -math.inf, math.nan, 1.7e12):
+        assert admin_data.format_time(ts) == "—" or "." in admin_data.format_time(ts)
+    assert admin_data.format_time(None) == "—"
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("POST", "/admin/students"),
+        ("PUT", "/admin/course"),
+        ("DELETE", "/admin/students/1"),
+        ("GET", "/admin/"),
+        ("GET", "/admin/students/"),
+        ("GET", "/admin/course/"),
+        ("GET", "/api/admin/students/1/reset-password"),
+        ("GET", "/api/admin/students/1/close-sessions"),
+        ("POST", "/api/admin/students/abc/reset-password"),
+        ("GET", "/api/admin"),
+        ("GET", "/admin"),
+    ],
+)
+async def test_plain_student_cannot_tell_admin_paths_from_unknown_ones(student, method: str, path: str) -> None:
+    """L1: ни 405, ни 307 со слэшем: не-админу всё под /admin — как несуществующее."""
+    unknown = await student.request("GET", "/no/such/page/")
+
+    response = await student.request(method, path, json=None if method == "GET" else {})
+
+    assert (response.status_code, response.json()) == (unknown.status_code, unknown.json()) == (404, {"detail": "Not Found"})
+
+
+async def test_cloak_does_not_catch_lookalike_paths(student) -> None:
+    for path in ("/administrator", "/admins", "/api/administrators"):
+        response = await student.get(path)
+        assert response.status_code == 404  # обычный 404, а не плащ — просто нет такой страницы
+
+
+async def test_admin_still_sees_real_405s(admin) -> None:
+    assert (await admin.post("/admin/students", json={})).status_code == 405
+
+
+async def test_admin_pages_are_not_cached_by_the_browser(admin) -> None:
+    """Страницы с чужими email не должны вернуться по «Назад» после выхода."""
+    for path in ("/admin/students", "/admin/course"):
+        assert (await admin.get(path)).headers["cache-control"] == "no-store"
+
+
+async def test_busy_student_is_not_read_mid_turn(web_app) -> None:
+    """L6: пока ход идёт, снимок не читает соединение ученика — даже если данные поменялись."""
+    client, user = await _learner(web_app, "Ann")
+    _event(web_app, user, 5000.0)
+    first = _snapshot(web_app)
+    lock = web_app.state.userdbs.lock(user.id, COURSE)
+
+    await lock.acquire()
+    try:
+        _event(web_app, user, 9_000_000_000.0)  # «ход» успел записать, но не закончил
+        busy = _snapshot(web_app, refresh=True)
+    finally:
+        lock.release()
+
+    assert busy.rows[user.id].busy
+    assert busy.rows[user.id].last_activity == first.rows[user.id].last_activity == 5000.0
+    assert _snapshot(web_app, refresh=True).rows[user.id].last_activity == 9_000_000_000.0
+    await client.aclose()

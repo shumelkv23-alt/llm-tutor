@@ -54,7 +54,7 @@
   {% if items %}
   <div class="table-wrap">
     <table class="topics-table admin-table">
-      <thead><tr><th scope="col">Задание</th><th scope="col">Учеников</th><th scope="col">Ответов</th><th scope="col">Верно</th><th scope="col">С первой попытки</th><th scope="col">Попыток на ученика</th><th scope="col">Подсказок</th></tr></thead>
+      <thead><tr><th scope="col">Задание</th><th scope="col">Учеников</th><th scope="col">Ответов</th><th scope="col">Верно</th><th scope="col">С первой попытки</th><th scope="col">Попыток на ученика</th></tr></thead>
       <tbody>
         {% for item in items %}
         <tr class="item-row{% if item.thin %} dim{% endif %}" data-item="{{ item.item_id }}">
@@ -67,7 +67,6 @@
           <td>{{ (item.right * 100)|round|int }}%</td>
           <td>{{ (item.first_try * 100)|round|int }}%</td>
           <td>{{ '%.1f'|format(item.attempts) }}</td>
-          <td>{{ '%.1f'|format(item.hints) }}</td>
         </tr>
         {% endfor %}
       </tbody>

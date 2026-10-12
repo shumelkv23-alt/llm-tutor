@@ -18,9 +18,9 @@ def _register(base: str, email: str, name: str, password: str) -> httpx.Client:
     return client
 
 
-async def _admin_page(page, base: str, tmp_path):
+async def _admin_page(page, base: str, tmp_path, student_name: str = "Ученик"):
     """Админ вошёл в браузер; возвращает клиент ученика и его id."""
-    student = _register(base, "student@example.com", "Ученик", PASSWORD)
+    student = _register(base, "student@example.com", student_name, PASSWORD)
     _register(base, "root@example.com", "Владелец", ADMIN_PASSWORD).close()
     db = accounts.open_accounts(str(tmp_path / "accounts.sqlite3"))
     try:
@@ -112,5 +112,14 @@ async def test_actions_fit_a_phone(page, live_server, tmp_path) -> None:
 
     box = await page.locator("#password-dialog").bounding_box()
     assert box["x"] >= 0 and box["x"] + box["width"] <= 320
+    assert await page.evaluate("() => document.documentElement.scrollWidth") <= 320
+    student.close()
+
+
+async def test_long_name_does_not_widen_the_card(page, live_server, tmp_path) -> None:
+    """Имя из 60 символов без пробелов не раздвигает страницу на телефоне."""
+    await page.set_viewport_size({"width": 320, "height": 700})
+    student, _ = await _admin_page(page, live_server, tmp_path, student_name="Ж" * 60)
+
     assert await page.evaluate("() => document.documentElement.scrollWidth") <= 320
     student.close()

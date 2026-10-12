@@ -166,3 +166,9 @@
   color: var(--muted);
   font-size: 13px;
 }
+
+/* Длинное имя без пробелов не должно раздвигать страницу (карточка ученика). */
+.page-heading h1,
+.page-description {
+  overflow-wrap: anywhere;
+}
