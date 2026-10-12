@@ -1,8 +1,8 @@
 """Данные админки: снимок по всем ученикам курса, списки и сводки.
 
 Снимок — один обход БД записанных учеников: из него считаются список
-учеников, воронка по занятиям и таблица трудных заданий. Кэшируется на
-минуту в ``app.state.admin_cache`` (у каждого приложения свой).
+учеников и воронка по занятиям. Кэшируется на минуту в
+``app.state.admin_cache`` (у каждого приложения свой).
 
 Формул статусов здесь нет: прогресс и статусы тем берутся из
 ``core.overview`` и ``core.lesson`` (спека админки §3). Админка только читает.
@@ -37,8 +37,6 @@ logger = logging.getLogger(__name__)
 SNAPSHOT_TTL = 60.0
 # «Активен» в сводке — была активность за столько секунд.
 ACTIVE_WINDOW = 7 * 24 * 3600.0
-# События-ответы на задания; ``dialogue`` и ``self`` ответами не считаются.
-ANSWER_SOURCES = ("autotest", "checked", "rubric")
 
 # Что значит «БД ученика не читается»: файл битый (``sqlite3.Error``), схема
 # не та (``RuntimeError`` из ``migrate``) или в ней лежит неразбираемое
@@ -54,16 +52,6 @@ STATUS_LABELS = {
     "busy": "Отвечает",
     "not_enrolled": "Не записан",
 }
-
-
-@dataclass(frozen=True)
-class Answer:
-    """Ответ ученика на задание (строка журнала ``events``)."""
-
-    id: int
-    item_id: int
-    result: float
-    ts: float
 
 
 @dataclass(frozen=True)
@@ -85,7 +73,6 @@ class StudentData:
     weak: int
     last_activity: float | None
     lessons: dict[str, LessonMark]
-    answers: tuple[Answer, ...]
 
     @property
     def status(self) -> str:
@@ -107,7 +94,6 @@ class StudentRow:
     last_activity: float | None = None
     busy: bool = False
     lessons: dict[str, LessonMark] = field(default_factory=dict)
-    answers: tuple[Answer, ...] = ()
 
     @property
     def percent(self) -> int:
@@ -130,7 +116,7 @@ class Summary:
 
 
 def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData:
-    """Читает одну БД ученика: прогресс, статусы занятий, активность, ответы."""
+    """Читает одну БД ученика: прогресс, статусы занятий, активность."""
     rows = topic_rows(conn, settings=settings)
     session_id = repos.get_open_session(conn)
     state = repos.get_session_state(conn, session_id) if session_id else SessionState()
@@ -155,18 +141,6 @@ def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData
     latest = conn.execute(
         "SELECT MAX(ts) FROM (SELECT MAX(ts) AS ts FROM events UNION ALL SELECT MAX(ts) FROM messages)"
     ).fetchone()[0]
-    placeholders = ", ".join("?" * len(ANSWER_SOURCES))
-    # Ядро пишет по событию на каждый концепт задания (``plan_evidence``), все с
-    # одним ``ts``: один ответ ученика — одна строка, а не по числу концептов.
-    answers = tuple(
-        Answer(id=row[0], item_id=row[1], result=row[2], ts=row[3])
-        for row in conn.execute(
-            "SELECT MIN(id), item_id, result, ts FROM events "
-            f"WHERE item_id IS NOT NULL AND source IN ({placeholders}) "
-            "GROUP BY item_id, ts, source ORDER BY ts, MIN(id)",
-            ANSWER_SOURCES,
-        )
-    )
     return StudentData(
         survey_done=survey_done,
         total=len(rows),
@@ -174,7 +148,6 @@ def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData
         weak=sum(1 for row in rows if row.weak),
         last_activity=latest,
         lessons=lessons,
-        answers=answers,
     )
 
 
@@ -201,7 +174,6 @@ def _row(state, course: Course, user_id: int, previous: StudentRow | None) -> St
         weak=data.weak,
         last_activity=data.last_activity,
         lessons=data.lessons,
-        answers=data.answers,
     )
 
 
@@ -260,6 +232,8 @@ PROMPT_PREVIEW = 80
 ACTION_LABELS = {
     "reset_password": "Сброс пароля",
     "close_sessions": "Закрытие сессий",
+    "grant_admin": "Выдана роль админа",
+    "revoke_admin": "Снята роль админа",
 }
 
 
@@ -356,12 +330,6 @@ def student_card(
 
 # --- Аналитика курса ---
 
-# Меньше этого — «мало данных»: по двум ответам вывод о задании делать нельзя.
-MIN_ANSWERS = 5
-MIN_STUDENTS = 3
-FINAL_LABEL = "Итоговое задание"
-ANSWER_TYPES = {"open": "Открытый", "code": "Код", "choice": "Выбор", "short": "Короткий ответ"}
-
 
 @dataclass(frozen=True)
 class LessonFunnel:
@@ -379,9 +347,13 @@ class LessonFunnel:
 
 @dataclass(frozen=True)
 class ModuleFunnel:
+    """Модуль в воронке: строка-сводка (видна свёрнутой) и занятия внутри."""
+
     number: int
     title: str
     lessons: tuple[LessonFunnel, ...]
+    started: int  # учеников, дошедших хотя бы до одного занятия модуля
+    finished: int  # учеников, закрывших все занятия модуля
 
 
 def _published(data: CourseData):
@@ -396,90 +368,31 @@ def funnel(snap: Snapshot, data: CourseData) -> list[ModuleFunnel]:
     """
     marks = [row.lessons for row in snap.rows.values() if row.lessons]
     result = []
+    names = {node.id: node.name for node in data.nodes}
     for topic in _published(data):
+        ids = [node.id for node in data.nodes if node.topic_id == topic.number]
         lessons = []
-        for node in data.nodes:
-            if node.topic_id != topic.number:
-                continue
-            own = [lessons_of[node.id] for lessons_of in marks if node.id in lessons_of]
+        for node_id in ids:
+            own = [lessons_of[node_id] for lessons_of in marks if node_id in lessons_of]
             lessons.append(
                 LessonFunnel(
-                    id=node.id,
-                    name=node.name,
+                    id=node_id,
+                    name=names[node_id],
                     reached=sum(1 for mark in own if mark.reached),
                     closed=sum(1 for mark in own if mark.closed),
                     weak=sum(1 for mark in own if mark.closed and mark.weak),
                 )
             )
-        result.append(ModuleFunnel(number=topic.number, title=topic.title, lessons=tuple(lessons)))
-    return result
-
-
-@dataclass(frozen=True)
-class HardItem:
-    """Задание банка со статистикой ответов всех учеников."""
-
-    item_id: int
-    module: int
-    lesson: str
-    part: str | None  # «Итоговое задание» или название раздела
-    type: str
-    prompt: str
-    students: int
-    answers: int
-    right: float  # доля ответов с result >= 0.5
-    first_try: float  # доля учеников, чей первый ответ верный
-    attempts: float  # ответов на ученика
-
-    @property
-    def thin(self) -> bool:
-        """Данных мало: вывод о задании делать рано."""
-        return self.answers < MIN_ANSWERS or self.students < MIN_STUDENTS
-
-
-def hard_items(
-    snap: Snapshot, data: CourseData, *, module: int | None = None, type: str | None = None
-) -> list[HardItem]:
-    """Задания с ответами: сначала с наименьшей долей верных, «мало данных» — в конце.
-
-    Задание привязано к занятию своего главного концепта. Ответы на задания,
-    которых нет в seed, не считаются; задания без ответов в таблицу не попадают.
-    """
-    published = {topic.number for topic in _published(data)}
-    nodes = {node.id: node for node in data.nodes}
-    by_item: dict[int, list[list[Answer]]] = {}
-    for row in snap.rows.values():
-        grouped: dict[int, list[Answer]] = {}
-        for answer in row.answers:
-            grouped.setdefault(answer.item_id, []).append(answer)
-        for item_id, answers in grouped.items():
-            by_item.setdefault(item_id, []).append(answers)
-    rows = []
-    for item in data.items:
-        per_student = by_item.get(item.id)
-        node = nodes.get(main_concept(item) or "")
-        if not per_student or node is None or node.topic_id not in published:
-            continue
-        if (module is not None and node.topic_id != module) or (type is not None and item.answer_type != type):
-            continue
-        answers = [answer for student in per_student for answer in student]
-        part = FINAL_LABEL if item.final else next(
-            (section.title for section in node.sections if section.id == item.section), None
-        )
-        rows.append(
-            HardItem(
-                item_id=item.id,
-                module=node.topic_id,
-                lesson=node.name,
-                part=part,
-                type=item.answer_type,
-                prompt=_preview(item.prompt),
-                students=len(per_student),
-                answers=len(answers),
-                right=sum(1 for answer in answers if answer.result >= 0.5) / len(answers),
-                first_try=sum(1 for student in per_student if student[0].result >= 0.5) / len(per_student),
-                attempts=len(answers) / len(per_student),
+        own_module = [[lessons_of[i] for i in ids if i in lessons_of] for lessons_of in marks]
+        result.append(
+            ModuleFunnel(
+                number=topic.number,
+                title=topic.title,
+                lessons=tuple(lessons),
+                started=sum(1 for module in own_module if any(mark.reached for mark in module)),
+                finished=sum(
+                    1 for module in own_module if len(module) == len(ids) and all(m.closed for m in module)
+                ),
             )
         )
-    rows.sort(key=lambda row: (row.thin, row.right, -row.answers, row.item_id))
-    return rows
+    return result

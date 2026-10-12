@@ -63,7 +63,8 @@ async def test_student_home_shows_continue_and_steps(student) -> None:
     assert "Решено заданий" in html
 
 
-async def test_profile_shows_account_survey_and_topics(student) -> None:
+async def test_profile_is_a_short_summary_of_the_current_course(student) -> None:
+    """Срез 69: аккаунт и краткая сводка по курсу — без анкеты, тем и модулей."""
     await student.post(f"/api/courses/{COURSE}/enroll", json={})
     await student.post(f"{BASE}/survey/finish", json={"answers": _answers()})
 
@@ -71,10 +72,19 @@ async def test_profile_shows_account_survey_and_topics(student) -> None:
 
     assert "ann@example.com" in html
     assert 'id="rename-form"' in html and 'id="password-form"' in html
-    assert "Итог анкеты" in html
-    assert html.count('<tr class="topic-row') == TOPICS
-    assert html.count('<tr class="module-row') == 5
-    assert "Текущая" in html
+    assert TITLE in html and "Сейчас:" in html
+    assert f"0 из {TOPICS}" in html
+    assert "Итог анкеты" not in html
+    assert 'class="topic-row' not in html and 'class="module-row' not in html
+    assert "Модуль 1" not in html
+
+
+async def test_profile_before_survey_points_to_it(student) -> None:
+    await student.post(f"/api/courses/{COURSE}/enroll", json={})
+
+    html = (await student.get("/profile")).text
+
+    assert TITLE in html and "анкет" in html
 
 
 async def test_profile_of_two_students_differs(student, web, web_app) -> None:
@@ -87,7 +97,7 @@ async def test_profile_of_two_students_differs(student, web, web_app) -> None:
         (time.time(),),
     )
     conn.commit()
-    assert "Закрыта" in (await student.get("/profile")).text
+    assert f"1 из {TOPICS}" in (await student.get("/profile")).text
 
     await web.post("/api/auth/logout", json={})
     await web.post("/api/auth/register", json={"email": "bob@example.com", "name": "Боб", "password": "пароль-боба"})
@@ -95,3 +105,37 @@ async def test_profile_of_two_students_differs(student, web, web_app) -> None:
 
     assert "Курсов пока нет" in html
     assert "ann@example.com" not in html
+
+
+# --- Срез 69: без фоновых надписей и «знакомых на проверку» ---
+
+
+@pytest.mark.parametrize("path", ["/", "/courses", "/profile", "/login"])
+async def test_no_footer_or_connection_badge(student, path) -> None:
+    html = (await student.get(path)).text
+
+    assert "Модель объясняет, код проверяет" not in html
+    assert "по материалам mlcourse.ai" not in html
+    assert 'id="connection"' not in html and "Подключение…" not in html
+
+
+async def test_home_does_not_count_claimed_lessons(student, web_app) -> None:
+    from llm_tutor.web.views import learning_view
+
+    await student.post(f"/api/courses/{COURSE}/enroll", json={})
+    progress, given = survey.Progress(T1), []
+    while (key := progress.next_key()) is not None:  # самый уверенный вариант — будут знакомые
+        index = len(survey.options_for(T1, key)) - 1
+        progress, given = progress.answer(index), [*given, index]
+    finish = await student.post(f"{BASE}/survey/finish", json={"answers": given})
+    assert finish.status_code == 200
+    ann = accounts.find_user(web_app.state.accounts, "ann@example.com")
+    conn = web_app.state.userdbs.open(ann.id, COURSE)
+    learning = learning_view(conn, settings=web_app.state.settings)
+    assert any(topic["status"] == "claimed" for topic in learning["topics"])
+
+    html = (await student.get("/")).text
+
+    assert "Знакомых на проверку" not in html
+    assert "Знакомая — проверим" not in html
+    assert "Решено заданий" in html and "Занятий впереди" in html

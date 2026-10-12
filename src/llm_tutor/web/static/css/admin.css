@@ -74,11 +74,6 @@
   margin-top: 16px;
 }
 
-/* Строка, по которой мало данных, — приглушённая. */
-.admin-table tr.dim {
-  color: var(--muted);
-}
-
 /* Карточка ученика */
 .admin-facts {
   display: grid;
@@ -150,25 +145,57 @@
   font-size: 13px;
 }
 
-.admin-filters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.admin-filters label {
-  display: grid;
-  flex: 1 1 200px;
-  gap: 4px;
-  max-width: 320px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
 /* Длинное имя без пробелов не должно раздвигать страницу (карточка ученика). */
 .page-heading h1,
 .page-description {
   overflow-wrap: anywhere;
+}
+
+/* Модуль воронки: свёрнут, в заголовке — сводка. */
+.admin-module {
+  border-top: 1px solid var(--border);
+}
+
+.admin-module summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+/* С display: flex у summary пропадает стандартный треугольник — свой маркер. */
+.admin-module summary {
+  list-style: none;
+}
+
+.admin-module summary::-webkit-details-marker {
+  display: none;
+}
+
+.admin-module-title {
+  font-weight: 700;
+}
+
+.admin-module-title::before {
+  content: "▸";
+  display: inline-block;
+  width: 1.2em;
+  color: var(--muted);
+  transition: transform 0.15s;
+}
+
+.admin-module[open] .admin-module-title::before {
+  transform: rotate(90deg);
+}
+
+.admin-module-meta {
+  font-size: 13px;
+}
+
+.admin-module[open] summary {
+  padding-bottom: 4px;
 }

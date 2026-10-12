@@ -59,6 +59,28 @@
       showPassword(password);
     },
 
+    async "grant-admin"(button) {
+      const ok = await confirm(
+        "Сделать админом?",
+        `«${button.dataset.name}» увидит данные всех учеников и сможет сбрасывать пароли, закрывать сессии и выдавать роль другим.`,
+        { label: "Сделать админом", danger: true }
+      );
+      if (!ok) return;
+      await request(`/api/admin/students/${encodeURIComponent(button.dataset.user)}/grant-admin`, { method: "POST" });
+      location.reload();
+    },
+
+    async "revoke-admin"(button) {
+      const ok = await confirm(
+        "Снять роль админа?",
+        `«${button.dataset.name}» потеряет доступ к админке со следующего действия. Его аккаунт и прогресс останутся.`,
+        { label: "Снять роль", danger: true }
+      );
+      if (!ok) return;
+      await request(`/api/admin/students/${encodeURIComponent(button.dataset.user)}/revoke-admin`, { method: "POST" });
+      location.reload();
+    },
+
     async "close-sessions"(button) {
       const name = button.dataset.name;
       const ok = await confirm(

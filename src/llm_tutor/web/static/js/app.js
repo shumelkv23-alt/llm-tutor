@@ -20,13 +20,6 @@ window.App = (() => {
     return svg;
   }
 
-  function connection(message, state = "") {
-    const element = $("#connection");
-    if (!element) return;
-    element.textContent = message;
-    element.className = `connection ${state}`.trim();
-  }
-
   function notify(message, { error = false } = {}) {
     const element = $("#toast");
     if (!element) return;
@@ -58,7 +51,6 @@ window.App = (() => {
         signal: AbortSignal.timeout(timeout),
       });
     } catch (cause) {
-      connection("Нет связи", "error");
       const problem = new Error(
         changing
           ? "Связь прервалась. Результат неизвестен — проверьте, прошло ли действие, прежде чем повторять."
@@ -68,7 +60,6 @@ window.App = (() => {
       problem.cause = cause;
       throw problem;
     }
-    connection("На связи", "online");
     if (!response.ok) {
       const data = await response.json().catch(() => ({}));
       const detail = typeof data.detail === "string" ? data.detail : data.detail?.message;
@@ -142,14 +133,6 @@ window.App = (() => {
     });
   }
 
-  async function checkConnection() {
-    try {
-      await request("/healthz", { timeout: 10000 });
-    } catch {
-      /* статус уже выставлен в request */
-    }
-  }
-
   async function logout() {
     try {
       await request("/api/auth/logout", { method: "POST", timeout: 10000 });
@@ -210,7 +193,6 @@ window.App = (() => {
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    checkConnection();
     $("#logout")?.addEventListener("click", logout);
     $("#sidebar-toggle")?.addEventListener("click", toggleSidebar);
     syncSidebarButton();
@@ -227,5 +209,5 @@ window.App = (() => {
     }
   });
 
-  return { $, icon, connection, notify, request, confirm, setTheme, currentTheme };
+  return { $, icon, notify, request, confirm, setTheme, currentTheme };
 })();

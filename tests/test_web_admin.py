@@ -1323,143 +1323,6 @@ def _pick_items(count: int):
     return [item for item in _data().items if not item.final][:count]
 
 
-async def _answerers(web_app, count: int):
-    made = []
-    for index in range(count):
-        made.append(await _learner(web_app, f"U{index}"))
-    return made
-
-
-async def test_hard_items_statistics(web_app) -> None:
-    first, second, third = _pick_items(3)
-    people = await _answerers(web_app, 5)
-    users = [user for _, user in people]
-    # Задание 1: пять учеников по одному ответу — верно, верно, неверно, неверно, неверно.
-    for index, (user, result) in enumerate(zip(users, (1.0, 1.0, 0.0, 0.0, 0.0))):
-        _answer(web_app, user, first, 100.0 + index, result=result)
-    # Задание 2: три ученика; первый ответ верный только у второго.
-    _answer(web_app, users[0], second, 200.0, result=0.0)
-    _answer(web_app, users[0], second, 201.0, result=1.0)
-    _answer(web_app, users[1], second, 202.0, result=1.0)
-    _answer(web_app, users[2], second, 203.0, result=0.0)
-    _answer(web_app, users[2], second, 204.0, result=0.0)
-    _answer(web_app, users[2], second, 205.0, result=1.0)
-    # Задание 3: два ответа одного ученика.
-    _answer(web_app, users[0], third, 300.0, result=0.0)
-    _answer(web_app, users[0], third, 301.0, result=0.0)
-
-    rows = {row.item_id: row for row in admin_data.hard_items(_snapshot(web_app), _data())}
-
-    a, b, c = rows[first.id], rows[second.id], rows[third.id]
-    assert (a.students, a.answers) == (5, 5)
-    assert a.right == pytest.approx(0.4)
-    assert a.first_try == pytest.approx(0.4)
-    assert a.attempts == pytest.approx(1.0)
-    assert (b.students, b.answers) == (3, 6)
-    assert b.right == pytest.approx(0.5)
-    assert b.first_try == pytest.approx(1 / 3)
-    assert b.attempts == pytest.approx(2.0)
-    assert (c.students, c.answers) == (1, 2)
-    assert c.right == 0.0
-    assert not a.thin and not b.thin  # от 5 ответов и от 3 учеников — данные
-    assert c.thin
-    for client, _ in people:
-        await client.aclose()
-
-
-async def test_hard_items_thresholds_and_order(web_app) -> None:
-    first, second, third = _pick_items(3)
-    people = await _answerers(web_app, 5)
-    users = [user for _, user in people]
-    # first: 5 ответов, 5 учеников — данных достаточно, доля верных 80 %.
-    for index, user in enumerate(users):
-        _answer(web_app, user, first, 100.0 + index, result=1.0 if index else 0.0)
-    # second: 5 ответов, но всего 2 ученика — мало данных, хотя доля верных 0 %.
-    for index in range(5):
-        _answer(web_app, users[index % 2], second, 200.0 + index, result=0.0)
-    # third: 4 ответа у 4 учеников — мало данных (меньше 5 ответов).
-    for index in range(4):
-        _answer(web_app, users[index], third, 300.0 + index, result=0.0)
-
-    rows = admin_data.hard_items(_snapshot(web_app), _data())
-
-    by_id = {row.item_id: row for row in rows}
-    assert not by_id[first.id].thin
-    assert by_id[second.id].thin and by_id[third.id].thin
-    ordered = [row.item_id for row in rows]
-    assert ordered[0] == first.id  # приглушённые — в конце, несмотря на 0 % верных
-    assert set(ordered[1:]) == {second.id, third.id}
-    for client, _ in people:
-        await client.aclose()
-
-
-async def test_hard_items_count_only_answers_to_items(web_app) -> None:
-    item, = _pick_items(1)
-    people = await _answerers(web_app, 1)
-    user = people[0][1]
-    _answer(web_app, user, item, 100.0, result=1.0, source="autotest")
-    _answer(web_app, user, item, 101.0, result=0.0, source="dialogue")
-    _answer(web_app, user, item, 102.0, result=0.0, source="self")
-    repos.add_event(_db(web_app, user), Event(source="autotest", result=0.0, item_id=None, ts=103.0))
-
-    row, = admin_data.hard_items(_snapshot(web_app), _data())
-
-    assert (row.answers, row.right) == (1, 1.0)
-    await people[0][0].aclose()
-
-
-async def test_hard_items_skip_items_missing_from_the_seed(web_app) -> None:
-    item, = _pick_items(1)
-    people = await _answerers(web_app, 1)
-    user = people[0][1]
-    conn = _db(web_app, user)
-    _answer(web_app, user, item, 100.0)
-    conn.execute("PRAGMA foreign_keys = OFF")
-    conn.execute(
-        "INSERT INTO events (ts, concept_id, item_id, source, result) VALUES (101.0, NULL, 987654, 'autotest', 0.0)"
-    )
-    conn.commit()
-    conn.execute("PRAGMA foreign_keys = ON")
-
-    rows = admin_data.hard_items(_snapshot(web_app), _data())
-
-    assert [row.item_id for row in rows] == [item.id]
-    await people[0][0].aclose()
-
-
-async def test_hard_items_belong_to_main_concept_lesson(web_app) -> None:
-    item, = _pick_items(1)
-    people = await _answerers(web_app, 1)
-    _answer(web_app, people[0][1], item, 100.0)
-    main = max(item.concept_weights, key=item.concept_weights.__getitem__)
-    lesson = next(node for node in _data().nodes if node.id == main)
-
-    row, = admin_data.hard_items(_snapshot(web_app), _data())
-
-    assert row.lesson == lesson.name
-    assert row.module == lesson.topic_id
-    assert row.type == item.answer_type
-    assert row.prompt.startswith(" ".join(item.prompt.split())[:20])
-    await people[0][0].aclose()
-
-
-async def test_hard_items_filters(web_app) -> None:
-    first, = _pick_items(1)
-    people = await _answerers(web_app, 1)
-    _answer(web_app, people[0][1], first, 100.0)
-    snap = _snapshot(web_app)
-    data = _data()
-
-    main = max(first.concept_weights, key=first.concept_weights.__getitem__)
-    module = next(node.topic_id for node in data.nodes if node.id == main)
-    assert admin_data.hard_items(snap, data, module=module)
-    assert admin_data.hard_items(snap, data, module=99) == []
-    assert admin_data.hard_items(snap, data, type=first.answer_type)
-    other = next(kind for kind in ("open", "code", "choice", "short") if kind != first.answer_type)
-    assert admin_data.hard_items(snap, data, type=other) == []
-    await people[0][0].aclose()
-
-
 async def _course_page(admin_client, **params) -> str:
     response = await admin_client.get("/admin/course", params=params)
     assert response.status_code == 200
@@ -1482,46 +1345,11 @@ async def test_course_page_shows_funnel_rows(admin, web_app) -> None:
         await client.aclose()
 
 
-async def test_course_page_shows_hard_items_sorted_with_dimmed_thin_rows(admin, web_app) -> None:
-    first, second = _pick_items(2)
-    people = await _answerers(web_app, 5)
-    for index, (_, user) in enumerate(people):
-        _answer(web_app, user, first, 100.0 + index, result=1.0 if index else 0.0)
-    _answer(web_app, people[0][1], second, 200.0, result=0.0)
-
-    html = await _course_page(admin)
-
-    assert f'data-item="{first.id}"' in html and f'data-item="{second.id}"' in html
-    assert html.index(f'data-item="{first.id}"') < html.index(f'data-item="{second.id}"')
-    thin = re.search(rf'<tr class="item-row[^"]*"[^>]*data-item="{second.id}"', html)
-    assert thin and "dim" in thin.group(0)
-    assert "мало данных" in html
-    assert "80%" in html
-    assert "подсказка" in html.lower()  # пояснение «подсказка, а не вердикт»
-    for client, _ in people:
-        await client.aclose()
-
-
-async def test_course_page_filters_and_ignores_junk(admin, web_app) -> None:
-    first, = _pick_items(1)
-    people = await _answerers(web_app, 1)
-    _answer(web_app, people[0][1], first, 100.0)
-
-    assert f'data-item="{first.id}"' in await _course_page(admin, module=1)
-    assert f'data-item="{first.id}"' not in await _course_page(admin, module=2)  # другой модуль
-    assert f'data-item="{first.id}"' in await _course_page(admin, module=99)  # неизвестный — мусор
-    assert f'data-item="{first.id}"' in await _course_page(admin, module="abc", type="zzz")
-    assert f'data-item="{first.id}"' in await _course_page(admin, type=first.answer_type)
-    other = next(kind for kind in ("open", "code", "choice", "short") if kind != first.answer_type)
-    assert f'data-item="{first.id}"' not in await _course_page(admin, type=other)
-    await people[0][0].aclose()
-
-
 async def test_course_page_without_students(admin) -> None:
     html = await _course_page(admin)
 
-    assert "Данных пока нет" in html
     assert "Модуль 1" in html  # воронка строится и без учеников — нулями
+    assert 'data-reached="0"' in html
 
 
 async def test_course_page_time_and_refresh(admin) -> None:
@@ -1546,27 +1374,6 @@ async def test_course_page_and_students_page_share_one_snapshot(admin, web_app, 
     await _course_page(admin, refresh=1)
     assert len(calls) > opened
     await client.aclose()
-
-
-async def test_course_page_escapes_item_prompts(admin, web_app, monkeypatch) -> None:
-    item, = _pick_items(1)
-    people = await _answerers(web_app, 1)
-    _answer(web_app, people[0][1], item, 100.0)
-    data = _data()
-    hostile = tuple(
-        i.model_copy(update={"prompt": "<script>alert(3)</script> <img src=x onerror=1> условие"})
-        if i.id == item.id
-        else i
-        for i in data.items
-    )
-    monkeypatch.setattr(web_courses, "course_data", lambda course: replace(data, items=hostile))
-
-    html = await _course_page(admin)
-
-    assert "<script>alert(3)" not in html and "<img src=x" not in html
-    assert "&lt;script&gt;" in html
-    assert "scrypt$" not in html
-    await people[0][0].aclose()
 
 
 async def test_course_page_requires_admin(student) -> None:
@@ -1609,10 +1416,8 @@ async def test_one_answer_to_a_multi_concept_item_is_one_answer(admin, web_app) 
     item = _two_concept_item()
     assert _core_answer(web_app, user, item, 5000.0) >= 2  # в журнале несколько событий
 
-    row, = admin_data.hard_items(_snapshot(web_app), _data())
     html = (await _card(admin, user.id)).text
 
-    assert (row.students, row.answers, row.attempts) == (1, 1, 1.0)
     assert html.count('class="answer-row"') == 1
     await client.aclose()
 
@@ -1623,9 +1428,6 @@ async def test_two_separate_answers_stay_two(admin, web_app) -> None:
     _core_answer(web_app, user, item, 5000.0, 0.0)
     _core_answer(web_app, user, item, 5001.0, 1.0)
 
-    row, = admin_data.hard_items(_snapshot(web_app), _data())
-
-    assert (row.answers, row.right, row.first_try) == (2, 0.5, 0.0)
     assert (await _card(admin, user.id)).text.count('class="answer-row"') == 2
     await client.aclose()
 
@@ -1762,4 +1564,177 @@ async def test_busy_student_is_not_read_mid_turn(web_app) -> None:
     assert busy.rows[user.id].busy
     assert busy.rows[user.id].last_activity == first.rows[user.id].last_activity == 5000.0
     assert _snapshot(web_app, refresh=True).rows[user.id].last_activity == 9_000_000_000.0
+    await client.aclose()
+
+
+# --- Срез 69: компактная страница курса и выдача роли из веба ---
+
+
+async def test_course_page_modules_are_collapsed(admin, web_app) -> None:
+    html = await _course_page(admin)
+    published = [topic for topic in _data().topics if topic.published]
+
+    blocks = re.findall(r"<details[^>]*>", html)
+    assert len(blocks) == len(published)
+    assert all('class="admin-module"' in block and " open" not in block for block in blocks)
+
+
+async def test_course_page_has_no_hard_items(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    _answer(web_app, user, _pick_items(1)[0], 100.0)
+
+    html = await _course_page(admin)
+
+    assert "Трудные задания" not in html
+    assert "data-item=" not in html
+    assert "admin-filters" not in html
+    await client.aclose()
+
+
+async def test_module_summary_counts_started_and_finished(web_app) -> None:
+    clients = await _funnel_students(web_app)
+    data = _data()
+    first_module = [node.id for node in data.nodes if node.topic_id == 1]
+    finisher, finisher_user = await _learner(web_app, "Fin", survey_done=True)
+    _set_state(web_app, finisher_user, current=None, closed=tuple(first_module))
+
+    funnel = admin_data.funnel(_snapshot(web_app), data)
+
+    module = next(block for block in funnel if block.number == 1)
+    # Sa, Sb, Sc и Fin дошли хотя бы до одного занятия; Sd без анкеты — нет.
+    assert module.started == 4
+    assert module.finished == 1
+    second = next(block for block in funnel if block.number == 2)
+    assert (second.started, second.finished) == (0, 0)
+    for client in (*clients, finisher):
+        await client.aclose()
+
+
+async def test_module_summary_is_shown_in_the_collapsed_row(admin, web_app) -> None:
+    clients = await _funnel_students(web_app)
+
+    html = await _course_page(admin)
+
+    summary = re.search(r'<details class="admin-module" data-module="1">\s*<summary>(.*?)</summary>', html, re.S)
+    assert summary and "начали 3" in summary.group(1) and "прошли 0" in summary.group(1)
+    for client in clients:
+        await client.aclose()
+
+
+async def test_course_page_ignores_old_filter_params(admin) -> None:
+    assert await _course_page(admin, module="abc", type="zzz")
+
+
+def _grant_url(user_id: int) -> str:
+    return f"/api/admin/students/{user_id}/grant-admin"
+
+
+def _revoke_url(user_id: int) -> str:
+    return f"/api/admin/students/{user_id}/revoke-admin"
+
+
+async def test_admin_grants_the_role_in_the_web(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    assert (await client.get("/admin/students")).status_code == 404
+
+    response = await admin.post(_grant_url(user.id), json={})
+
+    assert response.status_code == 200
+    assert response.json() == {"is_admin": True}
+    assert accounts.get_user(web_app.state.accounts, user.id).is_admin
+    # Роль действует сразу, без перелогина.
+    assert (await client.get("/admin/students")).status_code == 200
+    await client.aclose()
+
+
+async def test_admin_revokes_the_role_and_access_ends_at_once(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    await admin.post(_grant_url(user.id), json={})
+    assert (await client.get("/admin/students")).status_code == 200
+
+    response = await admin.post(_revoke_url(user.id), json={})
+
+    assert response.json() == {"is_admin": False}
+    assert (await client.get("/admin/students")).status_code == 404
+    assert (await client.get("/api/me")).status_code == 200  # аккаунт и сессия живы
+    await client.aclose()
+
+
+async def test_role_changes_are_logged_once(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    await admin.post(_grant_url(user.id), json={})
+    await admin.post(_grant_url(user.id), json={})  # повтор — без новой записи
+    await admin.post(_revoke_url(user.id), json={})
+
+    assert [(row[0], row[1], row[2]) for row in _log_rows(web_app)] == [
+        (root.id, "grant_admin", user.id),
+        (root.id, "revoke_admin", user.id),
+    ]
+    html = (await _card(admin, user.id)).text
+    assert "Выдана роль админа" in html and "Снята роль админа" in html
+    await client.aclose()
+
+
+@pytest.mark.parametrize("url", [_grant_url, _revoke_url])
+async def test_admin_cannot_change_own_role(admin, web_app, url) -> None:
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    response = await admin.post(url(root.id), json={})
+
+    assert response.status_code == 400
+    assert accounts.get_user(web_app.state.accounts, root.id).is_admin  # роль на месте
+    assert (await admin.get("/admin/students")).status_code == 200
+    assert _log_rows(web_app) == []
+
+
+@pytest.mark.parametrize("url", [_grant_url, _revoke_url])
+async def test_plain_student_cannot_change_roles(student, web_app, url) -> None:
+    ann = accounts.find_user(web_app.state.accounts, ANN["email"])
+    other, other_user = await _learner(web_app, "Bob", enroll=False)
+
+    for target in (ann.id, other_user.id):
+        response = await student.post(url(target), json={})
+        assert response.status_code == 404
+    assert not accounts.get_user(web_app.state.accounts, ann.id).is_admin
+    assert not accounts.get_user(web_app.state.accounts, other_user.id).is_admin
+    assert _log_rows(web_app) == []
+    await other.aclose()
+
+
+@pytest.mark.parametrize("url", [_grant_url, _revoke_url])
+async def test_role_endpoints_unknown_guest_and_csrf(admin, web, web_app, url) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    assert (await admin.post(url(9999), json={})).status_code == 404
+    assert (await admin.post(url(user.id), json={}, headers={"Origin": "http://evil.example"})).status_code == 403
+    assert (await admin.post(url(user.id), data={"x": "1"})).status_code == 415
+    async with _client(web_app) as guest:
+        assert (await guest.post(url(user.id), json={})).status_code == 401
+    assert not accounts.get_user(web_app.state.accounts, user.id).is_admin
+    await client.aclose()
+
+
+async def test_admin_can_revoke_another_admin(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    accounts.set_admin(web_app.state.accounts, user.id, True)
+
+    assert (await admin.post(_revoke_url(user.id), json={})).status_code == 200
+    assert not accounts.get_user(web_app.state.accounts, user.id).is_admin
+    await client.aclose()
+
+
+async def test_card_shows_the_right_role_button(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    plain = (await _card(admin, user.id)).text
+    await admin.post(_grant_url(user.id), json={})
+    promoted = (await _card(admin, user.id)).text
+    own = (await _card(admin, root.id)).text
+
+    assert 'data-action="grant-admin"' in plain and 'data-action="revoke-admin"' not in plain
+    assert 'data-action="revoke-admin"' in promoted and 'data-action="grant-admin"' not in promoted
+    assert 'data-action="grant-admin"' not in own and 'data-action="revoke-admin"' not in own
     await client.aclose()

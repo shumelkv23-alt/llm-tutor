@@ -180,7 +180,8 @@ async def test_lesson_survives_reopening_databases(enrolled, web_app) -> None:
 async def test_topic_names_are_escaped(enrolled, web_app) -> None:
     await _finish(enrolled)
     conn = _db(web_app)
-    conn.execute("UPDATE concepts SET name = '<b>Жирная</b>' WHERE id = 'grouping'")
+    # Профиль показывает только текущее занятие (срез 69): переименовываем все.
+    conn.execute("UPDATE concepts SET name = '<b>Жирная</b>'")
     conn.commit()
 
     html = (await enrolled.get("/profile")).text
