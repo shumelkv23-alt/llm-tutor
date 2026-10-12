@@ -954,3 +954,226 @@ async def test_students_list_links_to_cards(admin, web_app) -> None:
 
     assert f'href="/admin/students/{user.id}"' in await _students_page(admin)
     await client.aclose()
+
+
+# --- Действия над аккаунтом (Срез 66) ---
+
+import json
+
+
+def _reset_url(user_id: int) -> str:
+    return f"/api/admin/students/{user_id}/reset-password"
+
+
+def _close_url(user_id: int) -> str:
+    return f"/api/admin/students/{user_id}/close-sessions"
+
+
+async def _login(web_app, email: str, password: str) -> httpx.Response:
+    async with _client(web_app) as fresh:
+        return await fresh.post("/api/auth/login", json={"email": email, "password": password})
+
+
+def _log_rows(web_app) -> list[tuple]:
+    return web_app.state.accounts.execute(
+        "SELECT admin_id, action, target_id, details FROM admin_log ORDER BY id"
+    ).fetchall()
+
+
+async def test_reset_password_gives_a_one_time_password(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    response = await admin.post(_reset_url(user.id), json={})
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    password = response.json()["password"]
+    assert len(password) >= 16
+    assert (await _login(web_app, "ann@example.com", password)).status_code == 200
+    assert (await _login(web_app, "ann@example.com", "секретный-пароль")).status_code == 401
+    await client.aclose()
+
+
+async def test_reset_password_closes_all_student_sessions_but_not_the_admins(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    other = _client(web_app)
+    await other.post("/api/auth/login", json={"email": "ann@example.com", "password": "секретный-пароль"})
+    assert (await client.get("/api/me")).status_code == 200
+    assert (await other.get("/api/me")).status_code == 200
+
+    await admin.post(_reset_url(user.id), json={})
+
+    assert (await client.get("/api/me")).status_code == 401
+    assert (await other.get("/api/me")).status_code == 401
+    assert (await admin.get("/api/me")).status_code == 200  # сессия админа цела
+    await client.aclose()
+    await other.aclose()
+
+
+async def test_reset_password_lifts_the_login_limiter(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    for _ in range(6):
+        await _login(web_app, "ann@example.com", "не-тот-пароль")
+    assert (await _login(web_app, "ann@example.com", "секретный-пароль")).status_code == 429
+
+    password = (await admin.post(_reset_url(user.id), json={})).json()["password"]
+
+    assert (await _login(web_app, "ann@example.com", password)).status_code == 200
+    await client.aclose()
+
+
+async def test_two_resets_give_different_passwords(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    first = (await admin.post(_reset_url(user.id), json={})).json()["password"]
+    second = (await admin.post(_reset_url(user.id), json={})).json()["password"]
+
+    assert first != second
+    assert (await _login(web_app, "ann@example.com", first)).status_code == 401
+    await client.aclose()
+
+
+async def test_close_sessions_reports_live_sessions_and_keeps_the_password(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)  # одна сессия от регистрации
+    accounts.create_session(web_app.state.accounts, user.id)
+    accounts.create_session(web_app.state.accounts, user.id)
+
+    response = await admin.post(_close_url(user.id), json={})
+
+    assert response.status_code == 200
+    assert response.json() == {"closed": 3}
+    assert accounts.active_sessions(web_app.state.accounts, user.id) == 0
+    assert (await client.get("/api/me")).status_code == 401
+    assert (await _login(web_app, "ann@example.com", "секретный-пароль")).status_code == 200
+    assert (await admin.get("/api/me")).status_code == 200
+    await client.aclose()
+
+
+async def test_close_sessions_without_any_returns_zero(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    await _call(admin, "POST", _close_url(user.id))
+
+    response = await admin.post(_close_url(user.id), json={})
+
+    assert response.json() == {"closed": 0}
+    await client.aclose()
+
+
+@pytest.mark.parametrize("url", [_reset_url, _close_url])
+async def test_admin_cannot_act_on_themselves(admin, web_app, url) -> None:
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    response = await admin.post(url(root.id), json={})
+
+    assert response.status_code == 400
+    assert "профил" in response.json()["detail"]["message"]
+    assert (await admin.get("/api/me")).status_code == 200  # сессия цела
+    assert (await _login(web_app, ADMIN["email"], ADMIN["password"])).status_code == 200  # пароль прежний
+    assert _log_rows(web_app) == []
+
+
+@pytest.mark.parametrize("url", [_reset_url, _close_url])
+async def test_unknown_student_is_404(admin, url) -> None:
+    response = await admin.post(url(9999), json={})
+
+    assert response.status_code == 404
+    assert response.json()["detail"]["message"]
+
+
+@pytest.mark.parametrize("url", [_reset_url, _close_url])
+async def test_plain_student_cannot_act_and_nothing_changes(student, web_app, url) -> None:
+    victim, victim_user = await _learner(web_app, "Bob", enroll=False)
+    unknown = await student.post("/api/no-such-endpoint", json={})
+
+    response = await student.post(url(victim_user.id), json={})
+
+    assert response.status_code == 404
+    assert response.json() == unknown.json()
+    assert (await victim.get("/api/me")).status_code == 200
+    assert (await _login(web_app, "bob@example.com", "секретный-пароль")).status_code == 200
+    assert _log_rows(web_app) == []
+    await victim.aclose()
+
+
+@pytest.mark.parametrize("url", [_reset_url, _close_url])
+async def test_guest_gets_401(web, url) -> None:
+    assert (await web.post(url(1), json={})).status_code == 401
+
+
+@pytest.mark.parametrize("url", [_reset_url, _close_url])
+async def test_foreign_origin_and_non_json_are_rejected(admin, web_app, url) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    foreign = await admin.post(url(user.id), json={}, headers={"Origin": "http://evil.example"})
+    cross_site = await admin.post(url(user.id), json={}, headers={"Sec-Fetch-Site": "cross-site"})
+    form = await admin.post(url(user.id), data={"x": "1"})
+
+    assert foreign.status_code == 403
+    assert cross_site.status_code == 403
+    assert form.status_code == 415
+    assert (await client.get("/api/me")).status_code == 200  # ничего не сделано
+    assert _log_rows(web_app) == []
+    await client.aclose()
+
+
+async def test_reset_password_rejects_get(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    assert (await admin.get(_reset_url(user.id))).status_code == 405
+    await client.aclose()
+
+
+async def test_actions_are_logged_without_secrets(admin, web_app, caplog) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    with caplog.at_level(logging.DEBUG):
+        password = (await admin.post(_reset_url(user.id), json={})).json()["password"]
+        await admin.post(_close_url(user.id), json={})
+
+    rows = _log_rows(web_app)
+    assert [(row[0], row[1], row[2]) for row in rows] == [
+        (root.id, "reset_password", user.id),
+        (root.id, "close_sessions", user.id),
+    ]
+    dump = json.dumps([list(row) for row in rows], ensure_ascii=False)
+    assert password not in dump
+    assert password not in caplog.text
+    # Пароль нигде в БД аккаунтов, кроме хеша, не лежит.
+    for line in web_app.state.accounts.iterdump():
+        if "INSERT INTO" in line and "password_hash" not in line:
+            assert password not in line
+    await client.aclose()
+
+
+async def test_card_shows_actions_after_they_happen(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    assert "Действий не было" in (await _card(admin, user.id)).text
+
+    await admin.post(_reset_url(user.id), json={})
+    await admin.post(_close_url(user.id), json={})
+
+    html = (await _card(admin, user.id)).text
+    assert "Сброс пароля" in html and "Закрытие сессий" in html
+    assert 'data-sessions="0"' in html
+    await client.aclose()
+
+
+async def test_failed_action_is_not_logged(admin, web_app) -> None:
+    await admin.post(_reset_url(9999), json={})
+    await admin.post(_close_url(9999), json={})
+
+    assert _log_rows(web_app) == []
+
+
+async def test_card_has_action_buttons_for_others_but_not_for_self(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    other = (await _card(admin, user.id)).text
+    own = (await _card(admin, root.id)).text
+
+    assert 'data-action="reset-password"' in other and 'data-action="close-sessions"' in other
+    assert 'data-action="reset-password"' not in own
+    assert "профил" in own  # подсказка, где менять свой пароль
+    await client.aclose()

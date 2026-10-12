@@ -129,3 +129,17 @@
 .panel + .panel {
   margin-top: 16px;
 }
+
+.admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+#password-value {
+  margin: 12px 0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 16px;
+  letter-spacing: 0.02em;
+}

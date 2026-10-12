@@ -10,6 +10,7 @@
 
 import hashlib
 import hmac
+import json
 import re
 import secrets
 import sqlite3
@@ -461,6 +462,32 @@ def admin_log_for(conn: sqlite3.Connection, target_id: int, limit: int = 20) -> 
         (target_id, limit),
     ).fetchall()
     return [LogRow(ts=row[0], action=row[1], admin_name=row[2]) for row in rows]
+
+
+def log_admin(
+    conn: sqlite3.Connection,
+    admin_id: int,
+    action: str,
+    target_id: int,
+    details: dict | None = None,
+    *,
+    now: float | None = None,
+) -> None:
+    """Пишет действие админа в журнал. ``details`` — без секретов (паролей, токенов)."""
+    stamp = time.time() if now is None else now
+    conn.execute(
+        "INSERT INTO admin_log (ts, admin_id, action, target_id, details) VALUES (?, ?, ?, ?, ?)",
+        (stamp, admin_id, action, target_id, json.dumps(details, ensure_ascii=False) if details else None),
+    )
+    conn.commit()
+
+
+def close_user_sessions(conn: sqlite3.Connection, user_id: int) -> int:
+    """Закрывает все веб-сессии ученика. Возвращает, сколько из них ещё не истекло."""
+    live = active_sessions(conn, user_id)
+    conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return live
 
 
 def active_sessions(conn: sqlite3.Connection, user_id: int, now: float | None = None) -> int:

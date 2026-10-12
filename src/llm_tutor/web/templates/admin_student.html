@@ -16,8 +16,16 @@
     <div><dt>Email</dt><dd>{{ account.email }}</dd></div>
     <div><dt>Регистрация</dt><dd>{{ format_time(account.created_at) }}</dd></div>
     <div><dt>Последний вход</dt><dd>{{ format_time(account.last_login_at) }}</dd></div>
-    <div><dt>Активных сессий</dt><dd data-sessions="{{ card.sessions }}">{{ card.sessions }}</dd></div>
+    <div><dt>Активных сессий</dt><dd id="session-count" data-sessions="{{ card.sessions }}">{{ card.sessions }}</dd></div>
   </dl>
+  {% if account.id != user.id %}
+  <div class="admin-actions">
+    <button class="btn" type="button" data-action="reset-password" data-user="{{ account.id }}" data-name="{{ account.name }}">Сбросить пароль</button>
+    <button class="btn danger" type="button" data-action="close-sessions" data-user="{{ account.id }}" data-name="{{ account.name }}">Закрыть все сессии</button>
+  </div>
+  {% else %}
+  <p class="muted">Это ваш аккаунт: пароль и сессии меняются в <a href="/profile">профиле</a>.</p>
+  {% endif %}
 </section>
 
 <section class="panel" aria-labelledby="course-title">
@@ -103,4 +111,16 @@
   <p class="muted">Действий не было.</p>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block footer %}
+<dialog id="password-dialog" aria-labelledby="password-title">
+  <form method="dialog">
+    <h2 id="password-title">Временный пароль</h2>
+    <p>Передайте его ученику: пароль показан один раз и нигде не сохраняется. Все сессии ученика закрыты, после входа ему стоит сменить пароль в профиле.</p>
+    <input id="password-value" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Временный пароль">
+    <div class="dialog-actions"><button class="btn" type="button" id="password-copy">Копировать</button><button class="btn primary" value="close" autofocus>Закрыть</button></div>
+  </form>
+</dialog>
+{{ super() }}
 {% endblock %}

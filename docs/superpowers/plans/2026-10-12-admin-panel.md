@@ -244,7 +244,7 @@
 
 ### Срез 66 — действия над аккаунтом
 
-- [ ] **66.1 Тесты:**
+- [x] **66.1 Тесты:**
       - сброс: ответ `200 {"password": …}`, `Cache-Control: no-store`, пароль
         ≥ 16 символов; новый пароль входит через `/api/auth/login`, старый —
         нет; **все** сессии ученика закрыты (его cookie → 401), сессия админа
@@ -260,26 +260,26 @@
       - карточка показывает записи журнала (срез 65 уже умеет, теперь они
         есть);
       - два сброса подряд дают разные пароли.
-- [ ] **66.2 `web/accounts.py`:** `close_user_sessions(conn, user_id) -> int`,
+- [x] **66.2 `web/accounts.py`:** `close_user_sessions(conn, user_id) -> int`,
       `log_admin(conn, admin_id, action, target_id, details=None)`,
       `admin_log_for(conn, target_id, limit)`.
-- [ ] **66.3 `web/api_admin.py`:** `reset-password`, `close-sessions` (§6).
+- [x] **66.3 `web/api_admin.py`:** `reset-password`, `close-sessions` (§6).
       Общая проверка цели (`id` существует, не равен админу) — одна функция
       на оба маршрута. Пароль: `secrets.token_urlsafe(12)`.
-- [ ] **66.4 `static/js/admin.js` и `admin_student.html`:** кнопки, штатный
+- [x] **66.4 `static/js/admin.js` и `admin_student.html`:** кнопки, штатный
       `confirm-dialog`, диалог с паролем (`<dialog>` в шаблоне, поле
       `readonly`, «Копировать» через `navigator.clipboard`, при закрытии
       значение стирается из DOM и из переменной JS); ошибки — в
       `#page-error`/toast, как на остальных страницах. После закрытия сессий —
       обновление счётчика сессий на странице.
-- [ ] **66.5 e2e** (`tests/e2e/test_admin.py`, маркер `e2e`): админ
+- [x] **66.5 e2e** (`tests/e2e/test_admin.py`, маркер `e2e`): админ
       (`make-admin` через `accounts` перед запуском) сбрасывает пароль
       ученика → видит диалог с паролем → закрывает → пароля нет в DOM
       (`page.content()`); ширина 320 px: кнопки и диалог не вылезают. Шаг
       «войти админом» — в `tests/e2e/helpers.py`.
-- [ ] **66.6** `uv run pytest -q` и `-m e2e tests/e2e` зелёные; коммит
+- [x] **66.6** `uv run pytest -q` и `-m e2e tests/e2e` зелёные; коммит
       `Срез 66: …`.
-- [ ] **66.7 Ревью среза 66.**
+- [x] **66.7 Ревью среза 66.** — в общем ревью (68.5).
 
 ### Срез 67 — аналитика курса
 
