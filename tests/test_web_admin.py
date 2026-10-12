@@ -643,3 +643,314 @@ async def test_students_page_search_keeps_query_in_pagination_links(admin, web_a
     html = await _students_page(admin, q="zz")
 
     assert "q=zz" in html and "page=2" in html
+
+
+# --- Карточка ученика (Срез 65) ---
+
+from llm_tutor.web import views
+
+
+def _items(web_app, user, count: int):
+    return [item for item in repos.get_items(_db(web_app, user)) if not item.final][:count]
+
+
+def _answer(web_app, user, item, ts: float, *, result: float = 1.0, source: str = "autotest", hints: int = 0, spent=None):
+    repos.add_event(
+        _db(web_app, user),
+        Event(
+            source=source,
+            result=result,
+            item_id=item.id,
+            concept_id=next(iter(item.concept_weights), None),
+            hints_used=hints,
+            time_spent=spent,
+            ts=ts,
+        ),
+    )
+
+
+async def _card(admin_client, user_id: int):
+    return await admin_client.get(f"/admin/students/{user_id}")
+
+
+async def test_card_header(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    accounts.create_session(web_app.state.accounts, user.id)
+
+    response = await _card(admin, user.id)
+
+    assert response.status_code == 200
+    html = response.text
+    for text in ("Ann", "ann@example.com", "Активных сессий"):
+        assert text in html
+    assert "админ</span>" not in html
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+    assert "админ</span>" in (await _card(admin, root.id)).text
+    await client.aclose()
+
+
+async def test_card_shows_active_session_count(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")  # регистрация открыла одну сессию
+    accounts.create_session(web_app.state.accounts, user.id)
+    accounts.create_session(web_app.state.accounts, user.id, now=1.0)  # давно истекла
+
+    html = (await _card(admin, user.id)).text
+
+    assert 'data-sessions="2"' in html
+    await client.aclose()
+
+
+async def test_card_unknown_id_is_404(admin) -> None:
+    assert (await _card(admin, 9999)).status_code == 404
+
+
+async def test_card_non_numeric_id_does_not_crash(admin) -> None:
+    response = await admin.get("/admin/students/abc")
+
+    assert response.status_code in (404, 422)
+    assert "Traceback" not in response.text
+
+
+async def test_card_hidden_from_plain_student(student, web_app) -> None:
+    user = accounts.find_user(web_app.state.accounts, ANN["email"])
+    unknown = await student.get("/no-such-page")
+
+    for path in (f"/admin/students/{user.id}", "/admin/students/9999", "/admin/students/abc"):
+        response = await student.get(path)
+        assert response.status_code == 404
+        assert response.json() == unknown.json()
+
+
+async def test_card_course_progress_topics_and_survey(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    _close_lesson(web_app, user, "pandas_structures")
+    learning = views.learning_view(_db(web_app, user), settings=web_app.state.settings)
+
+    html = (await _card(admin, user.id)).text
+
+    assert "Модуль 1" in html
+    first = next(topic for topic in learning["topics"] if topic["id"] == "pandas_structures")
+    assert first["name"] in html
+    assert f"{first['mastery']}%" in html
+    assert first["label"] in html  # статус — как в профиле ученика
+    assert "уверенно" in html or "мало данных" in html
+    # Результаты анкеты — то же, что видит сам ученик в профиле.
+    assert learning["self_assessment"]
+    assert learning["self_assessment"][0]["title"] in html
+    assert f"Решено заданий: {learning['solved']}" in html
+    await client.aclose()
+
+
+async def test_card_marks_weak_lessons(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    conn = _db(web_app, user)
+    session_id = repos.ensure_open_session(conn)
+    state = repos.get_session_state(conn, session_id)
+    other = next(step.concept_id for step in state.route.steps if step.concept_id != state.current_node_id)
+    steps = [
+        step.model_copy(update={"status": "closed", "weak": True}) if step.concept_id == other else step
+        for step in state.route.steps
+    ]
+    repos.update_session_state(
+        conn, session_id, state.model_copy(update={"route": state.route.model_copy(update={"steps": steps})})
+    )
+
+    html = (await _card(admin, user.id)).text
+
+    assert views.WEAK_LABEL in html
+    await client.aclose()
+
+
+async def test_card_recent_answers_are_the_latest_fifty(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    items = _items(web_app, user, 3)
+    for index in range(55):
+        # Шаг в минуту: время в таблице выводится с точностью до минуты.
+        _answer(web_app, user, items[index % 3], 100_000.0 + 60 * index, result=1.0 if index % 2 else 0.0)
+
+    html = (await _card(admin, user.id)).text
+
+    assert html.count('class="answer-row"') == 50
+    # Новые первыми: последний ответ (54-й) выше первого из показанных (5-го).
+    newest, oldest_shown, dropped = (admin_data.format_time(100_000.0 + 60 * n) for n in (54, 5, 4))
+    assert html.index(newest) < html.index(oldest_shown)
+    assert dropped not in html
+    await client.aclose()
+
+
+async def test_card_answer_row_details(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    item, = _items(web_app, user, 1)
+    conn = _db(web_app, user)
+    conn.execute("UPDATE items SET prompt = ? WHERE id = ?", ("а" * 200, item.id))
+    conn.commit()
+    _answer(web_app, user, item, 2000.0, result=1.0, source="autotest", hints=2, spent=12.0)
+    _answer(web_app, user, item, 2001.0, result=0.0, source="checked")
+    _answer(web_app, user, item, 2002.0, result=0.4, source="rubric")
+
+    html = (await _card(admin, user.id)).text
+
+    assert "а" * 80 in html and "а" * 81 not in html  # условие обрезано до 80 символов
+    assert f"#{item.id}" in html
+    assert "верно" in html and "неверно" in html and "40%" in html
+    for source in ("autotest", "checked", "rubric"):
+        assert source in html
+    assert "12 с" in html
+    await client.aclose()
+
+
+async def test_card_answer_for_missing_item_does_not_crash(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    item, = _items(web_app, user, 1)
+    conn = _db(web_app, user)
+    _answer(web_app, user, item, 3000.0)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("DELETE FROM items WHERE id = ?", (item.id,))
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    response = await _card(admin, user.id)
+
+    assert response.status_code == 200
+    assert "answer-row" in response.text
+    await client.aclose()
+
+
+async def test_card_never_shows_chat_messages(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    conn = _db(web_app, user)
+    session_id = repos.ensure_open_session(conn)
+    repos.add_message(conn, session_id, "user", "СЕКРЕТНАЯ-РЕПЛИКА-УЧЕНИКА", ts=1.0)
+    repos.add_message(conn, session_id, "assistant", "СЕКРЕТНЫЙ-ОТВЕТ-ТЬЮТОРА", ts=2.0)
+
+    html = (await _card(admin, user.id)).text
+
+    assert "СЕКРЕТНАЯ-РЕПЛИКА-УЧЕНИКА" not in html
+    assert "СЕКРЕТНЫЙ-ОТВЕТ-ТЬЮТОРА" not in html
+    await client.aclose()
+
+
+async def test_card_busy_student_shows_banner_and_no_course_data(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    lock = web_app.state.userdbs.lock(user.id, COURSE)
+
+    await lock.acquire()
+    try:
+        response = await _card(admin, user.id)
+    finally:
+        lock.release()
+
+    assert response.status_code == 200
+    assert "сейчас отвечает" in response.text
+    assert "Модуль 1" not in response.text
+    assert "ann@example.com" in response.text  # шапка — из аккаунтов, она не зависит от хода
+    await client.aclose()
+
+
+async def test_card_student_not_enrolled(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    html = (await _card(admin, user.id)).text
+
+    assert "не записан" in html.lower()
+    await client.aclose()
+
+
+async def test_card_enrolled_without_db_file(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    path = web_app.state.userdbs.path(user.id, COURSE)
+    web_app.state.userdbs.close_all()
+    for suffix in ("", "-wal", "-shm"):
+        path.with_name(path.name + suffix).unlink(missing_ok=True)
+
+    response = await _card(admin, user.id)
+
+    assert response.status_code == 200
+    assert "нет данных" in response.text.lower()
+    assert not path.exists()
+    await client.aclose()
+
+
+async def test_card_broken_db(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    web_app.state.userdbs.close_all()
+    web_app.state.userdbs.path(user.id, COURSE).write_bytes(b"not a database")
+
+    response = await _card(admin, user.id)
+
+    assert response.status_code == 200
+    assert "недоступны" in response.text.lower()
+    await client.aclose()
+
+
+async def test_card_admin_log_empty_and_filled(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+
+    assert "Действий не было" in (await _card(admin, user.id)).text
+
+    db = web_app.state.accounts
+    db.execute(
+        "INSERT INTO admin_log (ts, admin_id, action, target_id, details) VALUES (?, ?, ?, ?, ?)",
+        (4000.0, root.id, "reset_password", user.id, None),
+    )
+    db.execute(
+        "INSERT INTO admin_log (ts, admin_id, action, target_id, details) VALUES (?, ?, ?, ?, ?)",
+        (4001.0, 9999, "close_sessions", user.id, None),  # админ уже удалён
+    )
+    db.execute(
+        "INSERT INTO admin_log (ts, admin_id, action, target_id, details) VALUES (?, ?, ?, ?, ?)",
+        (4002.0, root.id, "reset_password", root.id, None),  # над другим аккаунтом
+    )
+    db.commit()
+
+    html = (await _card(admin, user.id)).text
+
+    assert "Действий не было" not in html
+    assert "Сброс пароля" in html and "Закрытие сессий" in html
+    assert "Админ" in html  # имя админа из журнала
+    assert html.count('class="log-row"') == 2
+    await client.aclose()
+
+
+async def test_card_admin_log_is_limited_to_twenty(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    root = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+    for index in range(25):
+        web_app.state.accounts.execute(
+            "INSERT INTO admin_log (ts, admin_id, action, target_id) VALUES (?, ?, 'close_sessions', ?)",
+            (5000.0 + index, root.id, user.id),
+        )
+    web_app.state.accounts.commit()
+
+    html = (await _card(admin, user.id)).text
+
+    assert html.count('class="log-row"') == 20
+    await client.aclose()
+
+
+async def test_card_escapes_text_and_hides_hashes(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    web_app.state.accounts.execute(
+        "UPDATE users SET name = ? WHERE id = ?", ('<img src=x onerror=alert(1)>', user.id)
+    )
+    web_app.state.accounts.commit()
+    item, = _items(web_app, user, 1)
+    conn = _db(web_app, user)
+    conn.execute("UPDATE items SET prompt = ? WHERE id = ?", ("<script>alert(2)</script> условие", item.id))
+    conn.commit()
+    _answer(web_app, user, item, 6000.0)
+
+    html = (await _card(admin, user.id)).text
+
+    assert "<img src=x" not in html and "<script>alert(2)" not in html
+    assert "&lt;img" in html and "&lt;script&gt;" in html
+    assert "scrypt$" not in html and "password_hash" not in html
+    await client.aclose()
+
+
+async def test_students_list_links_to_cards(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+
+    assert f'href="/admin/students/{user.id}"' in await _students_page(admin)
+    await client.aclose()

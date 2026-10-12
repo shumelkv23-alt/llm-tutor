@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка · ученик{% endblock %}
+{% block heading %}{{ card.account.name }}{% endblock %}
+{% block description %}{{ card.account.email }}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% endblock %}
+{% block actions %}<a class="btn" href="/admin/students">Все ученики</a>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+{% set account = card.account %}
+
+<section class="panel" aria-labelledby="account-title">
+  <h2 id="account-title" class="section-title">Аккаунт</h2>
+  <dl class="admin-facts">
+    <div><dt>Имя</dt><dd>{{ account.name }}{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}</dd></div>
+    <div><dt>Email</dt><dd>{{ account.email }}</dd></div>
+    <div><dt>Регистрация</dt><dd>{{ format_time(account.created_at) }}</dd></div>
+    <div><dt>Последний вход</dt><dd>{{ format_time(account.last_login_at) }}</dd></div>
+    <div><dt>Активных сессий</dt><dd data-sessions="{{ card.sessions }}">{{ card.sessions }}</dd></div>
+  </dl>
+</section>
+
+<section class="panel" aria-labelledby="course-title">
+  <h2 id="course-title" class="section-title">{{ course.title }}</h2>
+  {% if card.state == 'not_enrolled' %}
+  <p class="muted">Ученик не записан на курс.</p>
+  {% elif card.state == 'no_db' %}
+  <p class="muted">Записан на курс, но нет данных: ученик ещё ни разу не открывал занятие.</p>
+  {% elif card.state == 'error' %}
+  <div class="notice error" role="alert">Данные ученика недоступны: база не открывается. Подробности — в логе сервера.</div>
+  {% elif card.state == 'busy' %}
+  <div class="notice" role="status">Ученик сейчас отвечает — обновите страницу через несколько секунд.</div>
+  {% else %}
+  {% set learning = card.learning %}
+  <ul class="course-modules" aria-label="Модули курса">
+    {% for module in learning.modules %}
+    <li{% if not module.published %} class="soon"{% endif %}><span>Модуль {{ module.number }} · {{ module.title }}</span><b>{% if not module.published %}скоро{% else %}{{ module.closed }} из {{ module.total }}{% endif %}</b></li>
+    {% endfor %}
+  </ul>
+  <p class="admin-solved">Решено заданий: {{ learning.solved }}</p>
+
+  {% if learning.self_assessment %}
+  <h3>Анкета</h3>
+  <ul class="admin-survey">
+    {% for entry in learning.self_assessment %}<li><span>{{ entry.title }}</span><b>{{ entry.answer }}</b></li>{% endfor %}
+  </ul>
+  {% endif %}
+
+  <h3>Занятия</h3>
+  <div class="table-wrap">
+    <table class="topics-table admin-table">
+      <thead><tr><th scope="col">Занятие</th><th scope="col">Статус</th><th scope="col">Владение</th></tr></thead>
+      <tbody>
+        {% for module in learning.modules %}
+        <tr class="module-row"><th scope="rowgroup" colspan="3">Модуль {{ module.number }} · {{ module.title }} <span>{{ module.closed }} из {{ module.total }}</span></th></tr>
+        {% for topic in learning.topics if topic.module == module.number %}
+        <tr class="topic-row {{ topic.status }}">
+          <th scope="row">{{ topic.name }}</th>
+          <td><span class="badge{% if topic.weak %} warning{% elif topic.status == 'closed' %} success{% elif topic.status == 'current' %} primary{% elif topic.status == 'claimed' %} accent{% endif %}">{{ topic.label }}</span></td>
+          <td><div class="mastery" role="img" aria-label="Владение {{ topic.mastery }}%, {{ topic.confidence }}"><span class="progress-track"><span class="progress-fill" data-percent="{{ topic.mastery }}"></span></span><small>{{ topic.mastery }}% · {{ topic.confidence }}</small></div></td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Последние ответы</h3>
+  {% if card.answers %}
+  <div class="table-wrap">
+    <table class="topics-table admin-table">
+      <thead><tr><th scope="col">Время</th><th scope="col">Занятие</th><th scope="col">Задание</th><th scope="col">Источник</th><th scope="col">Итог</th><th scope="col">Подсказок</th><th scope="col">Время решения</th></tr></thead>
+      <tbody>
+        {% for answer in card.answers %}
+        <tr class="answer-row">
+          <td>{{ format_time(answer.ts) }}</td>
+          <td>{{ answer.lesson or '—' }}</td>
+          <td class="admin-prompt"><b>#{{ answer.item_id }}</b> {{ answer.prompt or '—' }}</td>
+          <td>{{ answer.source }}</td>
+          <td><span class="badge{% if answer.right %} success{% else %} danger{% endif %}">{{ answer.result }}</span></td>
+          <td>{{ answer.hints }}</td>
+          <td>{{ answer.spent or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Ответов на задания пока нет.</p>
+  {% endif %}
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="log-title">
+  <h2 id="log-title" class="section-title">Действия админов</h2>
+  {% if card.log %}
+  <ul class="admin-log">
+    {% for entry in card.log %}
+    <li class="log-row"><span>{{ format_time(entry.ts) }}</span><b>{{ entry.label }}</b><span class="muted">{{ entry.admin or 'аккаунт админа удалён' }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Действий не было.</p>
+  {% endif %}
+</section>
+{% endblock %}

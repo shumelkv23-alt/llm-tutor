@@ -23,9 +23,10 @@ from datetime import datetime
 from llm_tutor.config import Settings
 from llm_tutor.core.lesson import course_survey_done, is_closed
 from llm_tutor.core.overview import topic_rows
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
-from llm_tutor.web import accounts
+from llm_tutor.web import accounts, views
 from llm_tutor.web.courses import Course
 
 logger = logging.getLogger(__name__)
@@ -227,3 +228,104 @@ def summarize(snap: Snapshot, *, total: int, now: float) -> Summary:
 def format_time(ts: float | None) -> str:
     """Дата и время для таблиц; нет значения — прочерк."""
     return "—" if ts is None else datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
+
+
+# --- Карточка ученика ---
+
+RECENT_ANSWERS = 50
+LOG_LIMIT = 20
+# Сколько символов условия задания показывать в таблице ответов.
+PROMPT_PREVIEW = 80
+
+ACTION_LABELS = {
+    "reset_password": "Сброс пароля",
+    "close_sessions": "Закрытие сессий",
+}
+
+
+@dataclass(frozen=True)
+class StudentCard:
+    """Карточка ученика: шапка из аккаунтов и, если можно прочесть, данные курса.
+
+    ``state``: ``ok`` — данные курса есть; ``not_enrolled``, ``no_db``,
+    ``error`` (БД не открывается), ``busy`` (идёт ход ученика — читать нельзя).
+    Диалоги (``messages``) в карточку не попадают никогда.
+    """
+
+    account: accounts.AccountRow
+    sessions: int
+    state: str
+    learning: dict | None = None
+    answers: list[dict] = field(default_factory=list)
+    log: list[dict] = field(default_factory=list)
+
+
+def _preview(text: str) -> str:
+    """Начало условия одной строкой: без переводов строк, не длиннее ``PROMPT_PREVIEW``."""
+    flat = " ".join(text.split())
+    return flat if len(flat) <= PROMPT_PREVIEW else flat[:PROMPT_PREVIEW] + "…"
+
+
+def _result_label(result: float) -> str:
+    if result >= 1.0:
+        return "верно"
+    if result <= 0.0:
+        return "неверно"
+    return f"{round(result * 100)}%"
+
+
+def _recent_answers(conn: sqlite3.Connection) -> list[dict]:
+    """Последние события по заданиям: время, занятие, задание, источник, итог."""
+    graph = CourseGraph.load(conn)
+    result = []
+    for ts, concept_id, item_id, source, score, hints, spent in conn.execute(
+        "SELECT ts, concept_id, item_id, source, result, hints_used, time_spent FROM events "
+        "WHERE item_id IS NOT NULL ORDER BY ts DESC, id DESC LIMIT ?",
+        (RECENT_ANSWERS,),
+    ):
+        item = repos.get_item(conn, item_id)
+        lesson = graph.concept(concept_id).name if concept_id and graph.has_node(concept_id) else None
+        result.append(
+            {
+                "ts": ts,
+                "lesson": lesson,
+                "item_id": item_id,
+                "prompt": _preview(item.prompt) if item is not None else None,
+                "source": source,
+                "result": _result_label(score),
+                "right": score >= 0.5,
+                "hints": hints,
+                "spent": None if spent is None else f"{round(spent)} с",
+            }
+        )
+    return result
+
+
+def student_card(
+    state, course: Course, account: accounts.AccountRow, *, now: float | None = None
+) -> StudentCard:
+    """Карточка ученика; без кэша. Читает БД ученика, только если ход не идёт."""
+    db = state.accounts
+    base = {
+        "account": account,
+        "sessions": accounts.active_sessions(db, account.id, now),
+        "log": [
+            {"ts": row.ts, "label": ACTION_LABELS.get(row.action, row.action), "admin": row.admin_name}
+            for row in accounts.admin_log_for(db, account.id, LOG_LIMIT)
+        ],
+    }
+    if course.id not in accounts.enrolled_courses(db, account.id):
+        return StudentCard(state="not_enrolled", **base)
+    pool = state.userdbs
+    if not pool.exists(account.id, course.id):
+        return StudentCard(state="no_db", **base)
+    if pool.lock(account.id, course.id).locked():
+        return StudentCard(state="busy", **base)
+    try:
+        conn = pool.open(account.id, course.id)
+        learning = views.learning_view(conn, settings=state.settings)
+        answers = _recent_answers(conn)
+    except (sqlite3.DatabaseError, RuntimeError):
+        logger.exception("БД ученика %s по курсу %s не открывается", account.id, course.id)
+        return StudentCard(state="error", **base)
+    return StudentCard(state="ok", learning=learning, answers=answers, **base)

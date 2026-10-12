@@ -42,7 +42,7 @@
       {% set account = item.account %}{% set row = item.row %}
       <tr>
         <th scope="row">
-          <span class="admin-name">{{ account.name }}{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}</span>
+          <a class="admin-name" href="/admin/students/{{ account.id }}">{{ account.name }}</a>{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}
           <small class="admin-email muted">{{ account.email }}</small>
         </th>
         <td>

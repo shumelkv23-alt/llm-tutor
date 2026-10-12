@@ -426,6 +426,43 @@ def list_users(conn: sqlite3.Connection, q: str = "") -> list[AccountRow]:
     ]
 
 
+def get_account(conn: sqlite3.Connection, user_id: int) -> AccountRow | None:
+    """Аккаунт для админки или ``None``."""
+    row = conn.execute(
+        "SELECT id, email, name, created_at, last_login_at, is_admin FROM users WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return None
+    return AccountRow(
+        id=row["id"],
+        email=row["email"],
+        name=row["name"],
+        created_at=row["created_at"],
+        last_login_at=row["last_login_at"],
+        is_admin=bool(row["is_admin"]),
+    )
+
+
+@dataclass(frozen=True)
+class LogRow:
+    """Запись журнала действий админов над аккаунтом."""
+
+    ts: float
+    action: str
+    admin_name: str | None  # ``None``: аккаунт админа уже удалён
+
+
+def admin_log_for(conn: sqlite3.Connection, target_id: int, limit: int = 20) -> list[LogRow]:
+    """Последние действия админов над аккаунтом (новые — первыми)."""
+    rows = conn.execute(
+        "SELECT l.ts, l.action, u.name FROM admin_log l LEFT JOIN users u ON u.id = l.admin_id "
+        "WHERE l.target_id = ? ORDER BY l.ts DESC, l.id DESC LIMIT ?",
+        (target_id, limit),
+    ).fetchall()
+    return [LogRow(ts=row[0], action=row[1], admin_name=row[2]) for row in rows]
+
+
 def active_sessions(conn: sqlite3.Connection, user_id: int, now: float | None = None) -> int:
     """Сколько веб-сессий ученика ещё не истекло."""
     stamp = time.time() if now is None else now

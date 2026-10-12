@@ -6,13 +6,13 @@
 
 import time
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from llm_tutor.web import accounts, admin, courses
 from llm_tutor.web.accounts import User
 from llm_tutor.web.pages import render
-from llm_tutor.web.security import accounts_db, admin_page_user
+from llm_tutor.web.security import NOT_FOUND, accounts_db, admin_page_user
 
 router = APIRouter(dependencies=[Depends(admin_page_user)])
 
@@ -78,6 +78,27 @@ async def students(
         found=len(found),
         summary=admin.summarize(snap, total=len(everyone), now=now),
         built_at=admin.format_time(snap.built_at),
+        format_time=admin.format_time,
+        tab="students",
+    )
+
+
+@router.get("/admin/students/{user_id}", response_class=HTMLResponse)
+async def student_card_page(
+    request: Request, user_id: int, user: User = Depends(admin_page_user)
+) -> HTMLResponse:
+    account = accounts.get_account(accounts_db(request), user_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    course = courses.COURSES[0]
+    card = admin.student_card(request.app.state, course, account)
+    return render(
+        request,
+        "admin_student.html",
+        "admin",
+        user=user,
+        card=card,
+        course=course,
         format_time=admin.format_time,
         tab="students",
     )

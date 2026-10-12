@@ -78,3 +78,54 @@
 .admin-table tr.dim {
   color: var(--muted);
 }
+
+/* Карточка ученика */
+.admin-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 24px;
+  margin: 0;
+}
+
+.admin-facts dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-facts dd {
+  margin: 2px 0 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.admin-solved {
+  margin: 12px 0;
+  font-weight: 600;
+}
+
+.admin-survey,
+.admin-log {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-survey li,
+.admin-log li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.admin-prompt {
+  max-width: 420px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.panel + .panel {
+  margin-top: 16px;
+}
