@@ -52,19 +52,19 @@
 
 ### Срез 70. Токены сброса в БД аккаунтов
 
-- [ ] `migrations_accounts/004_password_reset.sql` — таблица `password_resets`
+- [x] `migrations_accounts/004_password_reset.sql` — таблица `password_resets`
       (спека §4), шапка-комментарий по-русски.
-- [ ] `web/accounts.py`: `SCHEMA_VERSION = 4`, `RESET_TTL = 3600.0`,
+- [x] `web/accounts.py`: `SCHEMA_VERSION = 4`, `RESET_TTL = 3600.0`,
       `RESET_TOKEN_INVALID`, `create_reset_token`, `reset_token_user`,
       `reset_password` (условие `used_at IS NULL` — спека §5).
-- [ ] Правки из-за бампа версии в `tests/test_accounts.py`: три ассерта
+- [x] Правки из-за бампа версии в `tests/test_accounts.py`: три ассерта
       `SCHEMA_VERSION == 4` и `PRAGMA user_version = 5` в тесте «схема новее
       приложения» (иначе он перестанет падать).
-- [ ] Тесты `accounts`: в БД только хеш (в т.ч. полный дамп `iterdump`),
+- [x] Тесты `accounts`: в БД только хеш (в т.ч. полный дамп `iterdump`),
       одноразовость, протухание, «последняя заявка побеждает», мусор и слишком
       длинный токен, сброс закрывает все сессии и меняет хеш, недействительный
       токен ничего не меняет, чистка протухших при новой заявке.
-- [ ] Тест миграции по образцу `test_migration_003_keeps_existing_data`:
+- [x] Тест миграции по образцу `test_migration_003_keeps_existing_data`:
       БД версии 3 (`_version_3_db`) → открытие → версия 4, данные целы, повторное
       открытие идемпотентно.
 
@@ -72,17 +72,17 @@
 
 ### Срез 71. Настройки и мейлер
 
-- [ ] `config.py`: блок почты (спека §6) — все поля с дефолтами,
+- [x] `config.py`: блок почты (спека §6) — все поля с дефолтами,
       `smtp_configured` как свойство.
-- [ ] `.env.example`: тот же блок с комментарием про «пароль приложения» Google.
-- [ ] `web/mailer.py`: протокол `Mailer`, `SmtpMailer`, `LogMailer`,
+- [x] `.env.example`: тот же блок с комментарием про «пароль приложения» Google.
+- [x] `web/mailer.py`: протокол `Mailer`, `SmtpMailer`, `LogMailer`,
       `MailMessage` (или аргументы `to/subject/text`), подсказка `SMTP_HELP`.
-- [ ] `web/app.py`: `create_app(..., mailer=None)`, `_mailer(settings)`,
+- [x] `web/app.py`: `create_app(..., mailer=None)`, `_mailer(settings)`,
       `app.state.mailer`, `aclose()` в `lifespan` (внедрённый закрывает автор).
-- [ ] `tests/web_fakes.py`: `RecordingMailer` (копит письма, достаёт ссылку),
+- [x] `tests/web_fakes.py`: `RecordingMailer` (копит письма, достаёт ссылку),
       `FailingMailer`; `tests/conftest.py`: фикстура `web_mailer`,
       `web_app` собирает приложение с ней.
-- [ ] Тесты `test_config.py` (почта необязательна, `smtp_configured`
+- [x] Тесты `test_config.py` (почта необязательна, `smtp_configured`
       параметризованно, границы TTL и лимита) и `test_web_mailer.py`
       (UTF-8-письмо, порядок `ehlo→starttls→login→send_message`, отказ 535 без
       пароля и токена в журнале и без исключения наружу, ошибка коннекта,
@@ -92,13 +92,13 @@
 
 ### Срез 72. API
 
-- [ ] `web/api_auth.py`: модели `ForgotPasswordBody`, `ResetPasswordBody`, тексты
+- [x] `web/api_auth.py`: модели `ForgotPasswordBody`, `ResetPasswordBody`, тексты
       (`RESET_LINK_SENT`, `TOO_MANY_RESETS`), `POST /auth/forgot-password`
       (лимитер, `find_user`, токен, ссылка, `BackgroundTasks`) и
       `POST /auth/reset-password` (проверка длины → токен → scrypt в потоке →
       атомарный сброс → `login_limiter.reset`, `clear_session_cookie`).
-- [ ] `web/app.py`: `app.state.reset_limiter` из `Settings.password_reset_limit`.
-- [ ] Тесты в `test_web_auth.py`: одинаковый ответ для существующего, неизвестного
+- [x] `web/app.py`: `app.state.reset_limiter` из `Settings.password_reset_limit`.
+- [x] Тесты в `test_web_auth.py`: одинаковый ответ для существующего, неизвестного
       и кривого адреса (и одинаковое число писем), письмо содержит рабочую ссылку,
       429 на четвёртый запрос с подменой часов и **вход при этом не заблокирован**,
       415 и 403 на обоих POST, сброс меняет пароль, закрывает вторую сессию и

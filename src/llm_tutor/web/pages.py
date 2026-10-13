@@ -43,6 +43,8 @@ ADMIN_NAV = NavItem("admin", "/admin", "Админка", "shield")
 _TITLES = {item.key: item.label for item in (*NAV, ADMIN_NAV)} | {
     "login": "Вход",
     "register": "Регистрация",
+    "forgot": "Восстановление пароля",
+    "reset": "Новый пароль",
 }
 
 
@@ -189,3 +191,52 @@ async def login(request: Request, next: str | None = None) -> Response:
 @router.get("/register", response_class=HTMLResponse)
 async def register(request: Request, next: str | None = None) -> Response:
     return _auth_page(request, "register.html", "register", next)
+
+
+def _no_store(response: Response) -> Response:
+    """Страница со ссылкой-секретом не кэшируется: «Назад» не должен её показать."""
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password(request: Request) -> Response:
+    """Заявка письма со ссылкой. Вошедшему здесь нечего делать: пароль он помнит."""
+    if optional_user(request) is not None:
+        return RedirectResponse("/profile", status_code=303)
+    return _no_store(
+        render(
+            request,
+            "forgot_password.html",
+            "forgot",
+            user=None,
+            # Почта не настроена — ученик должен знать, что письма не будет:
+            # ссылка в этом случае печатается в журнале сервера (режим показа).
+            mail_configured=request.app.state.settings.smtp_configured,
+            # Срок жизни — из настроек, а не «час» в тексте: PASSWORD_RESET_TTL_MINUTES
+            # меняется в .env, и обещание в шаблоне не должно разойтись с делом.
+            ttl_minutes=request.app.state.settings.password_reset_ttl_minutes,
+        )
+    )
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password(request: Request, token: str = "") -> Response:
+    """Форма нового пароля; мёртвая ссылка — сообщение и путь за новым письмом.
+
+    Годится ли ссылка, решает ``accounts.reset_token_user`` (только чтение) —
+    страница ничего не сжигает: её мог открыть и поисковый робот.
+    """
+    user = accounts.reset_token_user(accounts_db(request), token)
+    return _no_store(
+        render(
+            request,
+            "reset_password.html",
+            "reset",
+            user=None,
+            token=token,
+            valid=user is not None,
+            email=None if user is None else user.email,
+            ttl_minutes=request.app.state.settings.password_reset_ttl_minutes,
+        )
+    )

@@ -14,4 +14,5 @@
   <button class="btn primary" type="submit"><span>Войти</span>{{ icon('arrow') }}</button>
 </form>
 {% if registration_open %}<p class="auth-switch">Нет аккаунта? <a href="/register{% if next != '/' %}?next={{ next|urlencode }}{% endif %}">Зарегистрироваться</a></p>{% endif %}
+<p class="auth-switch"><a href="/forgot-password">Забыли пароль?</a></p>
 {% endblock %}

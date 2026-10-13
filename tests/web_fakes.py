@@ -6,7 +6,8 @@ from pathlib import Path
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
 
-_LINK_RE = re.compile(r"https?://\S+/reset-password\?token=[\w\-]+")
+# Ссылка восстановления в тексте письма (ею же пользуется e2e-мейлер).
+RESET_LINK_RE = re.compile(r"https?://\S+/reset-password\?token=[\w\-]+")
 
 
 class SilentLLM:
@@ -52,7 +53,7 @@ class RecordingMailer:
 
     def last_link(self) -> str:
         """Ссылка восстановления из последнего письма."""
-        match = _LINK_RE.search(self.last()[2])
+        match = RESET_LINK_RE.search(self.last()[2])
         assert match, f"В письме нет ссылки восстановления:\n{self.last()[2]}"
         return match.group(0)
 

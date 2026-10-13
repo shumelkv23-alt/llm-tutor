@@ -636,3 +636,105 @@ async def test_reset_flow_does_not_log_secrets(web, web_mailer, caplog) -> None:
 
     assert token not in caplog.text
     assert NEW_PASSWORD not in caplog.text
+
+
+# --- Восстановление пароля: страницы (Срез 73) ---
+
+
+async def test_forgot_password_page_is_open_to_guest(web) -> None:
+    response = await web.get("/forgot-password")
+
+    assert response.status_code == 200
+    assert 'data-endpoint="/api/auth/forgot-password"' in response.text
+    assert response.headers["cache-control"] == "no-store"
+
+
+async def test_forgot_password_page_sends_logged_in_user_to_profile(web) -> None:
+    await _register(web)
+
+    response = await web.get("/forgot-password")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/profile"
+
+
+async def test_login_page_links_to_recovery(web) -> None:
+    assert 'href="/forgot-password"' in (await web.get("/login")).text
+
+
+async def test_forgot_password_warns_when_mail_is_off(web) -> None:
+    """Почта не настроена — ученик должен знать, что письма не будет."""
+    assert "не настроена" in (await web.get("/forgot-password")).text
+
+
+async def test_forgot_password_is_quiet_when_mail_works(web_settings, web_llm) -> None:
+    from pydantic import SecretStr
+
+    configured = web_settings.model_copy(
+        update={"smtp_user": "tutor@example.com", "smtp_password": SecretStr("пароль-приложения")}
+    )
+    app = create_app(configured, client=web_llm)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        page = await client.get("/forgot-password")
+
+    assert "не настроена" not in page.text
+
+
+async def test_reset_page_shows_the_form_for_a_live_link(web, web_mailer) -> None:
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+    token = web_mailer.last_token()
+
+    response = await web.get(f"/reset-password?token={token}")
+
+    assert response.status_code == 200
+    assert f'name="token" value="{token}"' in response.text
+    assert ANN["email"] in response.text
+    assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize("query", ["", "?token=", "?token=мусор", "?token=" + "a" * 500])
+async def test_reset_page_refuses_a_dead_link(web, query: str) -> None:
+    response = await web.get(f"/reset-password{query}")
+
+    assert response.status_code == 200
+    assert "Ссылка недействительна" in response.text
+    assert 'href="/forgot-password"' in response.text
+    assert 'name="token"' not in response.text
+
+
+async def test_reset_page_refuses_a_used_link(web, web_mailer) -> None:
+    """По ссылке уже сменили пароль — второй раз страница форму не покажет."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+    token = web_mailer.last_token()
+    await web.post("/api/auth/reset-password", json={"token": token, "password": NEW_PASSWORD})
+
+    response = await web.get(f"/reset-password?token={token}")
+
+    assert "Ссылка недействительна" in response.text
+    assert 'name="token"' not in response.text
+
+
+async def test_reset_page_does_not_reflect_a_hostile_token(web) -> None:
+    """Негодный токен в разметку не попадает вообще: страница его не пересказывает."""
+    response = await web.get("/reset-password", params={"token": '"><script>alert(1)</script>'})
+
+    assert "<script>" not in response.text
+    assert "alert(1)" not in response.text
+
+
+async def test_reset_page_does_not_require_a_session(web, web_mailer) -> None:
+    """Ссылка — самостоятельное доказательство: вошедшего она тоже пускает."""
+    await _register(web)
+    await _ask_for_letter(web)
+    token = web_mailer.last_token()
+
+    response = await web.get(f"/reset-password?token={token}")
+
+    assert response.status_code == 200
+    assert f'name="token" value="{token}"' in response.text
