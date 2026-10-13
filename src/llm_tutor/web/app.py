@@ -209,6 +209,9 @@ def create_app(
     # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
     app.state.accounts = accounts_db
     app.state.login_limiter = security.LoginLimiter()
+    # Запросы письма-восстановления — свой счётчик: иначе чужие заявки
+    # «Забыли пароль?» закрыли бы вход честному ученику (и наоборот).
+    app.state.reset_limiter = security.LoginLimiter(limit=settings.password_reset_limit)
     app.state.userdbs = userdbs
     # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.
     app.state.admin_cache = {}

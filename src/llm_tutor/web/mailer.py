@@ -125,6 +125,20 @@ class LogMailer:
         """Ничего не держит."""
 
 
+async def send_safely(mailer: Mailer, *, to: str, subject: str, text: str) -> None:
+    """Отправка фоновой задачей: падение почты не должно всплыть наружу.
+
+    Задача уходит в ``BackgroundTasks`` уже после ответа ученику, и её
+    исключение никто не прочтёт — оно всплывёт как «необработанная ошибка»
+    (или порвёт тестовый клиент). Поэтому последний рубеж здесь, а не в
+    ``SmtpMailer``: любой мейлер имеет право ошибиться.
+    """
+    try:
+        await mailer.send(to=to, subject=subject, text=text)
+    except Exception:  # noqa: BLE001 — письмо фоновое, наружу нельзя
+        logger.exception("Письмо для %s не отправлено", to)
+
+
 def build_mailer(settings: Settings) -> Mailer:
     """Мейлер по настройкам: настроен SMTP — настоящий, иначе режим показа."""
     if not settings.smtp_configured:

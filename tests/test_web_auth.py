@@ -1,12 +1,15 @@
 """Вход, регистрация, сессии и защита страниц (Срез 38)."""
 
+import logging
 import re
 
 import httpx
 import pytest
 
+from llm_tutor.web.accounts import RESET_TOKEN_INVALID
 from llm_tutor.web.app import create_app
 from llm_tutor.web.security import SESSION_COOKIE, safe_next
+from web_fakes import FailingMailer
 
 ANN = {"email": "ann@example.com", "name": "Аня", "password": "секретный-пароль"}
 
@@ -357,3 +360,279 @@ async def test_login_does_not_block_the_event_loop(web) -> None:
 
     assert health.status_code == 200
     assert health_latency < 0.3
+
+
+# --- Восстановление пароля по почте: API (Срез 72) ---
+
+NEW_PASSWORD = "совсем-новый-пароль"
+
+
+async def _ask_for_letter(web, email: str = ANN["email"]) -> httpx.Response:
+    return await web.post("/api/auth/forgot-password", json={"email": email})
+
+
+async def test_forgot_password_sends_a_letter_with_a_link(web, web_mailer) -> None:
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+
+    response = await _ask_for_letter(web)
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    to, subject, text = web_mailer.last()
+    assert to == ANN["email"]
+    assert "llm·tutor" in subject
+    assert "Восстановление пароля" in subject
+    assert "Аня" in text
+    assert web_mailer.last_link().startswith("http://127.0.0.1:8000/reset-password?token=")
+
+
+async def test_response_does_not_carry_the_token(web, web_mailer) -> None:
+    """Секрет живёт в письме, а не в ответе: ответ одинаков для всех."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+
+    body = (await _ask_for_letter(web)).text
+
+    assert web_mailer.last_token() not in body
+    assert "token" not in body
+
+
+@pytest.mark.parametrize("email", ["nobody@example.com", "не-адрес", "", "   "])
+async def test_forgot_password_answers_the_same_for_any_address(web, web_mailer, email: str) -> None:
+    """Антиперечисление: по ответу нельзя понять, зарегистрирован ли email."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+
+    response = await _ask_for_letter(web, email)
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    assert web_mailer.sent == []
+
+
+async def test_letter_goes_only_to_the_owner(web, web_mailer) -> None:
+    await _register(web)  # ann@example.com
+    await web.post("/api/auth/logout", json={})
+
+    await _ask_for_letter(web, "bob@example.com")
+    await _ask_for_letter(web)
+
+    assert [to for to, _, _ in web_mailer.sent] == [ANN["email"]]
+
+
+async def test_new_request_invalidates_the_old_link(web, web_mailer) -> None:
+    """«Последняя заявка побеждает»: ссылка из старого письма больше не годится."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+    stale = web_mailer.last_token()
+    await _ask_for_letter(web)
+    fresh = web_mailer.last_token()
+
+    old = await web.post("/api/auth/reset-password", json={"token": stale, "password": NEW_PASSWORD})
+    new = await web.post("/api/auth/reset-password", json={"token": fresh, "password": NEW_PASSWORD})
+
+    assert old.status_code == 422
+    assert old.json()["detail"]["field"] == "token"
+    assert new.status_code == 200
+
+
+async def test_forgot_password_is_rate_limited(web, web_app, web_mailer) -> None:
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    web_app.state.reset_limiter.clock = lambda: 1000.0
+
+    for _ in range(3):
+        assert (await _ask_for_letter(web)).status_code == 200
+    blocked = await _ask_for_letter(web)
+
+    assert blocked.status_code == 429
+    assert blocked.json()["detail"]["message"]
+    # Письма, отправленные до блокировки, на месте.
+    assert len(web_mailer.sent) == 3
+
+
+async def test_reset_limit_does_not_block_logins(web, web_app) -> None:
+    """Счётчики сброса и входа независимы: иначе заявки закрыли бы вход."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    web_app.state.reset_limiter.clock = lambda: 1000.0
+    for _ in range(4):
+        await _ask_for_letter(web)
+    assert (await _ask_for_letter(web)).status_code == 429
+
+    login = await web.post(
+        "/api/auth/login", json={"email": ANN["email"], "password": ANN["password"]}
+    )
+
+    assert login.status_code == 200
+
+
+@pytest.mark.parametrize("path", ["/api/auth/forgot-password", "/api/auth/reset-password"])
+async def test_reset_api_is_guarded_like_the_rest(web, path: str) -> None:
+    """Общий api_guard: форму с чужого сайта не примут, и «забыть» его нельзя."""
+    as_form = await web.post(path, data={"email": ANN["email"], "token": "x", "password": "y"})
+    foreign = await web.post(
+        path,
+        json={"email": ANN["email"], "token": "x", "password": "y"},
+        headers={"Origin": "https://evil.example"},
+    )
+
+    assert as_form.status_code == 415
+    assert foreign.status_code == 403
+
+
+async def test_reset_password_by_link(web, web_mailer) -> None:
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+
+    response = await web.post(
+        "/api/auth/reset-password",
+        json={"token": web_mailer.last_token(), "password": NEW_PASSWORD},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+    # Старый пароль не подходит, новый — пускает.
+    old = await web.post("/api/auth/login", json={"email": ANN["email"], "password": ANN["password"]})
+    fresh = await web.post("/api/auth/login", json={"email": ANN["email"], "password": NEW_PASSWORD})
+    assert old.status_code == 401
+    assert fresh.status_code == 200
+
+
+async def test_reset_closes_other_sessions(web, web_app, web_mailer) -> None:
+    """Чужой вход (например, угнанный) закрывается вместе со сменой пароля."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=web_app), base_url="http://testserver"
+    ) as second:
+        logged = await second.post(
+            "/api/auth/login", json={"email": ANN["email"], "password": ANN["password"]}
+        )
+        assert logged.status_code == 200
+        await _ask_for_letter(web)
+
+        reset = await web.post(
+            "/api/auth/reset-password",
+            json={"token": web_mailer.last_token(), "password": NEW_PASSWORD},
+        )
+
+        assert reset.status_code == 200
+        assert (await second.get("/api/me")).status_code == 401
+
+
+async def test_reset_unblocks_login_after_failed_attempts(web, web_app, web_mailer) -> None:
+    """Забыл пароль, набрал неверный пять раз — сброс снимает блокировку входа."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    web_app.state.login_limiter.clock = lambda: 1000.0
+    for _ in range(5):
+        await web.post("/api/auth/login", json={"email": ANN["email"], "password": "не тот"})
+    blocked = await web.post(
+        "/api/auth/login", json={"email": ANN["email"], "password": ANN["password"]}
+    )
+
+    await _ask_for_letter(web)
+    reset = await web.post(
+        "/api/auth/reset-password",
+        json={"token": web_mailer.last_token(), "password": NEW_PASSWORD},
+    )
+    login = await web.post(
+        "/api/auth/login", json={"email": ANN["email"], "password": NEW_PASSWORD}
+    )
+
+    assert blocked.status_code == 429
+    assert reset.status_code == 200
+    assert login.status_code == 200
+
+
+async def test_short_password_does_not_burn_the_token(web, web_mailer) -> None:
+    """Опечатку в пароле ученик исправляет на той же странице — ссылка цела."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+    token = web_mailer.last_token()
+
+    weak = await web.post("/api/auth/reset-password", json={"token": token, "password": "123"})
+    good = await web.post("/api/auth/reset-password", json={"token": token, "password": NEW_PASSWORD})
+
+    assert weak.status_code == 422
+    assert weak.json()["detail"]["field"] == "password"
+    assert good.status_code == 200
+
+
+async def test_used_link_does_not_work_twice(web, web_mailer) -> None:
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+    token = web_mailer.last_token()
+    first = await web.post(
+        "/api/auth/reset-password", json={"token": token, "password": NEW_PASSWORD}
+    )
+
+    again = await web.post(
+        "/api/auth/reset-password", json={"token": token, "password": "ещё-один-пароль"}
+    )
+
+    assert first.status_code == 200
+    assert again.status_code == 422
+    assert again.json()["detail"]["field"] == "token"
+    assert again.json()["detail"]["message"] == RESET_TOKEN_INVALID
+
+
+@pytest.mark.parametrize("token", ["", "мусор", "a" * 500])
+async def test_garbage_link_is_rejected(web, token: str) -> None:
+    response = await web.post(
+        "/api/auth/reset-password", json={"token": token, "password": NEW_PASSWORD}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["field"] == "token"
+
+
+async def test_expired_link_is_rejected(web, web_app, web_mailer) -> None:
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    await _ask_for_letter(web)
+    web_app.state.accounts.execute("UPDATE password_resets SET expires_at = 0")
+    web_app.state.accounts.commit()
+
+    response = await web.post(
+        "/api/auth/reset-password",
+        json={"token": web_mailer.last_token(), "password": NEW_PASSWORD},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["field"] == "token"
+
+
+async def test_broken_mail_does_not_break_the_request(web_settings, web_llm) -> None:
+    """Письмо уходит фоном: отказ почты не должен ломать ответ ученику."""
+    app = create_app(web_settings, client=web_llm, mailer=FailingMailer())
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+    ) as client:
+        await client.post("/api/auth/register", json=ANN)
+        await client.post("/api/auth/logout", json={})
+        response = await client.post("/api/auth/forgot-password", json={"email": ANN["email"]})
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+
+async def test_reset_flow_does_not_log_secrets(web, web_mailer, caplog) -> None:
+    """Токен и новый пароль не попадают в журнал (почта настроена — письмо не печатается)."""
+    await _register(web)
+    await web.post("/api/auth/logout", json={})
+    with caplog.at_level(logging.DEBUG):
+        await _ask_for_letter(web)
+        token = web_mailer.last_token()
+        await web.post(
+            "/api/auth/reset-password", json={"token": token, "password": NEW_PASSWORD}
+        )
+
+    assert token not in caplog.text
+    assert NEW_PASSWORD not in caplog.text
