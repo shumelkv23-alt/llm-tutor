@@ -24,10 +24,13 @@ from llm_tutor.db.connection import get_conn, migrate
 # Корень проекта (web/accounts.py → src → корень) — не зависит от cwd.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = _PROJECT_ROOT / "migrations_accounts"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 # Срок сессии; продлевается, когда прошло больше половины (скользящий срок).
 SESSION_TTL = 30 * 24 * 3600.0
+
+# Срок жизни ссылки восстановления пароля (переопределяется настройкой).
+RESET_TTL = 3600.0
 
 # scrypt n=2¹⁴, r=8, p=1: ~16 МБ памяти и десятки миллисекунд на проверку —
 # дёшево для входа, дорого для перебора.
@@ -52,6 +55,9 @@ EMAIL_TAKEN = "Этот email уже зарегистрирован — войд
 NAME_INVALID = f"Укажите имя: от 1 до {MAX_NAME} символов."
 PASSWORD_INVALID = f"Пароль — от {MIN_PASSWORD} до {MAX_PASSWORD} символов."
 CURRENT_PASSWORD_WRONG = "Текущий пароль не подходит."
+RESET_TOKEN_INVALID = (
+    "Ссылка недействительна или устарела. Запросите восстановление пароля заново."
+)
 
 
 class AccountError(ValueError):
@@ -364,6 +370,85 @@ def resolve_session(
 def delete_session(conn: sqlite3.Connection, token: str) -> None:
     conn.execute("DELETE FROM web_sessions WHERE token_hash = ?", (_token_hash(token),))
     conn.commit()
+
+
+# --- Восстановление пароля по ссылке ---
+
+
+def create_reset_token(
+    conn: sqlite3.Connection, user_id: int, *, now: float | None = None, ttl: float = RESET_TTL
+) -> str:
+    """Одноразовая ссылка на смену пароля: возвращает токен, в БД — только его хеш.
+
+    Последняя заявка побеждает: прежние ссылки ученика гаснут, чтобы письмо,
+    попавшее не в те руки, перестало работать. Попутно чистим протухшие строки —
+    иначе таблица росла бы с каждой заявкой (как в ``create_session``).
+    """
+    stamp = time.time() if now is None else now
+    token = secrets.token_urlsafe(32)
+    conn.execute("DELETE FROM password_resets WHERE expires_at <= ?", (stamp,))
+    conn.execute("DELETE FROM password_resets WHERE user_id = ?", (user_id,))
+    conn.execute(
+        "INSERT INTO password_resets (token_hash, user_id, created_at, expires_at) "
+        "VALUES (?, ?, ?, ?)",
+        (_token_hash(token), user_id, stamp, stamp + ttl),
+    )
+    conn.commit()
+    return token
+
+
+def reset_token_user(
+    conn: sqlite3.Connection, token: str, *, now: float | None = None
+) -> User | None:
+    """Ученик по ссылке восстановления, если она есть, не протухла и не использована.
+
+    Только чтение: годится ли ссылка, чтобы показать форму нового пароля.
+    Кто именно сбросит пароль, решает ``reset_password`` — на нём и гонка.
+    """
+    if not token or len(token) > _MAX_TOKEN:
+        return None
+    stamp = time.time() if now is None else now
+    row = conn.execute(
+        "SELECT u.id, u.email, u.name, u.created_at, u.is_admin, r.expires_at, r.used_at "
+        "FROM password_resets r JOIN users u ON u.id = r.user_id WHERE r.token_hash = ?",
+        (_token_hash(token),),
+    ).fetchone()
+    if row is None or row["used_at"] is not None or row["expires_at"] <= stamp:
+        return None
+    return _user(row)
+
+
+def reset_password(
+    conn: sqlite3.Connection, token: str, password_hash: str, *, now: float | None = None
+) -> int:
+    """Сбрасывает пароль по одноразовой ссылке; возвращает id ученика.
+
+    Всё одной транзакцией: пометить ссылку использованной, записать хеш, закрыть
+    **все** сессии ученика — сброс обычно реакция на «не помню/увели», чужие
+    входы должны умереть. ``set_password`` тут не зовётся: его собственный
+    ``commit`` разорвал бы связку. Одноразовость держит условие ``used_at IS
+    NULL`` — это compare-and-swap на строке, и ``rowcount == 1`` достаётся
+    только победителю: проигравший гонку получает отказ. Тяжёлый scrypt считает
+    вызывающий, до этого блока.
+    """
+    stamp = time.time() if now is None else now
+    digest = _token_hash(token)
+    cur = conn.execute(
+        "UPDATE password_resets SET used_at = ? "
+        "WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?",
+        (stamp, digest, stamp),
+    )
+    if cur.rowcount != 1:
+        conn.rollback()
+        raise AccountError("token", RESET_TOKEN_INVALID)
+    row = conn.execute(
+        "SELECT user_id FROM password_resets WHERE token_hash = ?", (digest,)
+    ).fetchone()
+    user_id = int(row["user_id"])
+    conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, user_id))
+    conn.execute("DELETE FROM web_sessions WHERE user_id = ?", (user_id,))
+    conn.commit()
+    return user_id
 
 
 # --- Записи на курсы ---
