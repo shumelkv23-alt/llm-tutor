@@ -24,6 +24,7 @@ from markupsafe import Markup, escape
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.web import accounts, security
+from llm_tutor.web.mailer import MAIL_HELP, Mailer, build_mailer
 from llm_tutor.web.userdb import UserDBPool
 
 logger = logging.getLogger(__name__)
@@ -148,15 +149,19 @@ def _llm_client(settings: Settings) -> LLMClient:
     )
 
 
-def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
+def create_app(
+    settings: Settings, client: LLMClient | None = None, mailer: Mailer | None = None
+) -> FastAPI:
     """Собирает приложение.
 
-    ``client`` — LLM-клиент; если не передан, приложение создаёт свой и
-    закрывает его при остановке. Внедрённый клиент закрывает тот, кто его
-    создал.
+    ``client`` — LLM-клиент, ``mailer`` — почта; если не переданы, приложение
+    создаёт свои и закрывает их при остановке. Внедрённые закрывает тот, кто
+    их создал.
     """
     owns_client = client is None
+    owns_mailer = mailer is None
     llm = _llm_client(settings) if client is None else client
+    post = build_mailer(settings) if mailer is None else mailer
     accounts_db = accounts.open_accounts(settings.accounts_db_path)
     userdbs = UserDBPool(
         _project_path(settings.users_dir),
@@ -170,6 +175,10 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         # В фоне: сетевой запрос не должен задерживать старт. Внедрённый клиент
         # (тесты) не проверяем — у него нет сети.
         key_check = asyncio.create_task(check_llm_key(llm)) if owns_client else None
+        if owns_mailer and not settings.smtp_configured:
+            # Пишем при старте, а не в create_app: тесты собирают приложение
+            # сотни раз, и предупреждение утонуло бы в их журнале.
+            logger.warning("Почта не настроена. %s", MAIL_HELP)
         try:
             yield
         finally:
@@ -179,6 +188,8 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
             accounts_db.close()
             if owns_client:
                 await llm.aclose()
+            if owns_mailer:
+                await post.aclose()
 
     # Swagger и ReDoc грузят скрипты со стороннего CDN — API внутреннее.
     app = FastAPI(
@@ -190,6 +201,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.client = llm
+    app.state.mailer = post
     app.state.templates = make_templates()
     app.state.templates.env.globals["pyodide_index_url"] = settings.pyodide_index_url
     csp = content_security_policy(settings.pyodide_index_url)

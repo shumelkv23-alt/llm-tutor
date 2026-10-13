@@ -75,3 +75,67 @@ def test_get_settings_is_cached(monkeypatch: pytest.MonkeyPatch) -> None:
         assert first is second
     finally:
         get_settings.cache_clear()
+
+
+# --- Почта: восстановление пароля (Срез 71) ---
+
+
+def test_smtp_is_optional_and_off_by_default() -> None:
+    """У старых .env почтовых переменных нет — приложение обязано стартовать."""
+    settings = _settings()
+
+    assert settings.smtp_host == "smtp.gmail.com"
+    assert settings.smtp_port == 587
+    assert settings.smtp_starttls is True
+    assert settings.smtp_configured is False
+    assert settings.mail_from_name == "llm·tutor"
+    assert settings.public_base_url == "http://127.0.0.1:8000"
+    assert settings.password_reset_ttl_minutes == 60
+    assert settings.password_reset_limit == 3
+
+
+@pytest.mark.parametrize(
+    ("user", "password", "expected"),
+    [
+        ("tutor@example.com", "abcd efgh ijkl mnop", True),
+        ("tutor@example.com", None, False),
+        (None, "abcd efgh ijkl mnop", False),
+        ("tutor@example.com", "", False),
+        ("   ", "abcd efgh ijkl mnop", False),
+        ("tutor@example.com", "   ", False),
+    ],
+)
+def test_smtp_configured_needs_address_and_password(user, password, expected) -> None:
+    """Отправка возможна, только когда есть и адрес, и непустой пароль."""
+    settings = _settings(smtp_user=user, smtp_password=password)
+
+    assert settings.smtp_configured is expected
+
+
+def test_password_reset_ttl_is_read_in_minutes(tmp_path) -> None:
+    env = tmp_path / ".env"
+    env.write_text(
+        "OPENROUTER_API_KEY=sk-test\nPASSWORD_RESET_TTL_MINUTES=15\n"
+        "SMTP_USER=tutor@example.com\nSMTP_PASSWORD=abcd efgh ijkl mnop\n",
+        encoding="utf-8",
+    )
+
+    settings = Settings(_env_file=env)
+
+    assert settings.password_reset_ttl_minutes == 15
+    assert settings.smtp_configured is True
+
+
+def test_smtp_password_is_not_shown_in_repr() -> None:
+    """Секрет не светится ни в логе, ни в тексте ошибки настроек."""
+    settings = _settings(smtp_user="tutor@example.com", smtp_password="пароль-приложения")
+
+    assert "пароль-приложения" not in repr(settings)
+
+
+@pytest.mark.parametrize(
+    "overrides", [{"password_reset_ttl_minutes": 0}, {"password_reset_limit": 0}]
+)
+def test_password_reset_bounds_are_validated(overrides) -> None:
+    with pytest.raises(ValidationError):
+        _settings(**overrides)

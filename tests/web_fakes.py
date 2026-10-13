@@ -1,7 +1,12 @@
-"""Подставные LLM-клиенты для тестов веба и ядра."""
+"""Подставные LLM-клиенты и почта для тестов веба и ядра."""
+
+import re
+from pathlib import Path
 
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
+
+_LINK_RE = re.compile(r"https?://\S+/reset-password\?token=[\w\-]+")
 
 
 class SilentLLM:
@@ -19,6 +24,53 @@ class SilentLLM:
 
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
         raise AssertionError("Модель не должна вызываться в этом тесте")
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class RecordingMailer:
+    """Почта, которая никуда не отправляет, а копит письма.
+
+    ``outbox`` — каталог, куда дополнительно кладутся файлы с текстом писем:
+    так их достаёт e2e, где приложение живёт в отдельном потоке.
+    """
+
+    def __init__(self, outbox: Path | None = None) -> None:
+        self.sent: list[tuple[str, str, str]] = []
+        self.outbox = outbox
+        self.closed = False
+
+    async def send(self, *, to: str, subject: str, text: str) -> None:
+        self.sent.append((to, subject, text))
+        if self.outbox is not None:
+            (self.outbox / f"letter-{len(self.sent)}.txt").write_text(text, encoding="utf-8")
+
+    def last(self) -> tuple[str, str, str]:
+        assert self.sent, "Писем не было"
+        return self.sent[-1]
+
+    def last_link(self) -> str:
+        """Ссылка восстановления из последнего письма."""
+        match = _LINK_RE.search(self.last()[2])
+        assert match, f"В письме нет ссылки восстановления:\n{self.last()[2]}"
+        return match.group(0)
+
+    def last_token(self) -> str:
+        return self.last_link().split("token=", 1)[1]
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+class FailingMailer:
+    """Почта, у которой отправка всегда падает: запрос ломаться не должен."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def send(self, *, to: str, subject: str, text: str) -> None:
+        raise OSError("SMTP недоступен")
 
     async def aclose(self) -> None:
         self.closed = True

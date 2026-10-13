@@ -6,7 +6,7 @@ import pytest
 from llm_tutor.config import Settings
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.web.app import create_app
-from web_fakes import SilentLLM
+from web_fakes import RecordingMailer, SilentLLM
 
 
 @pytest.fixture
@@ -46,8 +46,14 @@ def web_llm():
 
 
 @pytest.fixture
-def web_app(web_settings, web_llm):
-    app = create_app(web_settings, client=web_llm)
+def web_mailer():
+    """Почта веб-приложения: письма копятся в памяти, наружу не уходят."""
+    return RecordingMailer()
+
+
+@pytest.fixture
+def web_app(web_settings, web_llm, web_mailer):
+    app = create_app(web_settings, client=web_llm, mailer=web_mailer)
     yield app
     app.state.accounts.close()
 
