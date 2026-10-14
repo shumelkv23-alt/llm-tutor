@@ -12,6 +12,7 @@ from llm_tutor.web import accounts
 from llm_tutor.web.cli import main as cli_main
 
 from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
+from llm_tutor.web.courses import visible_courses
 
 # Занятий в открытых ученикам модулях (неопубликованные — «скоро», срез 55).
 _PUBLISHED = {t.number for t in _course_data(_COURSES[0]).topics if t.published}
@@ -39,6 +40,13 @@ async def test_catalog_lists_the_course_not_enrolled(student) -> None:
 
 async def test_catalog_requires_login(web) -> None:
     assert (await web.get("/api/courses")).status_code == 401
+
+
+async def test_catalog_lists_visible_courses_only(student) -> None:
+    """Каталог — это курсы с ``visible=True``: черновик в него не попадает."""
+    cards = (await student.get("/api/courses")).json()["courses"]
+
+    assert {card["id"] for card in cards} == {course.id for course in visible_courses()}
 
 
 async def test_enroll_creates_db_and_is_idempotent(student, web_settings, tmp_path) -> None:

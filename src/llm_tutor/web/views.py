@@ -18,9 +18,10 @@ from llm_tutor.core.overview import (
     topic_rows,
 )
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import SeedError
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
-from llm_tutor.student import guide, survey
+from llm_tutor.student import diagnostic, guide, survey
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,12 @@ STATUS_LABELS = {
     "in_progress": "В процессе",
     "done": "Пройден",
 }
+
+# Курс не открывается по двум причинам: битая БД ученика или нечитаемые модули
+# (нет каталога с seed-файлами, битый JSON). Второе приходит от `course_data` и
+# раньше роняло страницу пятисоткой (аудит среза 1 курса ИСИТ): одна карточка
+# не должна стоить ученику главной, профиля и страницы занятия.
+COURSE_ERRORS = (sqlite3.DatabaseError, RuntimeError, SeedError, FileNotFoundError)
 
 
 def course_card(
@@ -68,35 +75,46 @@ def course_card(
                 module_view(module)
                 for module in module_rows(conn, topic_rows(conn, settings=settings))
             ]
-        except (sqlite3.DatabaseError, RuntimeError):
+        except COURSE_ERRORS:
             # Одна битая БД не должна ронять каталог: курс помечается недоступным.
-            logger.exception("БД ученика %s по курсу %s не открывается", user_id, course.id)
+            logger.exception("Курс %s для ученика %s не открывается", course.id, user_id)
             card.update(status="error", status_label=STATUS_LABELS["error"], percent=0)
-            card["topics"] = _topic_count(course)
+            card["topics"] = _topic_count(course) or 0
             return card
         card.update(topics=progress.total, closed=progress.closed, current_topic=progress.current_name)
         if not progress.survey_done:
             card["status"] = "survey"
-        elif progress.closed >= progress.total:
+        elif progress.total and progress.closed >= progress.total:
+            # «Пройден» — только когда в курсе есть что проходить: у курса из
+            # одних неопубликованных модулей 0 из 0 — не «пройдено».
             card["status"] = "done"
         else:
             card["status"] = "in_progress"
     else:
-        card["topics"] = _topic_count(course)
+        topics = _topic_count(course)
+        if topics is None:
+            card.update(status="error", status_label=STATUS_LABELS["error"], percent=0, topics=0)
+            return card
+        card["topics"] = topics
     card["status_label"] = STATUS_LABELS[card["status"]]
     card["percent"] = round(100 * card["closed"] / card["topics"]) if card["topics"] else 0
     return card
 
 
-def _topic_count(course: Course) -> int:
+def _topic_count(course: Course) -> int | None:
     """Число занятий в открытых модулях курса — из seed, без БД ученика.
 
     Неопубликованные модули — «скоро» (срез 55): их занятий нет и в карточке
-    записанного ученика, иначе числа разошлись бы.
+    записанного ученика, иначе числа разошлись бы. ``None`` — модули курса не
+    читаются: карточка скажет «недоступен», а страница не упадёт.
     """
     from llm_tutor.web.courses import course_data
 
-    data = course_data(course)
+    try:
+        data = course_data(course)
+    except COURSE_ERRORS:
+        logger.exception("Модули курса %s не читаются", course.id)
+        return None
     published = {topic.number for topic in data.topics if topic.published}
     return sum(1 for node in data.nodes if node.topic_id in published)
 
@@ -234,12 +252,18 @@ def lesson_button(state: SessionState) -> dict | None:
 
 
 def lesson_view(
-    conn: sqlite3.Connection, graph: CourseGraph, state: SessionState, node_id: str
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    node_id: str,
+    *,
+    settings: Settings | None = None,
 ) -> dict:
     """Где ученик в курсе (срез 55): модуль, занятие k из m, разделы и итоговое.
 
     Статус раздела: ``passed`` / ``weak`` (пройден после двух ошибок) /
-    ``current`` / ``ahead``. У темы без разделов список пуст, ``final`` — None.
+    ``skipped`` (заданий по разделу ещё нет) / ``current`` / ``ahead``. У темы
+    без разделов список пуст, ``final`` — None.
     """
     module = graph.topic_of(node_id)
     topic = repos.get_topic(conn, module)
@@ -256,6 +280,10 @@ def lesson_view(
             return "weak"
         if section_id in state.passed_sections:
             return "passed"
+        # Раздел без заданий: спрашивать по нему нечем (недописанный урок). Это не
+        # «пройден» — ученик ничего не доказывал, — и не «впереди».
+        if section_id in state.skipped_sections:
+            return "skipped"
         return "current" if section_id == current else "ahead"
 
     sections = [
@@ -266,6 +294,8 @@ def lesson_view(
     if ids:
         if here and state.final_passed:
             final_status = "weak" if state.final_weak else "passed"
+        elif not diagnostic.has_lesson_item(conn, node_id, final=True, settings=settings):
+            final_status = "skipped"
         else:
             final_status = "current" if here and current is None else "ahead"
         final = {"title": FINAL_LABEL, "status": final_status}
@@ -310,7 +340,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             "description": concept.description,
             "source_url": concept.source_url,
             "theory_html": str(markdown.render(repos.get_theory(conn, concept.id) or "")),
-            "lesson": lesson_view(conn, graph, state, concept.id),
+            "lesson": lesson_view(conn, graph, state, concept.id, settings=settings),
         }
     item = repos.get_item(conn, state.pending_item_id) if state.pending_item_id else None
     messages = repos.get_messages(conn, session_id)[-CHAT_HISTORY:] if session_id else []

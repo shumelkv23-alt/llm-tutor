@@ -197,6 +197,9 @@ def _theory_block(
             mark = "⚠️"
         elif section.id in state.passed_sections:
             mark = "✓"
+        elif section.id in state.skipped_sections:
+            # Раздел без заданий (недописанный урок): спрашивать по нему нечем.
+            mark = "–"
         elif section.id == current:
             mark = "▶"
         else:

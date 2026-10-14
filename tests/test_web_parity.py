@@ -157,8 +157,10 @@ async def test_all_mastered_student_gets_route_done(enrolled, web_app) -> None:
 
     assert turn.ROUTE_DONE_REPLY.split(".")[0] in body["messages"][-1]["html"]
     assert body["state"]["item"] is None
-    (card,) = (await enrolled.get("/api/courses")).json()["courses"]
-    assert card["status"] == "done"
+    # Курсов в каталоге несколько (mlcourse и «Машинное обучение для ИСИТ») —
+    # берём тот, на который записан этот ученик.
+    cards = {card["id"]: card for card in (await enrolled.get("/api/courses")).json()["courses"]}
+    assert cards[COURSE]["status"] == "done"
 
 
 # --- состояние и экранирование ---

@@ -1,0 +1,977 @@
+{
+  "course": "isit/topic03",
+  "comment": "Модуль 3 курса «Машинное обучение для ИСИТ» (lab3-linear-regression). Занятия metrics, ols, regularization: конспекты и задания пишутся по срезам, до готовности модуль не публикуется.",
+  "topic": {
+    "number": 3,
+    "title": "Линейная регрессия",
+    "intro": "Первая модель машинного обучения: как измерить, насколько она ошибается, как обучить её одной формулой и что делать, когда признаков много и они мешают друг другу.",
+    "survey": {
+      "level_key": "isit3_level",
+      "level_question": "Как у тебя с линейной регрессией?",
+      "level_options": [
+        "Не слышал",
+        "Что-то считал в тетрадке",
+        "Уверенно обучаю модели в sklearn"
+      ],
+      "blocks": [
+        {
+          "key": "isit3_block_metrics",
+          "title": "Метрики",
+          "question": "Считаешь, насколько модель ошибается?",
+          "example": "MSE, MAE, R², прогноз средним",
+          "concepts": [
+            "metrics"
+          ]
+        },
+        {
+          "key": "isit3_block_ols",
+          "title": "Линейная регрессия",
+          "question": "Обучаешь прямую по формуле и сверяешь со sklearn?",
+          "example": "столбец единиц, нормальное уравнение, LinearRegression",
+          "concepts": [
+            "ols"
+          ]
+        },
+        {
+          "key": "isit3_block_regularization",
+          "title": "Регуляризация",
+          "question": "Справляешься с мультиколлинеарностью и отбираешь признаки?",
+          "example": "Ridge, Lasso, разреженные веса",
+          "concepts": [
+            "regularization"
+          ]
+        }
+      ],
+      "assumed_by_confident": [],
+      "foundation": [
+        "isit3_block_metrics"
+      ]
+    },
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "metrics",
+      "name": "Метрики регрессии",
+      "difficulty": 0.35,
+      "description": "Как измерить ошибку модели числом: средний квадрат ошибки, средняя абсолютная ошибка и доля разброса, которую модель объяснила.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/blob/0da67c6/lab3-linear-regression.ipynb",
+      "sections": [
+        {
+          "id": "mse",
+          "title": "Средняя квадратичная ошибка"
+        },
+        {
+          "id": "r2",
+          "title": "Доля объяснённого разброса"
+        }
+      ]
+    },
+    {
+      "id": "ols",
+      "name": "Линейная регрессия своими руками",
+      "difficulty": 0.5,
+      "description": "Модель, которую можно обучить одной формулой: столбец единиц, нормальное уравнение, свой класс с fit и predict — и сверка с готовым LinearRegression.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/blob/0da67c6/lab3-linear-regression.ipynb",
+      "sections": [
+        {
+          "id": "normal_equation",
+          "title": "Нормальное уравнение"
+        },
+        {
+          "id": "class",
+          "title": "Своя модель"
+        },
+        {
+          "id": "compare",
+          "title": "Сверка со sklearn"
+        }
+      ]
+    },
+    {
+      "id": "regularization",
+      "name": "Регуляризация: Ridge и Lasso",
+      "difficulty": 0.55,
+      "description": "Что делать, когда признаков много и они дублируют друг друга: штраф за большие веса, сжатие коэффициентов и отбор признаков.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/blob/0da67c6/lab3-linear-regression.ipynb",
+      "sections": [
+        {
+          "id": "ridge",
+          "title": "Ridge: штраф за большие веса"
+        },
+        {
+          "id": "lasso",
+          "title": "Lasso: отбор признаков"
+        },
+        {
+          "id": "choice",
+          "title": "Что выбрать"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "imdb",
+      "to_id": "metrics",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.4
+    },
+    {
+      "from_id": "titanic",
+      "to_id": "metrics",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "metrics",
+      "to_id": "ols",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "arrays",
+      "to_id": "ols",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "metrics",
+      "to_id": "regularization",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.4
+    },
+    {
+      "from_id": "ols",
+      "to_id": "regularization",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    }
+  ],
+  "items": [
+    {
+      "id": 3001,
+      "prompt": "Напиши функцию `mse(y_true, y_pred)`: средний квадрат ошибки — среднее от `(y_true - y_pred) ** 2` по всем элементам. Внутри приведи оба аргумента к `np.asarray(..., dtype=float)`, чтобы работали и списки, и возвращай одно число `float`. В `result` сохрани кортеж `(round(float(mse([1.0, 2.0, 3.0], [1.1, 1.9, 3.2])), 4), round(float(mse(y, np.full_like(y, y.mean()))), 4))` — ошибка на игрушечном примере и ошибка прогноза средним на данных из setup.",
+      "answer_type": "code",
+      "concept_weights": {
+        "metrics": 0.8
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 49,
+      "setup": "import numpy as np\n\nnp.random.seed(0)\nX = 2 * np.random.rand(100, 1)\ntrue_w = np.random.randn(1, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X.dot(true_w) + true_b + np.random.randn(100, 1)\n\n# Прямая наименьших квадратов: метрики считаем на настоящей модели, но без\n# нормального уравнения — оно будет на следующем занятии.\ncoefficients = np.polyfit(X.ravel(), y.ravel(), 1)\npredictions = np.polyval(coefficients, X).reshape(-1, 1)\n",
+      "section": "mse",
+      "starter": "def mse(y_true, y_pred):\n    \"\"\"Средний квадрат ошибки.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = mse([1.0, 2.0, 3.0], [1.0, 2.0, 3.0])\nassert isinstance(value, (int, float, np.floating)), \"mse возвращает одно число, а не None.\"\nassert abs(float(value)) < 1e-12, \"Совпадающие прогнозы дают нулевую ошибку.\"\nvalue = mse([1.0, 2.0, 3.0], [1.1, 1.9, 3.2])\nassert abs(float(value) - 0.02) < 1e-9, \"MSE — среднее квадратов: (0.01 + 0.01 + 0.04) / 3 = 0.02.\"\nassert abs(float(mse([4.0], [0.0])) - 16.0) < 1e-12, \"Ошибка возводится в квадрат: 4 даёт 16, а не 4.\"\nassert abs(float(mse([1.0, 2.0], [2.0, 1.0])) - 1.0) < 1e-12, \"Ошибки +1 и −1 не гасят друг друга.\"\nassert abs(float(mse([1.0, 2.0, 3.0], [2.0, 2.0, 2.0])) - 2 / 3) < 1e-9, \"Сумму квадратов делят на число объектов, а не оставляют суммой.\"\nexpected = round(float(np.mean((y - y.mean()) ** 2)), 4)\nassert isinstance(result, tuple) and len(result) == 2, \"В result — кортеж из двух чисел.\"\nassert abs(float(result[0]) - 0.02) < 1e-9, \"Первое число — ошибка на игрушечном примере.\"\nassert abs(float(result[1]) - expected) < 1e-9, \"Второе число — ошибка прогноза средним на данных из setup.\"\n"
+    },
+    {
+      "id": 3002,
+      "prompt": "Для `y_true = np.array([1.0, 2.0, 3.0])` и `y_pred = np.array([1.1, 1.9, 3.2])` чему равна средняя абсолютная ошибка (MAE)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "metrics": 0.6
+      },
+      "difficulty": 0.25,
+      "options": [
+        "≈ 0.1333 — среднее модулей ошибок: (0.1 + 0.1 + 0.2) / 3",
+        "≈ 0.02 — среднее квадратов ошибок",
+        "0.4 — сумма модулей ошибок",
+        "≈ 0.1414 — корень из среднего квадрата ошибок"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "mse",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3003,
+      "prompt": "Напиши функцию `mae(y_true, y_pred)`: средняя абсолютная ошибка — среднее от модулей разностей. Внутри приведи аргументы к `np.asarray(..., dtype=float)`. В `result` сохрани кортеж `(round(float(mae([1.0, 2.0, 3.0], [1.1, 1.9, 3.2])), 4), round(float(mae(y, y + 2.0)), 4), round(float(mae(np.array([1.0, 2.0, 3.0, 100.0]), np.array([1.0, 2.0, 3.0, 60.0]))), 4))` — ошибка на игрушечном примере, ошибка прогноза, сдвинутого на 2, и ошибка с одним крупным промахом.",
+      "answer_type": "code",
+      "concept_weights": {
+        "metrics": 0.7
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 50,
+      "setup": "import numpy as np\n\nnp.random.seed(0)\nX = 2 * np.random.rand(100, 1)\ntrue_w = np.random.randn(1, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X.dot(true_w) + true_b + np.random.randn(100, 1)\n\n# Прямая наименьших квадратов: метрики считаем на настоящей модели, но без\n# нормального уравнения — оно будет на следующем занятии.\ncoefficients = np.polyfit(X.ravel(), y.ravel(), 1)\npredictions = np.polyval(coefficients, X).reshape(-1, 1)\n",
+      "section": "mse",
+      "starter": "def mae(y_true, y_pred):\n    \"\"\"Средняя абсолютная ошибка.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = mae([1.0, 2.0, 3.0], [1.1, 1.9, 3.2])\nassert isinstance(value, (int, float, np.floating)), \"mae возвращает одно число, а не None.\"\nassert abs(float(value) - 0.1333) < 1e-4, \"MAE — среднее модулей: (0.1 + 0.1 + 0.2) / 3 = 0.1333.\"\nassert abs(float(mae([4.0], [0.0])) - 4.0) < 1e-12, \"Модуль, а не квадрат: ошибка 4 остаётся четвёркой.\"\nassert abs(float(mae([1.0, 2.0], [2.0, 1.0])) - 1.0) < 1e-12, \"Ошибки +1 и −1 не гасят друг друга.\"\nassert abs(float(mae([1.0, 2.0, 3.0], [1.0, 2.0, 3.0]))) < 1e-12, \"Точный прогноз даёт нулевую ошибку.\"\nassert abs(float(mae(np.array([1.0, 2.0, 3.0, 100.0]), np.array([1.0, 2.0, 3.0, 60.0]))) - 10.0) < 1e-12, \"Промах на 40 вчетвером даёт MAE 10 — против 400 у MSE.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх чисел.\"\nassert abs(float(result[0]) - 0.1333) < 1e-4, \"Первое число — MAE игрушечного примера.\"\nassert abs(float(result[1]) - 2.0) < 1e-9, \"Сдвинутый на 2 прогноз даёт MAE 2, а не 4: квадрата здесь нет.\"\nassert abs(float(result[2]) - 10.0) < 1e-9, \"Третье число — MAE с одним промахом на 40.\"\n"
+    },
+    {
+      "id": 3004,
+      "prompt": "Модель предсказала 100 значений: на 99 объектах точно, а на одном промахнулась на 40. Чему равны MSE и MAE?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "metrics": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "MSE = 16, MAE = 0.4: 1600 / 100 и 40 / 100",
+        "MSE = 400, MAE = 10: берется по одному промаху",
+        "MSE = 1600, MAE = 40: суммировать, не делить",
+        "MSE = 0.4, MAE = 16: метрики перепутаны местами"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "mse",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3005,
+      "prompt": "Напиши функцию `r2(y_true, y_pred)`: доля объяснённого разброса, `1 - RSS / TSS`, где RSS — сумма квадратов ошибок модели, а TSS — сумма квадратов отклонений `y_true` от его среднего. В `result` сохрани кортеж `(round(float(r2(tiny, tiny)), 4), round(float(r2(tiny, np.full(3, 2.0))), 4), round(float(r2(tiny, np.full(3, 3.0))), 4), round(float(r2(y, predictions)), 4))`, где `tiny = np.array([1.0, 2.0, 3.0])`, а `y` и `predictions` — из setup.",
+      "answer_type": "code",
+      "concept_weights": {
+        "metrics": 0.8
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 51,
+      "setup": "import numpy as np\n\nnp.random.seed(0)\nX = 2 * np.random.rand(100, 1)\ntrue_w = np.random.randn(1, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X.dot(true_w) + true_b + np.random.randn(100, 1)\n\n# Прямая наименьших квадратов: метрики считаем на настоящей модели, но без\n# нормального уравнения — оно будет на следующем занятии.\ncoefficients = np.polyfit(X.ravel(), y.ravel(), 1)\npredictions = np.polyval(coefficients, X).reshape(-1, 1)\n",
+      "section": "r2",
+      "starter": "def r2(y_true, y_pred):\n    \"\"\"Доля разброса цели, которую объяснила модель.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\ntiny = np.array([1.0, 2.0, 3.0])\nvalue = r2(tiny, tiny)\nassert isinstance(value, (int, float, np.floating)), \"r2 возвращает одно число, а не None.\"\nassert abs(float(value) - 1.0) < 1e-12, \"У идеального прогноза R² равен единице.\"\nassert abs(float(r2(tiny, np.array([2.0, 2.0, 2.0])))) < 1e-12, \"Прогноз средним даёт ровно ноль.\"\nassert abs(float(r2(tiny, np.array([3.0, 3.0, 3.0]))) + 1.5) < 1e-12, \"R² бывает отрицательным: прогноз [3, 3, 3] хуже среднего.\"\nassert abs(float(r2(tiny * 100, np.array([300.0, 300.0, 300.0]))) + 1.5) < 1e-12, \"Масштаб цели на R² не влияет.\"\nassert abs(float(r2([1.0, 2.0, 3.0], [2.0, 2.0, 2.0]))) < 1e-12, \"Списки тоже принимаются: приведи аргументы к массиву.\"\nexpected = 1 - np.mean((y - predictions) ** 2) / np.mean((y - y.mean()) ** 2)\nassert abs(float(r2(y, predictions)) - expected) < 1e-9, \"RSS — сумма квадратов ошибок модели, TSS — разброс цели вокруг среднего.\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — кортеж из четырёх чисел.\"\nassert abs(float(result[0]) - 1.0) < 1e-9 and abs(float(result[1])) < 1e-9, \"Первые два числа — единица и ноль.\"\nassert abs(float(result[2]) + 1.5) < 1e-9, \"Третье число отрицательное: −1.5.\"\nassert abs(float(result[3]) - round(float(expected), 4)) < 1e-9, \"Четвёртое — R² модели из setup, округлённый до четырёх знаков.\"\n"
+    },
+    {
+      "id": 3006,
+      "prompt": "Модель на тестовой выборке показала R² = −0.4. Что это значит?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "metrics": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Модель ошибается сильнее, чем прогноз средним: RSS больше TSS",
+        "Ошибка модели составляет 40 % от разброса цели",
+        "R² посчитан неверно: отрицательным он быть не может",
+        "Модель объяснила 40 % разброса, а знак — из-за направления связи"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "r2",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3007,
+      "prompt": "Напиши две функции: `baseline_mse(y_true)` — ошибка прогноза средним, то есть `np.mean((y_true - y_true.mean()) ** 2)`, и `r2_by_mse(y_true, y_pred)` — R² через ошибки: `1 - mse(y_true, y_pred) / baseline_mse(y_true)`, где средний квадрат разностей ты считаешь внутри функции сам. В `result` сохрани кортеж `(round(float(baseline_mse(y)), 4), round(float(r2_by_mse(y, predictions)), 4), round(float(r2_by_mse(y, np.full_like(y, y.mean()))), 4))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "metrics": 0.7
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 52,
+      "setup": "import numpy as np\n\nnp.random.seed(0)\nX = 2 * np.random.rand(100, 1)\ntrue_w = np.random.randn(1, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X.dot(true_w) + true_b + np.random.randn(100, 1)\n\n# Прямая наименьших квадратов: метрики считаем на настоящей модели, но без\n# нормального уравнения — оно будет на следующем занятии.\ncoefficients = np.polyfit(X.ravel(), y.ravel(), 1)\npredictions = np.polyval(coefficients, X).reshape(-1, 1)\n",
+      "section": "r2",
+      "starter": "def baseline_mse(y_true):\n    \"\"\"Ошибка прогноза средним.\"\"\"\n\n\ndef r2_by_mse(y_true, y_pred):\n    \"\"\"R² через MSE модели и MSE прогноза средним.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = baseline_mse(np.array([1.0, 2.0, 3.0]))\nassert isinstance(value, (int, float, np.floating)), \"baseline_mse возвращает одно число, а не None.\"\nassert abs(float(value) - 2 / 3) < 1e-9, \"Прогноз средним ошибается на 2/3 для [1, 2, 3].\"\nassert abs(float(baseline_mse(y)) - float(np.var(y))) < 1e-9, \"Базовая MSE — это дисперсия цели.\"\ntiny = np.array([1.0, 2.0, 3.0])\nassert abs(float(r2_by_mse(tiny, np.array([2.0, 2.0, 2.0])))) < 1e-12, \"Прогноз средним даёт R² = 0.\"\nassert abs(float(r2_by_mse(tiny, tiny)) - 1.0) < 1e-12, \"Идеальный прогноз даёт R² = 1.\"\nassert abs(float(r2_by_mse(tiny, np.array([3.0, 3.0, 3.0]))) + 1.5) < 1e-12, \"Прогноз хуже среднего даёт отрицательный R².\"\nexpected = round(float(np.var(y)), 4)\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх чисел.\"\nassert abs(float(result[0]) - expected) < 1e-9, \"Первое число — базовая MSE на данных из setup.\"\nassert abs(float(result[1]) - 0.9781) < 1e-4, \"Второе — R² модели из setup, через ошибки он тот же.\"\nassert abs(float(result[2])) < 1e-9, \"Третье — R² прогноза средним, он равен нулю.\"\n"
+    },
+    {
+      "id": 3008,
+      "prompt": "Все настоящие значения цели одинаковы, а прогноз с ними не совпадает. Что вернёт формула `R² = 1 - RSS / TSS`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "metrics": 0.6
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Деление на ноль: TSS = 0, поэтому значение −inf",
+        "1.0 — раз ошибок у среднего нет, модель идеальна",
+        "0.0 — модель не лучше прогноза средним, а он здесь и есть оптимум",
+        "nan — так и задумано, константную цель R² не измеряет"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "r2",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3009,
+      "prompt": "Итоговое задание занятия. Напиши функцию `regression_report(y_true, y_pred)`: она возвращает словарь с ключами `\"mse\"`, `\"mae\"` и `\"r2\"` — три числа `float`, посчитанные внутри функции. В `result` сохрани кортеж из двух словарей: `{key: round(value, 4) for key, value in regression_report(y, predictions).items()}` и такой же округлённый отчёт для `regression_report(np.array([1.0, 2.0, 3.0]), np.array([2.0, 2.0, 2.0]))` — метрики модели из setup и метрики прогноза средним.",
+      "answer_type": "code",
+      "concept_weights": {
+        "metrics": 0.9
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 53,
+      "setup": "import numpy as np\n\nnp.random.seed(0)\nX = 2 * np.random.rand(100, 1)\ntrue_w = np.random.randn(1, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X.dot(true_w) + true_b + np.random.randn(100, 1)\n\n# Прямая наименьших квадратов: метрики считаем на настоящей модели, но без\n# нормального уравнения — оно будет на следующем занятии.\ncoefficients = np.polyfit(X.ravel(), y.ravel(), 1)\npredictions = np.polyval(coefficients, X).reshape(-1, 1)\n",
+      "section": null,
+      "final": true,
+      "starter": "def regression_report(y_true, y_pred):\n    \"\"\"Словарь с mse, mae и r2.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\ntiny = np.array([1.0, 2.0, 3.0])\nreport = regression_report(tiny, np.array([2.0, 2.0, 2.0]))\nassert isinstance(report, dict), \"regression_report возвращает словарь.\"\nassert set(report) == {\"mse\", \"mae\", \"r2\"}, \"В отчёте ровно три ключа: mse, mae, r2.\"\nassert all(isinstance(value, (int, float, np.floating)) for value in report.values()), \"Значения отчёта — числа, а не массивы.\"\nassert abs(float(report[\"mse\"]) - 2 / 3) < 1e-9, \"MSE прогноза средним на [1, 2, 3] равно 2/3.\"\nassert abs(float(report[\"mae\"]) - 2 / 3) < 1e-9, \"MAE того же прогноза тоже 2/3.\"\nassert abs(float(report[\"r2\"])) < 1e-12, \"R² прогноза средним равен нулю.\"\nideal = regression_report(y, predictions)\nassert abs(float(ideal[\"r2\"]) - 0.9781) < 1e-4, \"R² модели из setup — около 0.978.\"\nassert abs(float(ideal[\"mse\"]) - 0.9945) < 1e-4, \"MSE модели из setup — около 0.9945.\"\nassert float(ideal[\"mae\"]) < float(ideal[\"mse\"]) ** 0.5, \"Средняя ошибка меньше корня из MSE: крупные промахи MSE наказывает сильнее.\"\nassert isinstance(result, tuple) and len(result) == 2, \"В result — два отчёта.\"\nassert isinstance(result[0], dict) and isinstance(result[1], dict), \"Оба элемента result — словари.\"\nassert result[0] == {\"mse\": 0.9945, \"mae\": 0.848, \"r2\": 0.9781}, \"Первый отчёт — метрики модели из setup, округлённые до четырёх знаков.\"\nassert result[1] == {\"mse\": 0.6667, \"mae\": 0.6667, \"r2\": 0.0}, \"Второй отчёт — прогноз средним на [1, 2, 3].\"\n"
+    },
+    {
+      "id": 3011,
+      "prompt": "Напиши функцию `add_bias_column(X)`: она возвращает **новый** массив, в котором слева дописан столбец единиц; исходный X не меняется. Одномерный вход формы `(n,)` превращай в `(n, 1)`. В `result` сохрани кортеж `(np.round(add_bias_column(X[:2]), 4).tolist(), add_bias_column(np.arange(5)).tolist(), X.shape)` — две первые строки с единицами, результат для одномерного массива и форма исходного X.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ols": 0.8
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 54,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nnp.random.seed(7)\nX = 2 * np.random.rand(50, 2)\ntrue_w = np.random.randn(2, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X @ true_w + true_b + np.random.randn(50, 1)\n",
+      "section": "normal_equation",
+      "starter": "def add_bias_column(X):\n    \"\"\"Столбец единиц слева; исходный массив не меняется.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nadded = add_bias_column(X[:2])\nassert np.asarray(added).shape == (2, 3), \"К каждой строке добавляется ровно один столбец единиц.\"\nassert np.allclose(np.asarray(added, dtype=float), np.hstack([np.ones((2, 1)), X[:2]])), \"Первый столбец — единицы, дальше признаки без изменений.\"\none_d = add_bias_column(np.arange(5))\nassert np.asarray(one_d).shape == (5, 2), \"Одномерный вход (5,) сначала становится (5, 1), и только потом получает единицы.\"\none_d = np.asarray(one_d, dtype=float)\nassert np.allclose(one_d[:, 0], 1.0), \"Первый столбец одномерного случая — единицы.\"\nassert np.allclose(one_d[:, 1], np.arange(5)), \"Значения одномерного входа не перепутаны.\"\nbefore = X.copy()\nadd_bias_column(X)\nassert np.array_equal(X, before), \"Исходный X меняться не должен: собирайте новый массив, а не правьте вход.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert np.allclose(np.asarray(result[0], dtype=float), np.hstack([np.ones((2, 1)), X[:2]]), atol=1e-4), \"Первое значение — первые две строки X со столбцом единиц, округлённые до четырёх знаков.\"\nassert np.asarray(result[1]).shape == (5, 2), \"Второе значение — результат для np.arange(5), форма (5, 2).\"\nassert np.allclose(np.asarray(result[1], dtype=float)[:, 1], np.arange(5)), \"Второе значение — те же числа 0..4 во втором столбце.\"\nassert tuple(result[2]) == (50, 2), \"Третье — форма исходного X: он должен остаться двумерным.\"\n"
+    },
+    {
+      "id": 3012,
+      "prompt": "Что даёт столбец единиц в матрице `X_b` при обучении линейной регрессии?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "ols": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Свободный член: он становится весом при постоянном признаке, и прогноз считается как X_b @ w",
+        "Нормировку признаков: после неё у каждого столбца среднее ноль, а разброс единица",
+        "Защиту от необратимой матрицы Xᵀ X: с единицами она всегда обратима",
+        "Ничего: столбец единиц нужен только для красоты записи формулы"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "normal_equation",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3013,
+      "prompt": "Напиши функцию `fit_normal_equation(X, y)`: она дописывает столбец единиц и возвращает вектор весов формы `(m + 1, 1)` по формуле `w = (X_bᵀ X_b)⁻¹ X_bᵀ y`; `y` приходит столбцом. В `result` сохрани кортеж `(np.round(weights.ravel(), 4).tolist(), round(float(np.mean((y - X_b @ weights) ** 2)), 4), X_b.shape)`, где `X_b = np.hstack([np.ones((X.shape[0], 1)), X])`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ols": 0.9
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 55,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nnp.random.seed(7)\nX = 2 * np.random.rand(50, 2)\ntrue_w = np.random.randn(2, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X @ true_w + true_b + np.random.randn(50, 1)\n",
+      "section": "normal_equation",
+      "starter": "def fit_normal_equation(X, y):\n    \"\"\"Веса линейной регрессии по нормальному уравнению.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nX_b = np.hstack([np.ones((X.shape[0], 1)), X])\nexpected = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y\nweights = fit_normal_equation(X, y)\nassert np.asarray(weights).shape == (3, 1), \"Веса — вектор-столбец (m + 1, 1): свободный член и два веса.\"\nassert np.allclose(np.asarray(weights, dtype=float), expected, atol=1e-8), \"Формула w = (X_bᵀ X_b)⁻¹ X_bᵀ y на матрице со столбцом единиц.\"\nsmall = fit_normal_equation(np.array([[0.0], [1.0], [2.0]]), np.array([[1.0], [3.0], [5.0]]))\nassert np.asarray(small).shape == (2, 1), \"Для одного признака весов два: свободный член и наклон.\"\nassert np.allclose(np.asarray(small, dtype=float).ravel(), [1.0, 2.0], atol=1e-9), \"Точки (0, 1), (1, 3), (2, 5) лежат на прямой 1 + 2x.\"\nassert np.allclose(np.asarray(fit_normal_equation(X, y), dtype=float), expected, atol=1e-8), \"Один и тот же вход даёт одни и те же веса.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert np.allclose(np.asarray(result[0], dtype=float), expected.ravel(), atol=1e-4), \"Первое — веса, округлённые до четырёх знаков.\"\nassert abs(float(result[1]) - 0.6782) < 1e-3, \"Второе — MSE модели на данных из setup, около 0.6782.\"\nassert tuple(result[2]) == (50, 3), \"Третье — форма матрицы со столбцом единиц.\"\n"
+    },
+    {
+      "id": 3014,
+      "prompt": "Признак `x3` в точности повторяет `x1`. Что произойдёт при обучении нормальным уравнением через `np.linalg.inv(X_b.T @ X_b)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "ols": 0.6
+      },
+      "difficulty": 0.4,
+      "options": [
+        "LinAlgError: Singular matrix — матрица необратима, столбцы линейно зависимы",
+        "Веса посчитаются, просто окажутся большими и с разными знаками",
+        "Ошибки не будет: numpy обнулит лишний столбец и вернёт решение",
+        "Функция молча вернёт веса OLS без этого признака"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "normal_equation",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3015,
+      "prompt": "Напиши класс `MyLinearRegression`: `fit(X, y)` считает веса нормальным уравнением и возвращает `self`, `predict(X)` возвращает прогноз формы `(n, 1)`. Веса храни в `self.weights_` формы `(m + 1, 1)`, свободный член первым. До обучения `predict` обязан бросить `ValueError`, в тексте которого есть «обучите». Одномерный вход — это признаки одного объекта: `predict([0.5, 1.5])` возвращает форму `(1, 1)`. В `result` сохрани кортеж `(np.round(model.weights_.ravel(), 4).tolist(), np.round(model.predict(X[:3]).ravel(), 4).tolist(), round(float(np.mean((y - model.predict(X)) ** 2)), 4))` для `model = MyLinearRegression().fit(X, y)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ols": 0.9
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 56,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nnp.random.seed(7)\nX = 2 * np.random.rand(50, 2)\ntrue_w = np.random.randn(2, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X @ true_w + true_b + np.random.randn(50, 1)\n",
+      "section": "class",
+      "starter": "class MyLinearRegression:\n    \"\"\"Линейная регрессия, обученная нормальным уравнением.\"\"\"\n\n    def __init__(self):\n        self.weights_ = None\n\n    def fit(self, X, y):\n        \"\"\"Считает веса и возвращает self.\"\"\"\n\n    def predict(self, X):\n        \"\"\"Прогноз формы (n, 1).\"\"\"\n\n\nmodel = None\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nX_b = np.hstack([np.ones((50, 1)), X])\nexpected = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y\nmodel = MyLinearRegression().fit(X, y)\nassert isinstance(model, MyLinearRegression), \"fit возвращает саму модель: работает цепочка fit(...).predict(...).\"\nassert hasattr(model, \"weights_\"), \"Веса лежат в атрибуте weights_.\"\nassert np.asarray(model.weights_).shape == (3, 1), \"Веса — вектор-столбец (m + 1, 1), свободный член первым.\"\nassert np.allclose(np.asarray(model.weights_, dtype=float), expected, atol=1e-8), \"fit обязан посчитать веса нормальным уравнением.\"\npred = model.predict(X[:3])\nassert np.asarray(pred).shape == (3, 1), \"predict возвращает столбец (n, 1), а не (n,).\"\nassert np.allclose(np.asarray(pred, dtype=float), X_b[:3] @ expected, atol=1e-6), \"Прогноз — это X_b @ w на тех же весах.\"\none = model.predict([0.5, 1.5])\nassert np.asarray(one).shape == (1, 1), \"Одна строка признаков тоже принимается: форма (1, 1).\"\nassert abs(float(np.asarray(one, dtype=float)[0, 0]) + 11.3067) < 1e-3, \"Для признаков (0.5, 1.5) прогноз около −11.3067.\"\ntry:\n    MyLinearRegression().predict(X)\nexcept ValueError as exc:\n    assert \"обучите\" in str(exc).lower(), \"В тексте ошибки объясните, что модель нужно обучить: fit(X, y).\"\nelse:\n    raise AssertionError(\"predict до fit обязан бросить ValueError с объяснением.\")\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert np.allclose(np.asarray(result[0], dtype=float), expected.ravel(), atol=1e-4), \"Первое — веса, округлённые до четырёх знаков.\"\nassert np.allclose(np.asarray(result[1], dtype=float), (X_b[:3] @ expected).ravel(), atol=1e-4), \"Второе — прогноз для первых трёх строк.\"\nassert abs(float(result[2]) - 0.6782) < 1e-3, \"Третье — MSE модели на обучающих данных, около 0.6782.\"\n"
+    },
+    {
+      "id": 3016,
+      "prompt": "Модель обучена на цели формы `(50, 1)`, а `predict` вернул массив формы `(50,)`. Какой формы окажется `(y - predictions) ** 2`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "ols": 0.7
+      },
+      "difficulty": 0.45,
+      "options": [
+        "(50, 50): broadcasting выровняет вектор по строкам, и метрика посчитается по всем парам",
+        "(50, 1): numpy выровняет формы по последней оси и получит столбец",
+        "Ошибка: формы несовместимы, вычитание не выполнится",
+        "(50,): вычитание идёт поэлементно, форма берётся у большего массива"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "class",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3017,
+      "prompt": "Напиши две функции. `weight_vectors(X, y)` обучает линейную регрессию своим нормальным уравнением через `np.linalg.pinv` (не `inv`: на зависимых признаках он падает) и `LinearRegression()` из sklearn на тех же данных, и возвращает **пару** векторов весов формы `(m + 1,)`: сначала свой (свободный член первым), потом sklearn-вектор, собранный как `np.r_[np.ravel(model.intercept_), np.ravel(model.coef_)]`. `cannot_be_inverted(A)` возвращает `True`, если `np.linalg.inv(A.T @ A)` бросает `np.linalg.LinAlgError`, и `False`, если обращение прошло. В `result` сохрани кортеж `(bool(np.allclose(*weight_vectors(X, y), atol=1e-10)), bool(np.allclose(*weight_vectors(duplicated, y), atol=1e-10)), cannot_be_inverted(duplicated), cannot_be_inverted(X))` для `duplicated = np.hstack([X, X[:, :1]])`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ols": 0.9
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 57,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nnp.random.seed(7)\nX = 2 * np.random.rand(50, 2)\ntrue_w = np.random.randn(2, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X @ true_w + true_b + np.random.randn(50, 1)\n",
+      "section": "compare",
+      "starter": "def weight_vectors(X, y):\n    \"\"\"Пара векторов весов: свой из нормального уравнения и sklearn-вектор.\"\"\"\n\n\ndef cannot_be_inverted(A):\n    \"\"\"True, если A.T @ A не обращается.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\npair = weight_vectors(X, y)\nassert isinstance(pair, tuple) and len(pair) == 2, \"Функция возвращает пару векторов: свой и sklearn-вектор.\"\nown, sklearn_weights = pair\nown = np.asarray(own, dtype=float)\nsklearn_weights = np.asarray(sklearn_weights, dtype=float)\nassert own.shape == (X.shape[1] + 1,), \"Свой вектор — форма (m + 1,): свободный член и два веса.\"\nassert sklearn_weights.shape == (X.shape[1] + 1,), \"sklearn-вектор той же формы, свободный член первым.\"\nbias = np.ones((X.shape[0], 1))\nX_b = np.hstack([bias, X])\nexpected_own = (np.linalg.pinv(X_b.T @ X_b) @ X_b.T @ y).ravel()\nassert np.allclose(own, expected_own, atol=1e-8), \"Свой вектор — решение нормального уравнения через pinv.\"\nmodel = LinearRegression().fit(X, y)\nexpected_sklearn = np.r_[np.ravel(model.intercept_), np.ravel(model.coef_)]\nassert np.allclose(sklearn_weights, expected_sklearn, atol=1e-8), \"sklearn-вектор собран из intercept_ и coef_ обученной модели.\"\nassert np.allclose(own, sklearn_weights, atol=1e-10), \"Два решателя дают один и тот же вектор целиком, вместе со свободным членом.\"\nduplicated = np.hstack([X, X[:, :1]])\ndup_pair = weight_vectors(duplicated, y)\nassert isinstance(dup_pair, tuple) and len(dup_pair) == 2, \"И на вырожденных данных функция возвращает ту же пару.\"\nown_dup, sklearn_dup = dup_pair\nown_dup = np.asarray(own_dup, dtype=float)\nsklearn_dup = np.asarray(sklearn_dup, dtype=float)\nassert own_dup.shape == (X.shape[1] + 2,), \"С дублирующимся столбцом признаков на один больше.\"\ndup_b = np.hstack([bias, duplicated])\nexpected_dup = (np.linalg.pinv(dup_b.T @ dup_b) @ dup_b.T @ y).ravel()\nassert np.allclose(own_dup, expected_dup, atol=1e-8), \"pinv даёт решение наименьшей нормы и на вырожденных данных.\"\nmodel_dup = LinearRegression().fit(duplicated, y)\nexpected_sklearn_dup = np.r_[np.ravel(model_dup.intercept_), np.ravel(model_dup.coef_)]\nassert np.allclose(sklearn_dup, expected_sklearn_dup, atol=1e-8), \"sklearn повторяет то же решение и на вырожденных данных.\"\nassert np.allclose(own_dup, sklearn_dup, atol=1e-10), \"На вырожденных данных векторы тоже совпадают целиком.\"\nassert abs(float(own_dup[1]) - float(own_dup[3])) < 1e-8, \"У дублирующихся признаков веса одинаковы — этим pinv и отличается от inv.\"\nassert abs(float(own_dup[1] + own_dup[3]) - float(own[1])) < 1e-8, \"Дубль делит вес признака пополам: сумма двух весов равна весу единственного столбца.\"\nassert np.allclose(dup_b @ own_dup, X_b @ own, atol=1e-8), \"Лишний столбец не меняет прогноз: модель та же, а веса перераспределены.\"\nassert isinstance(cannot_be_inverted(X), (bool, np.bool_)), \"cannot_be_inverted возвращает True или False.\"\nassert bool(cannot_be_inverted(X)) is False, \"На обычных данных A.T @ A обращается — функция не должна всегда отвечать True.\"\nassert bool(cannot_be_inverted(np.eye(3))) is False, \"На единичной матрице обращение тоже проходит.\"\nassert bool(cannot_be_inverted(duplicated)) is True, \"Столбец-дубль делает A.T @ A вырожденной: np.linalg.inv бросает LinAlgError.\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — четыре значения.\"\nassert [bool(value) for value in result[:2]] == [True, True], \"Первые два числа — совпадение весов на обычных и на вырожденных данных.\"\nassert bool(result[2]) is True and bool(result[3]) is False, \"Третье и четвёртое — вырожденность Xᵀ X с дублем и без него.\"\n"
+    },
+    {
+      "id": 3018,
+      "prompt": "Почему на данных с дублирующимся столбцом `LinearRegression` даёт те же веса, что `pinv`, а обращение `inv(X.T @ X)` падает?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "ols": 0.6
+      },
+      "difficulty": 0.45,
+      "options": [
+        "sklearn решает задачу через SVD, а SVD не обращает Xᵀ X и выбирает решение наименьшей нормы",
+        "sklearn по умолчанию добавляет к весам штраф Ridge и этим убирает вырожденность",
+        "sklearn заранее выбрасывает линейно зависимые столбцы из матрицы признаков",
+        "sklearn считает по той же формуле, но в float64, тогда как numpy работает в float32"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "compare",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3019,
+      "prompt": "Итоговое задание занятия. Напиши функцию `fit_and_test(X, y, n_train)`: первые `n_train` строк — обучающая выборка, остальные — тестовая (без перемешивания). Обучи модель нормальным уравнением **только на обучающей части** и верни кортеж `(w, mse_train, mse_test)` — вектор весов формы `(m + 1, 1)` и две ошибки, числа `float`. В `result` сохрани `(np.round(weights.ravel(), 4).tolist(), round(train_mse, 4), round(test_mse, 4))` для `n_train = 35`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "ols": 0.9
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 58,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import LinearRegression\n\nnp.random.seed(7)\nX = 2 * np.random.rand(50, 2)\ntrue_w = np.random.randn(2, 1) * 10\ntrue_b = np.random.randn(1) * 5\ny = X @ true_w + true_b + np.random.randn(50, 1)\n",
+      "section": null,
+      "final": true,
+      "starter": "def fit_and_test(X, y, n_train):\n    \"\"\"Веса и две ошибки: на обучении и на тесте.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nX_b = np.hstack([np.ones((35, 1)), X[:35]])\nexpected = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y[:35]\noutcome = fit_and_test(X, y, 35)\nassert isinstance(outcome, tuple) and len(outcome) == 3, \"Функция возвращает кортеж из трёх значений: веса и две ошибки.\"\nweights, train_mse, test_mse = outcome\nassert np.asarray(weights).shape == (3, 1), \"Веса — вектор-столбец (m + 1, 1) со свободным членом первым.\"\nassert np.allclose(np.asarray(weights, dtype=float), expected, atol=1e-8), \"Модель обучается только на первых n_train строках.\"\nassert isinstance(train_mse, (int, float, np.floating)) and isinstance(test_mse, (int, float, np.floating)), \"Обе ошибки — числа float.\"\nassert abs(float(train_mse) - 0.7533) < 1e-3, \"MSE на обучающей части — около 0.7533.\"\nassert abs(float(test_mse) - 0.5594) < 1e-3, \"MSE на тестовой части — около 0.5594.\"\nassert abs(float(train_mse) - float(test_mse)) > 1e-3, \"Ошибки считаются по разным строкам и не совпадают.\"\nstraight = np.array([[0.0], [1.0], [2.0], [3.0]])\ntiny = fit_and_test(straight, np.array([[1.0], [3.0], [5.0], [7.0]]), 3)\nassert isinstance(tiny, tuple) and len(tiny) == 3, \"На прямой функция возвращает те же три значения.\"\ntiny_w, tiny_train, tiny_test = tiny\nassert np.allclose(np.asarray(tiny_w, dtype=float).ravel(), [1.0, 2.0], atol=1e-9), \"На прямой 1 + 2x веса совпадают с истиной.\"\nassert abs(float(tiny_train)) < 1e-12, \"На обучающих точках прямой ошибка нулевая.\"\nassert abs(float(tiny_test)) < 1e-12, \"Четвёртая точка тоже на прямой: ошибка на тесте нулевая.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert np.allclose(np.asarray(result[0], dtype=float), np.round(expected.ravel(), 4), atol=1e-4), \"Первое — веса, округлённые до четырёх знаков.\"\nassert abs(float(result[1]) - 0.7533) < 1e-3, \"Второе — MSE на обучении, около 0.7533.\"\nassert abs(float(result[2]) - 0.5594) < 1e-3, \"Третье — MSE на тесте, около 0.5594.\"\n"
+    },
+    {
+      "id": 3021,
+      "prompt": "Напиши функцию `ridge_weights(X, y, alpha)`: она дописывает столбец единиц, строит матрицу штрафа `alpha * np.eye(m + 1)`, у которой **первый** диагональный элемент заменён нулём (свободный член не штрафуется), и возвращает веса `(X_bᵀ X_b + штраф)⁻¹ X_bᵀ y` формы `(m + 1, 1)`. В `result` сохрани кортеж `(round(float(np.linalg.norm(ridge_weights(X_train, y_train, 1.0)[1:])), 4), round(float(np.linalg.norm(ridge_weights(X_train, y_train, 1000.0)[1:])), 4), round(float(ridge_weights(X_train, y_train, 1.0)[0, 0]), 4))` — норма весов при alpha = 1.0, норма при alpha = 1000.0 и свободный член.",
+      "answer_type": "code",
+      "concept_weights": {
+        "regularization": 0.9,
+        "ols": 0.4
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 59,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\n# Пять «настоящих» признаков и пять их линейных комбинаций с малым шумом:\n# столбцы X сильно коррелируют, и Xᵀ X почти вырождена.\nrng = np.random.default_rng(42)\nX_base = rng.standard_normal((200, 5))\nX_collinear = X_base @ rng.standard_normal((5, 5)) + rng.standard_normal((200, 5)) * 0.05\nX = np.hstack([X_base, X_collinear])\ny = X @ rng.standard_normal(10) + rng.standard_normal(200) * 5\n\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X[:140])\nX_test = scaler.transform(X[140:])\ny_train, y_test = y[:140], y[140:]\n",
+      "section": "ridge",
+      "starter": "def ridge_weights(X, y, alpha):\n    \"\"\"Веса Ridge: штраф alpha, свободный член не штрафуется.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nX_b = np.hstack([np.ones((X_train.shape[0], 1)), X_train])\ny_column = np.asarray(y_train, dtype=float).reshape(-1, 1)\npenalty = np.eye(X_b.shape[1])\npenalty[0, 0] = 0.0\nols = np.linalg.inv(X_b.T @ X_b) @ X_b.T @ y_column\nexpected = np.linalg.inv(X_b.T @ X_b + penalty) @ X_b.T @ y_column\nweights = ridge_weights(X_train, y_train, 1.0)\nassert np.asarray(weights).shape == (11, 1), \"Веса — вектор-столбец: свободный член и десять весов.\"\nassert np.allclose(np.asarray(weights, dtype=float), expected, atol=1e-8), \"Штраф прибавляется к Xᵀ X, и свободный член при этом не штрафуется.\"\nzero = ridge_weights(X_train, y_train, 0.0)\nassert np.asarray(zero).shape == (11, 1), \"При alpha = 0 форма весов та же.\"\nassert np.allclose(np.asarray(zero, dtype=float), ols, atol=1e-8), \"При alpha = 0 штраф исчезает и решение совпадает с OLS.\"\none = np.asarray(ridge_weights(X_train, y_train, 1.0), dtype=float)\nthousand = np.asarray(ridge_weights(X_train, y_train, 1000.0), dtype=float)\nassert np.linalg.norm(thousand[1:]) < np.linalg.norm(one[1:]), \"Чем больше alpha, тем меньше норма весов.\"\nassert abs(float(one[0, 0]) - float(ols[0, 0])) < 1e-9, \"Свободный член от alpha не зависит: его не штрафуют.\"\nassert np.allclose(one[1:].ravel(), Ridge(alpha=1.0).fit(X_train, y_train).coef_, atol=1e-6), \"Ручной Ridge совпадает с Ridge из sklearn.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх чисел.\"\nassert abs(float(result[0]) - 3.0032) < 1e-3, \"Норма весов при alpha = 1.0 — около 3.0032.\"\nassert abs(float(result[1]) - 0.6253) < 1e-3, \"При alpha = 1000.0 норма падает до 0.6253.\"\nassert abs(float(result[2]) - 0.1972) < 1e-3, \"Свободный член — около 0.1972 при любом alpha.\"\n"
+    },
+    {
+      "id": 3022,
+      "prompt": "Что происходит с весами и свободным членом, если увеличивать `alpha` в Ridge?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "regularization": 0.6
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Норма весов падает, а свободный член почти не меняется: его не штрафуют",
+        "И веса, и свободный член стремятся к нулю — модель вырождается в константу ноль",
+        "Веса растут: больший штраф заставляет модель плотнее подгонять обучение",
+        "Ничего: alpha влияет только на число итераций, а не на решение"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "ridge",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3023,
+      "prompt": "Напиши функцию `best_alpha(X_train, y_train, X_test, y_test, alphas)`: для каждого alpha из списка она обучает `Ridge(alpha=alpha)` на обучающей выборке, считает MSE на тестовой и возвращает кортеж `(лучшая_alpha, её_ошибка_на_тесте)`. В `result` сохрани кортеж `(alpha, round(ошибка, 4), round(ошибка_при_1000, 4))` для `alphas = [0.001, 1.0, 10.0, 1000.0]`, где последнее число — ошибка на тесте при alpha = 1000.0.",
+      "answer_type": "code",
+      "concept_weights": {
+        "regularization": 0.8
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 60,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\n# Пять «настоящих» признаков и пять их линейных комбинаций с малым шумом:\n# столбцы X сильно коррелируют, и Xᵀ X почти вырождена.\nrng = np.random.default_rng(42)\nX_base = rng.standard_normal((200, 5))\nX_collinear = X_base @ rng.standard_normal((5, 5)) + rng.standard_normal((200, 5)) * 0.05\nX = np.hstack([X_base, X_collinear])\ny = X @ rng.standard_normal(10) + rng.standard_normal(200) * 5\n\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X[:140])\nX_test = scaler.transform(X[140:])\ny_train, y_test = y[:140], y[140:]\n",
+      "section": "ridge",
+      "starter": "def best_alpha(X_train, y_train, X_test, y_test, alphas):\n    \"\"\"Alpha с наименьшей ошибкой на тестовой выборке.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nalphas = [0.001, 1.0, 10.0, 1000.0]\nerrors = {}\nfor value in alphas:\n    model = Ridge(alpha=value).fit(X_train, y_train)\n    errors[value] = float(np.mean((y_test - model.predict(X_test)) ** 2))\nchosen = best_alpha(X_train, y_train, X_test, y_test, alphas)\nassert isinstance(chosen, tuple) and len(chosen) == 2, \"Функция возвращает пару (alpha, ошибка).\"\nalpha, best = chosen\nassert isinstance(alpha, (int, float, np.floating)), \"Первое значение — число alpha.\"\nassert float(alpha) in alphas, \"Возвращается одно из предложенных значений alpha.\"\nassert isinstance(best, (int, float, np.floating)), \"Второе значение — ошибка, число float.\"\nassert abs(float(best) - errors[float(alpha)]) < 1e-9, \"Возвращается ошибка именно выбранной alpha.\"\nassert abs(float(best) - min(errors.values())) < 1e-9, \"Выбирается alpha с наименьшей ошибкой на тесте.\"\nassert float(alpha) == 1.0, \"На этих данных лучшее alpha — 1.0: слабый штраф не помогает, сильный вредит.\"\nassert errors[0.001] > errors[1.0], \"Почти без штрафа (alpha = 0.001) ошибка выше: коллинеарность портит веса.\"\nassert errors[1000.0] > errors[1.0], \"Слишком большой штраф тоже вредит: веса сжаты почти в ноль.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert float(result[0]) == 1.0, \"Первое — выбранная alpha, 1.0.\"\nassert abs(float(result[1]) - 23.7723) < 1e-3, \"Второе — лучшая ошибка на тесте, около 23.7723.\"\nassert abs(float(result[2]) - 42.0703) < 1e-3, \"Третье — ошибка при alpha = 1000.0, около 42.0703.\"\n"
+    },
+    {
+      "id": 3024,
+      "prompt": "Напиши функцию `nonzero_features(alpha)`: она обучает `Lasso(alpha=alpha, max_iter=10000)` на `X_train`, `y_train` из setup и возвращает **список** индексов коэффициентов, не равных нулю, по возрастанию. В `result` сохрани кортеж `(nonzero_features(0.01), nonzero_features(0.5), nonzero_features(5.0))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "regularization": 0.9
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 61,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\n# Пятнадцать признаков, из которых цель зависит только от трёх.\nrng = np.random.default_rng(42)\nX = rng.standard_normal((300, 15))\ninformative = rng.choice(15, size=3, replace=False)\ntrue_w = np.zeros(15)\ntrue_w[informative] = rng.standard_normal(3) * 5\ny = X @ true_w + rng.standard_normal(300) * 3\n\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X[:210])\nX_test = scaler.transform(X[210:])\ny_train, y_test = y[:210], y[210:]\n",
+      "section": "lasso",
+      "starter": "def nonzero_features(alpha):\n    \"\"\"Индексы ненулевых коэффициентов Lasso по возрастанию.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\n\ndef lasso_nonzero(alpha):\n    model = Lasso(alpha=alpha, max_iter=10000).fit(X_train, y_train)\n    return [int(index) for index in np.flatnonzero(model.coef_)]\n\nfor alpha in (0.01, 0.1, 0.2, 0.5, 5.0):\n    indices = nonzero_features(alpha)\n    assert isinstance(indices, list), \"Возвращается список индексов, а не массив коэффициентов.\"\n    assert all(isinstance(index, (int, np.integer)) for index in indices), \"В списке целые индексы признаков.\"\n    expected = lasso_nonzero(alpha)\n    assert list(indices) == expected, f\"При alpha = {alpha} ненулевые признаки не совпадают с обученной моделью.\"\n    assert list(indices) == sorted(set(indices)), \"Индексы идут по возрастанию и без повторов.\"\n\nassert lasso_nonzero(0.01) != lasso_nonzero(0.5), \"Проверка имеет смысл только если наборы при разных alpha различаются.\"\nassert len(nonzero_features(0.01)) == 13, \"При alpha = 0.01 почти ничего не обнуляется — 13 признаков из 15.\"\nassert len(nonzero_features(5.0)) == 1, \"При alpha = 5.0 выживает один самый сильный признак.\"\nassert set(nonzero_features(0.5)) <= set(int(index) for index in informative), \"Все выжившие признаки — из настоящих, шумовые обнулены.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх списков.\"\nassert list(result[0]) == lasso_nonzero(0.01), \"Первый список — индексы при alpha = 0.01.\"\nassert list(result[1]) == lasso_nonzero(0.5), \"Второй — индексы при alpha = 0.5.\"\nassert list(result[2]) == lasso_nonzero(5.0), \"Третий — индексы при alpha = 5.0.\"\nassert len(list(result[0])) > len(list(result[1])) > len(list(result[2])), \"Чем сильнее штраф, тем короче список выживших признаков.\"\n"
+    },
+    {
+      "id": 3025,
+      "prompt": "Почему Lasso обнуляет часть коэффициентов, а Ridge — нет?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "regularization": 0.6
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Штраф Lasso — сумма модулей: у модуля нет производной в нуле, и решение прилипает к нулю",
+        "Lasso обучается до полной сходимости, а Ridge останавливается раньше по числу итераций",
+        "Lasso хранит коэффициенты в разреженной матрице и обнуляет всё меньше 1e-8",
+        "Lasso всегда оставляет не больше трёх признаков — остальные не влезают в бюджет"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "lasso",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3026,
+      "prompt": "Напиши функцию `best_lasso(X_train, y_train, X_test, y_test, alphas)`: для каждого alpha она обучает `Lasso(alpha=alpha, max_iter=10000)` на обучающей выборке, считает MSE на тестовой и возвращает кортеж `(лучшая_alpha, её_ошибка)`. В `result` сохрани кортеж `(alpha, round(ошибка, 4), round(ошибка_при_5, 4))` для `alphas = [0.01, 0.05, 0.1, 0.5, 1.0, 5.0]`, где последнее число — ошибка на тесте при alpha = 5.0.",
+      "answer_type": "code",
+      "concept_weights": {
+        "regularization": 0.8
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 62,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\n# Пятнадцать признаков, из которых цель зависит только от трёх.\nrng = np.random.default_rng(42)\nX = rng.standard_normal((300, 15))\ninformative = rng.choice(15, size=3, replace=False)\ntrue_w = np.zeros(15)\ntrue_w[informative] = rng.standard_normal(3) * 5\ny = X @ true_w + rng.standard_normal(300) * 3\n\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X[:210])\nX_test = scaler.transform(X[210:])\ny_train, y_test = y[:210], y[210:]\n",
+      "section": "lasso",
+      "starter": "def best_lasso(X_train, y_train, X_test, y_test, alphas):\n    \"\"\"Alpha с наименьшей ошибкой на тестовой выборке.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nalphas = [0.01, 0.05, 0.1, 0.5, 1.0, 5.0]\nerrors = {}\nfor value in alphas:\n    model = Lasso(alpha=value, max_iter=10000).fit(X_train, y_train)\n    errors[value] = float(np.mean((y_test - model.predict(X_test)) ** 2))\nols_error = float(np.mean((y_test - LinearRegression().fit(X_train, y_train).predict(X_test)) ** 2))\nchosen = best_lasso(X_train, y_train, X_test, y_test, alphas)\nassert isinstance(chosen, tuple) and len(chosen) == 2, \"Функция возвращает пару (alpha, ошибка).\"\nalpha, best = chosen\nassert isinstance(alpha, (int, float, np.floating)), \"Первое значение — число alpha.\"\nassert float(alpha) in alphas, \"Возвращается одно из предложенных значений alpha.\"\nassert abs(float(best) - errors[float(alpha)]) < 1e-9, \"Возвращается ошибка именно выбранной alpha.\"\nassert abs(float(best) - min(errors.values())) < 1e-9, \"Выбирается alpha с наименьшей ошибкой на тесте.\"\nassert float(alpha) == 0.1, \"На этих данных лучшее alpha — 0.1: 10.2408 против 10.639 у OLS.\"\nassert abs(float(best) - 10.2408) < 1e-3, \"Лучшая ошибка на тесте — около 10.2408.\"\nassert errors[5.0] > ols_error, \"При alpha = 5.0 модель уже хуже, чем LinearRegression: штраф задушил признаки.\"\nassert errors[0.5] > errors[0.1], \"При alpha = 0.5 штраф уже перебор: 10.7266 против 10.2408.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert float(result[0]) == 0.1, \"Первое — выбранная alpha, 0.1.\"\nassert abs(float(result[1]) - 10.2408) < 1e-3, \"Второе — лучшая ошибка на тесте, около 10.2408.\"\nassert abs(float(result[2]) - 53.1807) < 1e-3, \"Третье — ошибка при alpha = 5.0, около 53.1807.\"\n"
+    },
+    {
+      "id": 3027,
+      "prompt": "Напиши функцию `compare_models(X_train, y_train, X_test, y_test)`: она обучает три модели — `LinearRegression()`, `Ridge(alpha=1.0)` и `Lasso(alpha=1.0, max_iter=10000)` — и возвращает список пар `(имя, ошибка_на_тесте)` в этом порядке; имена — строки `\"ols\"`, `\"ridge\"`, `\"lasso\"`. В `result` сохрани кортеж `([(name, round(value, 4)) for name, value in compare_models(X_train, y_train, X_test, y_test)], имя_модели_с_наименьшей_ошибкой)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "regularization": 0.8,
+        "ols": 0.4
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 63,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\n# Пять «настоящих» признаков и пять их линейных комбинаций с малым шумом:\n# столбцы X сильно коррелируют, и Xᵀ X почти вырождена.\nrng = np.random.default_rng(42)\nX_base = rng.standard_normal((200, 5))\nX_collinear = X_base @ rng.standard_normal((5, 5)) + rng.standard_normal((200, 5)) * 0.05\nX = np.hstack([X_base, X_collinear])\ny = X @ rng.standard_normal(10) + rng.standard_normal(200) * 5\n\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X[:140])\nX_test = scaler.transform(X[140:])\ny_train, y_test = y[:140], y[140:]\n",
+      "section": "choice",
+      "starter": "def compare_models(X_train, y_train, X_test, y_test):\n    \"\"\"Список пар (имя модели, MSE на тестовой выборке).\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\n\ndef test_mse(model, X_tr, y_tr):\n    model.fit(X_tr, y_tr)\n    return float(np.mean((y_test - model.predict(X_test)) ** 2))\n\ndef expected_on(X_tr, y_tr):\n    return {\n        \"ols\": test_mse(LinearRegression(), X_tr, y_tr),\n        \"ridge\": test_mse(Ridge(alpha=1.0), X_tr, y_tr),\n        \"lasso\": test_mse(Lasso(alpha=1.0, max_iter=10000), X_tr, y_tr),\n    }\n\npairs = compare_models(X_train, y_train, X_test, y_test)\nassert isinstance(pairs, list) and len(pairs) == 3, \"Возвращается список из трёх пар.\"\nassert [str(name) for name, _ in pairs] == [\"ols\", \"ridge\", \"lasso\"], \"Модели идут в порядке ols, ridge, lasso.\"\nvalues = {str(name): float(value) for name, value in pairs}\nfull = expected_on(X_train, y_train)\nfor name in (\"ols\", \"ridge\", \"lasso\"):\n    assert abs(values[name] - full[name]) < 1e-3, f\"Ошибка {name} на тесте не совпадает с обученной здесь же моделью.\"\nassert full[\"ridge\"] < full[\"ols\"] < full[\"lasso\"], \"Порядок по качеству: ridge лучше ols, а lasso хуже обоих.\"\nassert values[\"ols\"] > 0 and values[\"ridge\"] > 0, \"Ошибки считаются на тестовой выборке, а не на обучении.\"\n\n# На другой обучающей части числа выходят другие: готовый ответ из конспекта не подойдёт.\nshort = expected_on(X_train[:80], y_train[:80])\nshort_pairs = compare_models(X_train[:80], y_train[:80], X_test, y_test)\nshort_values = {str(name): float(value) for name, value in short_pairs}\nfor name in (\"ols\", \"ridge\", \"lasso\"):\n    assert abs(short_values[name] - short[name]) < 1e-3, f\"На меньшей обучающей части {name} даёт другую ошибку.\"\nassert abs(short_values[\"ols\"] - full[\"ols\"]) > 1e-3, \"Функция обучается на переданных данных, а не возвращает записанные числа.\"\n\nassert isinstance(result, tuple) and len(result) == 2, \"В result — список пар и имя победителя.\"\nassert isinstance(result[0], list) and [str(name) for name, _ in result[0]] == [\"ols\", \"ridge\", \"lasso\"], \"В списке те же три модели по порядку.\"\nfor name, value in result[0]:\n    assert abs(float(value) - full[str(name)]) < 1e-4, \"Значения — ошибки на тесте, округлённые до четырёх знаков.\"\nassert str(result[1]) == min(full, key=full.get), \"Имя победителя — модель с наименьшей ошибкой на тесте.\"\n"
+    },
+    {
+      "id": 3028,
+      "prompt": "Признаков 500, а цель, судя по постановке задачи, зависит от пяти из них. Какую модель выбрать и почему?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "regularization": 0.6
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Lasso: он обнуляет лишние коэффициенты и сам возвращает короткий список признаков",
+        "Ridge: он тоже обнуляет лишние коэффициенты, но работает устойчивее",
+        "LinearRegression: регуляризация здесь только испортит несмещённые веса",
+        "Любую из трёх: все они дадут одинаковый набор ненулевых весов"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "choice",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 3029,
+      "prompt": "Итоговое задание модуля. Напиши функцию `regularization_report(X_train, y_train, X_test, y_test)`: она обучает `LinearRegression()`, `Ridge(alpha=1.0)` и `Lasso(alpha=1.0, max_iter=10000)` и возвращает словарь `{\"ols\": …, \"ridge\": …, \"lasso\": …}`, где каждой модели отвечает словарь с ключами `\"mse\"` (ошибка на **тестовой** выборке), `\"norm\"` (норма коэффициентов) и `\"nonzero\"` (сколько коэффициентов не равны нулю). В `result` сохрани тот же отчёт, округлив `mse` и `norm` до четырёх знаков.",
+      "answer_type": "code",
+      "concept_weights": {
+        "regularization": 0.9,
+        "ols": 0.4
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 64,
+      "setup": "import numpy as np\nfrom sklearn.linear_model import Lasso, LinearRegression, Ridge\nfrom sklearn.preprocessing import StandardScaler\n\n# Пять «настоящих» признаков и пять их линейных комбинаций с малым шумом:\n# столбцы X сильно коррелируют, и Xᵀ X почти вырождена.\nrng = np.random.default_rng(42)\nX_base = rng.standard_normal((200, 5))\nX_collinear = X_base @ rng.standard_normal((5, 5)) + rng.standard_normal((200, 5)) * 0.05\nX = np.hstack([X_base, X_collinear])\ny = X @ rng.standard_normal(10) + rng.standard_normal(200) * 5\n\nscaler = StandardScaler()\nX_train = scaler.fit_transform(X[:140])\nX_test = scaler.transform(X[140:])\ny_train, y_test = y[:140], y[140:]\n",
+      "section": null,
+      "final": true,
+      "starter": "def regularization_report(X_train, y_train, X_test, y_test):\n    \"\"\"Отчёт по трём моделям: mse, norm и nonzero у каждой.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nmodels = {\n    \"ols\": LinearRegression().fit(X_train, y_train),\n    \"ridge\": Ridge(alpha=1.0).fit(X_train, y_train),\n    \"lasso\": Lasso(alpha=1.0, max_iter=10000).fit(X_train, y_train),\n}\nreport = regularization_report(X_train, y_train, X_test, y_test)\nassert isinstance(report, dict), \"regularization_report возвращает словарь.\"\nassert set(report) == {\"ols\", \"ridge\", \"lasso\"}, \"В отчёте три модели: ols, ridge, lasso.\"\nfor name, model in models.items():\n    assert isinstance(report[name], dict), \"У каждой модели — свой словарь показателей.\"\n    assert set(report[name]) == {\"mse\", \"norm\", \"nonzero\"}, \"Показатели модели: mse, norm и nonzero.\"\n    expected_mse = float(np.mean((y_test - model.predict(X_test)) ** 2))\n    assert abs(float(report[name][\"mse\"]) - expected_mse) < 1e-6, \"mse считается на тестовой выборке.\"\n    assert abs(float(report[name][\"norm\"]) - float(np.linalg.norm(model.coef_))) < 1e-6, \"norm — норма коэффициентов без свободного члена.\"\n    assert int(report[name][\"nonzero\"]) == int(np.sum(model.coef_ != 0)), \"nonzero — число коэффициентов, не равных нулю.\"\nassert int(report[\"lasso\"][\"nonzero\"]) == 2, \"Lasso на этих данных оставил два ненулевых коэффициента из десяти.\"\nassert int(report[\"ols\"][\"nonzero\"]) == 10, \"У OLS ненулевые все десять: штрафа нет.\"\nassert float(report[\"ridge\"][\"norm\"]) < float(report[\"ols\"][\"norm\"]) / 5, \"Ridge сжимает веса в разы: 3.0032 против 22.7263.\"\nassert float(report[\"ridge\"][\"mse\"]) < float(report[\"ols\"][\"mse\"]), \"И на тесте ridge лучше: 23.7723 против 24.6789.\"\nassert isinstance(result, dict) and set(result) == {\"ols\", \"ridge\", \"lasso\"}, \"В result — тот же отчёт по трём моделям.\"\nfor name, expected in ((\"ols\", 24.6789), (\"ridge\", 23.7723), (\"lasso\", 32.5540)):\n    assert abs(float(result[name][\"mse\"]) - expected) < 1e-4, \"mse округлён до четырёх знаков.\"\nassert int(result[\"lasso\"][\"nonzero\"]) == 2 and int(result[\"ols\"][\"nonzero\"]) == 10, \"nonzero — счётчик, его не округляют.\"\nassert abs(float(result[\"ridge\"][\"norm\"]) - 3.0032) < 1e-4 and abs(float(result[\"ols\"][\"norm\"]) - 22.7263) < 1e-4, \"norm тоже округлена до четырёх знаков.\"\n"
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 49,
+      "name": "Код: средний квадрат ошибки"
+    },
+    {
+      "id": 50,
+      "name": "Код: средняя абсолютная ошибка"
+    },
+    {
+      "id": 51,
+      "name": "Код: доля объяснённого разброса"
+    },
+    {
+      "id": 52,
+      "name": "Код: ошибка прогноза средним"
+    },
+    {
+      "id": 53,
+      "name": "Код: отчёт о регрессии"
+    },
+    {
+      "id": 54,
+      "name": "Код: столбец единиц"
+    },
+    {
+      "id": 55,
+      "name": "Код: нормальное уравнение"
+    },
+    {
+      "id": 56,
+      "name": "Код: своя модель с fit и predict"
+    },
+    {
+      "id": 57,
+      "name": "Код: сверка со sklearn"
+    },
+    {
+      "id": 58,
+      "name": "Код: обучение и проверка на отложенной выборке"
+    },
+    {
+      "id": 59,
+      "name": "Код: Ridge вручную"
+    },
+    {
+      "id": 60,
+      "name": "Код: выбор alpha для Ridge"
+    },
+    {
+      "id": 61,
+      "name": "Код: ненулевые коэффициенты Lasso"
+    },
+    {
+      "id": 62,
+      "name": "Код: выбор alpha для Lasso"
+    },
+    {
+      "id": 63,
+      "name": "Код: сравнение трёх моделей"
+    },
+    {
+      "id": 64,
+      "name": "Код: отчёт о регуляризации"
+    }
+  ],
+  "criteria": [
+    {
+      "id": 107,
+      "rubric_id": 49,
+      "criterion": "Среднее квадратов ошибок, а не их сумма",
+      "weight": 1.0,
+      "positive_example": "np.mean((y_true - y_pred) ** 2) — метрика не зависит от числа объектов",
+      "negative_example": "np.sum(...) — на выборке вдвое длиннее метрика вырастет вдвое"
+    },
+    {
+      "id": 108,
+      "rubric_id": 49,
+      "criterion": "Ошибки возводятся в квадрат: крупный промах весит больше",
+      "weight": 1.0,
+      "positive_example": "(y_true - y_pred) ** 2 — промах 4 даёт вклад 16",
+      "negative_example": "y_true - y_pred без квадрата — ошибки +1 и −1 гасят друг друга"
+    },
+    {
+      "id": 109,
+      "rubric_id": 50,
+      "criterion": "Модуль разности: метрика в тех же единицах, что цель",
+      "weight": 1.0,
+      "positive_example": "np.abs(y_true - y_pred).mean() — средняя ошибка в рублях, если цель в рублях",
+      "negative_example": "** 2 — квадратные единицы, из-за которых 10 ошибок не сравнимы с 1"
+    },
+    {
+      "id": 110,
+      "rubric_id": 50,
+      "criterion": "Аргументы принимаются и списками",
+      "weight": 1.0,
+      "positive_example": "np.asarray(y_true, dtype=float) в первой строке функции",
+      "negative_example": "y_true - y_pred для двух списков — TypeError"
+    },
+    {
+      "id": 111,
+      "rubric_id": 51,
+      "criterion": "В знаменателе разброс цели вокруг её среднего",
+      "weight": 1.0,
+      "positive_example": "np.sum((y_true - y_true.mean()) ** 2) — TSS",
+      "negative_example": "сумма квадратов прогнозов или MSE модели — другая величина"
+    },
+    {
+      "id": 112,
+      "rubric_id": 51,
+      "criterion": "Отрицательный R² объясняется, а не замалчивается",
+      "weight": 1.0,
+      "positive_example": "R² = 1 − RSS/TSS даёт −1.5 для прогноза хуже среднего",
+      "negative_example": "округление до нуля или модуль у отрицательного значения"
+    },
+    {
+      "id": 113,
+      "rubric_id": 52,
+      "criterion": "Прогноз средним считается как дисперсия цели",
+      "weight": 1.0,
+      "positive_example": "np.mean((y_true - y_true.mean()) ** 2) = np.var(y_true)",
+      "negative_example": "средний модуль отклонения — это уже другая метрика"
+    },
+    {
+      "id": 114,
+      "rubric_id": 52,
+      "criterion": "R² через ошибки совпадает с формулой через суммы квадратов",
+      "weight": 1.0,
+      "positive_example": "1 − MSE / MSE_среднего — то же число, что 1 − RSS/TSS",
+      "negative_example": "1 − MSE / TSS без деления на число объектов"
+    },
+    {
+      "id": 115,
+      "rubric_id": 53,
+      "criterion": "Все три метрики считаются внутри функции, без повторного ввода ответа",
+      "weight": 1.0,
+      "positive_example": "report возвращает mse, mae и r2, посчитанные по одним y_true и y_pred",
+      "negative_example": "значения метрик вписаны константами"
+    },
+    {
+      "id": 116,
+      "rubric_id": 53,
+      "criterion": "Отчёт объясняет качество модели, а не только печатает числа",
+      "weight": 1.0,
+      "positive_example": "видно, что R² = 0.9781 и MAE меньше корня из MSE",
+      "negative_example": "три несвязанных числа без сравнения с прогнозом средним"
+    },
+    {
+      "id": 117,
+      "rubric_id": 54,
+      "criterion": "Столбец единиц слева, исходный массив не меняется",
+      "weight": 1.0,
+      "positive_example": "np.hstack([np.ones((n, 1)), X]) собирает новый массив",
+      "negative_example": "X[:, 0] = 1 или дописывание единиц справа меняет смысл весов"
+    },
+    {
+      "id": 118,
+      "rubric_id": 54,
+      "criterion": "Одномерный вход превращается в столбец до склейки",
+      "weight": 1.0,
+      "positive_example": "if X.ndim == 1: X = X.reshape(-1, 1)",
+      "negative_example": "np.insert(X, 0, 1, axis=1) на форме (n,) бросает AxisError"
+    },
+    {
+      "id": 119,
+      "rubric_id": 55,
+      "criterion": "Нормальное уравнение считается на матрице со столбцом единиц",
+      "weight": 1.0,
+      "positive_example": "inv(X_b.T @ X_b) @ X_b.T @ y даёт три веса для двух признаков",
+      "negative_example": "inv(X.T @ X) @ X.T @ y даёт два веса и заставляет прямую проходить через ноль"
+    },
+    {
+      "id": 120,
+      "rubric_id": 55,
+      "criterion": "Веса возвращаются вектор-столбцом (m + 1, 1)",
+      "weight": 1.0,
+      "positive_example": "форма (3, 1): с ней прогноз X_b @ w сразу даёт (n, 1)",
+      "negative_example": "форма (3,) — при вычитании из y формы (50, 1) получится матрица (50, 50)"
+    },
+    {
+      "id": 121,
+      "rubric_id": 56,
+      "criterion": "fit возвращает self, predict — столбец (n, 1)",
+      "weight": 1.0,
+      "positive_example": "MyLinearRegression().fit(X, y).predict(X).shape == (50, 1)",
+      "negative_example": "predict через X @ w[1:] теряет свободный член"
+    },
+    {
+      "id": 122,
+      "rubric_id": 56,
+      "criterion": "predict до fit объясняет проблему, а не падает молча",
+      "weight": 1.0,
+      "positive_example": "raise ValueError(\"Сначала обучите модель: fit(X, y)\")",
+      "negative_example": "None или TypeError: непонятно, что модель ещё не обучали"
+    },
+    {
+      "id": 123,
+      "rubric_id": 57,
+      "criterion": "Свои веса сравниваются со sklearn целиком, со свободным членом",
+      "weight": 1.0,
+      "positive_example": "функция возвращает оба вектора, и np.allclose сверяет их целиком",
+      "negative_example": "сравнение только коэффициентов: порядок и свободный член не проверены"
+    },
+    {
+      "id": 124,
+      "rubric_id": 57,
+      "criterion": "pinv вместо inv там, где признаки зависимы",
+      "weight": 1.0,
+      "positive_example": "np.linalg.pinv(X_b.T @ X_b) работает и на столбце-дубле",
+      "negative_example": "np.linalg.inv на дубле бросает LinAlgError: Singular matrix"
+    },
+    {
+      "id": 125,
+      "rubric_id": 58,
+      "criterion": "Веса считаются только по обучающей части",
+      "weight": 1.0,
+      "positive_example": "нормальное уравнение на X[:n_train], y[:n_train]",
+      "negative_example": "обучение на всей выборке: тест перестаёт быть честным"
+    },
+    {
+      "id": 126,
+      "rubric_id": 58,
+      "criterion": "Ошибки на обучении и на тесте — разные числа",
+      "weight": 1.0,
+      "positive_example": "MSE 0.7533 на обучении против 0.5594 на тесте",
+      "negative_example": "одна и та же ошибка дважды: часть данных не использована"
+    },
+    {
+      "id": 127,
+      "rubric_id": 59,
+      "criterion": "Штраф прибавляется к Xᵀ X, а свободный член не штрафуется",
+      "weight": 1.0,
+      "positive_example": "alpha * np.eye(m + 1) с нулём в первой ячейке",
+      "negative_example": "штраф на все диагональные элементы: свободный член поедет с ростом alpha"
+    },
+    {
+      "id": 128,
+      "rubric_id": 59,
+      "criterion": "При alpha = 0 решение совпадает с OLS",
+      "weight": 1.0,
+      "positive_example": "ridge_weights(X, y, 0.0) даёт те же веса, что inv(X_bᵀ X_b) X_bᵀ y",
+      "negative_example": "штраф добавляется всегда: при alpha = 0 решение уже смещено"
+    },
+    {
+      "id": 129,
+      "rubric_id": 60,
+      "criterion": "alpha выбирается по ошибке на тестовой выборке",
+      "weight": 1.0,
+      "positive_example": "минимум test MSE по лестнице alpha даёт 1.0",
+      "negative_example": "выбор по train MSE всегда тянет к минимальному alpha"
+    },
+    {
+      "id": 130,
+      "rubric_id": 60,
+      "criterion": "Слишком большой alpha виден по ошибке, а не по интуиции",
+      "weight": 1.0,
+      "positive_example": "при alpha = 1000 ошибка растёт с 23.77 до 42.07",
+      "negative_example": "вывод «чем больше штраф, тем лучше» без замера"
+    },
+    {
+      "id": 131,
+      "rubric_id": 61,
+      "criterion": "Ненулевые коэффициенты ищутся сравнением с нулём, а не по знаку",
+      "weight": 1.0,
+      "positive_example": "Lasso обнуляет и положительные, и отрицательные веса",
+      "negative_example": "coef_ > 0 теряет отрицательные ненулевые коэффициенты"
+    },
+    {
+      "id": 132,
+      "rubric_id": 61,
+      "criterion": "Индексы возвращаются по возрастанию и без повторов",
+      "weight": 1.0,
+      "positive_example": "np.flatnonzero(model.coef_) — отсортированный список индексов",
+      "negative_example": "перебор словаря коэффициентов: порядок не гарантирован"
+    },
+    {
+      "id": 133,
+      "rubric_id": 62,
+      "criterion": "Лестница alpha сравнивается по одной метрике на тесте",
+      "weight": 1.0,
+      "positive_example": "лучшая alpha 0.1 с ошибкой 10.24",
+      "negative_example": "выбор по train MSE даёт 0.01 и недообученную модель"
+    },
+    {
+      "id": 134,
+      "rubric_id": 62,
+      "criterion": "Ужесточение штрафа объясняется числом обнулённых признаков",
+      "weight": 1.0,
+      "positive_example": "при alpha = 5.0 остаётся один признак из пятнадцати",
+      "negative_example": "вывод о пользе регуляризации без проверки, сколько весов выжило"
+    },
+    {
+      "id": 135,
+      "rubric_id": 63,
+      "criterion": "Три модели обучаются на одних данных и сравниваются по тесту",
+      "weight": 1.0,
+      "positive_example": "ols 24.6789, ridge 23.7723, lasso 32.5540 на одном разбиении",
+      "negative_example": "сравнение ошибок, посчитанных на разных выборках"
+    },
+    {
+      "id": 136,
+      "rubric_id": 63,
+      "criterion": "Вывод подкреплён нормой весов, а не только ошибкой",
+      "weight": 1.0,
+      "positive_example": "у ridge норма 3.0032 против 22.7263 у OLS",
+      "negative_example": "«ridge лучше» без объяснения, за счёт чего"
+    },
+    {
+      "id": 137,
+      "rubric_id": 64,
+      "criterion": "Отчёт собирает по каждой модели ошибку, норму и число ненулевых весов",
+      "weight": 1.0,
+      "positive_example": "три показателя позволяют отличить сжатие весов от отбора признаков",
+      "negative_example": "только mse: не видно, чем lasso отличается от ridge"
+    },
+    {
+      "id": 138,
+      "rubric_id": 64,
+      "criterion": "Числа отчёта посчитаны на тестовой выборке, а не на обучении",
+      "weight": 1.0,
+      "positive_example": "mse у ridge 23.7723 на тесте против 20.8826 на обучении",
+      "negative_example": "train-ошибки: регуляризация выглядит бесполезной"
+    }
+  ],
+  "legacy": {}
+}

@@ -24,6 +24,7 @@ from markupsafe import Markup, escape
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.web import accounts, security
+from llm_tutor.web.mailer import MAIL_HELP, Mailer, build_mailer
 from llm_tutor.web.userdb import UserDBPool
 
 logger = logging.getLogger(__name__)
@@ -106,11 +107,20 @@ def _project_path(path: str) -> Path:
 
 def _warn_about_content() -> None:
     """Предупреждения о контенте курсов при старте: чего не хватает ученику."""
-    from llm_tutor.course.seed import nodes_without_theory
-    from llm_tutor.web.courses import COURSES, course_data
+    from llm_tutor.web.courses import course_data, visible_courses
 
-    for course in COURSES:
-        missing = nodes_without_theory(course_data(course))
+    # Скрытый курс в списках ученика не появляется — предупреждать не о чем.
+    for course in visible_courses():
+        data = course_data(course)
+        # Про неопубликованный модуль ученик не узнает: войти в него нельзя, и
+        # его ненаписанные конспекты — дело автора, а не повод ругаться в
+        # журнале при каждом запуске (модуль 1 курса ИСИТ выходит по частям).
+        open_topics = {topic.number for topic in data.topics if topic.published}
+        missing = [
+            node.id
+            for node in data.nodes
+            if node.topic_id in open_topics and node.id not in data.theory
+        ]
         if missing:
             logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
 
@@ -148,15 +158,19 @@ def _llm_client(settings: Settings) -> LLMClient:
     )
 
 
-def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
+def create_app(
+    settings: Settings, client: LLMClient | None = None, mailer: Mailer | None = None
+) -> FastAPI:
     """Собирает приложение.
 
-    ``client`` — LLM-клиент; если не передан, приложение создаёт свой и
-    закрывает его при остановке. Внедрённый клиент закрывает тот, кто его
-    создал.
+    ``client`` — LLM-клиент, ``mailer`` — почта; если не переданы, приложение
+    создаёт свои и закрывает их при остановке. Внедрённые закрывает тот, кто
+    их создал.
     """
     owns_client = client is None
+    owns_mailer = mailer is None
     llm = _llm_client(settings) if client is None else client
+    post = build_mailer(settings) if mailer is None else mailer
     accounts_db = accounts.open_accounts(settings.accounts_db_path)
     userdbs = UserDBPool(
         _project_path(settings.users_dir),
@@ -170,6 +184,10 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         # В фоне: сетевой запрос не должен задерживать старт. Внедрённый клиент
         # (тесты) не проверяем — у него нет сети.
         key_check = asyncio.create_task(check_llm_key(llm)) if owns_client else None
+        if owns_mailer and not settings.smtp_configured:
+            # Пишем при старте, а не в create_app: тесты собирают приложение
+            # сотни раз, и предупреждение утонуло бы в их журнале.
+            logger.warning("Почта не настроена. %s", MAIL_HELP)
         try:
             yield
         finally:
@@ -179,6 +197,8 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
             accounts_db.close()
             if owns_client:
                 await llm.aclose()
+            if owns_mailer:
+                await post.aclose()
 
     # Swagger и ReDoc грузят скрипты со стороннего CDN — API внутреннее.
     app = FastAPI(
@@ -190,6 +210,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.client = llm
+    app.state.mailer = post
     app.state.templates = make_templates()
     app.state.templates.env.globals["pyodide_index_url"] = settings.pyodide_index_url
     csp = content_security_policy(settings.pyodide_index_url)
@@ -197,6 +218,9 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
     app.state.accounts = accounts_db
     app.state.login_limiter = security.LoginLimiter()
+    # Запросы письма-восстановления — свой счётчик: иначе чужие заявки
+    # «Забыли пароль?» закрыли бы вход честному ученику (и наоборот).
+    app.state.reset_limiter = security.LoginLimiter(limit=settings.password_reset_limit)
     app.state.userdbs = userdbs
     # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.
     app.state.admin_cache = {}

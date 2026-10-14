@@ -81,6 +81,7 @@ def is_node_closed(
     *,
     settings: Settings | None = None,
     sections: Sequence[str] = (),
+    final_required: bool = True,
 ) -> bool:
     """Пройден ли узел (§6.1) — решает код, а не модель.
 
@@ -88,6 +89,9 @@ def is_node_closed(
     разделами (``sections`` — их id, срез 54): пройдены все разделы и
     итоговое задание (слабые тоже считаются пройденными) ИЛИ уверенное
     владение; в проверочном проходе — серия по вопросу на раздел и итоговое.
+
+    ``final_required=False`` — итогового задания в банке ещё нет (урок
+    пишется): требовать нечего, занятие закрывают разделы.
     """
     s = settings or get_settings()
     by_mastery = (
@@ -95,7 +99,10 @@ def is_node_closed(
         and mastery.uncertainty <= CONFIDENT_UNCERTAINTY
     )
     if sections and state.mode != "verify":
-        return by_mastery or (lesson_sections_done(state, sections) and state.final_passed)
+        return by_mastery or (
+            lesson_sections_done(state, sections)
+            and (state.final_passed or not final_required)
+        )
     by_streak = state.node_streak >= streak_target(state, s, len(sections))
     return by_streak or by_mastery
 
@@ -107,6 +114,7 @@ SECTION_RESET: dict = {
     "section_id": None,
     "passed_sections": [],
     "weak_sections": [],
+    "skipped_sections": [],
     "final_passed": False,
     "final_weak": False,
 }
@@ -114,14 +122,23 @@ SECTION_RESET: dict = {
 SectionOutcome = Literal["passed", "weak", "retry"]
 
 
-def next_section(sections: Sequence[str], passed: Sequence[str]) -> str | None:
-    """Первый непройденный раздел занятия; ``None`` — очередь итогового задания."""
-    return next((section for section in sections if section not in passed), None)
+def next_section(
+    sections: Sequence[str],
+    passed: Sequence[str],
+    skipped: Sequence[str] = (),
+) -> str | None:
+    """Первый непройденный раздел занятия; ``None`` — очередь итогового задания.
+
+    Непроверяемые разделы (``skipped``) очередь не держат: у них нет заданий.
+    """
+    done = set(passed) | set(skipped)
+    return next((section for section in sections if section not in done), None)
 
 
 def lesson_sections_done(state: SessionState, sections: Sequence[str]) -> bool:
-    """Все разделы занятия пройдены (слабые — тоже)."""
-    return all(section in state.passed_sections for section in sections)
+    """Все разделы занятия пройдены (слабые и непроверяемые — тоже)."""
+    done = set(state.passed_sections) | set(state.skipped_sections)
+    return all(section in done for section in sections)
 
 
 def current_section(state: SessionState, sections: Sequence[str]) -> str | None:
@@ -130,9 +147,13 @@ def current_section(state: SessionState, sections: Sequence[str]) -> str | None:
     Записанный в состоянии раздел берётся, только если он ещё не пройден:
     иначе (состояние потеряно, раздел убрали из seed) — первый непройденный.
     """
-    if state.section_id in sections and state.section_id not in state.passed_sections:
+    if (
+        state.section_id in sections
+        and state.section_id not in state.passed_sections
+        and state.section_id not in state.skipped_sections
+    ):
         return state.section_id
-    return next_section(sections, state.passed_sections)
+    return next_section(sections, state.passed_sections, state.skipped_sections)
 
 
 def on_section_answer(
@@ -162,7 +183,7 @@ def on_section_answer(
     update.update(
         {
             "check_misses": 0,
-            "section_id": next_section(sections, passed),
+            "section_id": next_section(sections, passed, state.skipped_sections),
             # Новый раздел — новый урок частями.
             "lesson_parts": [],
             "lesson_part": 0,

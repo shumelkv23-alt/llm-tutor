@@ -1,0 +1,1842 @@
+{
+  "course": "isit/topic01",
+  "comment": "Модуль 1 курса «Машинное обучение для ИСИТ» (lab1-python-intro). Занятия 1–9 (first_steps, branches, errors, iteration, comprehensions, recursion, toolbox, own_types, wrappers) с конспектами и заданиями (срезы 2–4); модуль опубликован.",
+  "topic": {
+    "number": 1,
+    "title": "Основы Python",
+    "intro": "Пишем первые функции и проверяем их сами: ветвления, исключения, итерация по спискам, включения, рекурсия, генераторы, свои типы и обёртки. Всё, на чём дальше держатся numpy, pandas и sklearn.",
+    "survey": {
+      "level_key": "isit_level",
+      "level_question": "Для начала — как у тебя с Python?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно пишу на Python"
+      ],
+      "blocks": [
+        {
+          "key": "isit_block_basics",
+          "title": "Функции и ветвления",
+          "question": "Пишешь свои функции с условиями?",
+          "example": "def, return, if / elif / else",
+          "concepts": [
+            "first_steps",
+            "branches"
+          ]
+        },
+        {
+          "key": "isit_block_errors",
+          "title": "Ошибки и итерация",
+          "question": "Ловишь исключения и проходишь списки циклом?",
+          "example": "assert, raise, try / except, for, enumerate, zip",
+          "concepts": [
+            "errors",
+            "iteration"
+          ]
+        },
+        {
+          "key": "isit_block_data",
+          "title": "Структуры данных и рекурсия",
+          "question": "Работаешь с включениями, словарями и рекурсией?",
+          "example": "list / dict comprehension, рекурсивный обход, itertools",
+          "concepts": [
+            "comprehensions",
+            "recursion",
+            "toolbox"
+          ]
+        },
+        {
+          "key": "isit_block_types",
+          "title": "Свои типы и обёртки",
+          "question": "Описываешь свои классы и декораторы?",
+          "example": "dataclass, Generic, with, декораторы",
+          "concepts": [
+            "own_types",
+            "wrappers"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "isit_block_basics"
+      ],
+      "foundation": [
+        "isit_block_basics"
+      ]
+    },
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "first_steps",
+      "name": "Первая функция и проверка кода",
+      "difficulty": 0.15,
+      "description": "Функция как договор: имя, аргументы, возврат. Как убедиться, что она делает то, что обещала.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "hello",
+          "title": "Первая функция"
+        },
+        {
+          "id": "checks",
+          "title": "Проверка кода"
+        }
+      ]
+    },
+    {
+      "id": "branches",
+      "name": "Ветвления и условия",
+      "difficulty": 0.2,
+      "description": "Условия, порядок ветвей и граничные случаи: медиана из трёх чисел и FizzBuzz.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "middle",
+          "title": "Медиана из трёх"
+        },
+        {
+          "id": "fizz_buzz",
+          "title": "FizzBuzz"
+        }
+      ]
+    },
+    {
+      "id": "errors",
+      "name": "Ошибки и исключения",
+      "difficulty": 0.25,
+      "description": "assert как договор о поведении, свои исключения и обработка чужих: что значит «понятная ошибка».",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "asserts",
+          "title": "Assert: договор о поведении"
+        },
+        {
+          "id": "exceptions",
+          "title": "Свои исключения и обработка"
+        }
+      ]
+    },
+    {
+      "id": "iteration",
+      "name": "Итерация по спискам",
+      "difficulty": 0.3,
+      "description": "Способы пройти список, не потеряв индекс: минимум и максимум, поиск элемента, итерация без копий.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "ways",
+          "title": "Способы пройти список"
+        },
+        {
+          "id": "extremes",
+          "title": "Минимум и максимум"
+        },
+        {
+          "id": "search",
+          "title": "Поиск в списке"
+        }
+      ]
+    },
+    {
+      "id": "comprehensions",
+      "name": "Comprehensions",
+      "difficulty": 0.35,
+      "description": "Списковые и словарные включения: когда они читаются лучше цикла, а когда хуже.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "lists",
+          "title": "Списковые включения"
+        },
+        {
+          "id": "dicts",
+          "title": "Словарные включения"
+        }
+      ]
+    },
+    {
+      "id": "recursion",
+      "name": "Рекурсия и обход словаря",
+      "difficulty": 0.4,
+      "description": "Вложенные структуры: рекурсивное и итеративное решение одной задачи, цена каждого.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "recursive",
+          "title": "Рекурсивный обход"
+        },
+        {
+          "id": "iterative",
+          "title": "Итеративный обход"
+        }
+      ]
+    },
+    {
+      "id": "toolbox",
+      "name": "Генераторы и itertools",
+      "difficulty": 0.45,
+      "description": "Генераторы вместо списков, ленивые последовательности и пары из itertools.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "generators",
+          "title": "Генераторы"
+        },
+        {
+          "id": "itertools",
+          "title": "itertools и пары"
+        }
+      ]
+    },
+    {
+      "id": "own_types",
+      "name": "Свои типы: dataclass и Generic",
+      "difficulty": 0.5,
+      "description": "Свой тип без лишнего кода: dataclass, порядок сравнения, свои итераторы и обобщённые классы.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "frozen",
+          "title": "Неизменяемый dataclass"
+        },
+        {
+          "id": "order",
+          "title": "Сравнение и сортировка"
+        },
+        {
+          "id": "vector",
+          "title": "Свой вектор"
+        },
+        {
+          "id": "iterator",
+          "title": "Свой итератор"
+        }
+      ]
+    },
+    {
+      "id": "wrappers",
+      "name": "Обёртки: with и декораторы",
+      "difficulty": 0.55,
+      "description": "Обёртки вокруг кода: свой контекстный менеджер, уборка за собой, декораторы и кэш.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/tree/0da67c6/lab1-python-intro",
+      "sections": [
+        {
+          "id": "with",
+          "title": "Контекстный менеджер"
+        },
+        {
+          "id": "cleanup",
+          "title": "Уборка за собой"
+        },
+        {
+          "id": "decorator",
+          "title": "Декораторы"
+        },
+        {
+          "id": "lru",
+          "title": "Кэш и lru_cache"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "first_steps",
+      "to_id": "branches",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "branches",
+      "to_id": "errors",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "errors",
+      "to_id": "iteration",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "iteration",
+      "to_id": "comprehensions",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "comprehensions",
+      "to_id": "recursion",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "recursion",
+      "to_id": "toolbox",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "iteration",
+      "to_id": "toolbox",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.4
+    },
+    {
+      "from_id": "toolbox",
+      "to_id": "own_types",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "own_types",
+      "to_id": "wrappers",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.6
+    },
+    {
+      "from_id": "iteration",
+      "to_id": "own_types",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 1001,
+      "prompt": "Напиши функцию `get_hello_world()`, которая **возвращает** строку `Hello world!`, и сохрани результат её вызова в переменную `result`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "first_steps": 0.8
+      },
+      "difficulty": 0.15,
+      "options": [],
+      "answer": null,
+      "rubric_id": 1,
+      "starter": "def get_hello_world() -> str:\n    \"\"\"\n    :return: hello world string\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_hello_world() == \"Hello world!\", \"Функция должна вернуть строку «Hello world!» — и вернуть, а не напечатать.\"\nassert result == \"Hello world!\", \"В result — результат вызова get_hello_world().\"\n",
+      "section": "hello"
+    },
+    {
+      "id": 1002,
+      "prompt": "Функция только печатает значение:\n\n```python\ndef show(value):\n    print(value)\n```\n\nЧто вернёт вызов `show(3)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "first_steps": 0.6
+      },
+      "difficulty": 0.2,
+      "options": [
+        "None — функция ничего не возвращает",
+        "3",
+        "строку \"3\"",
+        "вызов упадёт: у функции нет return"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "section": "hello"
+    },
+    {
+      "id": 1003,
+      "prompt": "Напиши функцию `sum_two_numbers(a, b)`, которая складывает два числа; докстринг у функции оставь заполненным — пустой докстринг считается нарушением договора. В `result` сохрани результат вызова `sum_two_numbers(10, 5)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "first_steps": 0.8
+      },
+      "difficulty": 0.2,
+      "options": [],
+      "answer": null,
+      "rubric_id": 2,
+      "starter": "def sum_two_numbers(a: int, b: int) -> int:\n    \"\"\"\n    :param a: first integer\n    :param b: second integer\n    :return: sum of a and b\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert sum_two_numbers.__doc__, \"Докстринг из заготовки удалять нельзя — это часть договора.\"\nassert sum_two_numbers(1, 1) == 2, \"1 + 1 должно быть 2.\"\nassert sum_two_numbers(-1, -1) == -2, \"Отрицательные числа складываются так же.\"\nassert sum_two_numbers(1, -1) == 0, \"Сумма противоположных чисел — ноль.\"\nassert result == 15, \"В result — результат вызова sum_two_numbers(10, 5).\"\n",
+      "section": "checks"
+    },
+    {
+      "id": 1004,
+      "prompt": "Что из перечисленного проверяет **поведение** функции, а не то, как она написана?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "first_steps": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Проверить, что тело функции занимает не больше трёх строк",
+        "Вызвать функцию на известных входах и сверить ответ с ожидаемым",
+        "Проверить, что в коде функции встречается слово return",
+        "Проверить, что имя функции написано в нижнем регистре"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "section": "checks"
+    },
+    {
+      "id": 1005,
+      "prompt": "Итоговое задание занятия. Напиши две функции: `greet(name)` — возвращает приветствие вида `Привет, Аня!`, и `add(a, b)` — сумму двух чисел. В `result` сохрани кортеж `(greet(\"Аня\"), add(2, 3))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "first_steps": 0.8
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 3,
+      "starter": "def greet(name: str) -> str:\n    \"\"\"Приветствие по имени.\"\"\"\n\n\ndef add(a: int, b: int) -> int:\n    \"\"\"Сумма двух чисел.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert greet(\"Аня\") == \"Привет, Аня!\", \"greet возвращает строку «Привет, <имя>!».\"\nassert greet(\"Пётр\") == \"Привет, Пётр!\", \"Имя подставляется в приветствие, а не зашито в текст.\"\nassert add(2, 3) == 5, \"add складывает два числа.\"\nassert add(-2, 2) == 0, \"С нулём в сумме тоже должно работать.\"\nassert result == (\"Привет, Аня!\", 5), \"В result — кортеж (greet(\\\"Аня\\\"), add(2, 3)).\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1011,
+      "prompt": "Напиши функцию `get_middle_value(a, b, c)`, которая возвращает **среднее по величине** из трёх чисел (медиану). Сохрани в `result` результат вызова `get_middle_value(100, -10, -100)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "branches": 0.8
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 4,
+      "starter": "def get_middle_value(a: int, b: int, c: int) -> int:\n    \"\"\"\n    Takes three values and returns middle value.\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_middle_value(1, 2, 3) == 2, \"У 1, 2, 3 середина — 2.\"\nassert get_middle_value(3, 2, 1) == 2, \"Порядок аргументов не важен.\"\nassert get_middle_value(-100, -10, 100) == -10, \"На отрицательных числах середина — -10.\"\nassert get_middle_value(-10, -10, -5) == -10, \"Равные числа: середина совпадает с ними.\"\nassert get_middle_value(-10, -10, -10) == -10, \"Три одинаковых числа — любое из них.\"\nassert get_middle_value(2, 3, 1) == 2, \"В 2, 3, 1 середина — 2: второй аргумент не всегда средний.\"\nassert get_middle_value(1, 3, 2) == 2, \"В 1, 3, 2 середина — 2.\"\nassert get_middle_value(10 ** 12, -10 ** 12, 10 ** 10) == 10 ** 10, \"Проверяются и большие числа, и порядок аргументов.\"\nassert result == -10, \"В result — результат вызова get_middle_value(100, -10, -100).\"\n",
+      "section": "middle"
+    },
+    {
+      "id": 1012,
+      "prompt": "Что означает выражение `a <= b <= c` в Python?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "branches": 0.6
+      },
+      "difficulty": 0.25,
+      "options": [
+        "`(a <= b) <= c`: сравнить результат первого сравнения с c",
+        "`a <= b and b <= c` — цепочка сравнений",
+        "`a <= b or b <= c`",
+        "Синтаксическую ошибку: так в Python писать нельзя"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "section": "middle"
+    },
+    {
+      "id": 1013,
+      "prompt": "Напиши функцию `get_fizz_buzz(n)`: список чисел от 1 до `n`, где кратные трём заменены на `Fizz`, кратные пяти — на `Buzz`, а кратные и трём, и пяти — на `FizzBuzz`. Сохрани в `result` результат вызова `get_fizz_buzz(15)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "branches": 0.8
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 5,
+      "starter": "def get_fizz_buzz(n: int) -> list[int | str]:\n    \"\"\"\n    If value divided by 3 - \"Fizz\",\n       value divided by 5 - \"Buzz\",\n       value divided by 15 - \"FizzBuzz\",\n    else - value.\n    :param n: size of sequence\n    :return: list of values.\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalues = get_fizz_buzz(15)\nassert isinstance(values, list), \"Функция возвращает список.\"\nassert len(values) == 15, \"Чисел от 1 до n — ровно n штук.\"\nassert values[0] == 1, \"Список начинается с единицы, а не с нуля.\"\nassert values[2] == \"Fizz\", \"Число 3 кратно трём.\"\nassert values[4] == \"Buzz\", \"Число 5 кратно пяти.\"\nassert values[14] == \"FizzBuzz\", \"Число 15 кратно и трём, и пяти.\"\nassert values[7] == 8, \"Обычные числа остаются числами.\"\nassert get_fizz_buzz(5) == [1, 2, \"Fizz\", 4, \"Buzz\"], \"Для n = 5 в списке пять чисел.\"\nassert get_fizz_buzz(1) == [1], \"Для n = 1 в списке только единица.\"\nassert result == values, \"В result — результат вызова get_fizz_buzz(15).\"\n",
+      "section": "fizz_buzz"
+    },
+    {
+      "id": 1014,
+      "prompt": "Почему в FizzBuzz проверку кратности 15 ставят **первой**?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "branches": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Так короче запись: 15 меньше, чем 3 и 5",
+        "Ветви проверяются сверху вниз: если раньше стоит проверка кратности 3, число 15 получит \"Fizz\"",
+        "Иначе получится бесконечный цикл",
+        "Никакой разницы нет: порядок ветвей в if/elif/else не важен"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "section": "fizz_buzz"
+    },
+    {
+      "id": 1015,
+      "prompt": "Итоговое задание занятия. Напиши `get_middle_value(a, b, c)` — медиану из трёх чисел — и `get_fizz_buzz(n)` — FizzBuzz из предыдущего раздела. В `result` сохрани кортеж `(get_middle_value(3, 1, 2), get_fizz_buzz(5))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "branches": 0.8
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 6,
+      "starter": "def get_middle_value(a: int, b: int, c: int) -> int:\n    \"\"\"Среднее по величине из трёх чисел.\"\"\"\n\n\ndef get_fizz_buzz(n: int) -> list[int | str]:\n    \"\"\"Числа от 1 до n с Fizz, Buzz и FizzBuzz.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_middle_value(3, 1, 2) == 2, \"Медиана 3, 1, 2 — двойка.\"\nassert get_middle_value(5, 5, 1) == 5, \"Равные числа не ломают медиану.\"\nassert get_fizz_buzz(5) == [1, 2, \"Fizz\", 4, \"Buzz\"], \"Список от 1 до n с заменами.\"\nassert get_fizz_buzz(15)[14] == \"FizzBuzz\", \"Число 15 — FizzBuzz, а не Fizz.\"\nassert result == (2, [1, 2, \"Fizz\", 4, \"Buzz\"]), \"В result — кортеж из двух ответов.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1021,
+      "prompt": "Дана функция `ctr(clicks, shows)` с багом: она делит нацело и на дробях врёт (см. `setup`). Напиши микротест `check_ctr(clicks, shows, expected)`: если `ctr(clicks, shows)` не равен `expected`, подними `AssertionError` с текстом `Wrong ctr calculation`. В `result` сохрани текст ошибки, которую поднимет вызов `check_ctr(1, 2, 0.5)` — перехвати её через `try / except AssertionError`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "errors": 0.8
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 7,
+      "starter": "def check_ctr(clicks: int, shows: int, expected: float) -> None:\n    \"\"\"Микротест для ctr: сравнить ответ с ожидаемым.\"\"\"\n\n\ntry:\n    check_ctr(1, 2, 0.5)\n    result = \"ошибки не было\"\nexcept AssertionError as exc:\n    result = str(exc)\n",
+      "setup": "def ctr(clicks: int, shows: int) -> float:\n    \"\"\"CTR с багом: возвращает int вместо float.\"\"\"\n    if shows < 0:\n        raise ValueError(\"shows must be positive\")\n    return clicks // shows\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\ncheck_ctr(2, 2, 1.0)\ncheck_ctr(0, 100, 0.0)\ntry:\n    check_ctr(1, 2, 0.5)\nexcept AssertionError as exc:\n    assert str(exc) == \"Wrong ctr calculation\", \"Сообщение должно быть ровно «Wrong ctr calculation».\"\nelse:\n    raise AssertionError(\"check_ctr не заметил баг: 1 из 2 показов — это 0.5, а не 0.\")\nassert result == \"Wrong ctr calculation\", \"В result — текст ошибки от вызова check_ctr(1, 2, 0.5).\"\n",
+      "section": "asserts"
+    },
+    {
+      "id": 1022,
+      "prompt": "Чем `assert` отличается от `raise ValueError(...)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "errors": 0.6
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Ничем: это две записи одного и того же",
+        "`AssertionError` адресован разработчику и отключается флагом `-O`, а `ValueError` — вызывающему и работает всегда",
+        "`assert` работает медленнее, но надёжнее",
+        "`raise` нельзя использовать внутри функции"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "section": "asserts"
+    },
+    {
+      "id": 1023,
+      "prompt": "Напиши функцию `safe_ctr(clicks, shows, log)`, которая считает CTR безопасно:\n\n1. внутри `try` проверяет через `assert clicks >= 0` с текстом `Clicks must be non-negative`;\n2. возвращает `float(ctr(clicks, shows))`;\n3. при `ValueError` возвращает `-1.0`, при `ZeroDivisionError` — `0.0`;\n4. в `finally` добавляет в `log` строку `done`.\n\nВ `result` сохрани список трёх вызовов с общим журналом `log`: `safe_ctr(2, 2, log)`, `safe_ctr(5, -1, log)`, `safe_ctr(10, 0, log)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "errors": 0.8
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 8,
+      "starter": "def safe_ctr(clicks: int, shows: int, log: list[str]) -> float:\n    \"\"\"Безопасный CTR: предусловие, два типа ошибок и журнал в finally.\"\"\"\n\n\nlog: list[str] = []\nresult = None\n",
+      "setup": "def ctr(clicks: int, shows: int) -> float:\n    \"\"\"CTR с багами: int вместо float, ValueError и деление на ноль.\"\"\"\n    if shows < 0:\n        raise ValueError(\"shows must be positive\")\n    return clicks // shows\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nlog: list[str] = []\nassert safe_ctr(2, 2, log) == 1.0, \"2 клика из 2 показов — 1.0.\"\nassert isinstance(safe_ctr(2, 2, log), float), \"Результат приводится к float.\"\nassert safe_ctr(5, -1, log) == -1.0, \"Отрицательные показы: ctr поднимает ValueError, ответ -1.0.\"\nassert safe_ctr(10, 0, log) == 0.0, \"Ноль показов: деление на ноль, ответ 0.0.\"\nassert log == [\"done\"] * 4, \"finally добавляет «done» ровно один раз за вызов.\"\nwas = len(log)\ntry:\n    safe_ctr(-1, 5, log)\nexcept AssertionError as exc:\n    assert str(exc) == \"Clicks must be non-negative\", \"Предусловие: «Clicks must be non-negative».\"\nelse:\n    raise AssertionError(\"Отрицательные клики должны нарушать предусловие.\")\nassert len(log) == was + 1 and log[-1] == \"done\", \"finally работает и когда ошибка уходит наверх: в журнале ровно одна новая запись.\"\nassert result == [1.0, -1.0, 0.0], \"В result — три ответа с общим журналом log.\"\n",
+      "section": "exceptions"
+    },
+    {
+      "id": 1024,
+      "prompt": "Дана функция:\n\n```python\ndef risky(x):\n    try:\n        return 10 // x\n    finally:\n        print(\"cleanup\")\n```\n\nЧто произойдёт при вызове `risky(0)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "errors": 0.6
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Напечатается «cleanup», и функция вернёт None",
+        "Напечатается «cleanup», и функция вернёт 0",
+        "Напечатается «cleanup», а затем исключение ZeroDivisionError уйдёт наверх",
+        "Блок finally не выполнится: исключение прерывает функцию"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "section": "exceptions"
+    },
+    {
+      "id": 1025,
+      "prompt": "Итоговое задание занятия. Напиши `safe_divide(a, b, log)`:\n\n- предусловие `assert a >= 0, \"a must be non-negative\"` (ошибка уходит наверх, её не ловим);\n- при `b == 0` функция возвращает `0.0` — как `safe_ctr` в примере занятия — и добавляет в `log` строку `zero`;\n- иначе возвращает `a / b` и добавляет в `log` строку `ok`;\n- в `finally` всегда добавляет в `log` строку `done`.\n\nВ `result` сохрани кортеж `(safe_divide(10, 2, log), safe_divide(1, 0, log), log)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "errors": 0.8
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 9,
+      "starter": "def safe_divide(a: float, b: float, log: list[str]) -> float:\n    \"\"\"Деление без падения: журнал в finally, ноль на входе — 0.0.\"\"\"\n\n\nlog: list[str] = []\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nlog: list[str] = []\nassert safe_divide(10, 2, log) == 5.0, \"10 / 2 — это 5.0.\"\nassert log == [\"ok\", \"done\"], \"Успешный вызов пишет «ok», finally добавляет «done».\"\nassert safe_divide(1, 0, log) == 0.0, \"Деление на ноль возвращает 0.0, как safe_ctr в примере.\"\nassert log[-2:] == [\"zero\", \"done\"], \"Деление на ноль пишет «zero», finally добавляет «done».\"\nwas = len(log)\ntry:\n    safe_divide(-1, 2, log)\nexcept AssertionError as exc:\n    assert str(exc) == \"a must be non-negative\", \"Предусловие: «a must be non-negative».\"\nelse:\n    raise AssertionError(\"Отрицательное a должно нарушать предусловие.\")\nassert len(log) == was + 1 and log[-1] == \"done\", \"finally работает и при уходящей наверх ошибке: в журнале ровно одна новая запись.\"\nassert result == (5.0, 0.0, [\"ok\", \"done\", \"zero\", \"done\"]), \"В result — кортеж из двух ответов и журнала.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1031,
+      "prompt": "Напиши функцию `get_every_second_element(elements)`, которая возвращает список **каждых вторых** элементов списка — то есть элементы с индексами 1, 3, 5 и так далее. Входной список менять нельзя. В `result` сохрани результат вызова `get_every_second_element([-2, 0, 5, 2, 3, 4, 3])`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "iteration": 0.8
+      },
+      "difficulty": 0.3,
+      "rubric_id": 10,
+      "starter": "def get_every_second_element(elements: list[int]) -> list[int]:\n    \"\"\"\n    :param elements: list with integer values\n    :return: list with each second element of list\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_every_second_element([-2, 0, 5, 2, 3, 4, 3]) == [0, 2, 4], \"Каждый второй — это элементы с индексами 1, 3, 5, а не 0, 2, 4.\"\nassert get_every_second_element([5, 4, 3, 2]) == [4, 2], \"Порядок исходного списка сохраняется: результат не сортируется.\"\nassert get_every_second_element([9, 8, 7, 6, 5]) == [8, 6], \"Каждый второй — по позиции, а не по значению.\"\nassert get_every_second_element([1]) == [], \"Один элемент — второго нет.\"\nassert get_every_second_element([]) == [], \"Пустой список — пустой результат.\"\nassert get_every_second_element([1, 2]) == [2], \"Из двух элементов второй — последний.\"\nchecked = [-2, 0, 5, 2, 3, 4, 3]\nbefore = list(checked)\nget_every_second_element(checked)\nassert checked == before, \"Входной список менять нельзя.\"\nassert result == [0, 2, 4], \"В result — результат вызова из условия.\"\n",
+      "section": "ways"
+    },
+    {
+      "id": 1032,
+      "prompt": "Нужно напечатать номер и значение каждого элемента списка, причём нумерация с единицы. Какой способ итерации для этого подходит?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "iteration": 0.6
+      },
+      "difficulty": 0.2,
+      "options": [
+        "`for number, value in enumerate(elements, start=1):`",
+        "`for value in elements:`",
+        "`print(elements[1::2])`",
+        "`for index in range(elements):`"
+      ],
+      "answer": "0",
+      "section": "ways"
+    },
+    {
+      "id": 1033,
+      "prompt": "Напиши функцию `get_min_max(elements, default)`, которая возвращает кортеж `(минимум, максимум)` элементов, а на пустом списке — пару `(default, default)`. В `result` сохрани результат вызова `get_min_max([3, 0, 5, 2, 1, 4, 6], 0)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "iteration": 0.8
+      },
+      "difficulty": 0.3,
+      "rubric_id": 11,
+      "starter": "def get_min_max(elements: list[int], default: int | None) -> tuple[int | None, int | None]:\n    \"\"\"\n    :param elements: list with integer values\n    :param default: default value to return if elements are empty\n    :return: (min, max) of list elements or (default, default) if elements are empty\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_min_max([3, 0, 5, 2, 1, 4, 6], 0) == (0, 6), \"Минимум 0, максимум 6 — именно в этом порядке.\"\nassert get_min_max([7], 0) == (7, 7), \"Один элемент — он же минимум и максимум.\"\nassert get_min_max([], 0) == (0, 0), \"Пустой список — пара default.\"\nassert get_min_max([], None) == (None, None), \"Default None — пара (None, None).\"\nassert get_min_max([-5, -1, -3], None) == (-5, -1), \"Отрицательные значения: минимум -5.\"\nassert result == (0, 6), \"В result — результат вызова из условия.\"\n",
+      "section": "extremes"
+    },
+    {
+      "id": 1034,
+      "prompt": "Что произойдёт при вызове `min([])`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "iteration": 0.6
+      },
+      "difficulty": 0.2,
+      "options": [
+        "`ValueError: min() iterable argument is empty`",
+        "вернётся `None`",
+        "вернётся `0`",
+        "вернётся пустой список"
+      ],
+      "answer": "0",
+      "section": "extremes"
+    },
+    {
+      "id": 1035,
+      "prompt": "Напиши функцию `get_last_three_index(elements)`, которая возвращает индекс **последней** тройки в списке, а если тройки нет — `None`. В `result` сохрани результат вызова `get_last_three_index([-2, 0, 5, 2, 3, 4, 3])`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "iteration": 0.8
+      },
+      "difficulty": 0.35,
+      "rubric_id": 12,
+      "starter": "def get_last_three_index(elements: list[int]) -> int | None:\n    \"\"\"\n    :param elements: list with integer values\n    :return: index of last \"3\" in the list if exists, None otherwise\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_last_three_index([-2, 0, 5, 2, 3, 4, 3]) == 6, \"Последняя тройка — на позиции 6.\"\nassert get_last_three_index([3, 0, 5, 2, 1, 4, 6]) == 0, \"Тройка в начале: ответ 0 — это индекс, а не «не нашли».\"\nassert get_last_three_index([3, 3]) == 1, \"Из двух троек последняя — на позиции 1.\"\nassert get_last_three_index([-2, 0, 5, 2]) is None, \"Тройки нет — None.\"\nassert get_last_three_index([]) is None, \"Пустой список — None.\"\nassert result == 6, \"В result — результат вызова из условия.\"\n",
+      "section": "search"
+    },
+    {
+      "id": 1036,
+      "prompt": "В списке `elements = [1, 2, 4]` тройки нет. Что вернёт `elements.index(3)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "iteration": 0.6
+      },
+      "difficulty": 0.2,
+      "options": [
+        "поднимет `ValueError: 3 is not in list`",
+        "вернёт `None`",
+        "вернёт `-1`",
+        "вернёт `0`"
+      ],
+      "answer": "0",
+      "section": "search"
+    },
+    {
+      "id": 1037,
+      "prompt": "Итоговое задание занятия. Напиши три функции: `get_squares(elements)` — список квадратов значений; `get_max_element_index(elements)` — индекс первого максимального элемента, а на пустом списке `None`; `get_by_index(elements, index, boundary)` — элемент по индексу, если он больше границы, иначе `None`. В `result` сохрани кортеж `(get_squares([-2, 0, 5]), get_max_element_index([-2, 0, 5, 2, 3, 4, 3]), get_by_index([-2, 0, 5, 2, 3, 4, 3], 5, 3))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "iteration": 0.8
+      },
+      "difficulty": 0.5,
+      "rubric_id": 13,
+      "starter": "def get_squares(elements: list[int]) -> list[int]:\n    \"\"\"Квадраты значений, в том же порядке.\"\"\"\n\n\ndef get_max_element_index(elements: list[int]) -> int | None:\n    \"\"\"Индекс первого максимального элемента или None.\"\"\"\n\n\ndef get_by_index(elements: list[int], index: int, boundary: int) -> int | None:\n    \"\"\"Элемент по индексу, если он больше границы, иначе None.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_squares([-2, 0, 5, 2]) == [4, 0, 25, 4], \"Квадраты по порядку: (-2) ** 2 — это 4.\"\nassert get_squares([]) == [], \"Пустой список — пустой результат.\"\nassert get_max_element_index([-2, 0, 5, 2, 3, 4, 3]) == 2, \"Максимум 5 стоит на позиции 2.\"\nassert get_max_element_index([1, 5, 3, 5]) == 1, \"Максимум повторяется — нужен индекс первого из них, а не последнего.\"\nassert get_max_element_index([4, 4, 4]) == 0, \"Все элементы равны — индекс первого.\"\nassert get_max_element_index([7]) == 0, \"Из одного элемента максимум — он сам, индекс 0.\"\nassert get_max_element_index([-5, -1, -9]) == 1, \"С отрицательными числами максимум — самый большой, а не самый близкий к нулю.\"\nassert get_max_element_index([]) is None, \"Пустой список — None.\"\nassert get_by_index([-2, 0, 5, 2, 3, 4, 3], 5, 3) == 4, \"Элемент 4 больше границы 3.\"\nassert get_by_index([-2, 0, 5, 2, 3, 4, 3], 5, 4) is None, \"4 не больше 4 — None.\"\ndata = [-2, 0, 5, 2]\nbefore = list(data)\nget_squares(data)\nassert data == before, \"Входной список менять нельзя.\"\nassert result == ([4, 0, 25], 2, 4), \"В result — кортеж из трёх ответов.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1041,
+      "prompt": "В заготовке уже есть список записей лога `records`. Напиши функцию `get_events_by_device_type(records, device_type)`, которая возвращает записи с указанным устройством, **сохраняя порядок**. В `result` сохрани результат вызова `get_events_by_device_type(records, \"Safari\")`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "comprehensions": 0.8
+      },
+      "difficulty": 0.3,
+      "rubric_id": 14,
+      "starter": "def get_events_by_device_type(records: list[dict], device_type: str) -> list[dict]:\n    \"\"\"\n    :param records: records of hit-log\n    :param device_type: device type name to filter by\n    :return: filtered events with order preservation\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "records = [\n    {\"EventID\": 101, \"EventTime\": 1000, \"UserID\": 7, \"PageID\": 10, \"RegionID\": None, \"DeviceType\": \"Safari\"},\n    {\"EventID\": 102, \"EventTime\": 2000, \"UserID\": 7, \"PageID\": 10, \"RegionID\": None, \"DeviceType\": \"Safari\"},\n    {\"EventID\": 103, \"EventTime\": 3000, \"UserID\": 8, \"PageID\": 11, \"RegionID\": 5, \"DeviceType\": \"Firefox\"},\n    {\"EventID\": 104, \"EventTime\": 4000, \"UserID\": 9, \"PageID\": 12, \"RegionID\": 0, \"DeviceType\": \"Internet Explorer\"},\n    {\"EventID\": 106, \"EventTime\": 6000, \"UserID\": 10, \"PageID\": 13, \"RegionID\": 3, \"DeviceType\": \"Chrome\"},\n    {\"EventID\": 105, \"EventTime\": 5000, \"UserID\": 11, \"PageID\": 13, \"RegionID\": 3, \"DeviceType\": \"Chrome\"},\n    {\"EventID\": 107, \"EventTime\": 7000, \"UserID\": 12, \"PageID\": 14, \"RegionID\": 3, \"DeviceType\": \"Safari Mobile\"},\n]  # Порядок записей в логе не обязан совпадать с порядком EventID\n",
+      "tests": "import copy\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nsafari = get_events_by_device_type(records, \"Safari\")\nassert isinstance(safari, list), \"Функция возвращает список записей.\"\nassert [r[\"EventID\"] for r in safari] == [101, 102], \"Safari — ровно две записи, в порядке лога: устройство сравнивается целиком, а не по вхождению подстроки.\"\nassert [r[\"EventID\"] for r in get_events_by_device_type(records, \"Chrome\")] == [106, 105], \"Порядок лога сохраняется: сортировка по EventID его сломает.\"\nassert get_events_by_device_type(records, \"Safari Mobile\") == [records[6]], \"Safari Mobile — отдельное устройство, а не то же самое, что Safari.\"\nassert get_events_by_device_type(records, \"Firefox\") == [records[2]], \"Firefox — одна запись, и это та же запись из лога.\"\nassert get_events_by_device_type(records, \"Opera\") == [], \"Нет таких записей — пустой список.\"\nbefore = copy.deepcopy(records)\nget_events_by_device_type(records, \"Safari\")\nassert records == before, \"Записи лога менять нельзя.\"\nassert [r[\"EventID\"] for r in result] == [101, 102], \"В result — записи Safari.\"\n",
+      "section": "lists"
+    },
+    {
+      "id": 1042,
+      "prompt": "В логе у части записей `RegionID` равен `None`. Что вернёт `[r[\"RegionID\"] for r in records if r[\"RegionID\"] is not None]`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "comprehensions": 0.6
+      },
+      "difficulty": 0.25,
+      "options": [
+        "список только тех регионов, что определены: записи без региона пропущены",
+        "список всех регионов, а вместо `None` подставлено значение по умолчанию",
+        "список той же длины, где у записей без региона стоит `None`",
+        "число записей, у которых регион определён"
+      ],
+      "answer": "0",
+      "section": "lists"
+    },
+    {
+      "id": 1043,
+      "prompt": "В заготовке есть запись лога `record` (это `records[2]`). Напиши функцию `get_record_with_none_if_key_not_in_keys(record, keys)`, которая возвращает словарь со **всеми** ключами записи, но значения ключей, которых нет в наборе `keys`, заменены на `None`. Порядок ключей — как в записи. В `result` сохрани результат вызова `get_record_with_none_if_key_not_in_keys(record, {\"EventID\", \"UserID\"})`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "comprehensions": 0.8
+      },
+      "difficulty": 0.4,
+      "rubric_id": 15,
+      "starter": "def get_record_with_none_if_key_not_in_keys(record: dict, keys: set[str]) -> dict:\n    \"\"\"\n    :param record: record of hit-log\n    :param keys: keys to filter by\n    :return: record with other keys replaced by None\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "records = [\n    {\"EventID\": 101, \"EventTime\": 1000, \"UserID\": 7, \"PageID\": 10, \"RegionID\": None, \"DeviceType\": \"Safari\"},\n    {\"EventID\": 102, \"EventTime\": 2000, \"UserID\": 7, \"PageID\": 10, \"RegionID\": None, \"DeviceType\": \"Safari\"},\n    {\"EventID\": 103, \"EventTime\": 3000, \"UserID\": 8, \"PageID\": 11, \"RegionID\": 5, \"DeviceType\": \"Firefox\"},\n    {\"EventID\": 104, \"EventTime\": 4000, \"UserID\": 9, \"PageID\": 12, \"RegionID\": 0, \"DeviceType\": \"Internet Explorer\"},\n]\n\nrecord = records[2]\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nfiltered = get_record_with_none_if_key_not_in_keys(record, {\"EventID\", \"UserID\"})\nassert filtered == {\"EventID\": 103, \"EventTime\": None, \"UserID\": 8, \"PageID\": None, \"RegionID\": None, \"DeviceType\": None}, \"Ключи остаются все, чужие значения — None.\"\nassert set(filtered) == set(record), \"Набор ключей не меняется.\"\nassert list(filtered) == list(record), \"Порядок ключей — как в записи.\"\nassert get_record_with_none_if_key_not_in_keys(record, set()) == dict.fromkeys(record), \"Пустой набор — все значения None.\"\nassert get_record_with_none_if_key_not_in_keys(record, {\"EventID\", \"SomeField\"})[\"EventID\"] == 103, \"Ключ набора, которого нет в записи, не мешает.\"\nassert record[\"RegionID\"] == 5, \"Входную запись менять нельзя.\"\nassert result == {\"EventID\": 103, \"EventTime\": None, \"UserID\": 8, \"PageID\": None, \"RegionID\": None, \"DeviceType\": None}, \"В result — результат вызова из условия.\"\n",
+      "section": "dicts"
+    },
+    {
+      "id": 1044,
+      "prompt": "Почему `{key: record[key] for key in keys}` — плохая идея, если набор ключей `keys` приходит снаружи?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "comprehensions": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "на ключе, которого нет в записи, будет `KeyError`; идти надо по записи и фильтровать по набору",
+        "так нельзя: включение по множеству не работает",
+        "в результате появятся лишние ключи со значением `None`",
+        "ничего страшного: лишние ключи просто игнорируются"
+      ],
+      "answer": "0",
+      "section": "dicts"
+    },
+    {
+      "id": 1045,
+      "prompt": "Итоговое задание занятия. Напиши три функции: `get_unique_page_ids(records)` — множество страниц из лога; `get_region_id_if_not_none(records)` — список регионов только тех записей, где регион определён, в порядке лога; `get_keys_where_value_is_not_none(record)` — список ключей записи, у которых значение не `None`. В `result` сохрани кортеж `(sorted(get_unique_page_ids(records)), get_region_id_if_not_none(records), get_keys_where_value_is_not_none(records[0]))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "comprehensions": 0.8
+      },
+      "difficulty": 0.5,
+      "rubric_id": 16,
+      "starter": "def get_unique_page_ids(records: list[dict]) -> set[int]:\n    \"\"\"Уникальные страницы лога.\"\"\"\n\n\ndef get_region_id_if_not_none(records: list[dict]) -> list[int]:\n    \"\"\"Регионы записей, где регион определён, в порядке лога.\"\"\"\n\n\ndef get_keys_where_value_is_not_none(record: dict) -> list[str]:\n    \"\"\"Ключи записи, у которых значение не None.\"\"\"\n\n\nresult = None\n",
+      "setup": "records = [\n    {\"EventID\": 101, \"EventTime\": 1000, \"UserID\": 7, \"PageID\": 10, \"RegionID\": None, \"DeviceType\": \"Safari\"},\n    {\"EventID\": 102, \"EventTime\": 2000, \"UserID\": 7, \"PageID\": 10, \"RegionID\": None, \"DeviceType\": \"Safari\"},\n    {\"EventID\": 103, \"EventTime\": 3000, \"UserID\": 8, \"PageID\": 11, \"RegionID\": 5, \"DeviceType\": \"Firefox\"},\n    {\"EventID\": 104, \"EventTime\": 4000, \"UserID\": 9, \"PageID\": 12, \"RegionID\": 0, \"DeviceType\": \"Internet Explorer\"},\n]\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert get_unique_page_ids(records) == {10, 11, 12}, \"Уникальные страницы лога.\"\nassert isinstance(get_unique_page_ids(records), set), \"Задача просит множество: повторов в нём быть не может.\"\nassert get_region_id_if_not_none(records) == [5, 0], \"Только определённые регионы и в порядке лога; 0 — тоже регион.\"\nassert get_region_id_if_not_none([]) == [], \"Пустой лог — пустой список.\"\nassert get_keys_where_value_is_not_none(records[0]) == [\"EventID\", \"EventTime\", \"UserID\", \"PageID\", \"DeviceType\"], \"В первой записи RegionID равен None — этого ключа в ответе нет.\"\nassert get_keys_where_value_is_not_none({\"a\": None, \"b\": 0}) == [\"b\"], \"0 — значение, отсутствие значения — это None.\"\nassert result == ([10, 11, 12], [5, 0], [\"EventID\", \"EventTime\", \"UserID\", \"PageID\", \"DeviceType\"]), \"В result — кортеж из трёх ответов.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1051,
+      "prompt": "Напиши функцию `traverse_dictionary_immutable(dct)`, которая превращает вложенный словарь в список пар: путь из ключей, соединённых точкой, и значение. Вложенный словарь — это ещё один уровень пути. Порядок пар — как в словаре, входной словарь менять нельзя. В `result` сохрани результат вызова `traverse_dictionary_immutable({\"a\": 1, \"b\": {\"c\": 2, \"d\": {\"e\": 4}}})`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "recursion": 0.8
+      },
+      "difficulty": 0.45,
+      "rubric_id": 17,
+      "starter": "def traverse_dictionary_immutable(dct: dict) -> list[tuple[str, int]]:\n    \"\"\"\n    :param dct: nested dictionary\n    :return: list of (dotted key, value) pairs\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import copy\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert traverse_dictionary_immutable({}) == [], \"Пустой словарь — пустой список.\"\nassert traverse_dictionary_immutable({\"a\": 1}) == [(\"a\", 1)], \"Один ключ — путь без точек.\"\nassert traverse_dictionary_immutable({\"a\": 1, \"b\": {\"c\": 2}}) == [(\"a\", 1), (\"b.c\", 2)], \"Вложенный ключ присоединяется через точку.\"\nassert traverse_dictionary_immutable({\"a\": {\"b\": {\"c\": {\"d\": 1}}}}) == [(\"a.b.c.d\", 1)], \"Три уровня вложенности — три точки.\"\nassert traverse_dictionary_immutable({\"a\": 1, \"b\": 2, \"c\": {\"d\": 3, \"e\": {\"g\": 7}}, \"f\": 5}) == [(\"a\", 1), (\"b\", 2), (\"c.d\", 3), (\"c.e.g\", 7), (\"f\", 5)], \"Порядок пар — как в словаре: соседи и вложенные уровни идут в порядке ключей, без сортировки.\"\nassert traverse_dictionary_immutable({\"b\": 2, \"a\": 1}) == [(\"b\", 2), (\"a\", 1)], \"Порядок пар — порядок ключей в словаре, а не алфавит.\"\nassert traverse_dictionary_immutable({\"z\": 1, \"m\": {\"b\": 2, \"a\": 3}}) == [(\"z\", 1), (\"m.b\", 2), (\"m.a\", 3)], \"И на вложенном уровне порядок тоже словарный.\"\ndata = {\"a\": 1, \"b\": {\"c\": 2}}\nbefore = copy.deepcopy(data)\ntraverse_dictionary_immutable(data)\nassert data == before, \"Входной словарь менять нельзя.\"\nassert result == [(\"a\", 1), (\"b.c\", 2), (\"b.d.e\", 4)], \"В result — результат вызова из условия.\"\n",
+      "section": "recursive"
+    },
+    {
+      "id": 1052,
+      "prompt": "Рекурсивный обход вызывается заново на каждом уровне дерева. Что произойдёт на дереве в 5000 уровней?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "recursion": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "`RecursionError`: стек вызовов ограничен — по умолчанию около тысячи вызовов",
+        "обход пройдёт, просто медленнее",
+        "обход вернёт только первые 1000 уровней",
+        "Python сам превратит рекурсию в цикл"
+      ],
+      "answer": "0",
+      "section": "recursive"
+    },
+    {
+      "id": 1053,
+      "prompt": "Напиши функцию `traverse_dictionary_iterative(dct)`: то же превращение вложенного словаря в список пар «путь — значение», но **без рекурсии** — обходом с явным стеком. Порядок пар не проверяется, входной словарь менять нельзя. В `result` сохрани `sorted(traverse_dictionary_iterative({\"a\": 1, \"b\": {\"c\": 2, \"d\": {\"e\": 4}}}))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "recursion": 0.8
+      },
+      "difficulty": 0.5,
+      "rubric_id": 18,
+      "starter": "def traverse_dictionary_iterative(dct: dict) -> list[tuple[str, int]]:\n    \"\"\"\n    :param dct: nested dictionary\n    :return: list of (dotted key, value) pairs\n    \"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import copy\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nempty = traverse_dictionary_iterative({})\nassert isinstance(empty, list), \"Функция возвращает список пар.\"\nassert sorted(empty) == [], \"Пустой словарь — пустой список.\"\nassert sorted(traverse_dictionary_iterative({\"a\": 1, \"b\": {\"c\": 2}})) == [(\"a\", 1), (\"b.c\", 2)], \"Вложенный ключ присоединяется через точку.\"\nassert sorted(traverse_dictionary_iterative({\"a\": {\"b\": {\"c\": {\"d\": 1}}}})) == [(\"a.b.c.d\", 1)], \"Три уровня вложенности — три точки.\"\ndeep = {}\nnode = deep\nfor index in range(2000):\n    child = {}\n    node[str(index)] = child\n    node = child\nnode[\"2000\"] = 1\nassert sorted(traverse_dictionary_iterative(deep)) == [(\".\".join(str(index) for index in range(2001)), 1)], \"Дерево в 2000 уровней: рекурсия здесь падает, стек — нет.\"\ndata = {\"a\": 1, \"b\": {\"c\": 2}}\nbefore = copy.deepcopy(data)\ntraverse_dictionary_iterative(data)\nassert data == before, \"Входной словарь менять нельзя.\"\nassert result == sorted([(\"a\", 1), (\"b.c\", 2), (\"b.d.e\", 4)]), \"В result — отсортированный результат вызова из условия.\"\n",
+      "section": "iterative"
+    },
+    {
+      "id": 1054,
+      "prompt": "Чем обход с явным стеком отличается от рекурсивного?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "recursion": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "стек живёт в куче, поэтому глубина дерева не ограничена лимитом рекурсии, а порядок пар при `pop()` получается другим",
+        "он быстрее: O(log n) вместо O(n)",
+        "он не умеет обходить словари глубже двух уровней",
+        "ему не нужна память под промежуточные узлы"
+      ],
+      "answer": "0",
+      "section": "iterative"
+    },
+    {
+      "id": 1055,
+      "prompt": "Итоговое задание занятия. Напиши два обхода одного дерева: `traverse_dictionary_mutable(dct, result)` — рекурсивный, пары дописываются в переданный список, функция ничего не возвращает; `traverse_dictionary_iterative(dct)` — итеративный со стеком, возвращает список пар. Входной словарь не менять. Для `dct = {\"a\": 1, \"b\": {\"c\": 2, \"d\": {\"e\": 4}}}` вызови мутирующую версию с пустым списком `collected` и сохрани в `result` кортеж `(sorted(collected), sorted(traverse_dictionary_iterative(dct)))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "recursion": 0.8
+      },
+      "difficulty": 0.55,
+      "rubric_id": 19,
+      "starter": "def traverse_dictionary_mutable(dct: dict, result: list[tuple[str, int]]) -> None:\n    \"\"\"Рекурсивный обход: пары дописываются в result.\"\"\"\n\n\ndef traverse_dictionary_iterative(dct: dict) -> list[tuple[str, int]]:\n    \"\"\"Итеративный обход со стеком: возвращает список пар.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import copy\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\ncollected = []\ntraverse_dictionary_mutable({\"a\": 1, \"b\": {\"c\": 2}}, collected)\nassert collected == [(\"a\", 1), (\"b.c\", 2)], \"Мутирующая версия дописывает пары в переданный список.\"\nassert traverse_dictionary_mutable({\"a\": 1}, []) is None, \"Мутирующая версия ничего не возвращает.\"\nassert sorted(traverse_dictionary_iterative({\"a\": 1, \"b\": {\"c\": 2, \"d\": {\"e\": 4}}})) == sorted([(\"a\", 1), (\"b.c\", 2), (\"b.d.e\", 4)]), \"Итеративная версия возвращает список пар.\"\nassert traverse_dictionary_iterative({}) == [], \"Пустой словарь — пустой список.\"\ndeep = {}\nnode = deep\nfor index in range(2000):\n    child = {}\n    node[str(index)] = child\n    node = child\nnode[\"2000\"] = 1\nassert sorted(traverse_dictionary_iterative(deep)) == [(\".\".join(str(index) for index in range(2001)), 1)], \"Дерево в 2000 уровней: рекурсивная версия здесь падает, стек — нет.\"\ndata = {\"a\": 1, \"b\": {\"c\": 2}}\nbefore = copy.deepcopy(data)\ntraverse_dictionary_mutable(data, [])\ntraverse_dictionary_iterative(data)\nassert data == before, \"Входной словарь не меняет ни одна из версий.\"\nassert result == (sorted([(\"a\", 1), (\"b.c\", 2), (\"b.d.e\", 4)]), sorted([(\"a\", 1), (\"b.c\", 2), (\"b.d.e\", 4)])), \"В result — два отсортированных обхода.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1061,
+      "prompt": "Напиши функцию-генератор `uniq(sequence)`, которая отдаёт элементы исходной последовательности в том же порядке, пропуская повторы. Источник читается лениво: лишние элементы у него не запрашиваются. В `result` сохрани кортеж `(list(uniq([1, 2, 3, 3, 1, 7])), list(uniq([])))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "toolbox": 0.8
+      },
+      "difficulty": 0.45,
+      "rubric_id": 20,
+      "starter": "from collections.abc import Iterator\n\n\ndef uniq(sequence: list[int]) -> Iterator[int]:\n    \"\"\"Элементы в исходном порядке, без повторов.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import itertools\nfrom collections.abc import Iterator\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == ([1, 2, 3, 7], []), \"В result — кортеж из двух списков: уникальные элементы списка и пустой список.\"\nassert list(uniq([])) == [], \"Пустая последовательность — пустой генератор.\"\nassert list(uniq([1])) == [1], \"Один элемент остаётся один.\"\nassert list(uniq([1, 2, 3, 3, 1, 7])) == [1, 2, 3, 7], \"Порядок входа сохраняется, повторы пропускаются.\"\nassert list(uniq([1, 1, 3, 1, 1, 3])) == [1, 3], \"Повтор через элемент — всё ещё повтор.\"\nassert list(uniq(iter([2, 2, 5]))) == [2, 5], \"Источником может быть любой итератор, не только список.\"\n\n\ndef consumed_too_far() -> Iterator[int]:\n    \"\"\"Три элемента, а дальше — ошибка: источник прочитан дальше нужного.\"\"\"\n    yield 1\n    yield 1\n    yield 2\n    raise RuntimeError(\"источник прочитан дальше нужного\")\n\n\nassert list(itertools.islice(uniq(consumed_too_far()), 2)) == [1, 2], (\n    \"Источник читается лениво: за двумя элементами генератор не идёт.\"\n)\nsource = [1, 2, 2, 3]\nbefore = list(source)\nuniq(source)\nassert source == before, \"Входную последовательность менять нельзя.\"\n",
+      "section": "generators"
+    },
+    {
+      "id": 1062,
+      "prompt": "Функция-генератор `uniq` вызвана один раз, и полученный генератор прошли в цикле `for` до конца. Что произойдёт, если пройти по этому же объекту генератора второй раз?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "toolbox": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "ни одного элемента: генератор исчерпан, нужен новый вызов `uniq(...)`",
+        "проход начнётся сначала: тело генератора выполнится заново с первого `yield`",
+        "элементы вернутся из кэша, который генератор помнит после первого прохода",
+        "цикл `for` упадёт с `StopIteration` на первом же шаге"
+      ],
+      "answer": "0",
+      "section": "generators"
+    },
+    {
+      "id": 1063,
+      "prompt": "Напиши функцию `transpose(matrix)`: строки становятся столбцами, на выходе список списков. Матрица — непустые строки одинаковой длины; на пустой матрице верни пустой список. Входную матрицу менять нельзя. В `result` сохрани кортеж `(transpose([[1, 2], [3, 4], [5, 6]]), transpose([]))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "toolbox": 0.8
+      },
+      "difficulty": 0.45,
+      "rubric_id": 21,
+      "starter": "def transpose(matrix: list[list[int]]) -> list[list[int]]:\n    \"\"\"Строки становятся столбцами; входная матрица не меняется.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == ([[1, 3, 5], [2, 4, 6]], []), \"В result — транспонированная матрица и пустой список для пустой матрицы.\"\nassert transpose([]) == [], \"Пустая матрица — пустой список, а не ошибка.\"\nassert transpose([[1]]) == [[1]], \"Матрица из одного элемента не меняется.\"\nassert transpose([[1, 2], [3, 4]]) == [[1, 3], [2, 4]], \"Квадратная матрица: строки и столбцы меняются местами.\"\nassert transpose([[1], [3]]) == [[1, 3]], \"Столбец становится строкой.\"\nassert transpose([[1, 3]]) == [[1], [3]], \"Строка становится столбцом.\"\nrows = transpose([[1, 2], [3, 4]])\nassert all(isinstance(row, list) for row in rows), \"Строки результата — списки, а не кортежи.\"\nsource = [[1, 2], [3, 4]]\nbefore = [row[:] for row in source]\ntranspose(source)\nassert source == before, \"Входную матрицу менять нельзя.\"\n",
+      "section": "itertools"
+    },
+    {
+      "id": 1064,
+      "prompt": "Что вернёт `[list(row) for row in zip(*matrix)]` для матрицы `[[1, 2, 3], [4, 5]]` — строки разной длины?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "toolbox": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "`[[1, 4], [2, 5]]`: `zip` останавливается на самой короткой строке, и третий элемент первой строки теряется",
+        "`[[1, 4], [2, 5], [3]]`: короткая строка дополняется до длины длинной",
+        "`ValueError`: строки разной длины — ошибка транспонирования",
+        "`[[1, 2, 3], [4, 5]]`: матрица остаётся без изменений"
+      ],
+      "answer": "0",
+      "section": "itertools"
+    },
+    {
+      "id": 1065,
+      "prompt": "Итоговое задание занятия. Напиши три функции: `uniq(sequence)` — генератор элементов без повторов в исходном порядке; `dict_merge(*dicts)` — объединение плоских словарей, где значения поздних аргументов перекрывают ранние; `product(lhs, rhs)` — скалярное произведение. Ни один из входов не меняется. В `result` сохрани кортеж `(list(uniq([2, 1, 2, 3])), dict_merge({1: 2}, {2: 2}, {1: 1}), product([1, 2, 3], [4, 5, 6]))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "toolbox": 0.8
+      },
+      "difficulty": 0.55,
+      "rubric_id": 22,
+      "starter": "from collections.abc import Iterator\n\n\ndef uniq(sequence: list[int]) -> Iterator[int]:\n    \"\"\"Элементы в исходном порядке, без повторов.\"\"\"\n\n\ndef dict_merge(*dicts: dict[int, int]) -> dict[int, int]:\n    \"\"\"Объединение плоских словарей: поздний аргумент перекрывает ранний.\"\"\"\n\n\ndef product(lhs: list[int], rhs: list[int]) -> int:\n    \"\"\"Скалярное произведение двух векторов.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == ([2, 1, 3], {1: 1, 2: 2}, 32), \"В result — кортеж из трёх ответов: уникальные элементы, объединённый словарь и скалярное произведение.\"\nassert list(uniq([2, 1, 2, 3])) == [2, 1, 3], \"uniq сохраняет порядок входа.\"\nassert list(uniq([])) == [], \"Пустая последовательность — пустой результат.\"\nassert dict_merge({1: 2}, {2: 2}, {1: 1}) == {1: 1, 2: 2}, \"Побеждает последний аргумент, а не первый.\"\nassert dict_merge() == {}, \"Без аргументов — пустой словарь.\"\nassert dict_merge({1: 2}, {2: 3}, {3: 4}) == {1: 2, 2: 3, 3: 4}, \"Разные ключи просто складываются.\"\nfirst, second = {1: 2}, {3: 4}\nbefore = (dict(first), dict(second))\ndict_merge(first, second)\nassert (first, second) == before, \"Входные словари не меняются.\"\nassert product([1, 2, 3], [4, 5, 6]) == 32, \"Скалярное произведение — сумма попарных произведений.\"\nassert product([], []) == 0, \"Пустые векторы — ноль.\"\nleft, right = [1, 2], [3, 4]\nbefore = (list(left), list(right))\nproduct(left, right)\nassert (left, right) == before, \"Входные списки не меняются.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1071,
+      "prompt": "Опиши неизменяемый товар `Item` с полями `title` и `cost`: название непустое, цена положительная (проверки через `assert`), а поля после создания менять нельзя. В `result` сохрани кортеж `(Item(\"Ложка\", 25) == Item(\"Ложка\", 25), Item(\"Ложка\", 25).cost)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "own_types": 0.8
+      },
+      "difficulty": 0.45,
+      "rubric_id": 23,
+      "starter": "from dataclasses import dataclass\n\n\n@dataclass\nclass Item:\n    \"\"\"Товар: название непустое, цена положительная, поля не меняются.\"\"\"\n\n    title: str\n    cost: int\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "from dataclasses import FrozenInstanceError\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (True, 25), \"В result — кортеж: два одинаковых товара равны, а цена доступна как поле.\"\nspoon = Item(title=\"Ложка\", cost=25)\nassert (spoon.title, spoon.cost) == (\"Ложка\", 25), \"Поля хранят переданные значения.\"\nassert spoon == Item(title=\"Ложка\", cost=25), \"Товары с одинаковыми полями равны.\"\nassert spoon != Item(title=\"Ложка\", cost=26), \"Разная цена — разные товары.\"\nfor title, cost in ((\"\", 25), (\"Ручка\", 0), (\"Ручка\", -25)):\n    try:\n        Item(title=title, cost=cost)\n    except AssertionError:\n        continue\n    raise AssertionError(f\"Товар ({title!r}, {cost}) создан: проверок в __post_init__ нет.\")\ntry:\n    spoon.cost = 30\nexcept FrozenInstanceError:\n    pass\nelse:\n    raise AssertionError(\"Поле товара удалось изменить: dataclass должен быть frozen.\")\n",
+      "section": "frozen"
+    },
+    {
+      "id": 1072,
+      "prompt": "Почему проверки товара пишут в `__post_init__`, а не в конце `__init__`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "own_types": 0.6
+      },
+      "difficulty": 0.35,
+      "options": [
+        "`__init__` у dataclass сгенерирован, а `__post_init__` вызывается из него последним — когда все поля уже присвоены",
+        "`__post_init__` вызывается раньше `__init__` и потому видит аргументы до присваивания",
+        "только в `__post_init__` работает `frozen`: в `__init__` поля ещё изменяемы",
+        "`__init__` вызывается один раз, а `__post_init__` — при каждом обращении к полю"
+      ],
+      "answer": "0",
+      "section": "frozen"
+    },
+    {
+      "id": 1073,
+      "prompt": "Товары сравниваются по названию, а при равных названиях — по цене; `item_id` в сравнении не участвует. Опиши `Item` так, чтобы `sorted(items)` давал порядок из заготовки. В `result` сохрани `[item.item_id for item in sorted(items)]`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "own_types": 0.8
+      },
+      "difficulty": 0.5,
+      "rubric_id": 24,
+      "starter": "from dataclasses import dataclass, field\n\n\n@dataclass\nclass Item:\n    \"\"\"Товар: сравнение по названию, затем по цене.\"\"\"\n\n    title: str\n    cost: int\n    item_id: int\n\n\nitems = [\n    Item(\"Thing\", 44, 9),\n    Item(\"Note\", 8, 0),\n    Item(\"Things\", 100, 1),\n    Item(\"Unity\", 5, 8),\n    Item(\"Things\", 44, 11),\n    Item(\"Note\", 64, 15),\n]\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == [0, 15, 9, 11, 1, 8], \"Порядок — по названию, затем по цене; item_id в сравнении не участвует.\"\nassert Item(\"Pop-it\", 200, 0) < Item(\"Simple Dimple\", 200, 1), \"Разные названия: решает название.\"\nassert Item(\"Jacket\", 15000, 0) > Item(\"Jacket\", 400, 1), \"Равные названия: решает цена.\"\nassert not Item(\"Note\", 8, 0) < Item(\"Note\", 8, 7), \"item_id не участвует в сравнении порядка.\"\nassert Item(\"Note\", 8, 0) == Item(\"Note\", 8, 7), \"И в равенстве item_id не участвует.\"\nassert sorted([Item(\"Note\", 8, 0), Item(\"Note\", 8, 7)])[0].item_id == 0, \"Равные элементы сохраняют исходный порядок.\"\n",
+      "section": "order"
+    },
+    {
+      "id": 1074,
+      "prompt": "Зачем у поля `item_id` в dataclass с `order=True` стоит `field(compare=False)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "own_types": 0.6
+      },
+      "difficulty": 0.35,
+      "options": [
+        "чтобы поле не участвовало ни в сравнении порядка, ни в равенстве: порядок задают название и цена",
+        "чтобы поле не попадало в `__repr__` и не печаталось в отладке",
+        "чтобы поле не хранилось в объекте и не занимало память",
+        "чтобы поле нельзя было изменить после создания объекта"
+      ],
+      "answer": "0",
+      "section": "order"
+    },
+    {
+      "id": 1075,
+      "prompt": "Напиши класс `Vector` — контейнер чисел одного типа: `len(v)`, `v[index]` (включая отрицательные индексы), `append`, `extend`, итерация по элементам, сложение, вычитание, умножение на скаляр с обеих сторон (`v * 2` и `3 * v`) и скалярное произведение `dot`. Операнды не меняются. В `result` сохрани кортеж `(list(v1 + v2), list(v2 - v1), list(v1 * 2), list(3 * v2), v1.dot(v2))` для `v1 = Vector([1, 2, 3])` и `v2 = Vector([4, 5, 6])`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "own_types": 0.8
+      },
+      "difficulty": 0.55,
+      "rubric_id": 25,
+      "starter": "class Vector:\n    \"\"\"Контейнер чисел одного типа.\"\"\"\n\n    def __init__(self, elements: list[int]) -> None:\n        \"\"\"Запоминает элементы вектора.\"\"\"\n\n    def __len__(self) -> int:\n        \"\"\"Число элементов.\"\"\"\n\n    def __getitem__(self, index: int) -> int:\n        \"\"\"Элемент по индексу.\"\"\"\n\n    def append(self, element: int) -> None:\n        \"\"\"Дописывает элемент в конец.\"\"\"\n\n    def extend(self, elements: list[int]) -> None:\n        \"\"\"Дописывает несколько элементов.\"\"\"\n\n    def __iter__(self):\n        \"\"\"Идёт по элементам по порядку.\"\"\"\n\n    def __str__(self) -> str:\n        \"\"\"Читаемое представление.\"\"\"\n\n    def __repr__(self) -> str:\n        \"\"\"Представление для отладки.\"\"\"\n\n    def __add__(self, other: \"Vector\") -> \"Vector\":\n        \"\"\"Поэлементная сумма.\"\"\"\n\n    def __sub__(self, other: \"Vector\") -> \"Vector\":\n        \"\"\"Поэлементная разность.\"\"\"\n\n    def __mul__(self, scalar: int) -> \"Vector\":\n        \"\"\"Умножение на скаляр.\"\"\"\n\n    def __rmul__(self, scalar: int) -> \"Vector\":\n        \"\"\"Умножение скаляра на вектор: `3 * v`.\"\"\"\n\n    def dot(self, other: \"Vector\") -> int:\n        \"\"\"Скалярное произведение.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == ([5, 7, 9], [3, 3, 3], [2, 4, 6], [12, 15, 18], 32), \"В result — пять ответов: сумма, разность, два умножения и скалярное произведение.\"\nfirst = Vector([1, 2, 3])\nsecond = Vector([4, 5, 6])\nassert len(first) == 3, \"len(v) — число элементов.\"\nassert first[0] == 1 and first[2] == 3, \"Индекс отдаёт элемент по порядку.\"\nassert first[-1] == 3, \"Отрицательный индекс считается с конца.\"\nfirst.append(4)\nassert len(first) == 4 and first[3] == 4, \"append дописывает элемент в конец.\"\nfirst.extend([5, 6])\nassert list(first) == [1, 2, 3, 4, 5, 6], \"extend дописывает несколько элементов.\"\nleft = Vector([1, 2, 3])\nright = Vector([4, 5, 6])\nassert list(left + right) == [5, 7, 9], \"Сумма — поэлементная.\"\nassert list(right - left) == [3, 3, 3], \"Разность — поэлементная.\"\nassert list(left * 2) == [2, 4, 6], \"Умножение вектора на скаляр.\"\nassert list(3 * right) == [12, 15, 18], \"Скаляр слева тоже работает: нужен __rmul__.\"\nassert left.dot(right) == 32, \"Скалярное произведение — сумма попарных произведений.\"\nassert left.dot(Vector([0, 0, 0])) == 0, \"Нулевой вектор — нулевое произведение.\"\nassert Vector([1.5, 2.0]).dot(Vector([2.0, 3.0])) == 9.0, \"С дробными числами тоже работает.\"\nassert list(left) == [1, 2, 3] and list(right) == [4, 5, 6], \"Операнды не изменились.\"\nassert str(left), \"str возвращает непустую строку.\"\nassert repr(left), \"repr возвращает непустую строку.\"\n",
+      "section": "vector"
+    },
+    {
+      "id": 1076,
+      "prompt": "Зачем в `TypeVar(\"T\", int, float)` перечислять типы, а не писать `TypeVar(\"T\")`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "own_types": 0.6
+      },
+      "difficulty": 0.4,
+      "options": [
+        "ограничение списком типов: `Vector[str]` для mypy — ошибка, а без ограничений он прошёл бы проверку",
+        "с ограничениями mypy работает быстрее: список типов он запоминает вместо вывода",
+        "без ограничений `Vector[int]` не работает в рантайме: это `TypeError`",
+        "ограничение включает приведение типов: `Vector[float]([1, 2])` превратит элементы в `float`"
+      ],
+      "answer": "0",
+      "section": "vector"
+    },
+    {
+      "id": 1077,
+      "prompt": "Напиши итератор `VectorIterator`: `__iter__` возвращает сам итератор, `__next__` — следующий элемент или `StopIteration`, когда элементы кончились. Позиция хранится в итераторе, поэтому два `iter(vector)` независимы. В `result` сохрани кортеж `(next(first), next(first), next(second), list(vector))` для `vector = Vector([1, 2, 3])` и `first = iter(vector)`, `second = iter(vector)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "own_types": 0.8
+      },
+      "difficulty": 0.55,
+      "rubric_id": 26,
+      "starter": "class VectorIterator:\n    \"\"\"Итератор вектора: хранит данные и текущую позицию.\"\"\"\n\n    def __init__(self, elements: list[int]) -> None:\n        \"\"\"Запоминает элементы и начинает с нулевой позиции.\"\"\"\n\n    def __iter__(self) -> \"VectorIterator\":\n        \"\"\"Итератор возвращает сам себя.\"\"\"\n\n    def __next__(self) -> int:\n        \"\"\"Следующий элемент или StopIteration.\"\"\"\n\n\nclass Vector:\n    \"\"\"Контейнер, по которому можно пройти несколько раз.\"\"\"\n\n    def __init__(self, elements: list[int]) -> None:\n        self._elements = list(elements)\n\n    def __iter__(self) -> VectorIterator:\n        return VectorIterator(self._elements)\n\n\nvector = Vector([1, 2, 3])\nfirst = iter(vector)\nsecond = iter(vector)\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (1, 2, 1, [1, 2, 3]), \"В result — кортеж: два шага первого итератора, шаг второго и полный проход по вектору.\"\nvector = Vector([1, 2, 3])\nassert list(vector) == [1, 2, 3], \"Первый проход отдаёт все элементы.\"\nassert list(vector) == [1, 2, 3], \"Второй проход — снова все: контейнер не расходуется.\"\nfirst = iter(vector)\nsecond = iter(vector)\nassert next(first) == 1 and next(first) == 2, \"Первый итератор идёт по порядку.\"\nassert next(second) == 1, \"Второй начинает сначала: итераторы независимы.\"\nassert next(first) == 3, \"Первый продолжает со своей позиции.\"\niterator = iter(vector)\nassert iter(iterator) is iterator, \"__iter__ итератора возвращает сам итератор.\"\nassert [next(iterator) for _ in range(3)] == [1, 2, 3], \"next отдаёт элементы по одному.\"\ntry:\n    next(iterator)\nexcept StopIteration:\n    pass\nelse:\n    raise AssertionError(\"После последнего элемента next обязан поднять StopIteration.\")\nempty = iter(Vector([]))\ntry:\n    next(empty)\nexcept StopIteration:\n    pass\nelse:\n    raise AssertionError(\"Пустой вектор: StopIteration сразу, без элементов.\")\nassert list(iter(Vector([42]))) == [42], \"Один элемент.\"\nassert list(Vector([])) == [], \"Пустой вектор проходит пустым.\"\n",
+      "section": "iterator"
+    },
+    {
+      "id": 1078,
+      "prompt": "Чем итератор отличается от iterable-контейнера?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "own_types": 0.6
+      },
+      "difficulty": 0.35,
+      "options": [
+        "контейнер возвращает из `__iter__` новый итератор, а итератор — сам себя; поэтому по контейнеру можно пройти несколько раз",
+        "контейнер хранит элементы, а итератор копирует их себе при создании",
+        "у итератора нет `__iter__`, только `__next__`",
+        "итератор можно пройти несколько раз, а контейнер — только один раз"
+      ],
+      "answer": "0",
+      "section": "iterator"
+    },
+    {
+      "id": 1079,
+      "prompt": "Итоговое задание занятия. Опиши неизменяемый товар `Item` (название непустое, цена положительная, сравнение по названию и цене, `item_id` в сравнении не участвует) и `Vector` (длина, индексы, сложение, умножение на скаляр, итерация и `dot`). В `result` сохрани кортеж `(sorted(items)[0].item_id, list(Vector([1, 2, 3]) + Vector([4, 5, 6])), Vector([1, 2, 3]).dot(Vector([4, 5, 6])))` для списка `items` из заготовки.",
+      "answer_type": "code",
+      "concept_weights": {
+        "own_types": 0.8
+      },
+      "difficulty": 0.65,
+      "rubric_id": 27,
+      "starter": "from dataclasses import dataclass, field\n\n\n@dataclass\nclass Item:\n    \"\"\"Товар: неизменяемый, сравнивается по названию и цене.\"\"\"\n\n    title: str\n    cost: int\n    item_id: int\n\n\nclass Vector:\n    \"\"\"Контейнер чисел одного типа.\"\"\"\n\n    def __init__(self, elements: list[int]) -> None:\n        \"\"\"Запоминает элементы.\"\"\"\n\n    def __len__(self) -> int:\n        \"\"\"Число элементов.\"\"\"\n\n    def __getitem__(self, index: int) -> int:\n        \"\"\"Элемент по индексу.\"\"\"\n\n    def __iter__(self):\n        \"\"\"Идёт по элементам по порядку.\"\"\"\n\n    def __add__(self, other: \"Vector\") -> \"Vector\":\n        \"\"\"Поэлементная сумма.\"\"\"\n\n    def __mul__(self, scalar: int) -> \"Vector\":\n        \"\"\"Умножение на скаляр.\"\"\"\n\n    def dot(self, other: \"Vector\") -> int:\n        \"\"\"Скалярное произведение.\"\"\"\n\n\nitems = [\n    Item(\"Thing\", 44, 9),\n    Item(\"Note\", 8, 0),\n    Item(\"Unity\", 5, 8),\n]\n\nresult = None\n",
+      "setup": "",
+      "tests": "from dataclasses import FrozenInstanceError\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (0, [5, 7, 9], 32), \"В result — первый товар по порядку, сумма векторов и скалярное произведение.\"\nassert Item(\"Pop-it\", 200, 0) < Item(\"Simple Dimple\", 200, 1), \"Разные названия: решает название.\"\nassert Item(\"Jacket\", 15000, 0) > Item(\"Jacket\", 400, 1), \"Равные названия: решает цена.\"\nassert Item(\"Note\", 8, 0) == Item(\"Note\", 8, 7), \"item_id вне сравнения.\"\nitem = Item(\"Unity\", 5, 8)\ntry:\n    item.cost = 10\nexcept FrozenInstanceError:\n    pass\nelse:\n    raise AssertionError(\"Товар обязан быть неизменяемым: нужен frozen=True.\")\nfor title, cost in ((\"\", 25), (\"Ручка\", 0), (\"Ручка\", -25)):\n    try:\n        Item(title=title, cost=cost, item_id=1)\n    except AssertionError:\n        continue\n    raise AssertionError(f\"Товар ({title!r}, {cost}) создан: проверок в __post_init__ нет.\")\nfirst = Vector([1, 2, 3])\nsecond = Vector([4, 5, 6])\nassert len(first) == 3 and first[-1] == 3, \"Длина и отрицательный индекс.\"\nassert list(first + second) == [5, 7, 9], \"Сумма — поэлементная.\"\nassert list(first * 3) == [3, 6, 9], \"Умножение на скаляр.\"\nassert first.dot(second) == 32, \"Скалярное произведение.\"\nassert list(first) == [1, 2, 3] and list(second) == [4, 5, 6], \"Операнды не изменились.\"\n",
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 1081,
+      "prompt": "Напиши контекстный менеджер `Timer`: внутри блока идёт отсчёт времени, а после выхода `timer.elapsed` — длительность в секундах. `__enter__` запускает отсчёт и возвращает сам менеджер, `__exit__` останавливает его и **не** подавляет исключение. В `result` сохрани кортеж `(isinstance(timer, Timer), timer.elapsed >= 0.0)` для блока `with Timer() as timer: for _ in range(1000): pass`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "wrappers": 0.8
+      },
+      "difficulty": 0.45,
+      "rubric_id": 28,
+      "starter": "class Timer:\n    \"\"\"Замеряет время выполнения блока `with`.\"\"\"\n\n    def __init__(self) -> None:\n        \"\"\"Готовит пустой замер.\"\"\"\n        self.elapsed = 0.0\n\n    def __enter__(self) -> \"Timer\":\n        \"\"\"Запускает отсчёт и отдаёт менеджер в `as`.\"\"\"\n\n    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:\n        \"\"\"Останавливает отсчёт; исключение не подавляет.\"\"\"\n\n\nwith Timer() as timer:\n    for _ in range(1000):\n        pass\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (True, True), \"В result — кортеж: в `as` пришёл сам менеджер, а замер заполнен.\"\nwith Timer() as measured:\n    for _ in range(2000):\n        pass\nassert isinstance(measured, Timer), \"__enter__ возвращает сам менеджер, а не None.\"\nassert measured.elapsed >= 0.0, \"После блока elapsed — число секунд.\"\nwith Timer() as quick:\n    pass\nwith Timer() as slow:\n    total = sum(range(1_000_000))\nassert total == 499999500000, \"Блок действительно выполнился.\"\nassert slow.elapsed > 0.0, \"Длительность блока действительно измеряется, а не остаётся нулём: миллион сложений занимает заметное время.\"\nassert slow.elapsed < 5.0, \"Замер идёт в секундах: отметка времени сюда не подходит.\"\nassert quick.elapsed <= slow.elapsed, \"Пустой блок не может длиться дольше рабочего.\"\nassert quick.elapsed < 0.1, \"Пустой блок измеряется в секундах работы, а не отметкой времени.\"\nused_directly = Timer()\nwith used_directly:\n    for _ in range(1000):\n        pass\nassert used_directly.elapsed >= 0.0, \"Объект работает и без `as`: замер пишется в сам менеджер.\"\ntry:\n    with Timer() as failed:\n        raise ValueError(\"сломалось внутри блока\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"__exit__ не должен подавлять исключение: возвращайте False.\")\nassert failed.elapsed >= 0.0, \"elapsed заполняется и когда блок вышел с исключением.\"\n",
+      "section": "with"
+    },
+    {
+      "id": 1082,
+      "prompt": "Блок `with` завершился нормально, без исключения. Что получит `__exit__` в аргументах?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "wrappers": 0.6
+      },
+      "difficulty": 0.3,
+      "options": [
+        "три `None`: типа, значения и трассировки исключения нет",
+        "`StopIteration`: блок закончился, а это тоже исключение",
+        "`None` вместо типа и сам блок в виде значения",
+        "ничего: при нормальном выходе `__exit__` не вызывается"
+      ],
+      "answer": "0",
+      "section": "with"
+    },
+    {
+      "id": 1083,
+      "prompt": "Напиши контекстный менеджер `FileManager(filename, mode=\"r\")`: при входе он открывает файл и возвращает его из `__enter__`, а в `__exit__` закрывает — даже если внутри блока было исключение. Исключение не подавляй. Через него запиши в файл `isit_demo.txt` строку `строка` с переводом строки, затем прочитай файл целиком и сохрани в `result` кортеж `(stream.closed, content)` — закрыт ли файл после блока и что прочитано.",
+      "answer_type": "code",
+      "concept_weights": {
+        "wrappers": 0.8
+      },
+      "difficulty": 0.5,
+      "rubric_id": 29,
+      "starter": "class FileManager:\n    \"\"\"Открывает файл при входе в блок и закрывает при выходе.\"\"\"\n\n    def __init__(self, filename: str, mode: str = \"r\") -> None:\n        \"\"\"Запоминает имя файла и режим.\"\"\"\n        self.filename = filename\n        self.mode = mode\n        self.file = None\n\n    def __enter__(self):\n        \"\"\"Открывает файл и отдаёт его в `as`.\"\"\"\n\n    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:\n        \"\"\"Закрывает файл; исключение не подавляет.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import os\nimport shutil\nimport tempfile\n\nfolder = tempfile.mkdtemp()\ntry:\n    assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\n    assert result == (True, \"строка\\n\"), \"В result — кортеж: файл закрыт после блока, содержимое прочитано через FileManager.\"\n    assert os.path.exists(\"isit_demo.txt\"), \"Файл isit_demo.txt должен быть создан.\"\n    path = os.path.join(folder, \"cleanup.txt\")\n    with FileManager(path, \"w\") as stream:\n        stream.write(\"данные\")\n    assert stream.closed, \"Файл закрыт после выхода из блока.\"\n    try:\n        with FileManager(path, \"w\") as failing:\n            failing.write(\"часть\")\n            raise ValueError(\"сломалось внутри блока\")\n    except ValueError:\n        pass\n    else:\n        raise AssertionError(\"Исключение из блока должно уйти наверх: __exit__ возвращает False.\")\n    assert failing.closed, \"Файл закрыт даже при исключении внутри блока.\"\n    with FileManager(path) as reader:\n        assert reader.read() == \"часть\", \"Режим по умолчанию — чтение.\"\nfinally:\n    # Уборка срабатывает и когда решение упало: сначала закрываем потоки,\n    # которые решение забыло закрыть (Windows не удаляет занятый файл).\n    for name in (\"stream\", \"failing\", \"reader\"):\n        handle = globals().get(name)\n        if callable(getattr(handle, \"close\", None)) and not getattr(handle, \"closed\", True):\n            handle.close()\n    if os.path.exists(\"isit_demo.txt\"):\n        os.remove(\"isit_demo.txt\")\n    shutil.rmtree(folder, ignore_errors=True)\n",
+      "section": "cleanup"
+    },
+    {
+      "id": 1084,
+      "prompt": "Зачем `OutputCapture` сохраняет прежний `sys.stdout` в `__enter__`, а возвращает его на место в `__exit__`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "wrappers": 0.6
+      },
+      "difficulty": 0.4,
+      "options": [
+        "чтобы после блока вывод снова шёл в настоящую консоль: без восстановления всё дальнейшее уходит в перехватчик",
+        "чтобы `StringIO` не собрал сборщик мусора, пока блок выполняется",
+        "чтобы `print` внутри блока писал сразу в оба потока: и в перехватчик, и в консоль",
+        "чтобы восстановить поток до чтения перехваченного текста: иначе текст потеряется"
+      ],
+      "answer": "0",
+      "section": "cleanup"
+    },
+    {
+      "id": 1085,
+      "prompt": "Напиши декоратор `@traced`: перед вызовом функции он печатает строку `вызов: <имя функции>`, а затем возвращает её результат. Декоратор работает с функциями любой сигнатуры, включая именованные аргументы, и не теряет имя и докстринг функции. В `result` сохрани кортеж `(add(2, 3), add(2, b=5), add.__name__, add.__doc__)` для функции `add` из заготовки.",
+      "answer_type": "code",
+      "concept_weights": {
+        "wrappers": 0.8
+      },
+      "difficulty": 0.5,
+      "rubric_id": 30,
+      "starter": "import functools\n\n\ndef traced(function):\n    \"\"\"Печатает `вызов: <имя>` и возвращает результат функции.\"\"\"\n\n\n@traced\ndef add(a: int, b: int = 1) -> int:\n    \"\"\"Складывает два числа.\"\"\"\n    return a + b\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import io\nfrom contextlib import redirect_stdout\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (5, 7, \"add\", \"Складывает два числа.\"), \"В result — кортеж: два вызова, имя и докстринг декорированной функции.\"\nbuffer = io.StringIO()\nwith redirect_stdout(buffer):\n    answer = add(10, 5)\nassert answer == 15, \"Декоратор возвращает результат функции.\"\nassert \"вызов: add\" in buffer.getvalue(), \"Перед вызовом печатается строка «вызов: add».\"\nassert buffer.getvalue().count(\"вызов: add\") == 1, \"Одна строка на один вызов.\"\n\n\n@traced\ndef join(*parts: str, separator: str = \"-\") -> str:\n    \"\"\"Склеивает части.\"\"\"\n    return separator.join(parts)\n\n\njoin_buffer = io.StringIO()\nwith redirect_stdout(join_buffer):\n    joined_plus = join(\"a\", \"b\", separator=\"+\")\n    joined_default = join(\"a\", \"b\")\nassert joined_plus == \"a+b\", \"Декоратор пропускает именованные аргументы в функцию.\"\nassert joined_default == \"a-b\", \"Значение по умолчанию работает как обычно.\"\nassert \"вызов: join\" in join_buffer.getvalue(), (\n    \"Печатается имя обёрнутой функции: литерал «вызов: add» подходит только к add.\"\n)\nassert join_buffer.getvalue().count(\"вызов: join\") == 2, \"Одна строка на один вызов.\"\nassert join.__name__ == \"join\", \"Имя функции сохраняется: нужен functools.wraps.\"\nassert join.__doc__ == \"Склеивает части.\", \"Докстринг функции сохраняется.\"\n",
+      "section": "decorator"
+    },
+    {
+      "id": 1086,
+      "prompt": "Зачем в декораторе вызывают `functools.wraps(function)`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "wrappers": 0.6
+      },
+      "difficulty": 0.35,
+      "options": [
+        "он переносит на обёртку имя, докстринг и модуль функции — иначе снаружи видна `wrapper`",
+        "он ускоряет вызов: обёртка запоминает ссылку на исходную функцию",
+        "он запрещает вызывать обёрнутую функцию с неправильными аргументами",
+        "он нужен только декораторам с параметрами: без параметров имя сохраняется само"
+      ],
+      "answer": "0",
+      "section": "decorator"
+    },
+    {
+      "id": 1087,
+      "prompt": "Напиши декоратор `@cache(max_size)`: результат запоминается для `max_size` самых свежих наборов аргументов, а при переполнении выбрасывается тот, к которому дольше всего не обращались. Разные формы записи одного вызова (`f(1, 2)` и `f(1, b=2)`) — один набор аргументов, значения по умолчанию учитываются. Имя и докстринг функции сохраняются.\nЗаведи список `calls` и декорируй `@cache(2)` функцию `identity(value)`, которая дописывает `value` в `calls` и возвращает его. Вызови по порядку `identity(1)`, `identity(2)`, `identity(1)`, `identity(3)`, `identity(2)` и сохрани в `result` кортеж `(first, second, again, third, evicted, len(calls))` — пять ответов и число настоящих вычислений.",
+      "answer_type": "code",
+      "concept_weights": {
+        "wrappers": 0.8
+      },
+      "difficulty": 0.6,
+      "rubric_id": 31,
+      "starter": "import functools\n\n\ndef cache(max_size: int):\n    \"\"\"Декоратор: хранит результат для `max_size` самых свежих наборов аргументов.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (1, 2, 1, 3, 2, 4), \"В result — пять ответов и число настоящих вычислений: повторный вызов берётся из кэша, а вытесненный считается заново.\"\nseen = []\n\n\n@cache(4)\ndef weighted(value: int, scale: int = 1) -> int:\n    \"\"\"Умножает значение на масштаб.\"\"\"\n    seen.append((value, scale))\n    return value * scale\n\n\nassert weighted(3) == 3, \"Функция работает как обычно.\"\nassert weighted(3, scale=1) == 3, \"Именованный аргумент с тем же значением — тот же набор.\"\nassert weighted(3, 1) == 3, \"Позиционный вызов — тоже тот же набор.\"\nassert len(seen) == 1, \"Один и тот же вызов не считается дважды: ключ приводится к одному виду, значения по умолчанию учитываются.\"\nassert weighted(3, 2) == 6, \"Другой аргумент — отдельный набор.\"\nassert len(seen) == 2, \"Разные наборы аргументов кэшируются независимо.\"\nassert weighted.__name__ == \"weighted\", \"Имя функции сохраняется: нужен functools.wraps.\"\nassert weighted.__doc__ == \"Умножает значение на масштаб.\", \"Докстринг функции не теряется.\"\never = []\n\n\n@cache(0)\ndef uncached(value: int) -> int:\n    ever.append(value)\n    return value\n\n\nuncached(1)\nuncached(1)\nassert len(ever) == 2, \"Кэш нулевого размера ничего не хранит.\"\n",
+      "section": "lru"
+    },
+    {
+      "id": 1088,
+      "prompt": "Зачем в LRU-кэше на `OrderedDict` вызывать `move_to_end(key)` при попадании в кэш?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "wrappers": 0.6
+      },
+      "difficulty": 0.45,
+      "options": [
+        "чтобы обращение делало запись самой свежей: иначе вытеснялся бы не самый старый по обращению, а самый ранний по вставке",
+        "чтобы ключ оказался в конце словаря: поиск в `OrderedDict` идёт с начала",
+        "чтобы значение пересчиталось для нового набора аргументов",
+        "чтобы размер словаря не изменился: без него `popitem` удалит две записи"
+      ],
+      "answer": "0",
+      "section": "lru"
+    },
+    {
+      "id": 1089,
+      "prompt": "Итоговое задание занятия. Напиши `OutputCapture` — контекстный менеджер, который перехватывает `stdout` и `stderr` внутри блока, а после выхода кладёт перехваченное в `captured.stdout` и `captured.stderr` и возвращает потоки на место; исключения он не подавляет. И декоратор `@count_calls`, который считает вызовы функции в атрибуте `calls`.\nСохрани прежний `sys.stdout` в `original`, выполни блок `with OutputCapture() as captured`, напечатав `отчёт` в stdout и `ошибка` в stderr, декорируй `@count_calls` функцию `doubled(value)`, вызови её дважды и сохрани в `result` кортеж `(captured.stdout, captured.stderr, sys.stdout is original, doubled.calls)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "wrappers": 0.8
+      },
+      "difficulty": 0.65,
+      "rubric_id": 32,
+      "starter": "import functools\nimport io\nimport sys\n\n\nclass OutputCapture:\n    \"\"\"Перехватывает stdout и stderr внутри блока `with`.\"\"\"\n\n    def __init__(self) -> None:\n        \"\"\"Готовит пустые места под перехваченный вывод.\"\"\"\n        self.stdout = \"\"\n        self.stderr = \"\"\n\n    def __enter__(self) -> \"OutputCapture\":\n        \"\"\"Подменяет потоки и отдаёт менеджер в `as`.\"\"\"\n\n    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:\n        \"\"\"Возвращает потоки на место; исключение не подавляет.\"\"\"\n\n\ndef count_calls(function):\n    \"\"\"Считает вызовы функции в атрибуте `calls`.\"\"\"\n\n\nresult = None\n",
+      "setup": "",
+      "tests": "import io\nimport sys\n\nassert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nassert result == (\"отчёт\\n\", \"ошибка\\n\", True, 2), \"В result — перехваченные потоки, восстановленный stdout и число вызовов.\"\noriginal = sys.stdout\nwith OutputCapture() as captured:\n    print(\"первая\")\n    print(\"вторая\")\nassert captured.stdout == \"первая\\nвторая\\n\", \"stdout перехвачен целиком, по строкам.\"\nassert captured.stderr == \"\", \"stderr пуст, если в него не писали.\"\nassert sys.stdout is original, \"После блока потоки на месте: иначе весь дальнейший вывод уходит в перехватчик.\"\ntry:\n    with OutputCapture() as failed:\n        print(\"до ошибки\")\n        raise ValueError(\"сломалось внутри блока\")\nexcept ValueError:\n    pass\nelse:\n    raise AssertionError(\"__exit__ не должен подавлять исключение.\")\nassert failed.stdout == \"до ошибки\\n\", \"Перехват работает и при исключении.\"\nassert sys.stdout is original, \"Поток восстановлен даже после исключения.\"\nseen = []\n\n\n@count_calls\ndef double(value: int) -> int:\n    \"\"\"Удваивает значение.\"\"\"\n    seen.append(value)\n    return value * 2\n\n\nassert double(1) == 2, \"Декоратор возвращает результат функции.\"\nassert double(2) == 4, \"Каждый вызов проходит в функцию.\"\nassert double.calls == 2, \"Декоратор считает вызовы в атрибуте calls.\"\nassert seen == [1, 2], \"Аргументы доходят до функции без изменений.\"\nassert double.__name__ == \"double\", \"Имя функции сохраняется: нужен functools.wraps.\"\nassert double.__doc__ == \"Удваивает значение.\", \"Докстринг сохраняется.\"\n",
+      "section": null,
+      "final": true
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 1,
+      "name": "Код: первая функция"
+    },
+    {
+      "id": 2,
+      "name": "Код: сумма двух чисел"
+    },
+    {
+      "id": 3,
+      "name": "Код: приветствие и сумма (итоговое)"
+    },
+    {
+      "id": 4,
+      "name": "Код: медиана из трёх"
+    },
+    {
+      "id": 5,
+      "name": "Код: FizzBuzz"
+    },
+    {
+      "id": 6,
+      "name": "Код: медиана и FizzBuzz вместе (итоговое)"
+    },
+    {
+      "id": 7,
+      "name": "Код: микротест через assert"
+    },
+    {
+      "id": 8,
+      "name": "Код: безопасный CTR"
+    },
+    {
+      "id": 9,
+      "name": "Код: safe_divide (итоговое)"
+    },
+    {
+      "id": 10,
+      "name": "Код: каждый второй элемент"
+    },
+    {
+      "id": 11,
+      "name": "Код: минимум и максимум с default"
+    },
+    {
+      "id": 12,
+      "name": "Код: индекс последней тройки"
+    },
+    {
+      "id": 13,
+      "name": "Код: квадраты, максимум и граница (итоговое)"
+    },
+    {
+      "id": 14,
+      "name": "Код: записи по устройству"
+    },
+    {
+      "id": 15,
+      "name": "Код: запись с None вместо чужих ключей"
+    },
+    {
+      "id": 16,
+      "name": "Код: уникальные страницы и ключи (итоговое)"
+    },
+    {
+      "id": 17,
+      "name": "Код: рекурсивный обход словаря"
+    },
+    {
+      "id": 18,
+      "name": "Код: итеративный обход словаря"
+    },
+    {
+      "id": 19,
+      "name": "Код: обход словаря двумя способами (итоговое)"
+    },
+    {
+      "id": 20,
+      "name": "Код: генератор уникальных элементов"
+    },
+    {
+      "id": 21,
+      "name": "Код: транспонирование матрицы"
+    },
+    {
+      "id": 22,
+      "name": "Код: генератор, объединение словарей и скалярное произведение (итоговое)"
+    },
+    {
+      "id": 23,
+      "name": "Код: неизменяемый товар"
+    },
+    {
+      "id": 24,
+      "name": "Код: сравнение и сортировка товаров"
+    },
+    {
+      "id": 25,
+      "name": "Код: вектор с арифметикой"
+    },
+    {
+      "id": 26,
+      "name": "Код: итератор вектора"
+    },
+    {
+      "id": 27,
+      "name": "Код: товар и вектор вместе (итоговое)"
+    },
+    {
+      "id": 28,
+      "name": "Код: контекстный менеджер Timer"
+    },
+    {
+      "id": 29,
+      "name": "Код: FileManager с уборкой"
+    },
+    {
+      "id": 30,
+      "name": "Код: декоратор traced"
+    },
+    {
+      "id": 31,
+      "name": "Код: LRU-кэш"
+    },
+    {
+      "id": 32,
+      "name": "Код: перехват вывода и счётчик вызовов (итоговое)"
+    }
+  ],
+  "criteria": [
+    {
+      "id": 1,
+      "rubric_id": 1,
+      "criterion": "Функция возвращает значение, а не печатает его",
+      "weight": 1.0,
+      "positive_example": "return \"Hello world!\"",
+      "negative_example": "print(\"Hello world!\") без return"
+    },
+    {
+      "id": 2,
+      "rubric_id": 1,
+      "criterion": "Строка совпадает посимвольно, без лишних пробелов",
+      "weight": 1.0,
+      "positive_example": "return \"Hello world!\"",
+      "negative_example": "return \"Hello world\" или return \" hello world!\""
+    },
+    {
+      "id": 3,
+      "rubric_id": 2,
+      "criterion": "Функция возвращает сумму аргументов, а не их разность",
+      "weight": 1.0,
+      "positive_example": "return a + b",
+      "negative_example": "return a - b"
+    },
+    {
+      "id": 4,
+      "rubric_id": 2,
+      "criterion": "Сохранён результат вызова, а не сама функция",
+      "weight": 1.0,
+      "positive_example": "result = sum_two_numbers(10, 5)",
+      "negative_example": "result = sum_two_numbers"
+    },
+    {
+      "id": 5,
+      "rubric_id": 3,
+      "criterion": "Обе функции возвращают значение, а не печатают",
+      "weight": 1.0,
+      "positive_example": "def greet(name): return f\"Привет, {name}!\"",
+      "negative_example": "def greet(name): print(f\"Привет, {name}!\")"
+    },
+    {
+      "id": 6,
+      "rubric_id": 3,
+      "criterion": "В result лежит кортеж из двух ответов",
+      "weight": 1.0,
+      "positive_example": "result = (greet(\"Аня\"), add(2, 3))",
+      "negative_example": "result = greet(\"Аня\")"
+    },
+    {
+      "id": 7,
+      "rubric_id": 4,
+      "criterion": "Возвращается именно середина, а не максимум или минимум",
+      "weight": 1.0,
+      "positive_example": "get_middle_value(-100, -10, 100) == -10",
+      "negative_example": "get_middle_value(3, 1, 2) возвращает 3 или 1"
+    },
+    {
+      "id": 8,
+      "rubric_id": 4,
+      "criterion": "Равные числа обрабатываются верно",
+      "weight": 1.0,
+      "positive_example": "get_middle_value(-10, -10, -5) == -10",
+      "negative_example": "строгие сравнения a < b < c на равных числах дают неверный ответ"
+    },
+    {
+      "id": 9,
+      "rubric_id": 5,
+      "criterion": "Числа, кратные и трём, и пяти, помечены «FizzBuzz»",
+      "weight": 1.0,
+      "positive_example": "get_fizz_buzz(15)[14] == \"FizzBuzz\"",
+      "negative_example": "get_fizz_buzz(15)[14] == \"Fizz\""
+    },
+    {
+      "id": 10,
+      "rubric_id": 5,
+      "criterion": "Список начинается с 1 и заканчивается n",
+      "weight": 1.0,
+      "positive_example": "range(1, n + 1)",
+      "negative_example": "range(n) — ноль в начале, n потеряно"
+    },
+    {
+      "id": 11,
+      "rubric_id": 6,
+      "criterion": "Порядок ветвей верный, число 15 даёт FizzBuzz",
+      "weight": 1.0,
+      "positive_example": "get_fizz_buzz(15)[14] == \"FizzBuzz\"",
+      "negative_example": "get_fizz_buzz(15)[14] == \"Fizz\""
+    },
+    {
+      "id": 12,
+      "rubric_id": 6,
+      "criterion": "Возвращается средний по величине аргумент, а не второй аргумент",
+      "weight": 1.0,
+      "positive_example": "get_middle_value(2, 3, 1) == 2",
+      "negative_example": "return b — второй аргумент не всегда средний"
+    },
+    {
+      "id": 13,
+      "rubric_id": 7,
+      "criterion": "Ошибка поднимается с текстом «Wrong ctr calculation»",
+      "weight": 1.0,
+      "positive_example": "raise AssertionError(\"Wrong ctr calculation\")",
+      "negative_example": "raise ValueError(...) или assert без сообщения"
+    },
+    {
+      "id": 14,
+      "rubric_id": 7,
+      "criterion": "Верный ответ проверку проходит молча",
+      "weight": 1.0,
+      "positive_example": "check_ctr(2, 2, 1.0) не поднимает ошибку",
+      "negative_example": "безусловный raise AssertionError"
+    },
+    {
+      "id": 15,
+      "rubric_id": 8,
+      "criterion": "Исключения ловятся по конкретным типам, а не голым except",
+      "weight": 1.0,
+      "positive_example": "except ValueError / except ZeroDivisionError",
+      "negative_example": "except: — поймает и опечатку, и Ctrl+C"
+    },
+    {
+      "id": 16,
+      "rubric_id": 8,
+      "criterion": "Блок finally добавляет «done» ровно один раз за вызов",
+      "weight": 1.0,
+      "positive_example": "finally: log.append(\"done\")",
+      "negative_example": "log.append(\"done\") в каждой ветке except"
+    },
+    {
+      "id": 17,
+      "rubric_id": 8,
+      "criterion": "Результат приводится к float",
+      "weight": 1.0,
+      "positive_example": "return float(ctr(clicks, shows))",
+      "negative_example": "return ctr(clicks, shows) — на целых остаётся int"
+    },
+    {
+      "id": 18,
+      "rubric_id": 9,
+      "criterion": "При делении на ноль возвращается 0.0, а не исключение наружу",
+      "weight": 1.0,
+      "positive_example": "safe_divide(1, 0, log) == 0.0",
+      "negative_example": "деление выполняется без обработки — ZeroDivisionError уходит наружу"
+    },
+    {
+      "id": 19,
+      "rubric_id": 9,
+      "criterion": "Журнал заполняется и при нормальном ходе, и при ошибке",
+      "weight": 1.0,
+      "positive_example": "finally: log.append(\"done\")",
+      "negative_example": "log заполняется только в ветке успеха"
+    },
+    {
+      "id": 20,
+      "rubric_id": 10,
+      "criterion": "Берутся элементы с индексами 1, 3, 5 — «каждый второй», а не чётные позиции",
+      "weight": 1.0,
+      "positive_example": "elements[1::2] или range(1, len(elements), 2)",
+      "negative_example": "elements[::2] — это индексы 0, 2, 4"
+    },
+    {
+      "id": 21,
+      "rubric_id": 10,
+      "criterion": "Входной список не изменяется",
+      "weight": 1.0,
+      "positive_example": "новый список собирается, elements остаётся как был",
+      "negative_example": "elements.pop(0) или elements.clear() внутри функции"
+    },
+    {
+      "id": 22,
+      "rubric_id": 11,
+      "criterion": "Пустой список даёт пару default, а не ошибку",
+      "weight": 1.0,
+      "positive_example": "if not elements: return default, default",
+      "negative_example": "return min(elements), max(elements) без проверки — ValueError"
+    },
+    {
+      "id": 23,
+      "rubric_id": 11,
+      "criterion": "Порядок в кортеже: сначала минимум, потом максимум",
+      "weight": 1.0,
+      "positive_example": "return min(elements), max(elements)",
+      "negative_example": "return max(elements), min(elements)"
+    },
+    {
+      "id": 24,
+      "rubric_id": 12,
+      "criterion": "Возвращается индекс последней тройки, а не первой",
+      "weight": 1.0,
+      "positive_example": "len(elements) - 1 - elements[::-1].index(3)",
+      "negative_example": "elements.index(3) — вернёт первую тройку"
+    },
+    {
+      "id": 25,
+      "rubric_id": 12,
+      "criterion": "Отсутствие тройки — это None, а нулевой индекс — настоящий ответ",
+      "weight": 1.0,
+      "positive_example": "if 3 not in elements: return None",
+      "negative_example": "вернуть -1 или 0 как признак «не нашли»"
+    },
+    {
+      "id": 26,
+      "rubric_id": 13,
+      "criterion": "Квадраты считаются для каждого элемента и идут в исходном порядке",
+      "weight": 1.0,
+      "positive_example": "value ** 2 или value * value в том же порядке",
+      "negative_example": "ответ отсортирован или порядок элементов потерян"
+    },
+    {
+      "id": 27,
+      "rubric_id": 13,
+      "criterion": "Максимум ищется по значению, а возвращается его индекс; пустой список даёт None",
+      "weight": 1.0,
+      "positive_example": "max(range(len(elements)), key=elements.__getitem__)",
+      "negative_example": "return max(elements) — это значение, а не индекс"
+    },
+    {
+      "id": 28,
+      "rubric_id": 14,
+      "criterion": "Порядок записей лога сохраняется",
+      "weight": 1.0,
+      "positive_example": "[r for r in records if r[\"DeviceType\"] == device_type]",
+      "negative_example": "результат отсортирован или собран во множество"
+    },
+    {
+      "id": 29,
+      "rubric_id": 14,
+      "criterion": "Входной лог не изменяется",
+      "weight": 1.0,
+      "positive_example": "чтение полей записи",
+      "negative_example": "records.pop(...) или запись в поле внутри цикла"
+    },
+    {
+      "id": 30,
+      "rubric_id": 15,
+      "criterion": "В результате остаются все ключи записи, а не только выбранные",
+      "weight": 1.0,
+      "positive_example": "{k: v if k in keys else None for k, v in record.items()}",
+      "negative_example": "{k: record[k] for k in keys} — только избранные ключи"
+    },
+    {
+      "id": 31,
+      "rubric_id": 15,
+      "criterion": "Обход идёт по записи: ключ набора, которого нет в записи, не мешает",
+      "weight": 1.0,
+      "positive_example": "фильтр `if key in keys` при обходе record.items()",
+      "negative_example": "record[key] по ключам набора — KeyError на чужом ключе"
+    },
+    {
+      "id": 32,
+      "rubric_id": 16,
+      "criterion": "Уникальные страницы собираются во множество",
+      "weight": 1.0,
+      "positive_example": "{r[\"PageID\"] for r in records}",
+      "negative_example": "список со повторяющимися идентификаторами"
+    },
+    {
+      "id": 33,
+      "rubric_id": 16,
+      "criterion": "«Значение не определено» проверяется через `is not None`, а не через истинность",
+      "weight": 1.0,
+      "positive_example": "if r[\"RegionID\"] is not None",
+      "negative_example": "if r[\"RegionID\"] — теряет регион 0"
+    },
+    {
+      "id": 34,
+      "rubric_id": 17,
+      "criterion": "Путь собирается из префикса и ключа: без ведущей и без потерянной точки",
+      "weight": 1.0,
+      "positive_example": "f\"{prefix}.{key}\" if prefix else key",
+      "negative_example": "f\".{key}\" или ключ без префикса: «c» вместо «b.c»"
+    },
+    {
+      "id": 35,
+      "rubric_id": 17,
+      "criterion": "Рекурсивный вызов получает вложенный словарь и накопленный путь",
+      "weight": 1.0,
+      "positive_example": "traverse(value, path)",
+      "negative_example": "traverse(value) — вложенный ключ теряет родителя"
+    },
+    {
+      "id": 36,
+      "rubric_id": 18,
+      "criterion": "Стек разбирается циклом, а не рекурсией",
+      "weight": 1.0,
+      "positive_example": "while stack: current, prefix = stack.pop()",
+      "negative_example": "функция зовёт себя — на глубоком дереве RecursionError"
+    },
+    {
+      "id": 37,
+      "rubric_id": 18,
+      "criterion": "В стек кладутся вложенные словари вместе с их путями",
+      "weight": 1.0,
+      "positive_example": "stack.append((value, path))",
+      "negative_example": "stack.append((value, key)) — путь теряется"
+    },
+    {
+      "id": 38,
+      "rubric_id": 19,
+      "criterion": "Мутирующая версия дописывает пары и ничего не возвращает",
+      "weight": 1.0,
+      "positive_example": "result.append((path, value)) без return",
+      "negative_example": "return result — два источника правды"
+    },
+    {
+      "id": 39,
+      "rubric_id": 19,
+      "criterion": "Ни одна из версий не меняет входной словарь",
+      "weight": 1.0,
+      "positive_example": "обход только читает dct.items()",
+      "negative_example": "dct.pop(key) или dct[key] = ... внутри обхода"
+    },
+    {
+      "id": 40,
+      "rubric_id": 20,
+      "criterion": "Источник читается лениво: лишние элементы не запрашиваются",
+      "weight": 1.0,
+      "positive_example": "itertools.islice(uniq(источник), 2) — источник не читается дальше",
+      "negative_example": "накопление в список и return: источник вычитывается целиком"
+    },
+    {
+      "id": 41,
+      "rubric_id": 20,
+      "criterion": "Порядок входа сохраняется, повтор пропускается",
+      "weight": 1.0,
+      "positive_example": "seen-множество плюс yield в порядке источника",
+      "negative_example": "set(sequence): порядок теряется, повторы уходят случайно"
+    },
+    {
+      "id": 42,
+      "rubric_id": 21,
+      "criterion": "Строки результата — списки, а не кортежи от zip",
+      "weight": 1.0,
+      "positive_example": "[list(row) for row in zip(*matrix)]",
+      "negative_example": "list(zip(*matrix)): в результате кортежи"
+    },
+    {
+      "id": 43,
+      "rubric_id": 21,
+      "criterion": "Пустая матрица даёт пустой список, вход не меняется",
+      "weight": 1.0,
+      "positive_example": "zip(*[]) — пусто; обход только читает matrix",
+      "negative_example": "matrix[0] для подсчёта столбцов: IndexError на пустой матрице"
+    },
+    {
+      "id": 44,
+      "rubric_id": 22,
+      "criterion": "dict_merge не меняет входные словари",
+      "weight": 1.0,
+      "positive_example": "новый словарь из comprehension по всем аргументам",
+      "negative_example": "first.update(second) и return first: чужой словарь испорчен"
+    },
+    {
+      "id": 45,
+      "rubric_id": 22,
+      "criterion": "Скалярное произведение — попарные произведения, а не произведение сумм",
+      "weight": 1.0,
+      "positive_example": "sum(map(mul, lhs, rhs)) или sum(a * b for a, b in zip(lhs, rhs))",
+      "negative_example": "sum(lhs) * sum(rhs) или повторение списка через *"
+    },
+    {
+      "id": 46,
+      "rubric_id": 23,
+      "criterion": "Проверки инвариантов выполняются при создании",
+      "weight": 1.0,
+      "positive_example": "__post_init__ с assert на пустое название и неположительную цену",
+      "negative_example": "проверка отдельным методом, который никто не вызывает"
+    },
+    {
+      "id": 47,
+      "rubric_id": 23,
+      "criterion": "Поля после создания не меняются",
+      "weight": 1.0,
+      "positive_example": "@dataclass(frozen=True): присваивание даёт FrozenInstanceError",
+      "negative_example": "@dataclass без frozen: присваивание проходит молча"
+    },
+    {
+      "id": 48,
+      "rubric_id": 24,
+      "criterion": "Порядок сравнения задан названием, затем ценой",
+      "weight": 1.0,
+      "positive_example": "сравнение идёт по title, затем по cost: order=True при таком порядке полей или свои __lt__/__eq__ с тем же правилом",
+      "negative_example": "cost объявлен раньше title при order=True: сравнение идёт по цене"
+    },
+    {
+      "id": 49,
+      "rubric_id": 24,
+      "criterion": "item_id не участвует в сравнении",
+      "weight": 1.0,
+      "positive_example": "item_id: int = field(compare=False, default=0)",
+      "negative_example": "обычное поле: близнецы различаются по item_id"
+    },
+    {
+      "id": 50,
+      "rubric_id": 25,
+      "criterion": "Операнды не меняются: операции возвращают новый вектор",
+      "weight": 1.0,
+      "positive_example": "return Vector([...]) — новый объект",
+      "negative_example": "self._elements[i] += other[i] и return self"
+    },
+    {
+      "id": 51,
+      "rubric_id": 25,
+      "criterion": "Умножение на скаляр работает с обеих сторон",
+      "weight": 1.0,
+      "positive_example": "__mul__ и __rmul__, где __rmul__ вызывает self * scalar",
+      "negative_example": "только __mul__: 3 * v падает с TypeError"
+    },
+    {
+      "id": 52,
+      "rubric_id": 26,
+      "criterion": "Итераторы независимы: позиция хранится в итераторе",
+      "weight": 1.0,
+      "positive_example": "__init__ запоминает элементы, __next__ двигает self._index",
+      "negative_example": "позиция в атрибуте класса или у контейнера: итераторы мешают друг другу"
+    },
+    {
+      "id": 53,
+      "rubric_id": 26,
+      "criterion": "Конец потока — StopIteration, а не выход за границу",
+      "weight": 1.0,
+      "positive_example": "проверка index >= len(elements) перед доступом",
+      "negative_example": "return self._elements[self._index] без проверки: IndexError"
+    },
+    {
+      "id": 54,
+      "rubric_id": 27,
+      "criterion": "Товар неизменяем и проверен при создании",
+      "weight": 1.0,
+      "positive_example": "frozen=True плюс assert в __post_init__",
+      "negative_example": "проверки есть, но frozen нет — товар меняется после создания"
+    },
+    {
+      "id": 55,
+      "rubric_id": 27,
+      "criterion": "Вектор считает длину, сумму и скалярное произведение, не трогая операнды",
+      "weight": 1.0,
+      "positive_example": "len, __add__ через zip, dot через сумму произведений",
+      "negative_example": "сумма длин вместо поэлементной суммы или мутация левого операнда"
+    },
+    {
+      "id": 56,
+      "rubric_id": 28,
+      "criterion": "__enter__ возвращает сам менеджер, а замер идёт в секундах",
+      "weight": 1.0,
+      "positive_example": "self._start = time.perf_counter(); return self",
+      "negative_example": "__enter__ без return: в `as` попадает None"
+    },
+    {
+      "id": 57,
+      "rubric_id": 28,
+      "criterion": "__exit__ не подавляет исключение",
+      "weight": 1.0,
+      "positive_example": "return False или None; исключение идёт наверх",
+      "negative_example": "return True: ошибка внутри блока исчезает"
+    },
+    {
+      "id": 58,
+      "rubric_id": 29,
+      "criterion": "Файл закрывается в __exit__, а не в конце блока",
+      "weight": 1.0,
+      "positive_example": "self.file.close() в __exit__",
+      "negative_example": "stream.close() после with: при исключении файл остаётся открытым"
+    },
+    {
+      "id": 59,
+      "rubric_id": 29,
+      "criterion": "Закрытие работает и при исключении внутри блока",
+      "weight": 1.0,
+      "positive_example": "__exit__ вызывается с описанием исключения и всё равно закрывает файл",
+      "negative_example": "закрытие под условием exc_type is None"
+    },
+    {
+      "id": 60,
+      "rubric_id": 30,
+      "criterion": "Обёртка принимает любую сигнатуру",
+      "weight": 1.0,
+      "positive_example": "def wrapper(*args, **kwargs) с вызовом function(*args, **kwargs)",
+      "negative_example": "def wrapper(a, b): — именованные аргументы и другая арность ломаются"
+    },
+    {
+      "id": 61,
+      "rubric_id": 30,
+      "criterion": "Имя, докстринг и модуль функции сохранены",
+      "weight": 1.0,
+      "positive_example": "@functools.wraps(function) над wrapper",
+      "negative_example": "wraps забыт: снаружи видно wrapper"
+    },
+    {
+      "id": 62,
+      "rubric_id": 31,
+      "criterion": "Ключ кэша один для всех форм записи вызова",
+      "weight": 1.0,
+      "positive_example": "signature.bind(*args, **kwargs) и apply_defaults()",
+      "negative_example": "ключ из args без kwargs или без значений по умолчанию"
+    },
+    {
+      "id": 63,
+      "rubric_id": 31,
+      "criterion": "Вытесняется самый давний по обращению",
+      "weight": 1.0,
+      "positive_example": "move_to_end(key) при попадании, popitem(last=False) при переполнении",
+      "negative_example": "move_to_end забыт: вытесняется самый ранний по вставке"
+    },
+    {
+      "id": 64,
+      "rubric_id": 32,
+      "criterion": "Потоки возвращаются на место после блока",
+      "weight": 1.0,
+      "positive_example": "в __exit__: getvalue(), затем sys.stdout = self._old_stdout",
+      "negative_example": "потоки не восстановлены: вывод уходит в перехватчик"
+    },
+    {
+      "id": 65,
+      "rubric_id": 32,
+      "criterion": "Счётчик вызовов живёт в атрибуте обёртки и растёт на каждом вызове",
+      "weight": 1.0,
+      "positive_example": "wrapper.calls += 1 перед вызовом функции",
+      "negative_example": "счётчик в локальной переменной: снаружи его не видно"
+    }
+  ],
+  "legacy": {}
+}

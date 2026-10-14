@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from llm_tutor.web import accounts
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
-from llm_tutor.web.courses import RENAMED_COURSES, get_course
+from llm_tutor.web.courses import RENAMED_COURSES, get_course, visible_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
 from llm_tutor.web.views import course_card, learning_view
 
@@ -43,6 +43,8 @@ ADMIN_NAV = NavItem("admin", "/admin", "Админка", "shield")
 _TITLES = {item.key: item.label for item in (*NAV, ADMIN_NAV)} | {
     "login": "Вход",
     "register": "Регистрация",
+    "forgot": "Восстановление пароля",
+    "reset": "Новый пароль",
 }
 
 
@@ -70,7 +72,7 @@ def _learning(request: Request, user: User) -> list[dict]:
     settings = request.app.state.settings
     result = []
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
-        course = get_course(course_id)
+        course = visible_course(course_id)
         if course is None:
             continue
         card = course_card(course, user_id=user.id, enrolled=True, pool=pool, settings=settings)
@@ -84,7 +86,7 @@ def _learning(request: Request, user: User) -> list[dict]:
 def _current_card(request: Request, user: User) -> dict | None:
     """Карточка курса, который ученик проходит сейчас (последний записанный)."""
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
-        course = get_course(course_id)
+        course = visible_course(course_id)
         if course is not None:
             return course_card(
                 course,
@@ -100,12 +102,12 @@ def _current_card(request: Request, user: User) -> dict | None:
 async def home(request: Request) -> HTMLResponse:
     user = optional_user(request)
     if user is None:
-        from llm_tutor.web.courses import COURSES
+        from llm_tutor.web.courses import visible_courses
 
         settings = request.app.state.settings
         cards = [
             course_card(course, user_id=0, enrolled=False, pool=request.app.state.userdbs, settings=settings)
-            for course in COURSES
+            for course in visible_courses()
         ]
         return render(request, "home.html", "home", user=None, cards=cards)
     return render(request, "home.html", "home", user=user, courses=_learning(request, user))
@@ -128,7 +130,7 @@ async def courses(request: Request, user: User = Depends(page_user)) -> HTMLResp
 async def lesson(request: Request, user: User = Depends(page_user)) -> Response:
     """«Занятие» в меню — последний курс ученика или каталог, если курсов нет."""
     enrolled = accounts.enrolled_courses(accounts_db(request), user.id)
-    known = [course_id for course_id in enrolled if get_course(course_id) is not None]
+    known = [course_id for course_id in enrolled if visible_course(course_id) is not None]
     target = f"/lesson/{known[0]}" if known else "/courses"
     return RedirectResponse(target, status_code=303)
 
@@ -189,3 +191,52 @@ async def login(request: Request, next: str | None = None) -> Response:
 @router.get("/register", response_class=HTMLResponse)
 async def register(request: Request, next: str | None = None) -> Response:
     return _auth_page(request, "register.html", "register", next)
+
+
+def _no_store(response: Response) -> Response:
+    """Страница со ссылкой-секретом не кэшируется: «Назад» не должен её показать."""
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password(request: Request) -> Response:
+    """Заявка письма со ссылкой. Вошедшему здесь нечего делать: пароль он помнит."""
+    if optional_user(request) is not None:
+        return RedirectResponse("/profile", status_code=303)
+    return _no_store(
+        render(
+            request,
+            "forgot_password.html",
+            "forgot",
+            user=None,
+            # Почта не настроена — ученик должен знать, что письма не будет:
+            # ссылка в этом случае печатается в журнале сервера (режим показа).
+            mail_configured=request.app.state.settings.smtp_configured,
+            # Срок жизни — из настроек, а не «час» в тексте: PASSWORD_RESET_TTL_MINUTES
+            # меняется в .env, и обещание в шаблоне не должно разойтись с делом.
+            ttl_minutes=request.app.state.settings.password_reset_ttl_minutes,
+        )
+    )
+
+
+@router.get("/reset-password", response_class=HTMLResponse)
+async def reset_password(request: Request, token: str = "") -> Response:
+    """Форма нового пароля; мёртвая ссылка — сообщение и путь за новым письмом.
+
+    Годится ли ссылка, решает ``accounts.reset_token_user`` (только чтение) —
+    страница ничего не сжигает: её мог открыть и поисковый робот.
+    """
+    user = accounts.reset_token_user(accounts_db(request), token)
+    return _no_store(
+        render(
+            request,
+            "reset_password.html",
+            "reset",
+            user=None,
+            token=token,
+            valid=user is not None,
+            email=None if user is None else user.email,
+            ttl_minutes=request.app.state.settings.password_reset_ttl_minutes,
+        )
+    )

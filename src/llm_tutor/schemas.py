@@ -378,6 +378,12 @@ class SessionState(BaseModel):
     section_id: str | None = None
     passed_sections: list[str] = Field(default_factory=list)
     weak_sections: list[str] = Field(default_factory=list)
+    # Разделы, по которым в банке нет ни одного задания. Урок ещё
+    # пишется: спрашивать по такому разделу нечем, и держать на нём занятие
+    # нельзя — иначе ученик запирается в недописанном уроке. Это не «пройден»
+    # (ученик ничего не доказал), но и не «впереди»: отдельный статус в полосе
+    # разделов.
+    skipped_sections: list[str] = Field(default_factory=list)
     final_passed: bool = False
     # Итоговое сдано после двух ошибок (срез 54): занятие закроется с ⚠️.
     final_weak: bool = False

@@ -74,8 +74,10 @@ window.Lesson = (() => {
     return parts.join(" · ");
   }
 
-  const SECTION_MARKS = { passed: "✓", weak: "⚠️", current: "▶", ahead: "·" };
-  const SECTION_LABELS = { passed: "пройден", weak: "слабое место", current: "сейчас", ahead: "впереди" };
+  // «Без заданий» — раздел, по которому заданий в банке ещё нет:
+  // занятие он не держит, но и «пройденным» не считается.
+  const SECTION_MARKS = { passed: "✓", weak: "⚠️", current: "▶", ahead: "·", skipped: "–" };
+  const SECTION_LABELS = { passed: "пройден", weak: "слабое место", current: "сейчас", ahead: "впереди", skipped: "без заданий" };
 
   /** Полоса разделов над вкладками: разделы занятия и итоговое со статусами. */
   function renderSections(current) {

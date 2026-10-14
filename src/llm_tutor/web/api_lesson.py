@@ -27,7 +27,7 @@ from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
 from llm_tutor.web.accounts import User
-from llm_tutor.web.courses import COURSES, RENAMED_COURSES, Course, get_course
+from llm_tutor.web.courses import RENAMED_COURSES, Course, get_course, visible_courses
 from llm_tutor.web.security import accounts_db, require_user
 from llm_tutor.web.views import course_card
 
@@ -61,7 +61,7 @@ def cards_for(request: Request, user: User) -> list[dict]:
             pool=request.app.state.userdbs,
             settings=request.app.state.settings,
         )
-        for course in COURSES
+        for course in visible_courses()
     ]
 
 
@@ -76,7 +76,13 @@ async def enroll(course_id: str, request: Request, user: User = Depends(require_
     pool = request.app.state.userdbs
     async with pool.lock(user.id, course.id):
         # Сначала БД ученика: запись без БД оставила бы курс, который не открыть.
-        pool.open(user.id, course.id)
+        try:
+            pool.open(user.id, course.id)
+        except views.COURSE_ERRORS as exc:
+            # Открыть БД курса нечем: нечитаемые модули — та же беда, что битая
+            # БД ученика, и отвечать на неё пятисоткой нечего (аудит среза 1).
+            logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
+            raise HTTPException(status_code=503, detail={"message": COURSE_DB_BROKEN}) from exc
         accounts.enroll(accounts_db(request), user.id, course.id)
     card = course_card(
         course, user_id=user.id, enrolled=True, pool=pool, settings=request.app.state.settings
@@ -120,7 +126,7 @@ async def lesson_context(
     pool = request.app.state.userdbs
     try:
         conn = pool.open(user.id, course.id)
-    except (sqlite3.DatabaseError, RuntimeError) as exc:
+    except views.COURSE_ERRORS as exc:
         logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
         raise HTTPException(status_code=503, detail={"message": COURSE_DB_BROKEN}) from exc
     return LessonContext(

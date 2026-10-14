@@ -52,17 +52,17 @@ def load_lessons(conn) -> Course:
 def use_lessons_course(monkeypatch) -> None:
     """Веб-курс ``mlcourse`` — из фикстуры занятий, а не из data/ (срез 55).
 
-    Подменяется реестр курсов: и там, где его читают через модуль, и там,
-    где ``COURSES`` импортирован по имени.
+    Подменяется сам реестр курсов: его читают по имени модуля
+    (``courses.visible_courses``, ``courses.course_data``), поэтому одной
+    подмены ``COURSES`` хватает — копий списка по модулям нет.
     """
     from dataclasses import replace
 
-    from llm_tutor.web import api_lesson, courses
+    from llm_tutor.web import courses
 
     course = replace(courses.COURSES[0], seed_paths=tuple(LESSON_SEED_PATHS))
     monkeypatch.setattr(courses, "COURSES", (course,))
     monkeypatch.setitem(courses._BY_ID, course.id, course)
-    monkeypatch.setattr(api_lesson, "COURSES", (course,))
 
 # Анкеты модулей старого формата: topic01 и тестового мини-модуля 2 (движок).
 T1 = load_seed_data(DEFAULT_SEED_PATH).topic.survey

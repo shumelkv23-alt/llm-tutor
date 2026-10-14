@@ -260,7 +260,7 @@ def module5_soon(monkeypatch, tmp_path):
     from dataclasses import replace
 
     from llm_tutor.course.seed import course_paths
-    from llm_tutor.web import api_lesson, courses
+    from llm_tutor.web import courses
 
     source = course_paths()[0].parent
     root = tmp_path / "course"
@@ -278,7 +278,6 @@ def module5_soon(monkeypatch, tmp_path):
     course = replace(courses.COURSES[0], seed_paths=tuple(paths))
     monkeypatch.setattr(courses, "COURSES", (course,))
     monkeypatch.setitem(courses._BY_ID, course.id, course)
-    monkeypatch.setattr(api_lesson, "COURSES", (course,))
 
 
 def _import_bot_db(web_settings, tmp_path, *, closed, current, mastery):
