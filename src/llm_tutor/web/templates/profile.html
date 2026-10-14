@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block eyebrow %}Аккаунт{% endblock %}
+{% block description %}Данные аккаунта и прогресс по текущему курсу.{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
+{% block content %}
+<div class="profile-grid">
+  <section class="panel" aria-labelledby="account-title">
+    <div class="panel-header"><h2 id="account-title">Аккаунт</h2></div>
+    <dl class="account-facts">
+      <div><dt>Email</dt><dd>{{ user.email }}</dd></div>
+      <div><dt>С нами с</dt><dd>{{ joined }}</dd></div>
+    </dl>
+    <div class="profile-form theme-picker">
+      <h3 id="theme-title">Тема оформления</h3>
+      <div class="segmented" role="radiogroup" aria-labelledby="theme-title">
+        <button type="button" role="radio" data-theme-choice="light" aria-checked="false">{{ icon('sun') }}Светлая</button>
+        <button type="button" role="radio" data-theme-choice="dark" aria-checked="false">{{ icon('moon') }}Тёмная</button>
+        <button type="button" role="radio" data-theme-choice="system" aria-checked="true">{{ icon('monitor') }}Системная</button>
+      </div>
+    </div>
+    <form class="profile-form" id="rename-form" data-endpoint="/api/me" novalidate>
+      <label>Имя<input name="name" type="text" value="{{ user.name }}" maxlength="60" required autocomplete="given-name"></label>
+      <p class="field-error" data-error-for="name" hidden></p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn" type="submit">Сохранить имя</button>
+    </form>
+    <form class="profile-form" id="password-form" data-endpoint="/api/me/password" novalidate>
+      <h3>Сменить пароль</h3>
+      <label>Текущий пароль<input name="current" type="password" autocomplete="current-password" required maxlength="256"></label>
+      <p class="field-error" data-error-for="current" hidden></p>
+      <label>Новый пароль<input name="new" type="password" autocomplete="new-password" required minlength="8" maxlength="256"></label>
+      <p class="field-error" data-error-for="new" hidden></p>
+      <p class="form-hint">Не меньше 8 символов. Остальные входы на других устройствах закроются.</p>
+      <p class="form-error" role="alert" hidden></p>
+      <button class="btn" type="submit">Сменить пароль</button>
+    </form>
+  </section>
+
+  {% if card %}
+  <section class="panel learning" aria-labelledby="learning-title">
+    <div class="panel-header">
+      <div><p class="eyebrow">Сейчас прохожу</p><h2 id="learning-title">{{ card.title }}</h2></div>
+      <a class="btn" href="{{ card.href }}">К занятию{{ icon('arrow') }}</a>
+    </div>
+    {% if card.status == 'error' %}
+    <p class="notice error">Данные курса сейчас не открываются. Сообщите администратору.</p>
+    {% elif card.status == 'survey' %}
+    <p class="muted">Курс начинается с короткой анкеты — она откроется на странице занятия.</p>
+    {% else %}
+    {% if card.current_topic %}<p class="course-current">Сейчас: <b>{{ card.current_topic }}</b></p>{% endif %}
+    <div class="progress" role="img" aria-label="Закрыто занятий: {{ card.closed }} из {{ card.topics }}">
+      <div class="progress-label"><span>Закрыто занятий</span><b>{{ card.closed }} из {{ card.topics }}</b></div>
+      <div class="progress-track"><span class="progress-fill" data-percent="{{ card.percent }}"></span></div>
+    </div>
+    {% endif %}
+  </section>
+  {% else %}
+  <section class="panel"><div class="empty"><strong>Курсов пока нет</strong>Запишитесь на курс в разделе «Мои курсы» — здесь появится прогресс.</div></section>
+  {% endif %}
+</div>
+{% endblock %}

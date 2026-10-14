@@ -1,0 +1,308 @@
+"""Фабрика веб-приложения: маршруты, статика, шаблоны, заголовки безопасности.
+
+Зависимости (настройки, LLM-клиент) внедряются через ``create_app``: тесты
+собирают приложение без сети и uvicorn.
+"""
+
+import asyncio
+import hashlib
+import logging
+from urllib.parse import urlparse
+from collections.abc import Awaitable, Callable
+from contextlib import asynccontextmanager
+from functools import lru_cache
+from pathlib import Path
+
+from fastapi import FastAPI, Request, Response
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from markupsafe import Markup, escape
+
+from llm_tutor.config import Settings
+from llm_tutor.llm.client import LLMClient
+from llm_tutor.web import accounts, courses, jobs, security
+from llm_tutor.web.userdb import UserDBPool
+
+logger = logging.getLogger(__name__)
+
+WEB_DIR = Path(__file__).resolve().parent
+STATIC_DIR = WEB_DIR / "static"
+TEMPLATES_DIR = WEB_DIR / "templates"
+
+def content_security_policy(pyodide_index_url: str) -> str:
+    """CSP: встроенные скрипты и стили запрещены, весь JS и CSS — в файлах.
+
+    Внешний источник один — дистрибутив Pyodide (Python в браузере): его
+    скрипт, WebAssembly и пакеты (pandas) грузит воркер вкладки «Код».
+    ``wasm-unsafe-eval`` разрешает компиляцию WebAssembly, но не ``eval`` JS.
+    """
+    parsed = urlparse(pyodide_index_url)
+    pyodide = f"{parsed.scheme}://{parsed.netloc}" if parsed.netloc else ""
+    return "; ".join(
+        (
+            "default-src 'self'",
+            f"script-src 'self' 'wasm-unsafe-eval' {pyodide}".strip(),
+            "worker-src 'self'",
+            "style-src 'self'",
+            "img-src 'self' data:",
+            "font-src 'self'",
+            f"connect-src 'self' {pyodide}".strip(),
+            "object-src 'none'",
+            "base-uri 'self'",
+            "form-action 'self'",
+            "frame-ancestors 'none'",
+        )
+    )
+
+
+_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+    "X-Frame-Options": "DENY",
+}
+
+
+@lru_cache(maxsize=512)
+def _content_version(relative: str, mtime_ns: int) -> str:
+    """Короткий хеш содержимого файла статики (ключ кэша — и время изменения)."""
+    return hashlib.sha256((STATIC_DIR / relative).read_bytes()).hexdigest()[:10]
+
+
+def static_url(relative: str) -> str:
+    """URL статики с версией по содержимому: ``/static/css/app.css?v=…``.
+
+    Правка файла меняет версию без перезапуска (ключ кэша — время изменения).
+    Пропавший файл или путь за пределами статики — URL без версии и
+    предупреждение в лог, а не 500 на всей странице.
+    """
+    path = (STATIC_DIR / relative).resolve()
+    if not path.is_relative_to(STATIC_DIR.resolve()) or not path.is_file():
+        logger.warning("Нет файла статики: %s", relative)
+        return f"/static/{relative}"
+    return f"/static/{relative}?v={_content_version(relative, path.stat().st_mtime_ns)}"
+
+
+def icon(name: str) -> Markup:
+    """Иконка из SVG-спрайта (готовый HTML для шаблонов)."""
+    return Markup(
+        '<svg class="icon" aria-hidden="true"><use href="{}#{}"></use></svg>'
+    ).format(static_url("icons.svg"), escape(name))
+
+
+def make_templates() -> Jinja2Templates:
+    templates = Jinja2Templates(directory=TEMPLATES_DIR)
+    templates.env.globals.update(static_url=static_url, icon=icon)
+    return templates
+
+
+def _project_path(path: str) -> Path:
+    """Относительный путь из настроек — от корня проекта, как у ``get_conn``."""
+    candidate = Path(path)
+    return candidate if candidate.is_absolute() else WEB_DIR.parents[2] / candidate
+
+
+def _warn_about_content() -> None:
+    """Предупреждения о контенте курсов при старте: чего не хватает ученику."""
+    from llm_tutor.course.seed import nodes_without_theory
+
+    for course in courses.all_courses():
+        data, error = courses.try_course_data(course)
+        if error is not None:
+            # Недособранный черновик читаться не обязан — это его нормальное
+            # состояние. А вот опубликованный курс, который не читается, —
+            # беда: его модули не доедут до учеников.
+            if course.status == "published":
+                logger.warning("Курс %s: модули не читаются (%s)", course.id, error)
+            else:
+                logger.info("Курс %s (черновик): модули пока не читаются (%s)", course.id, error)
+            continue
+        missing = nodes_without_theory(data)
+        if missing:
+            logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
+
+
+KEY_HELP = (
+    "Тьютор в чате отвечать не будет: создай новый ключ на https://openrouter.ai/keys "
+    "и впиши его в OPENROUTER_API_KEY (.env), затем перезапусти сервер."
+)
+
+
+async def check_llm_key(llm: LLMClient) -> None:
+    """Проверка ключа OpenRouter при старте.
+
+    Без неё отвергнутый ключ виден только как «не смог получить ответ» в чате.
+    Идёт фоновой задачей, исключение которой никто не прочтёт, поэтому любой
+    сбой самой проверки пишется в лог здесь.
+    """
+    try:
+        problem = await llm.key_problem()
+    except Exception:  # noqa: BLE001 — диагностика не должна умирать молча
+        logger.exception("Проверка ключа OpenRouter при старте не удалась")
+        return
+    if problem:
+        logger.error("%s. %s", problem, KEY_HELP)
+
+
+def _llm_client(settings: Settings) -> LLMClient:
+    return LLMClient(
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        default_model=settings.tutor_model,
+        temperature=settings.llm_temperature,
+        max_tokens=settings.llm_max_tokens,
+        max_retries=settings.llm_max_retries,
+    )
+
+
+def _generator_client(settings: Settings) -> LLMClient:
+    """Клиент генерации курса: своя модель, лимит вывода и таймаут.
+
+    У ``LLMClient`` лимит вывода и таймаут заданы на клиента целиком (не на
+    вызов), а генерации нужны длинные ответы и минуты ожидания — поэтому это
+    отдельный клиент, а не тот же, что у тьютора.
+    """
+    return LLMClient(
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        default_model=settings.generator_model,
+        temperature=settings.generation_temperature,
+        max_tokens=settings.generation_max_tokens,
+        timeout=settings.generation_timeout,
+        max_retries=settings.llm_max_retries,
+    )
+
+
+def create_app(
+    settings: Settings, client: LLMClient | None = None, generator: LLMClient | None = None
+) -> FastAPI:
+    """Собирает приложение.
+
+    ``client`` — LLM-клиент тьютора, ``generator`` — клиент генерации курса;
+    если не переданы, приложение создаёт свои и закрывает их при остановке.
+    Внедрённые клиенты закрывает тот, кто их создал. Без явного ``generator``
+    берётся ``client``: в тестах это подставной клиент, и лишних вызовов сети
+    не будет.
+    """
+    owns_client = client is None
+    llm = _llm_client(settings) if client is None else client
+    owns_generator = generator is None and client is None
+    gen = generator if generator is not None else (client if client is not None else _generator_client(settings))
+    accounts_db = accounts.open_accounts(settings.accounts_db_path)
+    # Реестр курсов: встроенные из кода плюс созданные преподавателем из каталога.
+    courses.configure(_project_path(settings.courses_dir))
+    userdbs = UserDBPool(
+        _project_path(settings.users_dir),
+        _project_path(settings.materials_db_path),
+        settings=settings,
+    )
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        _warn_about_content()
+        # В фоне: сетевой запрос не должен задерживать старт. Внедрённый клиент
+        # (тесты) не проверяем — у него нет сети.
+        key_check = asyncio.create_task(check_llm_key(llm)) if owns_client else None
+        try:
+            yield
+        finally:
+            if key_check is not None:
+                key_check.cancel()
+            app.state.jobs.cancel_all()
+            userdbs.close_all()
+            accounts_db.close()
+            if owns_client:
+                await llm.aclose()
+            if owns_generator:
+                await gen.aclose()
+
+    # Swagger и ReDoc грузят скрипты со стороннего CDN — API внутреннее.
+    app = FastAPI(
+        title="llm·tutor",
+        lifespan=lifespan,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    app.state.settings = settings
+    app.state.client = llm
+    app.state.templates = make_templates()
+    app.state.templates.env.globals["pyodide_index_url"] = settings.pyodide_index_url
+    csp = content_security_policy(settings.pyodide_index_url)
+    # Все эндпоинты — async def: соединения SQLite живут в потоке цикла
+    # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
+    app.state.accounts = accounts_db
+    app.state.login_limiter = security.LoginLimiter()
+    app.state.userdbs = userdbs
+    app.state.generator = gen
+    # Прогоны генерации курса: свои у каждого приложения (web/jobs.py).
+    app.state.jobs = jobs.JobRegistry()
+    # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.
+    app.state.admin_cache = {}
+
+    # Порядок важен: добавленный позже middleware — внешний. Заголовки
+    # безопасности должны лечь и на отказы api_guard.
+    app.middleware("http")(security.session_refresh)
+    app.middleware("http")(security.api_guard)
+    app.middleware("http")(security.admin_cloak)
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        try:
+            response = await call_next(request)
+        except Exception:  # noqa: BLE001 — иначе 500 ушёл бы без заголовков ниже
+            logger.exception("Необработанная ошибка: %s %s", request.method, request.url.path)
+            response = PlainTextResponse("Внутренняя ошибка сервера.", status_code=500)
+        response.headers.setdefault("Content-Security-Policy", csp)
+        # Версия в URL меняется вместе с файлом — такую статику можно кэшировать надолго.
+        if request.url.path.startswith("/static/") and "v=" in request.url.query:
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+        for name, value in _SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.exception_handler(security.LoginRequired)
+    async def login_required(request: Request, exc: security.LoginRequired) -> Response:
+        return RedirectResponse(security.login_url(exc.next_path), status_code=303)
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, exc: RequestValidationError) -> Response:
+        """Ошибка формы в API — одно сообщение и поле, а не стек pydantic."""
+        if not request.url.path.startswith("/api/"):
+            return await request_validation_exception_handler(request, exc)
+        errors = exc.errors()
+        location = errors[0].get("loc", ()) if errors else ()
+        field = str(location[-1]) if len(location) > 1 else None
+        return JSONResponse(
+            {"detail": {"field": field, "message": "Проверьте поля формы."}}, status_code=422
+        )
+
+    @app.get("/healthz", include_in_schema=False)
+    async def healthz() -> dict[str, str]:
+        return {"status": "ok"}
+
+    # Локальный импорт: модули маршрутов берут зависимости из app.state.
+    from llm_tutor.web import (
+        api_admin,
+        api_admin_courses,
+        api_auth,
+        api_lesson,
+        pages,
+        pages_admin,
+        pages_admin_courses,
+    )
+
+    app.include_router(api_auth.router)
+    app.include_router(api_lesson.router)
+    app.include_router(api_admin.router)
+    app.include_router(api_admin_courses.router)
+    app.include_router(pages_admin.router)
+    app.include_router(pages_admin_courses.router)
+    app.include_router(pages.router)
+    return app

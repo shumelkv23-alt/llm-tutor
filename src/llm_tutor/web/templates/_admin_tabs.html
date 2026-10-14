@@ -1,0 +1,17 @@
+{% set cid = admin_course.id if admin_course else '' %}
+{% if admin_courses and admin_picker %}
+<form class="admin-course-picker" method="get" action="{{ admin_action }}">
+  <label for="admin-course">Курс</label>
+  <select id="admin-course" name="course">
+    {% for item in admin_courses %}
+    <option value="{{ item.id }}"{% if admin_course and item.id == admin_course.id %} selected{% endif %}>{{ item.title }}{% if item.status != 'published' %} · черновик{% endif %}</option>
+    {% endfor %}
+  </select>
+  <button class="btn" type="submit">Показать</button>
+</form>
+{% endif %}
+<nav class="admin-tabs" aria-label="Разделы админки">
+  <a href="/admin/students?course={{ cid }}"{% if tab == 'students' %} aria-current="page"{% endif %}>Ученики</a>
+  <a href="/admin/course?course={{ cid }}"{% if tab == 'course' %} aria-current="page"{% endif %}>Курс</a>
+  <a href="/admin/courses"{% if tab == 'courses' %} aria-current="page"{% endif %}>Создать курс</a>
+</nav>

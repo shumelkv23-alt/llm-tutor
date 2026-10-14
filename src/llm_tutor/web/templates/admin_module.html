@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка · редактор{% endblock %}
+{% block heading %}Модуль {{ number }}{% endblock %}
+{% block description %}{{ course.title }}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
+{% block actions %}<a class="btn" href="/admin/courses/{{ course.id }}">К курсу</a>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+
+{% if modules|length > 1 %}
+<nav class="module-nav" aria-label="Модули курса">
+  {% for item in modules %}<a href="/admin/courses/{{ course.id }}/modules/{{ item }}"{% if item == number %} aria-current="page"{% endif %}>Модуль {{ item }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+<div id="admin-module"
+     data-screen="module"
+     data-course="{{ course.id }}"
+     data-number="{{ number }}"
+     data-api="/api/admin/courses/{{ course.id }}/modules/{{ number }}"
+     data-course-api="/api/admin/courses/{{ course.id }}"
+     data-theory="/api/admin/courses/{{ course.id }}/modules/{{ number }}/theory"
+     data-ids="/api/admin/courses/{{ course.id }}/ids">
+  <p class="muted" id="module-loading">Загружаю модуль…</p>
+  <p class="notice error" id="module-error" role="alert" hidden></p>
+  <div class="notice" id="module-warnings" role="status" hidden></div>
+
+  {# Действия над модулем целиком стоят вне редактора: перегенерировать или
+     удалить модуль можно и тогда, когда его файл не читается. #}
+  <section class="panel module-actions-panel" aria-labelledby="module-actions-title">
+    <h2 id="module-actions-title" class="section-title">Модуль целиком</h2>
+    <p class="form-hint">Перегенерация собирает модуль с нуля: план, занятия, разделы, задания и конспекты перепишутся. Правки в этом модуле потеряются.</p>
+    <div class="admin-actions">
+      <button class="btn" type="button" data-action="check-module">Проверить код-задания</button>
+      <button class="btn" type="button" data-action="regenerate-plan">{{ icon('refresh') }}<span>Перегенерировать</span></button>
+      <button class="btn danger" type="button" data-action="delete-module">Удалить модуль</button>
+    </div>
+    <div class="run" id="module-run" hidden>
+      <div class="run-head"><strong class="run-step" id="module-run-step"></strong><span class="muted" id="module-run-count"></span></div>
+      <div class="progress-track"><span class="progress-fill" id="module-run-fill"></span></div>
+      <p class="notice error" id="module-run-error" role="alert" hidden></p>
+      <div class="notice" id="module-run-warnings" role="status" hidden></div>
+    </div>
+    <div class="notice" id="module-check" role="status" hidden></div>
+  </section>
+
+  <div class="module-editor" id="module-editor" hidden></div>
+</div>
+{% endblock %}

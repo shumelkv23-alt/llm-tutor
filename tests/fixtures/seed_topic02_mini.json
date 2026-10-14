@@ -1,0 +1,45 @@
+{
+  "course": "test/topic02_mini",
+  "comment": "Тестовый мини-модуль 2: четыре темы, межмодульные рёбра к topic01, анкета.",
+  "topic": {
+    "number": 2,
+    "title": "Визуальный анализ (тестовый мини-модуль)",
+    "intro": "Тестовый модуль: графики pandas и связи признаков.",
+    "survey": {
+      "level_key": "t02_level",
+      "level_question": "Как у тебя с графиками?",
+      "level_options": ["С нуля", "Немного рисовал", "Уверенно строю графики"],
+      "blocks": [
+        {"key": "t02_basics", "title": "Простые графики", "question": "Строишь простые графики?", "example": "df.plot, hist", "concepts": ["mini_plots", "mini_hist"]},
+        {"key": "t02_relations", "title": "Распределения и связи", "question": "Сравниваешь распределения и связи?", "example": "boxplot, corr", "concepts": ["mini_box", "mini_corr"]}
+      ],
+      "assumed_by_confident": ["t02_basics"],
+      "foundation": ["t02_basics"]
+    }
+  },
+  "nodes": [
+    {"id": "mini_plots", "name": "Графики в pandas", "difficulty": 0.3, "description": "df.plot и его виды.", "source_url": null},
+    {"id": "mini_hist", "name": "Гистограмма", "difficulty": 0.3, "description": "Распределение одного количественного признака.", "source_url": null},
+    {"id": "mini_box", "name": "Ящик с усами", "difficulty": 0.4, "description": "Медиана, квартили и выбросы на одном графике.", "source_url": null},
+    {"id": "mini_corr", "name": "Матрица корреляций", "difficulty": 0.45, "description": "Попарные корреляции количественных признаков.", "source_url": null}
+  ],
+  "edges": [
+    {"from_id": "pandas_dataframe", "to_id": "mini_plots", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "mini_plots", "to_id": "mini_hist", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "mini_plots", "to_id": "mini_box", "type": "requires", "hard": true, "weight": 1.0},
+    {"from_id": "describe_stats", "to_id": "mini_box", "type": "requires", "hard": false, "weight": 0.5},
+    {"from_id": "mini_hist", "to_id": "mini_corr", "type": "requires", "hard": true, "weight": 1.0}
+  ],
+  "items": [
+    {"id": 2001, "prompt": "Какой метод DataFrame строит график средствами pandas?", "answer_type": "choice", "concept_weights": {"mini_plots": 1.0}, "difficulty": 0.3, "options": ["df.plot()", "df.draw()", "df.chart()"], "answer": "0"},
+    {"id": 2002, "prompt": "Что задаёт параметр kind в df.plot?", "answer_type": "choice", "concept_weights": {"mini_plots": 1.0}, "difficulty": 0.3, "options": ["Вид графика: line, bar, hist и другие", "Цвет линий", "Размер шрифта подписей"], "answer": "0"},
+    {"id": 2003, "prompt": "Что показывает гистограмма?", "answer_type": "choice", "concept_weights": {"mini_hist": 1.0}, "difficulty": 0.3, "options": ["Распределение значений одного признака", "Связь двух признаков", "Долю пропусков в столбцах"], "answer": "0"},
+    {"id": 2004, "prompt": "Что задаёт параметр bins у гистограммы?", "answer_type": "choice", "concept_weights": {"mini_hist": 1.0}, "difficulty": 0.3, "options": ["Число интервалов разбиения", "Число строк выборки", "Ширину рисунка"], "answer": "0"},
+    {"id": 2005, "prompt": "Что отмечает линия внутри ящика на boxplot?", "answer_type": "choice", "concept_weights": {"mini_box": 1.0}, "difficulty": 0.4, "options": ["Медиану", "Среднее", "Максимум"], "answer": "0"},
+    {"id": 2006, "prompt": "Между какими квантилями лежит ящик на boxplot?", "answer_type": "choice", "concept_weights": {"mini_box": 1.0, "describe_stats": 0.5}, "difficulty": 0.4, "options": ["Между первым и третьим квартилями", "Между минимумом и максимумом", "Между средним и медианой"], "answer": "0"},
+    {"id": 2007, "prompt": "Какой метод DataFrame считает матрицу корреляций?", "answer_type": "choice", "concept_weights": {"mini_corr": 1.0}, "difficulty": 0.45, "options": ["df.corr()", "df.cov_matrix()", "df.relate()"], "answer": "0"},
+    {"id": 2008, "prompt": "Какое значение коэффициента Пирсона означает отсутствие линейной связи?", "answer_type": "choice", "concept_weights": {"mini_corr": 1.0}, "difficulty": 0.45, "options": ["0", "1", "-1"], "answer": "0"}
+  ],
+  "rubrics": [],
+  "criteria": []
+}
