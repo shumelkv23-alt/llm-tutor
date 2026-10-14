@@ -112,6 +112,36 @@ def test_smtp_configured_needs_address_and_password(user, password, expected) ->
     assert settings.smtp_configured is expected
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "expected"),
+    [
+        ("smtp_host", "  smtp.example.com ", "smtp.example.com"),
+        ("smtp_user", "  tutor@example.com  ", "tutor@example.com"),
+        ("mail_from", "  tutor@llm-tutor.ru ", "tutor@llm-tutor.ru"),
+        ("mail_from_name", "  llm·tutor  ", "llm·tutor"),
+        ("public_base_url", " https://tutor.example.com/ ", "https://tutor.example.com/"),
+        # Пробельное значение — это пусто, а не адрес из пробелов (аудит среза 71).
+        ("smtp_user", "   ", None),
+        ("mail_from", "   ", None),
+    ],
+)
+def test_mail_settings_are_stripped(field, value, expected) -> None:
+    """Пробелы по краям в .env — след копипаста; в письмо и в сеть они не едут."""
+    assert getattr(_settings(**{field: value}), field) == expected
+
+
+def test_smtp_configured_needs_a_host() -> None:
+    """Пустой SMTP_HOST — та же неготовность, что и пустой пароль.
+
+    Иначе приложение собрало бы настоящий мейлер и упало ``gaierror`` на
+    первом же письме вместо понятного «почта не настроена» (аудит среза 71).
+    """
+    hostless = _settings(smtp_user="tutor@example.com", smtp_password="пароль", smtp_host="  ")
+
+    assert hostless.smtp_host == ""
+    assert hostless.smtp_configured is False
+
+
 def test_password_reset_ttl_is_read_in_minutes(tmp_path) -> None:
     env = tmp_path / ".env"
     env.write_text(

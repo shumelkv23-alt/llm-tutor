@@ -33,6 +33,18 @@ RETIRED_SETTINGS = frozenset(
 )
 
 
+def secret_value(secret: SecretStr | None) -> str:
+    """Значение секрета строкой; ``None`` — пустая строка.
+
+    ``model_copy(update=...)`` не прогоняет валидацию, и в поле секрета может
+    оказаться обычная строка — так делают тесты. Падать на этом не должны ни
+    ``Settings.smtp_configured``, ни сборка мейлера.
+    """
+    if secret is None:
+        return ""
+    return secret.get_secret_value() if isinstance(secret, SecretStr) else str(secret)
+
+
 class Settings(BaseSettings):
     """Настройки, читаемые из `.env` и переменных окружения.
 
@@ -168,18 +180,38 @@ class Settings(BaseSettings):
             return {key: value for key, value in data.items() if str(key).lower() not in RETIRED_SETTINGS}
         return data
 
+    @field_validator("smtp_host", "mail_from_name", "public_base_url")
+    @classmethod
+    def _strip_text(cls, v: str) -> str:
+        """Пробелы по краям почтовых полей — след копипаста из .env (аудит среза 71).
+
+        Незачищенный ``SMTP_HOST`` уводит соединение в ``gaierror`` уже на первом
+        письме, а имя отправителя с переносом строки роняет сборку письма.
+        """
+        return v.strip()
+
+    @field_validator("smtp_user", "mail_from", mode="after")
+    @classmethod
+    def _strip_optional_text(cls, v: str | None) -> str | None:
+        """Пробельный адрес — это отсутствие адреса, а не адрес из пробелов.
+
+        Иначе ``MAIL_FROM='   '`` (значение истинное!) оставлял в письме
+        ``From: llm·tutor`` без адреса — такое письмо сервер не примет.
+        """
+        return (v or "").strip() or None
+
     @property
     def smtp_configured(self) -> bool:
-        """Отправка возможна, только когда есть и адрес, и непустой пароль.
+        """Отправка возможна, только когда есть хост, адрес и непустой пароль.
 
         Пустой или пробельный пароль — та же неготовность, что и отсутствие:
         иначе приложение падало бы уже на первом письме.
         """
-        if not (self.smtp_user or "").strip():
+        if not self.smtp_host.strip():
             return False
-        if self.smtp_password is None:
+        if not self.smtp_user:
             return False
-        return bool(self.smtp_password.get_secret_value().strip())
+        return bool(secret_value(self.smtp_password).strip())
 
 
 @lru_cache

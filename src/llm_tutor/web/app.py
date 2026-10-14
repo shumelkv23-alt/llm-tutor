@@ -107,11 +107,20 @@ def _project_path(path: str) -> Path:
 
 def _warn_about_content() -> None:
     """Предупреждения о контенте курсов при старте: чего не хватает ученику."""
-    from llm_tutor.course.seed import nodes_without_theory
-    from llm_tutor.web.courses import COURSES, course_data
+    from llm_tutor.web.courses import course_data, visible_courses
 
-    for course in COURSES:
-        missing = nodes_without_theory(course_data(course))
+    # Скрытый курс в списках ученика не появляется — предупреждать не о чем.
+    for course in visible_courses():
+        data = course_data(course)
+        # Про неопубликованный модуль ученик не узнает: войти в него нельзя, и
+        # его ненаписанные конспекты — дело автора, а не повод ругаться в
+        # журнале при каждом запуске (модуль 1 курса ИСИТ выходит по частям).
+        open_topics = {topic.number for topic in data.topics if topic.published}
+        missing = [
+            node.id
+            for node in data.nodes
+            if node.topic_id in open_topics and node.id not in data.theory
+        ]
         if missing:
             logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
 

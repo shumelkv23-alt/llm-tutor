@@ -36,7 +36,7 @@
   function intro() {
     const card = el("div", "survey-card");
     const eyebrow = topic ? `Модуль ${topic.number}` : "Знакомство";
-    const title = topic ? topic.title : "Привет! Я тьютор по курсу mlcourse.ai.";
+    const title = topic ? topic.title : "Привет! Я тьютор по машинному обучению.";
     card.append(el("p", "eyebrow", eyebrow), el("h2", "", title));
     if (topic?.intro) card.append(el("p", "survey-lead", topic.intro));
     card.append(el("p", "survey-lead", INTRO_TEXT));

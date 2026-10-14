@@ -9,13 +9,19 @@ from pydantic import ValidationError
 from test_lessons_seed import _course_copy, _load, _node, _section_items
 
 from llm_tutor.course import seed as seed_module
-from llm_tutor.course.seed import SeedError, theory_headings
+from llm_tutor.course.seed import SeedError, lessons_without_final, theory_headings, thin_sections
 from legacy_course import load_course_data
 from llm_tutor.db import repos
 from llm_tutor.schemas import Section
 
 
 # --- M1: погашенные задания не считаются ---
+#
+# Правка «недописанное занятие» перевела недописанность опубликованного
+# модуля из отказа загрузить курс в предупреждение (tests/test_lessons_seed.py).
+# Находка среза 53 в силе:
+# погашенное задание в счёт не идёт — раздел остаётся «тонким», у занятия нет
+# итогового, и о том и о другом сказано в ``course.warnings``.
 
 
 def test_inactive_items_do_not_count_for_published_section(tmp_path) -> None:
@@ -23,8 +29,10 @@ def test_inactive_items_do_not_count_for_published_section(tmp_path) -> None:
         for item in _section_items(m1, "l1_group", "pivot"):
             item["active"] = False
 
-    with pytest.raises(SeedError, match="l1_group/pivot опубликованного модуля 1 меньше 2"):
-        _load(tmp_path, mutate)
+    course = _load(tmp_path, mutate)
+
+    assert thin_sections(course) == ["l1_group/pivot"]
+    assert any("l1_group/pivot" in warning and "меньше 2" in warning for warning in course.warnings)
 
 
 def test_inactive_final_does_not_count(tmp_path) -> None:
@@ -33,8 +41,10 @@ def test_inactive_final_does_not_count(tmp_path) -> None:
             if item.get("final") and "l1_group" in item["concept_weights"]:
                 item["active"] = False
 
-    with pytest.raises(SeedError, match="У занятия l1_group нет итогового задания"):
-        _load(tmp_path, mutate)
+    course = _load(tmp_path, mutate)
+
+    assert lessons_without_final(course) == ["l1_group"]
+    assert any("У занятия l1_group нет итогового задания" in w for w in course.warnings)
 
 
 # --- L1: заголовки — по CommonMark, как в рендере ---

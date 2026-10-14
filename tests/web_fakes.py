@@ -1,7 +1,6 @@
 """Подставные LLM-клиенты и почта для тестов веба и ядра."""
 
 import re
-from pathlib import Path
 
 from llm_tutor.db import repos
 from llm_tutor.grader.rubric import CriterionVerdict, RubricVerdict
@@ -33,19 +32,18 @@ class SilentLLM:
 class RecordingMailer:
     """Почта, которая никуда не отправляет, а копит письма.
 
-    ``outbox`` — каталог, куда дополнительно кладутся файлы с текстом писем:
-    так их достаёт e2e, где приложение живёт в отдельном потоке.
+    Письма живут в памяти: запрос в тестах идёт через ``httpx.ASGITransport``,
+    который доводит фоновые задачи до конца, — к моменту проверки письмо уже
+    здесь. Файловый ящик нужен только e2e, где приложение живёт в своём потоке
+    (``tests/e2e/conftest.py``: ``FileMailer``), и у него он свой.
     """
 
-    def __init__(self, outbox: Path | None = None) -> None:
+    def __init__(self) -> None:
         self.sent: list[tuple[str, str, str]] = []
-        self.outbox = outbox
         self.closed = False
 
     async def send(self, *, to: str, subject: str, text: str) -> None:
         self.sent.append((to, subject, text))
-        if self.outbox is not None:
-            (self.outbox / f"letter-{len(self.sent)}.txt").write_text(text, encoding="utf-8")
 
     def last(self) -> tuple[str, str, str]:
         assert self.sent, "Писем не было"

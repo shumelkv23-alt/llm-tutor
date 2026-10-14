@@ -19,7 +19,7 @@
   {% endif %}
   {% if card.current_topic %}<p class="course-current">Сейчас: <b>{{ card.current_topic }}</b></p>{% endif %}
   {% else %}
-  <p class="course-meta">{{ icon('book') }}<span>{{ card.topics }} занятий · теория, практика и проверка кода</span></p>
+  <p class="course-meta">{{ icon('book') }}<span>{% if card.topics %}{{ card.topics }} занятий · теория, практика и проверка кода{% else %}Занятия готовятся — модуль выйдет скоро{% endif %}</span></p>
   {% endif %}
   <div class="course-actions">
     {% if card.enrolled %}

@@ -79,6 +79,21 @@ async def test_practice_item_carries_section_label(conn, settings) -> None:
     assert item["part"] == "Раздел 1: Series"
 
 
+async def test_state_shows_parts_without_items_as_unverifiable(conn, settings) -> None:
+    """Раздел без заданий и отсутствующее итоговое — «–», а не «впереди»."""
+    load_lessons(conn)
+    _surveys_done(conn)
+    conn.execute("UPDATE items SET active = 0 WHERE id IN (3001, 3002, 3005)")
+    conn.commit()
+    await _enter(conn, settings)
+    _check(conn, settings)
+
+    lesson = views.lesson_state(conn, settings=settings)["node"]["lesson"]
+
+    assert [s["status"] for s in lesson["sections"]] == ["skipped", "current"]
+    assert lesson["final"]["status"] == "skipped"
+
+
 async def test_verify_streak_target_counts_sections_and_final(conn, settings) -> None:
     from llm_tutor.core.verify import start_verification
 

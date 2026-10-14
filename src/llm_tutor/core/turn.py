@@ -1099,8 +1099,12 @@ def _close_node_if_ready(
         conn, node_id, now=now, settings=settings
     )
     sections = _sections(graph, node_id)
+    # Итоговое задание, которого в банке ещё нет, требовать нечем: занятие
+    # закрывают разделы (недописанный урок). По той же причине не держат и разделы без
+    # заданий — они лежат в ``state.skipped_sections``.
+    final_required = diagnostic.has_lesson_item(conn, node_id, final=True, settings=settings)
     if not force and not guide.is_node_closed(
-        state, current, settings=settings, sections=sections
+        state, current, settings=settings, sections=sections, final_required=final_required
     ):
         return state, None
     # Занятие со слабым разделом или итоговым — тоже ⚠️ в маршруте (план §1.7).
@@ -1265,6 +1269,18 @@ def _issue_task(
             if state.current_node_id == node_id
             else sections[0]
         )
+        # Разделы, по которым в банке нет заданий, проверять нечем: урок ещё
+        # пишется, и держать на них ученика нельзя. Помечаем их
+        # непроверяемыми и спрашиваем по следующему разделу с заданиями.
+        skipped = list(state.skipped_sections)
+        while section_id is not None and not diagnostic.has_lesson_item(
+            conn, node_id, section_id=section_id, settings=settings
+        ):
+            if section_id not in skipped:
+                skipped.append(section_id)
+            section_id = guide.next_section(sections, state.passed_sections, skipped)
+        if skipped != state.skipped_sections:
+            state = state.model_copy(update={"skipped_sections": skipped})
         part = {"section_id": section_id} if section_id is not None else {"final": True}
 
     if state.mode == "verify":
@@ -1321,6 +1337,18 @@ def _issue_task(
                     }
                 ),
                 text,
+                None,
+            )
+        # Задания нет не только у итогового, но и у всего занятия (урок ещё
+        # пишется). Если проверять больше нечего — закрываем занятие: иначе
+        # ученик навсегда застрянет на «заданий нет» (недописанный урок).
+        closed_state, closed_note = _close_node_if_ready(
+            conn, graph, state, now=now, settings=settings
+        )
+        if closed_note:
+            return (
+                closed_state,
+                f"{NO_TASK_FOR_NODE_REPLY}\n\n{closed_note}",
                 None,
             )
         return (

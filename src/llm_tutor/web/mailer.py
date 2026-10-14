@@ -16,7 +16,7 @@ from email.message import EmailMessage
 from email.utils import formataddr
 from typing import Protocol
 
-from llm_tutor.config import Settings
+from llm_tutor.config import Settings, secret_value
 
 logger = logging.getLogger(__name__)
 
@@ -75,12 +75,19 @@ class SmtpMailer:
         self.timeout = timeout
 
     def letter(self, *, to: str, subject: str, text: str) -> EmailMessage:
-        """Письмо целиком (одна часть, UTF-8): кириллица в теме и теле."""
+        """Письмо целиком (одна часть, UTF-8): кириллица в теме и теле.
+
+        Тело — ``base64``: письмо остаётся 7-битным (``us-ascii``) и переживает
+        любой промежуточный сервер. С ``8bit`` в теле лежали бы сырые байты
+        UTF-8 без объявления ``BODY=8BITMIME`` (аудит среза 71): Gmail такое
+        съедает, релей без 8BITMIME — искалечил бы ссылку. Тема и так уезжает
+        закодированным словом RFC 2047.
+        """
         message = EmailMessage()
         message["From"] = formataddr((self.sender_name, self.sender))
         message["To"] = to
         message["Subject"] = subject
-        message.set_content(text, charset="utf-8")
+        message.set_content(text, charset="utf-8", cte="base64")
         return message
 
     def _send_sync(self, letter: EmailMessage) -> None:
@@ -94,8 +101,11 @@ class SmtpMailer:
             smtp.send_message(letter)
 
     async def send(self, *, to: str, subject: str, text: str) -> None:
-        letter = self.letter(to=to, subject=subject, text=text)
+        # Сборка письма — внутри try: перевод строки в заголовке (напр. перенос
+        # в MAIL_FROM_NAME из .env) даёт ValueError, и он не должен пролететь
+        # наружу через фоновую задачу (аудит среза 71).
         try:
+            letter = self.letter(to=to, subject=subject, text=text)
             await asyncio.to_thread(self._send_sync, letter)
         except Exception as exc:  # noqa: BLE001 — письмо фоновое, наружу нельзя
             hint = f" {AUTH_HELP}" if isinstance(exc, smtplib.SMTPAuthenticationError) else ""
@@ -148,7 +158,9 @@ def build_mailer(settings: Settings) -> Mailer:
         host=settings.smtp_host,
         port=settings.smtp_port,
         user=settings.smtp_user,
-        password=settings.smtp_password.get_secret_value(),
+        # Пробелы по краям — след копипаста «пароля приложения»; сам пароль
+        # пробелов внутри не содержит (Gmail печатает его как 4 группы по 4).
+        password=secret_value(settings.smtp_password).strip(),
         starttls=settings.smtp_starttls,
         sender=settings.mail_from,
         sender_name=settings.mail_from_name,

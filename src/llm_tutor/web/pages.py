@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from llm_tutor.web import accounts
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
-from llm_tutor.web.courses import RENAMED_COURSES, get_course
+from llm_tutor.web.courses import RENAMED_COURSES, get_course, visible_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
 from llm_tutor.web.views import course_card, learning_view
 
@@ -72,7 +72,7 @@ def _learning(request: Request, user: User) -> list[dict]:
     settings = request.app.state.settings
     result = []
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
-        course = get_course(course_id)
+        course = visible_course(course_id)
         if course is None:
             continue
         card = course_card(course, user_id=user.id, enrolled=True, pool=pool, settings=settings)
@@ -86,7 +86,7 @@ def _learning(request: Request, user: User) -> list[dict]:
 def _current_card(request: Request, user: User) -> dict | None:
     """Карточка курса, который ученик проходит сейчас (последний записанный)."""
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
-        course = get_course(course_id)
+        course = visible_course(course_id)
         if course is not None:
             return course_card(
                 course,
@@ -102,12 +102,12 @@ def _current_card(request: Request, user: User) -> dict | None:
 async def home(request: Request) -> HTMLResponse:
     user = optional_user(request)
     if user is None:
-        from llm_tutor.web.courses import COURSES
+        from llm_tutor.web.courses import visible_courses
 
         settings = request.app.state.settings
         cards = [
             course_card(course, user_id=0, enrolled=False, pool=request.app.state.userdbs, settings=settings)
-            for course in COURSES
+            for course in visible_courses()
         ]
         return render(request, "home.html", "home", user=None, cards=cards)
     return render(request, "home.html", "home", user=user, courses=_learning(request, user))
@@ -130,7 +130,7 @@ async def courses(request: Request, user: User = Depends(page_user)) -> HTMLResp
 async def lesson(request: Request, user: User = Depends(page_user)) -> Response:
     """«Занятие» в меню — последний курс ученика или каталог, если курсов нет."""
     enrolled = accounts.enrolled_courses(accounts_db(request), user.id)
-    known = [course_id for course_id in enrolled if get_course(course_id) is not None]
+    known = [course_id for course_id in enrolled if visible_course(course_id) is not None]
     target = f"/lesson/{known[0]}" if known else "/courses"
     return RedirectResponse(target, status_code=303)
 

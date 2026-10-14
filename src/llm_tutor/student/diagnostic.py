@@ -168,6 +168,38 @@ def verification_item(
     return DiagnosticQuestion(item=candidate, concept_id=node_id)
 
 
+def has_lesson_item(
+    conn: sqlite3.Connection,
+    node_id: str,
+    *,
+    section_id: str | None = None,
+    final: bool = False,
+    settings: Settings | None = None,
+) -> bool:
+    """Есть ли в банке задание этой части занятия (недописанный урок).
+
+    Та же выборка, что при выдаче (``verification_item``): «спросить нечем» и
+    «не выдаётся» не должны разойтись — иначе занятие либо запирает ученика,
+    либо закрывается, не спросив того, что спросить можно. Без ``section_id``
+    и ``final`` — «есть ли в занятии хоть одно задание».
+
+    Урок пишется по частям: раздел, по которому заданий ещё нет, проверять
+    нечем, и держать на нём занятие нельзя.
+    """
+    part = {"final": True} if final else {"section_id": section_id}
+    return (
+        verification_item(
+            conn,
+            node_id,
+            used_item_ids=frozenset(),
+            include_rubric=bool(final),
+            settings=settings,
+            **part,
+        )
+        is not None
+    )
+
+
 def plan_evidence(
     conn: sqlite3.Connection,
     graph: CourseGraph,

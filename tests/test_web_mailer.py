@@ -2,6 +2,7 @@
 
 import logging
 import smtplib
+from email import message_from_bytes
 from email.header import decode_header, make_header
 from email.message import EmailMessage
 from email.utils import parseaddr
@@ -108,6 +109,43 @@ async def test_smtp_mailer_sends_utf8_letter(fake_smtp) -> None:
     assert LETTER["text"].strip() in message.get_content().strip()
 
 
+async def test_letter_survives_a_round_trip_as_seven_bit_bytes(fake_smtp) -> None:
+    """Письмо, каким оно уходит в сеть: только ascii, кириллица — в кодировке.
+
+    Тело в ``8bit`` (сырые байты UTF-8 без ``BODY=8BITMIME``) релей без
+    восьмибитной поддержки искалечил бы — вместе со ссылкой восстановления.
+    """
+    await _smtp_mailer().send(**LETTER)
+
+    raw = fake_smtp.message.as_bytes()
+    assert raw.isascii(), "письмо не 7-битное"
+    assert LETTER["subject"].encode() not in raw, "тема ушла сырыми байтами"
+    assert b"=?utf-8?" in raw, "тема не закодирована словом RFC 2047"
+
+    # Разбор — в политике compat32: заголовки там сырые, декодируем сами.
+    parsed = message_from_bytes(raw)
+    assert str(make_header(decode_header(parsed["From"]))) == "llm·tutor <tutor@example.com>"
+    assert str(make_header(decode_header(parsed["Subject"]))) == LETTER["subject"]
+    body = parsed.get_payload(decode=True).decode("utf-8")
+    assert body.strip() == LETTER["text"].strip()
+    # Ссылка восстановления переживает кодирование целиком.
+    assert "reset-password?token=секрет" in body
+
+
+async def test_send_never_raises_on_a_broken_header(fake_smtp, caplog) -> None:
+    """Перевод строки в заголовке — в журнал, а не в фоновую задачу (аудит 71).
+
+    Так выглядел бы ``MAIL_FROM_NAME='llm\\ntutor'`` из .env: сборка письма
+    падала ``ValueError`` мимо ``try`` и всплывала необработанной ошибкой.
+    """
+    with caplog.at_level(logging.ERROR):
+        await _smtp_mailer(sender_name="llm\ntutor").send(**LETTER)
+
+    assert "ValueError" in caplog.text
+    assert fake_smtp.calls == [], "письмо не должно было уйти"
+    assert "секрет" not in caplog.text
+
+
 async def test_smtp_mailer_skips_starttls_when_disabled(fake_smtp) -> None:
     await _smtp_mailer(starttls=False).send(**LETTER)
 
@@ -175,3 +213,36 @@ def test_letter_from_falls_back_to_the_smtp_user() -> None:
         smtp_user="tutor@example.com", smtp_password="пароль", mail_from="tutor@llm-tutor.ru"
     )
     assert mailer.build_mailer(with_from).sender == "tutor@llm-tutor.ru"
+
+
+def test_mail_from_of_spaces_is_not_an_address() -> None:
+    """``MAIL_FROM='   '`` — это отсутствие адреса, а не адрес из пробелов.
+
+    Иначе в письме осталось бы ``From: llm·tutor`` без адреса (аудит среза 71),
+    и сервер отказался бы его принять.
+    """
+    settings = _settings(
+        smtp_user="tutor@example.com", smtp_password="пароль", mail_from="   "
+    )
+
+    built = mailer.build_mailer(settings)
+
+    assert built.sender == "tutor@example.com"
+    assert parseaddr(str(built.letter(**LETTER)["From"]))[1] == "tutor@example.com"
+
+
+def test_a_password_pasted_with_spaces_still_logs_in() -> None:
+    """Пробелы по краям «пароля приложения» — след копипаста, а не часть пароля."""
+    settings = _settings(smtp_user="tutor@example.com", smtp_password="  abcd efgh ijkl mnop  ")
+
+    assert mailer.build_mailer(settings).password == "abcd efgh ijkl mnop"
+
+
+def test_a_plain_string_password_does_not_break_the_mailer() -> None:
+    """``model_copy`` не валидирует: в поле секрета может лежать строка."""
+    plain = _settings(smtp_user="tutor@example.com", smtp_password="пароль").model_copy(
+        update={"smtp_password": "пароль"}
+    )
+
+    assert plain.smtp_configured is True
+    assert mailer.build_mailer(plain).password == "пароль"

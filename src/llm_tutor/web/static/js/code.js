@@ -15,7 +15,9 @@
   // Загрузка Python с CDN: первый раз до минуты, дальше — из кэша браузера.
   const LOAD_TIMEOUT_MS = 90000;
   const DRAFT_KEY = `llmTutor.code.${window.Lesson.course}`;
-  const SANDBOX_TEXT = "import pandas as pd\n\ndf = pd.DataFrame({\"city\": [\"Казань\", \"Москва\", \"Казань\"], \"age\": [31, 45, 27]})\nprint(df.groupby(\"city\")[\"age\"].mean())\n";
+  // Пустая песочница — общий пример на чистом Python: курс ИСИТ начинается с
+  // основ, и пример с pandas учил бы не тому занятию (да и тянет pandas из CDN).
+  const SANDBOX_TEXT = "numbers = [3, 1, 4, 1, 5, 9]\n\nprint(\"Сумма:\", sum(numbers))\nprint(\"Максимум:\", max(numbers))\n";
 
   let editor = null;
   let worker = null;

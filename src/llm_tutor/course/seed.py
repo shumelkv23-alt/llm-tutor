@@ -256,18 +256,24 @@ def section_text(text: str, title: str) -> str | None:
     return None
 
 
-def _check_theory_sections(node: Concept, text: str) -> None:
-    """В конспекте занятия есть ``## <title>`` каждого раздела в порядке seed."""
+def _theory_section_gaps(node: Concept, text: str) -> list[str]:
+    """Разделы, которых нет в конспекте (``## <title>``), — предупреждения.
+
+    Конспект пишется вместе с заданиями: недостающий раздел — недописанное
+    содержание, а не ошибка формата.
+    """
     headings = theory_headings(text)
     position = 0
+    gaps: list[str] = []
     for section in node.sections:
         try:
             position = headings.index(section.title, position) + 1
         except ValueError:
-            raise SeedError(
+            gaps.append(
                 f"В конспекте занятия {node.id} нет заголовка «## {section.title}» "
                 f"(или он стоит не по порядку разделов)"
-            ) from None
+            )
+    return gaps
 
 
 def _section_items(items: Sequence[Item]) -> dict[tuple[str, str], int]:
@@ -281,14 +287,21 @@ def _section_items(items: Sequence[Item]) -> dict[tuple[str, str], int]:
     return counts
 
 
-def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> None:
+def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> list[str]:
     """Правила занятий с разделами (план dense-lessons §3).
 
     Модуль либо целиком в старом формате (темы без разделов, правила занятий
-    его не касаются), либо целиком в формате занятий. Содержание (задания на
-    раздел, итоговое, конспект) требуется только от опубликованного модуля.
+    его не касаются), либо целиком в формате занятий.
+
+    Формат — ошибка (``SeedError``): столько-то разделов, уникальные id и
+    названия, задание лежит в разделе своего занятия. Недописанное содержание
+    опубликованного модуля — предупреждение: курс пишется по частям, и
+    открыть модуль, где ещё не все задания, автор вправе. Ученика
+    такая недописанность не запирает: раздел без заданий занятие не держит, а
+    итоговое, которого нет, не требуется (``guide.is_node_closed``).
     """
     nodes = {node.id: node for seed in seeds for node in seed.nodes}
+    warnings: list[str] = []
     for seed in seeds:
         number = seed.topic.number
         lessons = [node for node in seed.nodes if node.sections]
@@ -343,15 +356,21 @@ def _check_lessons(seeds: Sequence[Seed], items: Sequence[Item]) -> None:
                 continue
             for section in node.sections:
                 if counts.get((node.id, section.id), 0) < MIN_SECTION_ITEMS:
-                    raise SeedError(
+                    warnings.append(
                         f"В разделе {node.id}/{section.id} опубликованного модуля "
-                        f"{seed.topic.number} меньше {MIN_SECTION_ITEMS} заданий"
+                        f"{seed.topic.number} меньше {MIN_SECTION_ITEMS} заданий: "
+                        f"спросить по нему будет почти нечего"
                     )
             if node.id not in finals:
-                raise SeedError(f"У занятия {node.id} нет итогового задания")
+                warnings.append(
+                    f"У занятия {node.id} нет итогового задания: "
+                    f"закрыть его можно будет по разделам"
+                )
             if node.id not in seed.theory:
-                raise SeedError(f"У занятия {node.id} нет конспекта")
-            _check_theory_sections(node, seed.theory[node.id])
+                warnings.append(f"У занятия {node.id} нет конспекта")
+            else:
+                warnings.extend(_theory_section_gaps(node, seed.theory[node.id]))
+    return warnings
 
 
 def _merge_legacy(
@@ -434,7 +453,7 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     _check_references(nodes, items, rubrics, criteria)
     CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
     warnings = _check_topics(ordered)
-    _check_lessons(ordered, items)
+    warnings.extend(_check_lessons(ordered, items))
     legacy = _merge_legacy(ordered, nodes)
     return Course(
         topics=tuple(seed.topic for seed in ordered),
@@ -571,13 +590,21 @@ def main(argv: list[str] | None = None) -> int:
     from llm_tutor.db.connection import get_conn, migrate
 
     parser = argparse.ArgumentParser(description="Проверка и загрузка курса в БД.")
-    parser.add_argument(
+    # Курсов в проекте два, и модули у них в разных каталогах: либо один
+    # файл, либо каталог модулей одного курса (срез 1 курса ИСИТ).
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--seed",
         default=None,
         help=(
             "один seed-файл модуля — только для отладки: остальные модули в БД "
             "гаснут; по умолчанию — все модули из data/"
         ),
+    )
+    source.add_argument(
+        "--data-dir",
+        default=None,
+        help="каталог модулей курса (например, data/isit); по умолчанию — data/",
     )
     parser.add_argument(
         "--db",
@@ -588,13 +615,27 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if args.seed is not None:
+        paths: list[Path] | None = [Path(args.seed)]
+        folder = None
+    elif args.data_dir is not None:
+        # Относительный путь — от корня проекта: так же ищет БД get_conn.
+        folder = Path(args.data_dir)
+        folder = folder if folder.is_absolute() else _PROJECT_ROOT / folder
+        paths = course_paths(folder)
+        if not paths:
+            raise FileNotFoundError(f"Нет seed-файлов модулей в {folder}")
+    else:
+        paths, folder = None, DATA_DIR
+
     conn = get_conn(args.db)
     try:
         migrate(conn)
-        course = load_course(conn, None if args.seed is None else [args.seed])
+        course = load_course(conn, paths)
     finally:
         conn.close()
 
+    print(f"Модули курса: {folder if folder is not None else args.seed}")
     print(
         f"Загружено: {len(course.topics)} модулей, {len(course.nodes)} концептов, "
         f"{len(course.edges)} рёбер, {len(course.items)} заданий"
