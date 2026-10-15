@@ -36,8 +36,9 @@ def test_empty_openrouter_key_raises_clear_error() -> None:
     assert "OPENROUTER_API_KEY" in str(exc_info.value)
 
 
-def test_retired_settings_from_old_env_are_ignored(tmp_path) -> None:
+def test_retired_settings_from_old_env_are_ignored(tmp_path, monkeypatch) -> None:
     """Старый .env (с токеном бота и диагностикой) не мешает запуску веба (Срез 49)."""
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)  # ключ — из этого .env
     env = tmp_path / ".env"
     env.write_text(
         "OPENROUTER_API_KEY=sk-test\nTELEGRAM_BOT_TOKEN=123:abc\nDIAGNOSTIC_FIRST_PASS=5\n"

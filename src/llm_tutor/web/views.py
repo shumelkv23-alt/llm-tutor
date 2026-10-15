@@ -18,6 +18,7 @@ from llm_tutor.core.overview import (
     topic_rows,
 )
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import Course as CourseData
 from llm_tutor.course.seed import SeedError
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
@@ -25,7 +26,7 @@ from llm_tutor.student import diagnostic, guide, survey
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
-from llm_tutor.web.courses import Course
+from llm_tutor.web.courses import Course, try_course_data
 from llm_tutor.web.userdb import UserDBPool
 
 STATUS_LABELS = {
@@ -64,6 +65,8 @@ def course_card(
         "closed": 0,
         "current_topic": None,
         "status": "available",
+        # Черновик виден только админу (предпросмотр) — страница его помечает.
+        "published": course.status == "published",
         # Прогресс по модулям (срез 55): «Модуль N — закрыто k из m» / «скоро».
         "modules": [],
     }
@@ -75,11 +78,13 @@ def course_card(
                 module_view(module)
                 for module in module_rows(conn, topic_rows(conn, settings=settings))
             ]
-        except COURSE_ERRORS:
-            # Одна битая БД не должна ронять каталог: курс помечается недоступным.
-            logger.exception("Курс %s для ученика %s не открывается", course.id, user_id)
+        except (*COURSE_ERRORS, OSError):
+            # Одна битая БД (или нечитаемый курс) не должна ронять каталог:
+            # курс помечается недоступным, остальные показываются как обычно.
+            logger.exception("БД ученика %s по курсу %s не открывается", user_id, course.id)
             card.update(status="error", status_label=STATUS_LABELS["error"], percent=0)
-            card["topics"] = _topic_count(course) or 0
+            data, _ = try_course_data(course)
+            card["topics"] = _topic_count(data) if data is not None else 0
             return card
         card.update(topics=progress.total, closed=progress.closed, current_topic=progress.current_name)
         if not progress.survey_done:
@@ -91,30 +96,26 @@ def course_card(
         else:
             card["status"] = "in_progress"
     else:
-        topics = _topic_count(course)
-        if topics is None:
+        data, error = try_course_data(course)
+        if error is not None:
+            # Файлы курса не читаются (недописанный опубликованный курс): ученику
+            # честнее показать «недоступен», чем пустой курс без занятий.
+            logger.warning("Курс %s не читается: %s", course.id, error)
             card.update(status="error", status_label=STATUS_LABELS["error"], percent=0, topics=0)
             return card
-        card["topics"] = topics
+        card["topics"] = _topic_count(data)
     card["status_label"] = STATUS_LABELS[card["status"]]
     card["percent"] = round(100 * card["closed"] / card["topics"]) if card["topics"] else 0
     return card
 
 
-def _topic_count(course: Course) -> int | None:
+def _topic_count(data: CourseData) -> int:
     """Число занятий в открытых модулях курса — из seed, без БД ученика.
 
     Неопубликованные модули — «скоро» (срез 55): их занятий нет и в карточке
-    записанного ученика, иначе числа разошлись бы. ``None`` — модули курса не
-    читаются: карточка скажет «недоступен», а страница не упадёт.
+    записанного ученика, иначе числа разошлись бы. Нечитаемые модули ловит
+    ``try_course_data`` у вызывающего: карточка скажет «недоступен».
     """
-    from llm_tutor.web.courses import course_data
-
-    try:
-        data = course_data(course)
-    except COURSE_ERRORS:
-        logger.exception("Модули курса %s не читаются", course.id)
-        return None
     published = {topic.number for topic in data.topics if topic.published}
     return sum(1 for node in data.nodes if node.topic_id in published)
 

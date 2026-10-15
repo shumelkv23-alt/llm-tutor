@@ -16,11 +16,12 @@
 <div class="admin-toolbar">
   <form class="admin-search" method="get" action="/admin/students" role="search">
     <label class="visually-hidden" for="admin-q">Поиск по имени или email</label>
+    <input type="hidden" name="course" value="{{ admin_course.id }}">
     <input id="admin-q" type="search" name="q" value="{{ q }}" maxlength="100" placeholder="Имя или email" autocomplete="off">
     <button class="btn" type="submit">Найти</button>
   </form>
   <p class="admin-snapshot muted">Данные на {{ built_at }} ·
-    <a href="?{{ {'q': q, 'page': page, 'refresh': 1}|urlencode }}">Обновить</a></p>
+    <a href="?{{ {'q': q, 'page': page, 'course': admin_course.id, 'refresh': 1}|urlencode }}">Обновить</a></p>
 </div>
 
 {% if rows %}
@@ -42,7 +43,7 @@
       {% set account = item.account %}{% set row = item.row %}
       <tr>
         <th scope="row">
-          <a class="admin-name" href="/admin/students/{{ account.id }}">{{ account.name }}</a>{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}
+          <a class="admin-name" href="/admin/students/{{ account.id }}?course={{ admin_course.id }}">{{ account.name }}</a>{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}
           <small class="admin-email muted">{{ account.email }}</small>
         </th>
         <td>
@@ -65,9 +66,9 @@
 </div>
 {% if pages > 1 %}
 <nav class="admin-pages" aria-label="Страницы списка">
-  {% if page > 1 %}<a class="btn" href="?{{ {'q': q, 'page': page - 1}|urlencode }}">Назад</a>{% endif %}
+  {% if page > 1 %}<a class="btn" href="?{{ {'q': q, 'page': page - 1, 'course': admin_course.id}|urlencode }}">Назад</a>{% endif %}
   <span class="muted">Страница {{ page }} из {{ pages }} · найдено {{ found }}</span>
-  {% if page < pages %}<a class="btn" href="?{{ {'q': q, 'page': page + 1}|urlencode }}">Дальше</a>{% endif %}
+  {% if page < pages %}<a class="btn" href="?{{ {'q': q, 'page': page + 1, 'course': admin_course.id}|urlencode }}">Дальше</a>{% endif %}
 </nav>
 {% endif %}
 {% else %}

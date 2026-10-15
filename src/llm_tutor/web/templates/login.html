@@ -1,6 +1,6 @@
 {% extends "auth_base.html" %}
 {% block card %}
-<p class="eyebrow">Тьютор по машинному обучению</p>
+<p class="eyebrow">{{ brand_caption }}</p>
 <h1 id="auth-title">С возвращением</h1>
 <p class="login-lead">Войдите, чтобы продолжить занятие с того места, где остановились.</p>
 <form class="auth-form" data-endpoint="/api/auth/login" data-next="{{ next }}" novalidate>

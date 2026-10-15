@@ -4,7 +4,7 @@
 {% block description %}{{ card.account.email }}{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
 {% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% endblock %}
-{% block actions %}<a class="btn" href="/admin/students">Все ученики</a>{% endblock %}
+{% block actions %}<a class="btn" href="/admin/students?course={{ admin_course.id }}">Все ученики</a>{% endblock %}
 {% block content %}
 {% include "_admin_tabs.html" %}
 {% set account = card.account %}

@@ -165,6 +165,12 @@ def clear_session_cookie(response: Response, settings: Settings) -> None:
     )
 
 
+# Сколько байт принимаем в изменяющем запросе к API. Материалы курса приходят
+# текстом (преподаватель грузит документы), поэтому предел с запасом.
+MAX_BODY_BYTES = 8 * 1024 * 1024
+BODY_TOO_LARGE = "Слишком большой запрос."
+
+
 # --- CSRF ---
 
 
@@ -192,9 +198,19 @@ async def api_guard(
     if request.url.path.startswith("/api/") and request.method in _UNSAFE_METHODS:
         if _foreign_request(request):
             return JSONResponse({"detail": {"message": FOREIGN_ORIGIN}}, status_code=403)
-        content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
-        if content_type != "application/json":
-            return JSONResponse({"detail": {"message": JSON_REQUIRED}}, status_code=415)
+        length = request.headers.get("content-length")
+        if length is not None and length.isdigit() and int(length) > MAX_BODY_BYTES:
+            # Тело читается целиком до валидации полей: без этого «текст на
+            # 50 МБ» сначала съел бы память, а потом получил бы 422.
+            return JSONResponse({"detail": {"message": BODY_TOO_LARGE}}, status_code=413)
+        # Удаление без тела — не «не-JSON»: требовать content-type не с чего.
+        # Остальные изменяющие методы обязаны быть JSON и без тела: именно так
+        # выглядит отправка формы с чужого сайта, а её мы и отбиваем.
+        bodyless_delete = request.method == "DELETE" and request.headers.get("content-length", "0") == "0"
+        if not bodyless_delete:
+            content_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+            if content_type != "application/json":
+                return JSONResponse({"detail": {"message": JSON_REQUIRED}}, status_code=415)
     return await call_next(request)
 
 

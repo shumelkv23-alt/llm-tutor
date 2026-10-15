@@ -209,9 +209,21 @@ class LLMClient:
     @staticmethod
     def _extract_content(data: dict) -> str:
         try:
-            content = data["choices"][0]["message"]["content"]
+            choice = data["choices"][0]
+            content = choice["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMError(f"Неожиданная структура ответа OpenRouter: {data!r}") from exc
-        if content is None:
-            raise LLMError("OpenRouter вернул пустой content")
+        if not content:
+            # Причина остановки объясняет пустоту: «length» — модель израсходовала
+            # лимит вывода (у reasoning-моделей на размышления), «content_filter» —
+            # ответ вырезан провайдером.
+            reason = choice.get("finish_reason") or "неизвестна"
+            usage = data.get("usage") or {}
+            tokens = usage.get("completion_tokens")
+            raise LLMError(
+                f"OpenRouter вернул пустой content (причина остановки: {reason}"
+                + (f", потрачено токенов: {tokens}" if tokens else "")
+                + "). Проверь GENERATION_MAX_TOKENS/LLM_MAX_TOKENS: у моделей с "
+                "размышлениями лимит уходит на них"
+            )
         return content

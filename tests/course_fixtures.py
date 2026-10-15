@@ -52,9 +52,9 @@ def load_lessons(conn) -> Course:
 def use_lessons_course(monkeypatch) -> None:
     """Веб-курс ``mlcourse`` — из фикстуры занятий, а не из data/ (срез 55).
 
-    Подменяется сам реестр курсов: его читают по имени модуля
-    (``courses.visible_courses``, ``courses.course_data``), поэтому одной
-    подмены ``COURSES`` хватает — копий списка по модулям нет.
+    Подменяется реестр курсов: список курсов читается модулем ``courses`` по
+    имени на каждом обращении, поэтому достаточно заменить ``COURSES`` и
+    ``_BY_ID`` здесь.
     """
     from dataclasses import replace
 

@@ -27,8 +27,8 @@ from llm_tutor.student import survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
 from llm_tutor.web.accounts import User
-from llm_tutor.web.courses import RENAMED_COURSES, Course, get_course, visible_courses
-from llm_tutor.web.security import accounts_db, require_user
+from llm_tutor.web.courses import RENAMED_COURSES, Course, published_courses, student_course
+from llm_tutor.web.security import accounts_db, optional_user, require_user
 from llm_tutor.web.views import course_card
 
 router = APIRouter(prefix="/api")
@@ -45,8 +45,12 @@ def course_or_404(course_id: str, request: Request) -> Course:
         path = request.url.path.replace(prefix, f"/courses/{RENAMED_COURSES[course_id]}/", 1)
         query = f"?{request.url.query}" if request.url.query else ""
         raise HTTPException(status_code=308, headers={"Location": path + query})
-    course = get_course(course_id)
+    # Админу черновик доступен: так он проходит занятие до публикации и видит
+    # его глазами ученика (интерфейс помечает такой курс как черновик).
+    viewer = optional_user(request)
+    course = student_course(course_id, include_drafts=bool(viewer and viewer.is_admin))
     if course is None:
+        # Черновик для ученика неотличим от несуществующего курса.
         raise HTTPException(status_code=404, detail={"message": COURSE_NOT_FOUND})
     return course
 
@@ -61,7 +65,7 @@ def cards_for(request: Request, user: User) -> list[dict]:
             pool=request.app.state.userdbs,
             settings=request.app.state.settings,
         )
-        for course in visible_courses()
+        for course in published_courses()
     ]
 
 
@@ -78,7 +82,7 @@ async def enroll(course_id: str, request: Request, user: User = Depends(require_
         # Сначала БД ученика: запись без БД оставила бы курс, который не открыть.
         try:
             pool.open(user.id, course.id)
-        except views.COURSE_ERRORS as exc:
+        except (*views.COURSE_ERRORS, OSError) as exc:
             # Открыть БД курса нечем: нечитаемые модули — та же беда, что битая
             # БД ученика, и отвечать на неё пятисоткой нечего (аудит среза 1).
             logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
@@ -126,7 +130,9 @@ async def lesson_context(
     pool = request.app.state.userdbs
     try:
         conn = pool.open(user.id, course.id)
-    except views.COURSE_ERRORS as exc:
+    except (*views.COURSE_ERRORS, OSError) as exc:
+        # Нечитаемый курс — та же беда, что битая БД: занятие недоступно, а не
+        # «сервер упал».
         logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
         raise HTTPException(status_code=503, detail={"message": COURSE_DB_BROKEN}) from exc
     return LessonContext(

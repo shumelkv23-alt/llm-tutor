@@ -31,6 +31,30 @@ def _page_number(raw: str, pages: int) -> int:
     return min(max(number, 1), pages)
 
 
+def _selected_course(course_id: str) -> courses.Course:
+    """Курс страницы админки: из query, иначе первый опубликованный.
+
+    Курсов теперь может быть много: аналитика и карточка ученика считаются по
+    одному, и преподаватель выбирает его в шапке раздела.
+    """
+    chosen = courses.get_course(course_id) if course_id else None
+    if chosen is not None:
+        return chosen
+    published = courses.published_courses()
+    return published[0] if published else courses.COURSES[0]
+
+
+def _tabs(request: Request, chosen: courses.Course, action: str) -> dict:
+    """Контекст вкладок админки: выбор курса и адрес формы выбора."""
+    return {
+        "admin_courses": courses.all_courses(),
+        "admin_course": chosen,
+        "admin_action": action,
+        # Селектор рисуем только на страницах, которые читают ?course=.
+        "admin_picker": True,
+    }
+
+
 def _sort_key(account: accounts.AccountRow, snap: admin.Snapshot):
     """Свежая активность — первой; без активности — в конце, новые регистрации выше."""
     row = snap.rows.get(account.id)
@@ -49,11 +73,13 @@ async def students(
     q: str = "",
     page: str = "1",
     refresh: str = "",
+    course: str = "",
     user: User = Depends(admin_page_user),
 ) -> HTMLResponse:
     query = q.strip()[:MAX_QUERY]
     now = time.time()
-    snap = admin.snapshot(request.app.state, courses.COURSES[0], refresh=refresh not in ("", "0"))
+    chosen = _selected_course(course)
+    snap = admin.snapshot(request.app.state, chosen, refresh=refresh not in ("", "0"))
     db = accounts_db(request)
     everyone = accounts.list_users(db)
     found = accounts.list_users(db, query) if query else everyone
@@ -80,43 +106,48 @@ async def students(
         built_at=admin.format_time(snap.built_at),
         format_time=admin.format_time,
         tab="students",
+        **_tabs(request, chosen, "/admin/students"),
     )
 
 
 @router.get("/admin/students/{user_id}", response_class=HTMLResponse)
 async def student_card_page(
-    request: Request, user_id: int, user: User = Depends(admin_page_user)
+    request: Request, user_id: int, course: str = "", user: User = Depends(admin_page_user)
 ) -> HTMLResponse:
     account = accounts.get_account(accounts_db(request), user_id)
     if account is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    course = courses.COURSES[0]
-    card = admin.student_card(request.app.state, course, account)
+    chosen = _selected_course(course)
+    card = admin.student_card(request.app.state, chosen, account)
     return render(
         request,
         "admin_student.html",
         "admin",
         user=user,
         card=card,
-        course=course,
+        course=chosen,
         format_time=admin.format_time,
         tab="students",
+        **_tabs(request, chosen, f"/admin/students/{user_id}"),
     )
 
 
 @router.get("/admin/course", response_class=HTMLResponse)
 async def course_analytics(
-    request: Request, refresh: str = "", user: User = Depends(admin_page_user)
+    request: Request, refresh: str = "", course: str = "", user: User = Depends(admin_page_user)
 ) -> HTMLResponse:
-    course = courses.COURSES[0]
-    snap = admin.snapshot(request.app.state, course, refresh=refresh not in ("", "0"))
+    chosen = _selected_course(course)
+    snap = admin.snapshot(request.app.state, chosen, refresh=refresh not in ("", "0"))
+    data, error = courses.try_course_data(chosen)
     return render(
         request,
         "admin_course.html",
         "admin",
         user=user,
-        funnel=admin.funnel(snap, courses.course_data(course)),
+        funnel=admin.funnel(snap, data) if data is not None else [],
+        broken=error,
         students=len(snap.rows),
         built_at=admin.format_time(snap.built_at),
         tab="course",
+        **_tabs(request, chosen, "/admin/course"),
     )

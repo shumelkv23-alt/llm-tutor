@@ -82,7 +82,25 @@ class Settings(BaseSettings):
     users_dir: str = "data/users"
     # Материалы RAG — общие для всех учеников, копируются в БД ученика.
     materials_db_path: str = "data/materials.sqlite3"
+    # Курсы, созданные преподавателем — папка на курс (метаданные, модули,
+    # конспекты, источники, своя БД материалов). Встроенный mlcourse — в data/.
+    courses_dir: str = "data/courses"
+    # Источники курса: сколько берём от преподавателя и из сети.
+    source_max_bytes: int = 512 * 1024  # один источник после нормализации
+    sources_max_count: int = 50  # источников на курс
+    fetch_timeout: float = 20.0  # ожидание страницы или файла GitHub
+    fetch_max_bytes: int = 2 * 1024 * 1024  # страница целиком, пока не разобрали
+    github_max_files: int = 40  # файлов из одного репозитория
+    # Модель генерации курса — отдельно от тьютора: ответы длиннее и дороже,
+    # а лимит вывода и таймаут у клиента задаются целиком, не на вызов.
+    generator_model: str = "anthropic/claude-sonnet-4.5"
+    generation_max_tokens: int = 4096
+    generation_timeout: float = 180.0
+    generation_temperature: float = 0.3
     registration_open: bool = True
+    # Подпись под логотипом в боковом меню. Своя у каждой установки: курсов
+    # теперь может быть много, и название одного не должно стоять на всех.
+    app_brand: str = "ТЬЮТОР"
     # За HTTPS (обратный прокси) — true: cookie сессии не уйдёт по HTTP.
     cookie_secure: bool = False
     # Pyodide (Python в браузере) для вкладки «Код»: дистрибутив с pandas.

@@ -950,7 +950,8 @@ async def test_card_escapes_text_and_hides_hashes(admin, web_app) -> None:
 async def test_students_list_links_to_cards(admin, web_app) -> None:
     client, user = await _learner(web_app, "Ann")
 
-    assert f'href="/admin/students/{user.id}"' in await _students_page(admin)
+    # Курс едет в ссылке: карточка показывается по выбранному в шапке курсу.
+    assert f'href="/admin/students/{user.id}?course=mlcourse"' in await _students_page(admin)
     await client.aclose()
 
 
@@ -1383,7 +1384,9 @@ async def test_course_page_requires_admin(student) -> None:
 async def test_admin_tabs_link_to_the_course_page(admin) -> None:
     html = await _students_page(admin)
 
-    assert 'href="/admin/course"' in html
+    # Курс едет и во вкладке: иначе переход по ней переключил бы админку
+    # на первый опубликованный курс.
+    assert 'href="/admin/course?course=mlcourse"' in html
 
 
 # --- Аудит среза 68: находки общего ревью ---

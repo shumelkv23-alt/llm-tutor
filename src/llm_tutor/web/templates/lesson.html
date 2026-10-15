@@ -28,6 +28,10 @@
 {% endblock %}
 {% block page_head %}{% if not course.enrolled %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
+{% if not course.published %}
+{# Предпросмотр: черновик доступен только админу, и об этом надо сказать вслух. #}
+<p class="notice" role="status">Черновик: курс ещё не опубликован, его видите только вы.</p>
+{% endif %}
 {% if course.enrolled and not course.topics %}
 {# Курс записан, но в открытых модулях ещё нет занятий: показывать пустой
    каркас урока с «Загружаем занятие…» — значит выглядеть сломанным (срез 1

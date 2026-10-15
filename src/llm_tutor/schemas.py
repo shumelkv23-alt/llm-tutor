@@ -103,6 +103,9 @@ class Item(BaseModel):
     starter: str | None = None
     setup: str | None = None
     tests: str | None = None
+    # Эталонное решение: на нём прогоняются тесты задания (course.build.check).
+    # В БД не хранится — это материал автора курса, а не ученика.
+    solution: str | None = None
     # Убранное из seed задание не удаляется (на него ссылаются события), а гасится.
     active: bool = True
     # Раздел главного концепта задания (срез 53); у итогового задания занятия
@@ -133,8 +136,10 @@ class Item(BaseModel):
                 )
         elif self.answer_type == "short" and not (self.answer or "").strip():
             raise ValueError(f"у short-задания {self.id} должен быть непустой эталон")
-        if self.answer_type != "code" and (self.starter or self.setup or self.tests):
-            raise ValueError(f"starter/setup/tests — только у code-задания (задание {self.id})")
+        if self.answer_type != "code" and (self.starter or self.setup or self.tests or self.solution):
+            raise ValueError(
+                f"starter/setup/tests/solution — только у code-задания (задание {self.id})"
+            )
         if self.final and self.section is not None:
             raise ValueError(f"у итогового задания {self.id} не бывает раздела")
         return self

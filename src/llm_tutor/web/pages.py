@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from llm_tutor.web import accounts
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
-from llm_tutor.web.courses import RENAMED_COURSES, get_course, visible_course
+from llm_tutor.web.courses import RENAMED_COURSES, published_courses, student_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
 from llm_tutor.web.views import course_card, learning_view
 
@@ -61,6 +61,7 @@ def render(
             "active": active,
             "page_title": _TITLES[active],
             "user": user,
+            "brand_caption": request.app.state.settings.app_brand,
             **context,
         },
     )
@@ -72,8 +73,8 @@ def _learning(request: Request, user: User) -> list[dict]:
     settings = request.app.state.settings
     result = []
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
-        course = visible_course(course_id)
-        if course is None:
+        course = student_course(course_id, include_drafts=user.is_admin)
+        if course is None or not course.visible:
             continue
         card = course_card(course, user_id=user.id, enrolled=True, pool=pool, settings=settings)
         learning = None
@@ -86,8 +87,8 @@ def _learning(request: Request, user: User) -> list[dict]:
 def _current_card(request: Request, user: User) -> dict | None:
     """Карточка курса, который ученик проходит сейчас (последний записанный)."""
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
-        course = visible_course(course_id)
-        if course is not None:
+        course = student_course(course_id, include_drafts=user.is_admin)
+        if course is not None and course.visible:
             return course_card(
                 course,
                 user_id=user.id,
@@ -102,12 +103,10 @@ def _current_card(request: Request, user: User) -> dict | None:
 async def home(request: Request) -> HTMLResponse:
     user = optional_user(request)
     if user is None:
-        from llm_tutor.web.courses import visible_courses
-
         settings = request.app.state.settings
         cards = [
             course_card(course, user_id=0, enrolled=False, pool=request.app.state.userdbs, settings=settings)
-            for course in visible_courses()
+            for course in published_courses()
         ]
         return render(request, "home.html", "home", user=None, cards=cards)
     return render(request, "home.html", "home", user=user, courses=_learning(request, user))
@@ -130,7 +129,12 @@ async def courses(request: Request, user: User = Depends(page_user)) -> HTMLResp
 async def lesson(request: Request, user: User = Depends(page_user)) -> Response:
     """«Занятие» в меню — последний курс ученика или каталог, если курсов нет."""
     enrolled = accounts.enrolled_courses(accounts_db(request), user.id)
-    known = [course_id for course_id in enrolled if visible_course(course_id) is not None]
+    known = [
+        course_id
+        for course_id in enrolled
+        if (course := student_course(course_id, include_drafts=user.is_admin)) is not None
+        and course.visible
+    ]
     target = f"/lesson/{known[0]}" if known else "/courses"
     return RedirectResponse(target, status_code=303)
 
@@ -144,7 +148,7 @@ async def lesson_page(
         # Query-строка (?tab=…) не теряется (аудит среза 52, L2).
         query = f"?{request.url.query}" if request.url.query else ""
         return RedirectResponse(f"/lesson/{RENAMED_COURSES[course_id]}{query}", status_code=308)
-    course = get_course(course_id)
+    course = student_course(course_id, include_drafts=user.is_admin)
     if course is None:
         raise HTTPException(status_code=404, detail="Такого курса нет.")
     enrolled = course_id in accounts.enrolled_courses(accounts_db(request), user.id)
