@@ -16,6 +16,7 @@ import uvicorn
 
 from llm_tutor.config import Settings
 from llm_tutor.web.app import create_app
+from web_fakes import RESET_LINK_RE
 
 playwright_api = pytest.importorskip("playwright.async_api")
 
@@ -43,6 +44,39 @@ class EchoTutor:
         pass
 
 
+class FileMailer:
+    """Письма — файлами в каталог: у e2e сервер живёт в другом потоке.
+
+    Запись атомарная (черновик + переименование): тест опрашивает каталог и не
+    должен прочитать письмо наполовину.
+    """
+
+    def __init__(self, outbox: Path) -> None:
+        self.outbox = outbox
+        self.count = 0
+
+    async def send(self, *, to: str, subject: str, text: str) -> None:
+        self.count += 1
+        target = self.outbox / f"letter-{self.count}.txt"
+        draft = target.with_suffix(".part")
+        draft.write_text(f"Кому: {to}\nТема: {subject}\n\n{text}", encoding="utf-8")
+        draft.replace(target)
+
+    async def aclose(self) -> None:
+        """Ничего не держит."""
+
+    def link(self, timeout: float = 10.0) -> str:
+        """Ссылка восстановления из первого письма (ждёт, пока оно появится)."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            for letter in sorted(self.outbox.glob("letter-*.txt")):
+                match = RESET_LINK_RE.search(letter.read_text(encoding="utf-8"))
+                if match:
+                    return match.group(0)
+            time.sleep(0.05)
+        raise AssertionError("Письмо со ссылкой восстановления не пришло")
+
+
 def _free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -64,18 +98,40 @@ def live_server(tmp_path):
     yield from _serve(tmp_path)
 
 
-def _serve(tmp_path):
+@pytest.fixture
+def mail_server(tmp_path):
+    """Сервер, письма которого ложатся файлами рядом с его БД (срез 74).
+
+    Отдаёт пару «адрес, почта»: ссылку из письма иначе не достать — сервер
+    живёт в отдельном потоке, а журнал uvicorn в e2e приглушён.
+    """
+    outbox = tmp_path / "outbox"
+    outbox.mkdir()
+    post = FileMailer(outbox)
+    for url in _serve(tmp_path, mailer=post):
+        yield url, post
+
+
+def _serve(tmp_path, mailer=None):
+    port = _free_port()
     settings = Settings(
         _env_file=None,
         openrouter_api_key="test-key",
         accounts_db_path=str(tmp_path / "accounts.sqlite3"),
         users_dir=str(tmp_path / "users"),
         materials_db_path=str(tmp_path / "materials.sqlite3"),
+        # Ссылка в письме — на этот же сервер: иначе PUBLIC_BASE_URL по
+        # умолчанию (127.0.0.1:8000) увёл бы браузер на чужой порт.
+        public_base_url=f"http://127.0.0.1:{port}",
         **({"pyodide_index_url": os.environ["PYODIDE_INDEX_URL"]} if os.environ.get("PYODIDE_INDEX_URL") else {}),
     )
-    port = _free_port()
     server = uvicorn.Server(
-        uvicorn.Config(create_app(settings, client=EchoTutor()), host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(
+            create_app(settings, client=EchoTutor(), mailer=mailer),
+            host="127.0.0.1",
+            port=port,
+            log_level="warning",
+        )
     )
     thread = threading.Thread(target=server.run, daemon=True)
     thread.start()

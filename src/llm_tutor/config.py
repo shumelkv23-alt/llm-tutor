@@ -33,6 +33,18 @@ RETIRED_SETTINGS = frozenset(
 )
 
 
+def secret_value(secret: SecretStr | None) -> str:
+    """Значение секрета строкой; ``None`` — пустая строка.
+
+    ``model_copy(update=...)`` не прогоняет валидацию, и в поле секрета может
+    оказаться обычная строка — так делают тесты. Падать на этом не должны ни
+    ``Settings.smtp_configured``, ни сборка мейлера.
+    """
+    if secret is None:
+        return ""
+    return secret.get_secret_value() if isinstance(secret, SecretStr) else str(secret)
+
+
 class Settings(BaseSettings):
     """Настройки, читаемые из `.env` и переменных окружения.
 
@@ -70,7 +82,25 @@ class Settings(BaseSettings):
     users_dir: str = "data/users"
     # Материалы RAG — общие для всех учеников, копируются в БД ученика.
     materials_db_path: str = "data/materials.sqlite3"
+    # Курсы, созданные преподавателем — папка на курс (метаданные, модули,
+    # конспекты, источники, своя БД материалов). Встроенный mlcourse — в data/.
+    courses_dir: str = "data/courses"
+    # Источники курса: сколько берём от преподавателя и из сети.
+    source_max_bytes: int = 512 * 1024  # один источник после нормализации
+    sources_max_count: int = 50  # источников на курс
+    fetch_timeout: float = 20.0  # ожидание страницы или файла GitHub
+    fetch_max_bytes: int = 2 * 1024 * 1024  # страница целиком, пока не разобрали
+    github_max_files: int = 40  # файлов из одного репозитория
+    # Модель генерации курса — отдельно от тьютора: ответы длиннее и дороже,
+    # а лимит вывода и таймаут у клиента задаются целиком, не на вызов.
+    generator_model: str = "anthropic/claude-sonnet-4.5"
+    generation_max_tokens: int = 4096
+    generation_timeout: float = 180.0
+    generation_temperature: float = 0.3
     registration_open: bool = True
+    # Подпись под логотипом в боковом меню. Своя у каждой установки: курсов
+    # теперь может быть много, и название одного не должно стоять на всех.
+    app_brand: str = "ТЬЮТОР"
     # За HTTPS (обратный прокси) — true: cookie сессии не уйдёт по HTTP.
     cookie_secure: bool = False
     # Pyodide (Python в браузере) для вкладки «Код»: дистрибутив с pandas.
@@ -122,6 +152,29 @@ class Settings(BaseSettings):
     # прибавиться, поэтому свидетельство слабее.
     repeat_evidence_weight: float = Field(default=0.3, ge=0.0, le=1.0)
 
+    # --- Почта: восстановление пароля по ссылке, Срез 71 ---
+    # У всех полей есть дефолт: старый .env (без почтовых строк) запускается
+    # как раньше — extra="forbid" ловит опечатки в именах, а не отсутствие.
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_user: str | None = None
+    # «Пароль приложения» Google (16 символов), а не пароль аккаунта: обычный
+    # пароль сервер отвергает с 535. Секрет — как OPENROUTER_API_KEY.
+    smtp_password: SecretStr | None = None
+    smtp_starttls: bool = True
+    smtp_timeout: float = Field(default=10.0, gt=0)
+    # Отправитель письма; по умолчанию — SMTP_USER (Gmail всё равно подменит
+    # адрес на владельца аккаунта). Имя — то, что видит ученик.
+    mail_from: str | None = None
+    mail_from_name: str = "llm·tutor"
+    # Абсолютный адрес в письме — из настроек, а не из request.base_url: за
+    # прокси заголовок Host подконтролен клиенту, и ученику ушла бы ссылка
+    # на чужой хост.
+    public_base_url: str = "http://127.0.0.1:8000"
+    password_reset_ttl_minutes: int = Field(default=60, ge=5, le=1440)
+    # Запросов письма на один адрес в окне лимитера (security.LoginLimiter).
+    password_reset_limit: int = Field(default=3, ge=1)
+
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL
     context_rag_top_k: int = DEFAULT_RAG_TOP_K
@@ -144,6 +197,39 @@ class Settings(BaseSettings):
         if isinstance(data, dict):
             return {key: value for key, value in data.items() if str(key).lower() not in RETIRED_SETTINGS}
         return data
+
+    @field_validator("smtp_host", "mail_from_name", "public_base_url")
+    @classmethod
+    def _strip_text(cls, v: str) -> str:
+        """Пробелы по краям почтовых полей — след копипаста из .env (аудит среза 71).
+
+        Незачищенный ``SMTP_HOST`` уводит соединение в ``gaierror`` уже на первом
+        письме, а имя отправителя с переносом строки роняет сборку письма.
+        """
+        return v.strip()
+
+    @field_validator("smtp_user", "mail_from", mode="after")
+    @classmethod
+    def _strip_optional_text(cls, v: str | None) -> str | None:
+        """Пробельный адрес — это отсутствие адреса, а не адрес из пробелов.
+
+        Иначе ``MAIL_FROM='   '`` (значение истинное!) оставлял в письме
+        ``From: llm·tutor`` без адреса — такое письмо сервер не примет.
+        """
+        return (v or "").strip() or None
+
+    @property
+    def smtp_configured(self) -> bool:
+        """Отправка возможна, только когда есть хост, адрес и непустой пароль.
+
+        Пустой или пробельный пароль — та же неготовность, что и отсутствие:
+        иначе приложение падало бы уже на первом письме.
+        """
+        if not self.smtp_host.strip():
+            return False
+        if not self.smtp_user:
+            return False
+        return bool(secret_value(self.smtp_password).strip())
 
 
 @lru_cache

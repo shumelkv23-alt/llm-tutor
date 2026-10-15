@@ -17,9 +17,9 @@ from pathlib import Path
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.db.connection import get_conn, migrate
-from llm_tutor.web import accounts
+from llm_tutor.web import accounts, courses
 from llm_tutor.web.app import _project_path
-from llm_tutor.web.courses import COURSES, get_course
+from llm_tutor.web.courses import get_course, published_courses
 from llm_tutor.web.userdb import UserDBPool
 
 
@@ -89,19 +89,22 @@ def set_admin_role(settings: Settings, email: str, *, admin: bool) -> str:
 
 
 def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> int:
+    settings = settings or get_settings()
+    # Курсы, созданные преподавателем в админке, живут в каталоге из настроек:
+    # без этого реестр знал бы только встроенный mlcourse.
+    courses.configure(_project_path(settings.courses_dir))
     parser = argparse.ArgumentParser(prog="python -m llm_tutor.web.cli")
     commands = parser.add_subparsers(dest="command", required=True)
     legacy = commands.add_parser("import-legacy", help="перенести БД Telegram-бота в аккаунт")
     legacy.add_argument("--email", required=True)
     legacy.add_argument("--db", default="data/llm_tutor.sqlite3")
-    legacy.add_argument("--course", default=COURSES[0].id)
+    legacy.add_argument("--course", default=published_courses()[0].id)
     for name, help_text in (
         ("make-admin", "выдать аккаунту роль админа"),
         ("revoke-admin", "снять с аккаунта роль админа"),
     ):
         commands.add_parser(name, help=help_text).add_argument("--email", required=True)
     args = parser.parse_args(argv)
-    settings = settings or get_settings()
 
     try:
         if args.command == "import-legacy":

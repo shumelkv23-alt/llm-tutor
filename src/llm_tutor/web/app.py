@@ -23,7 +23,8 @@ from markupsafe import Markup, escape
 
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
-from llm_tutor.web import accounts, security
+from llm_tutor.web import accounts, courses, jobs, security
+from llm_tutor.web.mailer import MAIL_HELP, Mailer, build_mailer
 from llm_tutor.web.userdb import UserDBPool
 
 logger = logging.getLogger(__name__)
@@ -106,11 +107,28 @@ def _project_path(path: str) -> Path:
 
 def _warn_about_content() -> None:
     """Предупреждения о контенте курсов при старте: чего не хватает ученику."""
-    from llm_tutor.course.seed import nodes_without_theory
-    from llm_tutor.web.courses import COURSES, course_data
-
-    for course in COURSES:
-        missing = nodes_without_theory(course_data(course))
+    for course in courses.all_courses():
+        if not course.visible:
+            continue  # скрытый курс в списках ученика не появляется — предупреждать не о чем
+        data, error = courses.try_course_data(course)
+        if error is not None:
+            # Недособранный черновик читаться не обязан — это его нормальное
+            # состояние. А вот опубликованный курс, который не читается, —
+            # беда: его модули не доедут до учеников.
+            if course.status == "published":
+                logger.warning("Курс %s: модули не читаются (%s)", course.id, error)
+            else:
+                logger.info("Курс %s (черновик): модули пока не читаются (%s)", course.id, error)
+            continue
+        # Про неопубликованный модуль ученик не узнает: войти в него нельзя, и
+        # его ненаписанные конспекты — дело автора, а не повод ругаться в
+        # журнале при каждом запуске (модуль 1 курса ИСИТ выходит по частям).
+        open_topics = {topic.number for topic in data.topics if topic.published}
+        missing = [
+            node.id
+            for node in data.nodes
+            if node.topic_id in open_topics and node.id not in data.theory
+        ]
         if missing:
             logger.warning("Курс %s: узлы без конспекта: %s", course.id, ", ".join(missing))
 
@@ -148,16 +166,47 @@ def _llm_client(settings: Settings) -> LLMClient:
     )
 
 
-def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
+def _generator_client(settings: Settings) -> LLMClient:
+    """Клиент генерации курса: своя модель, лимит вывода и таймаут.
+
+    У ``LLMClient`` лимит вывода и таймаут заданы на клиента целиком (не на
+    вызов), а генерации нужны длинные ответы и минуты ожидания — поэтому это
+    отдельный клиент, а не тот же, что у тьютора.
+    """
+    return LLMClient(
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        default_model=settings.generator_model,
+        temperature=settings.generation_temperature,
+        max_tokens=settings.generation_max_tokens,
+        timeout=settings.generation_timeout,
+        max_retries=settings.llm_max_retries,
+    )
+
+
+def create_app(
+    settings: Settings,
+    client: LLMClient | None = None,
+    generator: LLMClient | None = None,
+    mailer: Mailer | None = None,
+) -> FastAPI:
     """Собирает приложение.
 
-    ``client`` — LLM-клиент; если не передан, приложение создаёт свой и
-    закрывает его при остановке. Внедрённый клиент закрывает тот, кто его
-    создал.
+    ``client`` — LLM-клиент тьютора, ``generator`` — клиент генерации курса,
+    ``mailer`` — почта; если не переданы, приложение создаёт свои и закрывает
+    их при остановке. Внедрённые закрывает тот, кто их создал. Без явного ``generator``
+    берётся ``client``: в тестах это подставной клиент, и лишних вызовов сети
+    не будет.
     """
     owns_client = client is None
+    owns_mailer = mailer is None
     llm = _llm_client(settings) if client is None else client
+    post = build_mailer(settings) if mailer is None else mailer
+    owns_generator = generator is None and client is None
+    gen = generator if generator is not None else (client if client is not None else _generator_client(settings))
     accounts_db = accounts.open_accounts(settings.accounts_db_path)
+    # Реестр курсов: встроенные из кода плюс созданные преподавателем из каталога.
+    courses.configure(_project_path(settings.courses_dir))
     userdbs = UserDBPool(
         _project_path(settings.users_dir),
         _project_path(settings.materials_db_path),
@@ -170,15 +219,24 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         # В фоне: сетевой запрос не должен задерживать старт. Внедрённый клиент
         # (тесты) не проверяем — у него нет сети.
         key_check = asyncio.create_task(check_llm_key(llm)) if owns_client else None
+        if owns_mailer and not settings.smtp_configured:
+            # Пишем при старте, а не в create_app: тесты собирают приложение
+            # сотни раз, и предупреждение утонуло бы в их журнале.
+            logger.warning("Почта не настроена. %s", MAIL_HELP)
         try:
             yield
         finally:
             if key_check is not None:
                 key_check.cancel()
+            app.state.jobs.cancel_all()
             userdbs.close_all()
             accounts_db.close()
             if owns_client:
                 await llm.aclose()
+            if owns_mailer:
+                await post.aclose()
+            if owns_generator:
+                await gen.aclose()
 
     # Swagger и ReDoc грузят скрипты со стороннего CDN — API внутреннее.
     app = FastAPI(
@@ -190,6 +248,7 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.client = llm
+    app.state.mailer = post
     app.state.templates = make_templates()
     app.state.templates.env.globals["pyodide_index_url"] = settings.pyodide_index_url
     csp = content_security_policy(settings.pyodide_index_url)
@@ -197,7 +256,13 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
     # событий, а sync-эндпоинты FastAPI увёл бы в пул потоков.
     app.state.accounts = accounts_db
     app.state.login_limiter = security.LoginLimiter()
+    # Запросы письма-восстановления — свой счётчик: иначе чужие заявки
+    # «Забыли пароль?» закрыли бы вход честному ученику (и наоборот).
+    app.state.reset_limiter = security.LoginLimiter(limit=settings.password_reset_limit)
     app.state.userdbs = userdbs
+    app.state.generator = gen
+    # Прогоны генерации курса: свои у каждого приложения (web/jobs.py).
+    app.state.jobs = jobs.JobRegistry()
     # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.
     app.state.admin_cache = {}
 
@@ -247,11 +312,21 @@ def create_app(settings: Settings, client: LLMClient | None = None) -> FastAPI:
         return {"status": "ok"}
 
     # Локальный импорт: модули маршрутов берут зависимости из app.state.
-    from llm_tutor.web import api_admin, api_auth, api_lesson, pages, pages_admin
+    from llm_tutor.web import (
+        api_admin,
+        api_admin_courses,
+        api_auth,
+        api_lesson,
+        pages,
+        pages_admin,
+        pages_admin_courses,
+    )
 
     app.include_router(api_auth.router)
     app.include_router(api_lesson.router)
     app.include_router(api_admin.router)
+    app.include_router(api_admin_courses.router)
     app.include_router(pages_admin.router)
+    app.include_router(pages_admin_courses.router)
     app.include_router(pages.router)
     return app

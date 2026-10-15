@@ -167,13 +167,28 @@ class UserDBPool:
             apply_course(conn, data)
             # Старые темы → занятия (срез 56): один раз, отметка — факт в БД.
             remap_progress(conn, data.legacy, settings=self._settings)
-            if sync_materials(conn, self._materials_path):
+            if sync_materials(conn, self.materials_path_for(course_id)):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:
             conn.close()
             raise
         self._conns[key] = conn
         return conn
+
+    def materials_path_for(self, course_id: str) -> Path:
+        """Файл RAG-материалов курса: у созданного курса — свой, у встроенного — общий.
+
+        Общая БД материалов одна на приложение, а ``chunks.topic_id`` — это
+        номер модуля **внутри** курса. У двух курсов номера модулей совпадут, и
+        ученик нового курса получил бы материалы mlcourse: тьютор цитировал бы
+        чужой курс. Свой файл на курс разводит их полностью.
+        """
+        course = get_course(course_id)
+        if course is None:
+            raise KeyError(course_id)
+        if course.root is not None:
+            return course.root / "materials.sqlite3"
+        return self._materials_path
 
     def lock(self, user_id: int, course_id: str) -> asyncio.Lock:
         """Блокировка занятия ученика: ходы одного ученика идут по очереди."""
@@ -182,6 +197,17 @@ class UserDBPool:
         if lock is None:
             lock = self._locks[key] = asyncio.Lock()
         return lock
+
+    def invalidate_course(self, course_id: str) -> None:
+        """Закрывает соединения курса: правка курса иначе не доедет до учеников.
+
+        ``open`` применяет курс к БД ученика только при первом открытии, а
+        соединения кэшируются до конца процесса. После правки модулей,
+        источников или публикации кэш курса надо сбросить — следующее открытие
+        снова зальёт seed в БД ученика.
+        """
+        for key in [key for key in self._conns if key[1] == course_id]:
+            self._conns.pop(key).close()
 
     def close_all(self) -> None:
         for conn in self._conns.values():

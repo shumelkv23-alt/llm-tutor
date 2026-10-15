@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {# Блоки Jinja переопределяются безусловно, поэтому условие — внутри блоков. #}
-{% block body_class %}{% if course.enrolled %}lesson-body{% endif %}{% endblock %}
+{% block body_class %}{% if course.enrolled and course.topics %}lesson-body{% endif %}{% endblock %}
 {% block breadcrumb %}{{ course.title }}{% endblock %}
 {% block eyebrow %}{{ course.subtitle }}{% endblock %}
 {% block heading %}{{ course.title }}{% endblock %}
-{% block styles %}{% if course.enrolled %}
+{% block styles %}{% if course.enrolled and course.topics %}
 <link rel="stylesheet" href="{{ static_url('vendor/codemirror-5.65.20/codemirror.css') }}">
 <link rel="stylesheet" href="{{ static_url('css/lesson.css') }}">
 {% endif %}{% endblock %}
 {% block scripts %}
-{% if course.enrolled %}
+{% if course.enrolled and course.topics %}
 <script src="{{ static_url('vendor/codemirror-5.65.20/codemirror.js') }}" defer></script>
 <script src="{{ static_url('vendor/codemirror-5.65.20/python.js') }}" defer></script>
 <script src="{{ static_url('vendor/codemirror-5.65.20/matchbrackets.js') }}" defer></script>
@@ -28,7 +28,19 @@
 {% endblock %}
 {% block page_head %}{% if not course.enrolled %}{{ super() }}{% endif %}{% endblock %}
 {% block content %}
-{% if course.enrolled %}
+{% if not course.published %}
+{# Предпросмотр: черновик доступен только админу, и об этом надо сказать вслух. #}
+<p class="notice" role="status">Черновик: курс ещё не опубликован, его видите только вы.</p>
+{% endif %}
+{% if course.enrolled and not course.topics %}
+{# Курс записан, но в открытых модулях ещё нет занятий: показывать пустой
+   каркас урока с «Загружаем занятие…» — значит выглядеть сломанным (срез 1
+   курса ИСИТ, модуль 1 выходит по частям). #}
+<section class="panel enroll-panel">
+  <div class="empty"><strong>Занятия этого курса готовятся</strong>{{ course.description }} Модуль выйдет скоро — конспекты и задания к нему пишутся.</div>
+  <div class="course-actions centered"><a class="btn primary" href="/courses">К курсам{{ icon('arrow') }}</a></div>
+</section>
+{% elif course.enrolled %}
 <div class="lesson" id="lesson" data-course="{{ course.id }}" data-view="lesson" aria-busy="true"
      data-pyodide="{{ pyodide_index_url }}" data-worker="{{ static_url('js/pyodide-worker.js') }}">
   <header class="lesson-head">

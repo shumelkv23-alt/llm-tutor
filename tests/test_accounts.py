@@ -267,7 +267,7 @@ def test_schema_has_admin_tables_and_columns(db) -> None:
     columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
     log = {row[1] for row in db.execute("PRAGMA table_info(admin_log)")}
 
-    assert accounts.SCHEMA_VERSION == 3
+    assert accounts.SCHEMA_VERSION == 4
     assert {"is_admin", "last_login_at"} <= columns
     assert {"ts", "admin_id", "action", "target_id", "details"} <= log
 
@@ -278,7 +278,8 @@ def test_migration_003_keeps_existing_data(tmp_path) -> None:
 
     db = accounts.open_accounts(str(path))
 
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 3
+    # Открытие доводит схему до текущей: 003 и следующая за ней 004.
+    assert db.execute("PRAGMA user_version").fetchone()[0] == accounts.SCHEMA_VERSION
     user = accounts.get_user(db, 1)
     assert (user.email, user.name, user.created_at, user.is_admin) == ("ann@example.com", "Аня", 7.0, False)
     assert db.execute("SELECT last_login_at FROM users").fetchone()[0] is None
@@ -287,7 +288,7 @@ def test_migration_003_keeps_existing_data(tmp_path) -> None:
     db.close()
 
     again = accounts.open_accounts(str(path))
-    assert again.execute("PRAGMA user_version").fetchone()[0] == 3
+    assert again.execute("PRAGMA user_version").fetchone()[0] == accounts.SCHEMA_VERSION
     assert again.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     again.close()
 
@@ -298,7 +299,7 @@ def test_schema_newer_than_the_app_is_refused(tmp_path) -> None:
     import sqlite3
 
     newer = sqlite3.connect(path)
-    newer.execute("PRAGMA user_version = 4")
+    newer.execute("PRAGMA user_version = 5")
     newer.commit()
     newer.close()
 
@@ -363,3 +364,161 @@ def test_session_extension_is_not_a_login(db) -> None:
 
     assert extended
     assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 200.0
+
+
+# --- Восстановление пароля по ссылке (Срез 70) ---
+
+
+def _version_3_db(path) -> None:
+    """БД аккаунтов версии 3 с данными — как до миграции 004."""
+    import sqlite3
+
+    old = sqlite3.connect(path)
+    for name in ("001_accounts.sql", "002_course_rename.sql", "003_admin.sql"):
+        old.executescript((accounts.MIGRATIONS_DIR / name).read_text(encoding="utf-8"))
+    old.execute("PRAGMA user_version = 3")
+    old.execute(
+        "INSERT INTO users (id, email, name, password_hash, created_at, is_admin, last_login_at) "
+        "VALUES (1, 'ann@example.com', 'Аня', 'x', 7.0, 1, 8.0)"
+    )
+    old.execute("INSERT INTO web_sessions VALUES ('hash', 1, 1.0, 9999999999.0)")
+    old.execute("INSERT INTO enrollments VALUES (1, 'mlcourse', 5.0)")
+    old.execute(
+        "INSERT INTO admin_log (ts, admin_id, action, target_id, details) "
+        "VALUES (9.0, 1, 'close_sessions', 1, '{\"closed\": 2}')"
+    )
+    old.commit()
+    old.close()
+
+
+def test_schema_has_reset_table_and_indexes(db) -> None:
+    columns = {row[1] for row in db.execute("PRAGMA table_info(password_resets)")}
+    indexes = {row[1] for row in db.execute("PRAGMA index_list(password_resets)")}
+
+    assert {"token_hash", "user_id", "created_at", "expires_at", "used_at"} <= columns
+    assert {"idx_password_resets_user", "idx_password_resets_expires"} <= indexes
+
+
+def test_migration_004_keeps_existing_data(tmp_path) -> None:
+    path = tmp_path / "accounts.sqlite3"
+    _version_3_db(path)
+
+    db = accounts.open_accounts(str(path))
+
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+    user = accounts.get_user(db, 1)
+    assert (user.email, user.name, user.is_admin) == ("ann@example.com", "Аня", True)
+    assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 8.0
+    assert db.execute("SELECT COUNT(*) FROM web_sessions").fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM admin_log").fetchone()[0] == 1
+    assert db.execute("SELECT COUNT(*) FROM password_resets").fetchone()[0] == 0
+    db.close()
+
+    again = accounts.open_accounts(str(path))
+    assert again.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert again.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
+    again.close()
+
+
+def test_reset_token_is_stored_as_hash_only(db) -> None:
+    user = _user(db)
+
+    token = accounts.create_reset_token(db, user.id, now=1000.0)
+
+    row = db.execute(
+        "SELECT token_hash, user_id, created_at, expires_at, used_at FROM password_resets"
+    ).fetchone()
+    assert row["token_hash"] == hashlib.sha256(token.encode("utf-8")).hexdigest()
+    assert row["token_hash"] != token
+    assert (row["user_id"], row["created_at"], row["used_at"]) == (user.id, 1000.0, None)
+    assert row["expires_at"] == 1000.0 + accounts.RESET_TTL
+    # Открытого токена нет нигде в файле БД — только его хеш.
+    assert token not in "\n".join(db.iterdump())
+
+
+def test_reset_token_resolves_to_the_user(db) -> None:
+    user = _user(db)
+    token = accounts.create_reset_token(db, user.id, now=1000.0)
+
+    assert accounts.reset_token_user(db, token, now=1000.0).id == user.id
+
+
+def test_reset_token_expires(db) -> None:
+    user = _user(db)
+    token = accounts.create_reset_token(db, user.id, now=1000.0, ttl=60.0)
+
+    assert accounts.reset_token_user(db, token, now=1059.0) is not None
+    assert accounts.reset_token_user(db, token, now=1060.0) is None
+
+
+def test_garbage_and_overlong_reset_tokens_are_unknown(db) -> None:
+    assert accounts.reset_token_user(db, "") is None
+    assert accounts.reset_token_user(db, "мусор") is None
+    # Токен длиннее предела — точно не наш: в БД его не ищем.
+    assert accounts.reset_token_user(db, "x" * 1000) is None
+
+
+def test_new_request_invalidates_the_previous_token(db) -> None:
+    user = _user(db)
+
+    first = accounts.create_reset_token(db, user.id, now=1000.0)
+    second = accounts.create_reset_token(db, user.id, now=1010.0)
+
+    assert accounts.reset_token_user(db, first, now=1011.0) is None
+    assert accounts.reset_token_user(db, second, now=1011.0) is not None
+
+
+def test_new_request_prunes_expired_tokens(db) -> None:
+    user = _user(db)
+    other = _user(db, email="bob@example.com", name="Боб")
+    accounts.create_reset_token(db, other.id, now=1000.0, ttl=60.0)
+
+    accounts.create_reset_token(db, user.id, now=2000.0)
+
+    rows = [row[0] for row in db.execute("SELECT user_id FROM password_resets")]
+    assert rows == [user.id]
+
+
+def test_reset_password_changes_hash_and_closes_all_sessions(db) -> None:
+    user = _user(db)
+    first = accounts.create_session(db, user.id, now=1000.0)
+    second = accounts.create_session(db, user.id, now=1001.0)
+    token = accounts.create_reset_token(db, user.id, now=1002.0)
+
+    assert accounts.reset_password(db, token, accounts.hash_password("новый-пароль"), now=1003.0) == user.id
+
+    assert accounts.authenticate(db, "ann@example.com", "секретный-пароль") is None
+    assert accounts.authenticate(db, "ann@example.com", "новый-пароль").id == user.id
+    # Ссылка из письма закрывает все входы, включая тот, откуда её открыли.
+    assert accounts.resolve_session(db, first, now=1004.0) is None
+    assert accounts.resolve_session(db, second, now=1005.0) is None
+    assert accounts.active_sessions(db, user.id, 1006.0) == 0
+
+
+def test_reset_token_is_single_use(db) -> None:
+    user = _user(db)
+    token = accounts.create_reset_token(db, user.id, now=1000.0)
+    accounts.reset_password(db, token, accounts.hash_password("первый-пароль"), now=1001.0)
+
+    assert accounts.reset_token_user(db, token, now=1002.0) is None
+    with pytest.raises(AccountError) as error:
+        accounts.reset_password(db, token, accounts.hash_password("второй-пароль"), now=1003.0)
+
+    assert error.value.field == "token"
+    # Пароль остался от первого сброса: повторная ссылка ничего не переписала.
+    assert accounts.authenticate(db, "ann@example.com", "первый-пароль") is not None
+    assert accounts.authenticate(db, "ann@example.com", "второй-пароль") is None
+
+
+def test_expired_or_unknown_token_changes_nothing(db) -> None:
+    user = _user(db)
+    token = accounts.create_reset_token(db, user.id, now=1000.0, ttl=60.0)
+    session = accounts.create_session(db, user.id, now=1000.0)
+
+    for bad in (token, "мусор"):
+        with pytest.raises(AccountError) as error:
+            accounts.reset_password(db, bad, accounts.hash_password("новый-пароль"), now=2000.0)
+        assert error.value.field == "token"
+
+    assert accounts.authenticate(db, "ann@example.com", "секретный-пароль") is not None
+    assert accounts.resolve_session(db, session, now=2001.0) is not None

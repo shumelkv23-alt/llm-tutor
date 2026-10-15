@@ -41,7 +41,8 @@ ACTIVE_WINDOW = 7 * 24 * 3600.0
 # Что значит «БД ученика не читается»: файл битый (``sqlite3.Error``), схема
 # не та (``RuntimeError`` из ``migrate``) или в ней лежит неразбираемое
 # состояние сессии (pydantic ``ValidationError`` — это ``ValueError``).
-UNREADABLE = (sqlite3.Error, RuntimeError, ValueError, KeyError)
+# ValueError — SeedError и битые состояния, OSError — пропавшие файлы курса.
+UNREADABLE = (sqlite3.Error, RuntimeError, ValueError, KeyError, OSError)
 
 STATUS_LABELS = {
     "survey": "Анкета",
@@ -234,6 +235,17 @@ ACTION_LABELS = {
     "close_sessions": "Закрытие сессий",
     "grant_admin": "Выдана роль админа",
     "revoke_admin": "Снята роль админа",
+    # Действия над курсами (преподаватель создаёт курс): в журнале видно, что
+    # именно делали с курсом, — подробности в поле details.
+    "create_course": "Создание курса",
+    "update_course": "Правка курса",
+    "delete_course": "Удаление курса",
+    "add_source": "Добавлен источник",
+    "remove_source": "Убран источник",
+    "generate_course": "Запуск генерации",
+    "cancel_generation": "Отмена генерации",
+    "publish_course": "Публикация курса",
+    "unpublish_course": "Снятие с публикации",
 }
 
 

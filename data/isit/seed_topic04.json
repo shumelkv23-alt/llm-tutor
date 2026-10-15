@@ -1,0 +1,667 @@
+{
+  "course": "isit/topic04",
+  "comment": "Модуль 4 курса «Машинное обучение для ИСИТ» (lab4-logistic-regression). Занятия sigmoid, gradient, boundary: конспекты и задания пишутся по срезам, до готовности модуль не публикуется.",
+  "topic": {
+    "number": 4,
+    "title": "Логистическая регрессия",
+    "intro": "От предсказания числа к предсказанию класса: как линейная комбинация признаков становится вероятностью, почему её учат логарифмической потерей и что делать, когда одной прямой между классами не хватает.",
+    "survey": {
+      "level_key": "isit4_level",
+      "level_question": "Как у тебя с логистической регрессией?",
+      "level_options": [
+        "Не слышал",
+        "Что-то считал в тетрадке",
+        "Уверенно обучаю модели в sklearn"
+      ],
+      "blocks": [
+        {
+          "key": "isit4_block_sigmoid",
+          "title": "Сигмоида и потери",
+          "question": "Превращаешь линейную комбинацию признаков в вероятность и считаешь логарифмическую потерю?",
+          "example": "σ(z), шансы, log loss",
+          "concepts": [
+            "sigmoid"
+          ]
+        },
+        {
+          "key": "isit4_block_gradient",
+          "title": "Обучение",
+          "question": "Выводишь градиент потерь и обучаешь модель спуском?",
+          "example": "Xᵀ(h − y)/m, скорость обучения, порог",
+          "concepts": [
+            "gradient"
+          ]
+        },
+        {
+          "key": "isit4_block_boundary",
+          "title": "Граница решения",
+          "question": "Строишь границу по весам модели и справляешься с нелинейными данными?",
+          "example": "прямая Xw + b = 0, XOR, полиномиальные признаки",
+          "concepts": [
+            "boundary"
+          ]
+        }
+      ],
+      "assumed_by_confident": [],
+      "foundation": [
+        "isit4_block_sigmoid"
+      ]
+    },
+    "published": false
+  },
+  "nodes": [
+    {
+      "id": "sigmoid",
+      "name": "Сигмоида и логарифмическая потеря",
+      "difficulty": 0.4,
+      "description": "Как линейная комбинация признаков превращается в вероятность класса: логистическая функция, её свойства и насыщение, чтение коэффициентов через шансы и цена прогноза — логарифмическая потеря.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/blob/0da67c6/lab4-logistic-regression.ipynb",
+      "sections": [
+        {
+          "id": "activation",
+          "title": "Функция активации"
+        },
+        {
+          "id": "logloss",
+          "title": "Логарифмическая потеря"
+        }
+      ]
+    },
+    {
+      "id": "gradient",
+      "name": "Обучение логистической регрессии",
+      "difficulty": 0.5,
+      "description": "Градиент логарифмической потери и его проверка конечными разностями, своя модель на градиентном спуске, скорость обучения и превращение вероятностей в классы порогом.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/blob/0da67c6/lab4-logistic-regression.ipynb",
+      "sections": [
+        {
+          "id": "derivative",
+          "title": "Градиент потерь"
+        },
+        {
+          "id": "descent",
+          "title": "Своя модель"
+        },
+        {
+          "id": "predict",
+          "title": "Порог и классы"
+        }
+      ]
+    },
+    {
+      "id": "boundary",
+      "name": "Граница решения и нелинейность",
+      "difficulty": 0.55,
+      "description": "Уравнение границы решения и её нормаль, линейная неразделимость XOR и нулевой градиент в нуле, полиномиальные признаки как способ разделить неразделимое.",
+      "source_url": "https://github.com/Eldervald/isit_ml_labs/blob/0da67c6/lab4-logistic-regression.ipynb",
+      "sections": [
+        {
+          "id": "hyperplane",
+          "title": "Гиперплоскость"
+        },
+        {
+          "id": "xor",
+          "title": "Проблема XOR"
+        },
+        {
+          "id": "poly",
+          "title": "Полиномиальные признаки"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "titanic",
+      "to_id": "sigmoid",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.4
+    },
+    {
+      "from_id": "ols",
+      "to_id": "sigmoid",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.5
+    },
+    {
+      "from_id": "metrics",
+      "to_id": "sigmoid",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "sigmoid",
+      "to_id": "gradient",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "gradient",
+      "to_id": "boundary",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "arrays",
+      "to_id": "boundary",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 4001,
+      "prompt": "Напиши функцию `sigmoid(z)`: логистическая функция `1 / (1 + exp(-z))`. Внутри приведи аргумент к `np.asarray(z, dtype=float)`, чтобы функция одинаково работала и со скаляром, и с массивом. В `result` сохрани кортеж `(round(float(sigmoid(0.0)), 4), round(float(sigmoid(1.0)), 6), bool(np.allclose(sigmoid(np.array([-2.0, 0.0, 2.0])), [0.1192, 0.5, 0.8808], atol=1e-4)))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "sigmoid": 0.9
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": null,
+      "rubric_id": 65,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import log_loss as sklearn_log_loss\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n\n# Веса для задания 4007: считаем вероятности по ним, а не по обученной модели.\nw = np.array([1.2, -0.7])\nb = 0.25\nw_other = np.array([-0.4, 0.9])\nb_other = -0.1\n",
+      "section": "activation",
+      "starter": "def sigmoid(z):\n    \"\"\"Вероятность класса 1: 1 / (1 + exp(-z)).\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = sigmoid(0.0)\nassert isinstance(value, (int, float, np.floating)), \"sigmoid возвращает число, а не None.\"\nassert abs(float(value) - 0.5) < 1e-12, \"σ(0) = 0.5: нулевая комбинация признаков не даёт предпочтения классу.\"\nassert abs(float(sigmoid(1.0)) - 0.7310586) < 1e-6, \"σ(1) = 1 / (1 + e^-1) ≈ 0.731059.\"\nassert abs(float(sigmoid(-1.0)) - 0.2689414) < 1e-6, \"σ(-1) ≈ 0.268941, а не 0.731059: знак в экспоненте важен.\"\nassert abs(float(sigmoid(2.0)) - 0.8807971) < 1e-6, \"σ(2) ≈ 0.880797.\"\nassert abs(float(sigmoid(-2.0)) + float(sigmoid(2.0)) - 1.0) < 1e-12, \"σ(-z) = 1 − σ(z): модель симметрична.\"\narray = sigmoid(np.array([-2.0, 0.0, 2.0]))\nassert isinstance(array, np.ndarray) and array.shape == (3,), \"На массиве сигмоида возвращает массив той же формы.\"\nassert np.allclose(array, [0.1192029, 0.5, 0.8807971], atol=1e-6), \"Сигмоида применяется к каждому элементу массива.\"\nassert float(sigmoid(-3.0)) < float(sigmoid(0.0)) < float(sigmoid(3.0)), \"Сигмоида монотонна: чем больше z, тем ближе вероятность к 1.\"\nassert float(sigmoid(-20.0)) > 0.0 and float(sigmoid(20.0)) < 1.0, \"Границы не достигаются: при конечном z вероятность строго между 0 и 1.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх значений.\"\nassert abs(float(result[0]) - 0.5) < 1e-4, \"Первое значение — σ(0).\"\nassert abs(float(result[1]) - 0.731059) < 1e-6, \"Второе — σ(1).\"\nassert bool(result[2]) is True, \"Третье — сошлась ли сигмоида массива с ожидаемыми значениями.\"\n"
+    },
+    {
+      "id": 4002,
+      "prompt": "Напиши функцию `sigmoid_derivative(z)`: производная сигмоиды, выраженная через саму функцию, — `sigmoid(z) * (1 - sigmoid(z))`. Функцию `sigmoid` определи здесь же. В `result` сохрани кортеж `(round(float(sigmoid_derivative(0.0)), 4), round(float(sigmoid_derivative(5.0)), 6), round(float(sigmoid_derivative(10.0)), 8), round(float(np.max(sigmoid_derivative(np.linspace(-10, 10, 401)))), 4))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "sigmoid": 0.8
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 66,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import log_loss as sklearn_log_loss\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n\n# Веса для задания 4007: считаем вероятности по ним, а не по обученной модели.\nw = np.array([1.2, -0.7])\nb = 0.25\nw_other = np.array([-0.4, 0.9])\nb_other = -0.1\n",
+      "section": "activation",
+      "starter": "def sigmoid(z):\n    \"\"\"Логистическая функция.\"\"\"\n\n\ndef sigmoid_derivative(z):\n    \"\"\"Производная сигмоиды через саму функцию.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = sigmoid_derivative(0.0)\nassert isinstance(value, (int, float, np.floating)), \"sigmoid_derivative возвращает число, а не None.\"\nassert abs(float(value) - 0.25) < 1e-12, \"σ'(0) = σ(0)(1 − σ(0)) = 0.25 — максимум производной.\"\nexpected = {0.0: 0.25, 1.0: 0.1966119, 2.0: 0.1049936}\nfor point, answer in expected.items():\n    got = float(sigmoid_derivative(point))\n    assert abs(got - answer) < 1e-6, f\"σ'({point}) ≈ {answer}, а не {got}.\"\nelsewhere = 0.0\nfor point in np.linspace(-10.0, 10.0, 401):\n    elsewhere = max(elsewhere, float(sigmoid_derivative(point)))\nassert abs(elsewhere - 0.25) < 1e-9, \"Больше 0.25 производная не бывает: максимум в нуле.\"\neps = 1e-6\nfor point in (-2.0, 0.0, 1.5):\n    numeric = (float(sigmoid(point + eps)) - float(sigmoid(point - eps))) / (2 * eps)\n    got = float(sigmoid_derivative(point))\n    assert abs(got - numeric) < 1e-6, f\"При z = {point} производная не совпала с конечной разностью.\"\nassert float(sigmoid_derivative(5.0)) < 0.007, \"При z = 5 производная уже мала (≈ 0.0066) — это насыщение.\"\nassert float(sigmoid_derivative(10.0)) < 1e-4, \"При z = 10 производная почти нулевая (≈ 0.000045).\"\nassert abs(float(sigmoid_derivative(-1.0)) - float(sigmoid_derivative(1.0))) < 1e-12, \"Производная чётна: σ'(−z) = σ'(z).\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — кортеж из четырёх значений.\"\nassert abs(float(result[0]) - 0.25) < 1e-4, \"Первое значение — σ'(0).\"\nassert abs(float(result[1]) - 0.006648) < 1e-6, \"Второе — σ'(5).\"\nassert abs(float(result[2]) - 0.0000454) < 1e-8, \"Третье — σ'(10).\"\nassert abs(float(result[3]) - 0.25) < 1e-4, \"Четвёртое — максимум производной на сетке.\"\n"
+    },
+    {
+      "id": 4003,
+      "prompt": "Коэффициент логистической регрессии при некотором признаке равен 0.7. Что означает это число?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "sigmoid": 0.7
+      },
+      "difficulty": 0.4,
+      "options": [
+        "При увеличении признака на единицу шансы класса 1 умножаются на e^0.7 ≈ 2.01",
+        "При увеличении признака на единицу вероятность класса 1 растёт на 0.7",
+        "При увеличении признака на единицу вероятность класса 1 растёт в 2.01 раза",
+        "При увеличении признака на единицу логарифм вероятности класса 1 растёт на 0.7"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "activation",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 4004,
+      "prompt": "Напиши функцию `log_loss(y_true, proba)`: средняя логарифмическая потеря `-mean(y * log(p) + (1 - y) * log(1 - p))`. Оба аргумента приведи к `np.asarray(..., dtype=float)`, а вероятности перед логарифмом зажми в отрезок `[1e-12, 1 - 1e-12]` — иначе уверенный промах даст `inf`. В `result` сохрани кортеж `(round(log_loss([1], [0.9]), 6), round(log_loss([1], [0.1]), 6), round(log_loss([1], [0.5]), 6), round(log_loss([1, 0], [0.8, 0.3]), 6))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "sigmoid": 0.85
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 67,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import log_loss as sklearn_log_loss\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n\n# Веса для задания 4007: считаем вероятности по ним, а не по обученной модели.\nw = np.array([1.2, -0.7])\nb = 0.25\nw_other = np.array([-0.4, 0.9])\nb_other = -0.1\n",
+      "section": "logloss",
+      "starter": "def log_loss(y_true, proba):\n    \"\"\"Средняя логарифмическая потеря.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = log_loss([1], [0.9])\nassert isinstance(value, (int, float, np.floating)), \"log_loss возвращает одно число, а не None.\"\nassert abs(float(value) - 0.1053605) < 1e-6, \"Уверенный верный ответ y = 1, p = 0.9 стоит −ln 0.9 ≈ 0.105361.\"\nassert abs(float(log_loss([1], [0.1])) - 2.3025851) < 1e-6, \"Уверенный промах стоит −ln 0.1 ≈ 2.302585 — в двадцать раз дороже.\"\nassert abs(float(log_loss([1], [0.5])) - 0.6931472) < 1e-6, \"Безразличие стоит ln 2 ≈ 0.693147.\"\nassert abs(float(log_loss([0], [0.9])) - 2.3025851) < 1e-6, \"Для класса 0 платит второе слагаемое: −ln(1 − 0.9).\"\nunseen = log_loss([0, 0, 1], [0.2, 0.9, 0.6])\nexpected = float(-np.mean(np.log([0.8, 0.1, 0.6])))\nassert abs(float(unseen) - expected) < 1e-9, \"Потеря — среднее цен по объектам, а не сумма и не цена одного объекта.\"\nassert abs(float(log_loss([1], [1.0]))) < 1e-6, \"Уверенный верный ответ стоит почти ноль.\"\nconfident_miss = float(log_loss([1], [0.0]))\nassert np.isfinite(confident_miss) and confident_miss > 20.0, \"Без зажима уверенный промах даёт inf: потеря обязана остаться числом.\"\nassert abs(float(log_loss([0, 1], [0.0, 1.0]))) < 1e-6, \"Зажатые вероятности не мешают точному прогнозу.\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — кортеж из четырёх чисел.\"\nassert abs(float(result[0]) - 0.105361) < 1e-6, \"Первое — потеря при p = 0.9.\"\nassert abs(float(result[1]) - 2.302585) < 1e-6, \"Второе — потеря при p = 0.1.\"\nassert abs(float(result[2]) - 0.693147) < 1e-6, \"Третье — потеря при p = 0.5.\"\nassert abs(float(result[3]) - 0.289909) < 1e-6, \"Четвёртое — два объекта: y = [1, 0], p = [0.8, 0.3].\"\n"
+    },
+    {
+      "id": 4005,
+      "prompt": "Напиши функцию `log_loss_from_logits(y_true, z)`: та же логарифмическая потеря, но посчитанная по логитам `z = Xw + b`, без явной сигмоиды. Пользуйся устойчивой формулой `mean(logaddexp(0, z) - y * z)`: она не переполняется там, где `exp` уже не влезает. В `result` сохрани кортеж `(round(log_loss_from_logits([1], [0.0]), 6), round(log_loss_from_logits([1], [1000.0]), 8), round(log_loss_from_logits([1], [-1000.0]), 6), bool(np.isfinite(log_loss_from_logits([1, 0], [1000.0, -1000.0]))))`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "sigmoid": 0.85
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 68,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import log_loss as sklearn_log_loss\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n\n# Веса для задания 4007: считаем вероятности по ним, а не по обученной модели.\nw = np.array([1.2, -0.7])\nb = 0.25\nw_other = np.array([-0.4, 0.9])\nb_other = -0.1\n",
+      "section": "logloss",
+      "starter": "def log_loss_from_logits(y_true, z):\n    \"\"\"Логарифмическая потеря по логитам, без переполнения.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = log_loss_from_logits([1], [0.0])\nassert isinstance(value, (int, float, np.floating)), \"Функция возвращает одно число, а не None.\"\nassert abs(float(value) - 0.6931472) < 1e-6, \"При z = 0 потеря равна ln 2 ≈ 0.693147.\"\nassert abs(float(log_loss_from_logits([0], [0.0])) - 0.6931472) < 1e-6, \"При z = 0 оба класса стоят одинаково.\"\nmoderate = np.array([-3.0, -0.5, 0.0, 1.5, 4.0])\nanswers = np.array([0.0, 1.0, 1.0, 0.0, 1.0])\nproba = 1.0 / (1.0 + np.exp(-moderate))\nassert abs(float(log_loss_from_logits(answers, moderate)) - float(-np.mean(answers * np.log(proba) + (1 - answers) * np.log(1 - proba)))) < 1e-9, \"По логитам должно получаться то же число, что по вероятностям.\"\nassert abs(float(log_loss_from_logits([1], [2.0])) - 0.1269280) < 1e-6, \"Уверенный верный ответ при z = 2 стоит log(1 + e^-2) ≈ 0.126928.\"\nassert abs(float(log_loss_from_logits([1], [-2.0])) - 2.1269280) < 1e-6, \"Уверенный промах при z = −2 стоит 2 + log(1 + e^-2) ≈ 2.126928.\"\nhuge = float(log_loss_from_logits([1], [1000.0]))\nassert np.isfinite(huge) and huge < 1e-100, \"При z = 1000 вероятность округлилась бы до единицы: потеря считается по логитам и остаётся крошечной.\"\nmiss = float(log_loss_from_logits([1], [-1000.0]))\nassert np.isfinite(miss) and abs(miss - 1000.0) < 1e-6, \"При z = −1000 потеря равна ровно 1000: сигмоида обнулилась бы и дала inf.\"\nassert np.isfinite(float(log_loss_from_logits([1, 0], [1000.0, -1000.0]))), \"Числа в тысячах не должны давать inf и nan.\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — кортеж из четырёх значений.\"\nassert abs(float(result[0]) - 0.693147) < 1e-6, \"Первое — потеря при z = 0.\"\nassert abs(float(result[1])) < 1e-6, \"Второе — потеря при z = 1000: почти ноль.\"\nassert abs(float(result[2]) - 1000.0) < 1e-6, \"Третье — потеря при z = −1000: ровно 1000.\"\nassert bool(result[3]) is True, \"Четвёртое — осталась ли потеря конечной на больших логитах.\"\n"
+    },
+    {
+      "id": 4006,
+      "prompt": "Почему в логистической регрессии берут логарифмическую потерю, а не средний квадрат ошибки, как в линейной?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "sigmoid": 0.7
+      },
+      "difficulty": 0.45,
+      "options": [
+        "MSE с сигмоидой невыпукла: у неё есть лишние стационарные точки, и спуск может застрять",
+        "MSE определена только для чисел, а вероятности — не числа",
+        "Логарифмическая потеря даёт ровно ноль на каждом верном ответе",
+        "MSE недифференцируема, а логарифмическая потеря дифференцируема"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "logloss",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 4007,
+      "prompt": "Итоговое задание занятия. Напиши две функции: `predict_proba(X, w, b)` — вероятности класса 1 для строк `X` при весах `w` и сдвиге `b` (через свою сигмоиду от `X @ w + b`), и `mean_log_loss(y_true, proba)` — среднюю логарифмическую потерю с зажимом вероятностей. Обе функции должны считать по переданным аргументам, а не по данным из setup. В `result` сохрани кортеж `(round(mean_log_loss(y, predict_proba(X, w, b)), 4), round(float(np.mean((predict_proba(X, w, b) >= 0.5) == y)), 4), round(mean_log_loss(y, predict_proba(X, w_other, b_other)), 4), round(float(np.mean((predict_proba(X, w_other, b_other) >= 0.5) == y)), 4))` — потерю и точность для весов из setup и для вторых весов `w_other`, `b_other`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "sigmoid": 0.9
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 69,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\nfrom sklearn.metrics import log_loss as sklearn_log_loss\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n\n# Веса для задания 4007: считаем вероятности по ним, а не по обученной модели.\nw = np.array([1.2, -0.7])\nb = 0.25\nw_other = np.array([-0.4, 0.9])\nb_other = -0.1\n",
+      "section": null,
+      "final": true,
+      "starter": "def predict_proba(X, w, b):\n    \"\"\"Вероятности класса 1 для строк X.\"\"\"\n\n\ndef mean_log_loss(y_true, proba):\n    \"\"\"Средняя логарифмическая потеря с зажимом вероятностей.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\n\n\ndef reference(w_vec, b_val):\n    \"\"\"Вероятности и потеря по логитам — независимо от решения.\"\"\"\n    logits = X @ w_vec + b_val\n    return float(np.mean(np.logaddexp(0, logits) - y * logits))\n\n\ndef reference_accuracy(w_vec, b_val):\n    \"\"\"Точность при пороге 0.5.\"\"\"\n    return float(np.mean((1.0 / (1.0 + np.exp(-(X @ w_vec + b_val))) >= 0.5) == y))\n\n\nown = predict_proba(X, w, b)\nassert isinstance(own, np.ndarray) and own.shape == (len(y),), \"predict_proba возвращает вектор вероятностей длины len(y).\"\nassert np.all(own >= 0.0) and np.all(own <= 1.0), \"Вероятности лежат в отрезке от 0 до 1.\"\nassert np.allclose(own, 1.0 / (1.0 + np.exp(-(X @ w + b))), atol=1e-9), \"Вероятность — сигмоида от X @ w + b.\"\nother = predict_proba(X, w_other, b_other)\nassert np.allclose(other, 1.0 / (1.0 + np.exp(-(X @ w_other + b_other))), atol=1e-9), \"Функция считает по переданным весам, а не по записанным в setup.\"\nassert not np.allclose(own, other), \"С другими весами вероятности другие.\"\nloss_own = float(mean_log_loss(y, own))\nassert isinstance(loss_own, float) or isinstance(loss_own, np.floating), \"mean_log_loss возвращает число.\"\nassert abs(loss_own - reference(w, b)) < 1e-9, \"Потеря считается по переданным вероятностям.\"\nassert abs(float(mean_log_loss(y, proba)) - float(sklearn_log_loss(y, proba))) < 1e-9, \"На вероятностях обученной модели своя потеря совпадает с библиотечной.\"\nassert abs(loss_own - reference(w_other, b_other)) > 1e-3, \"С другими весами потеря другая: числа не вписаны заранее.\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — кортеж из четырёх чисел.\"\nassert abs(float(result[0]) - reference(w, b)) < 1e-4, \"Первое — потеря при весах из setup.\"\nassert abs(float(result[1]) - reference_accuracy(w, b)) < 1e-4, \"Второе — точность при весах из setup.\"\nassert abs(float(result[2]) - reference(w_other, b_other)) < 1e-4, \"Третье — потеря при w_other.\"\nassert abs(float(result[3]) - reference_accuracy(w_other, b_other)) < 1e-4, \"Четвёртое — точность при w_other.\"\n"
+    },
+    {
+      "id": 4008,
+      "prompt": "Напиши функцию `logistic_gradient(X, y, w, b)`: градиент средней логарифмической потери по весам и по смещению. Прямой проход — `proba = 1 / (1 + np.exp(-(X @ w + b)))`, дальше `grad_w = X.T @ (proba - y) / len(y)` и `grad_b = (proba - y).mean()`. Верни пару `(grad_w, grad_b)`. В `result` сохрани кортеж `(round(float(grad_w[0]), 8), round(float(grad_w[1]), 8), round(float(grad_b), 8))` — градиент в точке `w`, `b` из setup.",
+      "answer_type": "code",
+      "concept_weights": {
+        "gradient": 0.9
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 70,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\n\n# Веса для заданий про градиент: считаем по ним, а не по обученной модели.\nw = np.array([0.3, -0.7])\nb = 0.2\n\n# Маленькая выборка с разделимыми классами — для проверки класса модели.\nX_small = np.array([[-1.0, -1.0], [-2.0, -2.0], [1.0, 1.0], [2.0, 2.0]])\ny_small = np.array([0, 0, 1, 1])\n\n# Вероятности обученной модели — для заданий про порог.\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n",
+      "section": "derivative",
+      "starter": "def logistic_gradient(X, y, w, b):\n    \"\"\"Градиент логарифмической потери по весам и смещению.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nvalue = logistic_gradient(X, y, w, b)\nassert isinstance(value, tuple) and len(value) == 2, \"Верните пару (grad_w, grad_b).\"\ngrad_w, grad_b = value\ngrad_w = np.asarray(grad_w, dtype=float)\nassert grad_w.shape == w.shape, \"Градиент по весам — вектор той же формы, что w.\"\nproba = 1.0 / (1.0 + np.exp(-(X @ w + b)))\nassert np.allclose(grad_w, X.T @ (proba - y) / len(y), atol=1e-9), \"Градиент по весам: Xᵀ(h − y) / m, где h — вероятности прямого прохода.\"\n\n\ndef loss_at(w_vec, b_val):\n    \"\"\"Потеря при данных весах — независимо от решения.\"\"\"\n    h = np.clip(1.0 / (1.0 + np.exp(-(X @ w_vec + b_val))), 1e-12, 1 - 1e-12)\n    return float(-np.mean(y * np.log(h) + (1 - y) * np.log(1 - h)))\n\n\neps = 1e-6\nfor index in range(len(w)):\n    plus, minus = np.array(w, dtype=float), np.array(w, dtype=float)\n    plus[index] += eps\n    minus[index] -= eps\n    numeric = (loss_at(plus, b) - loss_at(minus, b)) / (2 * eps)\n    assert abs(float(grad_w[index]) - numeric) < 1e-6, f\"Компонента {index} не совпала с конечной разностью: аналитический градиент обязан сойтись с численным.\"\nnumeric_b = (loss_at(w, b + eps) - loss_at(w, b - eps)) / (2 * eps)\nassert abs(float(grad_b) - numeric_b) < 1e-6, \"Градиент по смещению — производная по b: сверьте его с конечной разностью.\"\nassert abs(float(grad_b) - float(np.mean(proba - y))) < 1e-9, \"Градиент по смещению — среднее (h − y): без Xᵀ и без суммы.\"\nbefore = loss_at(w, b)\nafter = loss_at(w - 0.1 * grad_w, b - 0.1 * float(grad_b))\nassert after < before, \"Шаг против градиента обязан уменьшать потерю: значит, в формуле стоит (h − y), а не (y − h).\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх чисел.\"\nassert abs(float(result[0]) - float(grad_w[0])) < 1e-8, \"Первое — градиент по первому весу.\"\nassert abs(float(result[1]) - float(grad_w[1])) < 1e-8, \"Второе — градиент по второму весу.\"\nassert abs(float(result[2]) - float(grad_b)) < 1e-8, \"Третье — градиент по смещению.\"\n"
+    },
+    {
+      "id": 4009,
+      "prompt": "Зачем в градиенте логарифмической потери делят на число объектов m?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "gradient": 0.7
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Иначе градиент пропорционален размеру выборки: шаг, подобранный на сотне строк, разнесёт веса на выборке в десять тысяч",
+        "Иначе градиент не обратится в ноль в точке минимума и спуск не остановится",
+        "Потому что сигмоида возвращает среднее по объектам, а не сумму",
+        "Чтобы сумма по объектам не переполняла тип float на больших выборках"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "derivative",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 4010,
+      "prompt": "Напиши функцию `fit_logistic(X, y, learning_rate=0.1, n_iterations=2000)`: обучение логистической регрессии градиентным спуском из нулевых весов. Внутри — цикл из трёх действий: прямой проход `h`, градиент, шаг `w -= learning_rate * X.T @ (h - y) / len(y)` (смещение обновляется так же). Верни тройку `(weights, bias, history)`, где `history` — список потерь: первый элемент — потеря при нулевых весах, дальше по одному значению на итерацию, всего `n_iterations + 1`. В `result` сохрани `(round(history[0], 6), round(history[-1], 6), len(history))` для вызова по умолчанию от `X`, `y` из setup.",
+      "answer_type": "code",
+      "concept_weights": {
+        "gradient": 0.9
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 71,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\n\n# Веса для заданий про градиент: считаем по ним, а не по обученной модели.\nw = np.array([0.3, -0.7])\nb = 0.2\n\n# Маленькая выборка с разделимыми классами — для проверки класса модели.\nX_small = np.array([[-1.0, -1.0], [-2.0, -2.0], [1.0, 1.0], [2.0, 2.0]])\ny_small = np.array([0, 0, 1, 1])\n\n# Вероятности обученной модели — для заданий про порог.\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n",
+      "section": "descent",
+      "starter": "def fit_logistic(X, y, learning_rate=0.1, n_iterations=2000):\n    \"\"\"Обучение градиентным спуском: (weights, bias, history).\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\n\n\ndef loss_at(w_vec, b_val):\n    \"\"\"Потеря при данных весах — независимо от решения.\"\"\"\n    h = np.clip(1.0 / (1.0 + np.exp(-(X @ w_vec + b_val))), 1e-12, 1 - 1e-12)\n    return float(-np.mean(y * np.log(h) + (1 - y) * np.log(1 - h)))\n\n\nvalue = fit_logistic(X, y)\nassert isinstance(value, tuple) and len(value) == 3, \"Верните тройку (weights, bias, history).\"\nweights, bias, history = value\nweights = np.asarray(weights, dtype=float)\nassert weights.shape == (X.shape[1],), \"Веса — вектор длины числа признаков.\"\nassert isinstance(bias, (int, float, np.floating)), \"Смещение — одно число, а не массив.\"\nhistory = [float(value) for value in history]\nassert len(history) == 2001, \"В истории начальная потеря плюс по одному значению на итерацию: 2001 значение.\"\nassert abs(history[0] - float(np.log(2))) < 1e-9, \"Первая потеря посчитана при нулевых весах и равна ln 2 ≈ 0.693147.\"\ngrows = float(np.max(np.diff(np.asarray(history))))\nassert grows < 1e-9, f\"Потеря обязана убывать на каждом шаге, а где-то выросла на {grows:.6f}: проверьте знак градиента и множитель 1/m.\"\nassert history[-1] < 0.32, f\"Со скоростью 0.1 за 2000 итераций потеря доходит до ≈ 0.30, а не {history[-1]:.4f}.\"\nassert history[-1] < history[0] - 0.3, \"Потеря должна упасть заметно: с 0.693 до ≈ 0.30.\"\nown = 1.0 / (1.0 + np.exp(-(X @ weights + bias)))\naccuracy = float(np.mean((own >= 0.5) == y))\nassert accuracy >= 0.85, f\"Точность обученной модели на этих данных ≈ 0.87, а не {accuracy:.4f}: веса найдены не до конца.\"\nassert abs(loss_at(weights, bias) - history[-1]) < 1e-9, \"Последняя потеря истории — потеря на возвращённых весах.\"\nslow_weights, slow_bias, slow_history = fit_logistic(X, y, learning_rate=0.001)\nassert float(slow_history[-1]) > history[-1] + 0.1, \"Со скоростью 0.001 за те же 2000 итераций потеря заметно выше (≈ 0.44): скорость обучения — не формальность, а числа не вписаны заранее.\"\nassert abs(loss_at(slow_weights, slow_bias) - float(slow_history[-1])) < 1e-9, \"История обязана соответствовать возвращённым весам и при другой скорости.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — три значения.\"\nassert abs(float(result[0]) - float(np.log(2))) < 1e-6, \"Первое — начальная потеря ln 2.\"\nassert abs(float(result[1]) - history[-1]) < 1e-6, \"Второе — последняя потеря.\"\nassert int(result[2]) == 2001, \"Третье — длина истории.\"\n"
+    },
+    {
+      "id": 4011,
+      "prompt": "Напиши функцию `descent_step(X, y, w, b, learning_rate)`: один шаг градиентного спуска. Функция считает градиент и возвращает пару `(new_w, new_b)` — новые веса и смещение, не меняя переданные `w` и `b` (нужен новый массив: `w - learning_rate * grad_w`, а не вычитание на месте). В `result` сохрани `(round(float(new_w[0]), 6), round(float(new_w[1]), 6), round(float(new_b), 6))` — шаг со скоростью 0.1 из точки `w`, `b` из setup.",
+      "answer_type": "code",
+      "concept_weights": {
+        "gradient": 0.8
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 72,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\n\n# Веса для заданий про градиент: считаем по ним, а не по обученной модели.\nw = np.array([0.3, -0.7])\nb = 0.2\n\n# Маленькая выборка с разделимыми классами — для проверки класса модели.\nX_small = np.array([[-1.0, -1.0], [-2.0, -2.0], [1.0, 1.0], [2.0, 2.0]])\ny_small = np.array([0, 0, 1, 1])\n\n# Вероятности обученной модели — для заданий про порог.\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n",
+      "section": "descent",
+      "starter": "def descent_step(X, y, w, b, learning_rate):\n    \"\"\"Один шаг градиентного спуска: (новые веса, новое смещение).\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\n\n\ndef loss_at(w_vec, b_val):\n    \"\"\"Потеря при данных весах — независимо от решения.\"\"\"\n    h = np.clip(1.0 / (1.0 + np.exp(-(X @ w_vec + b_val))), 1e-12, 1 - 1e-12)\n    return float(-np.mean(y * np.log(h) + (1 - y) * np.log(1 - h)))\n\n\nw_before = np.array(w, dtype=float)\nb_before = float(b)\nvalue = descent_step(X, y, w, b, 0.1)\nassert isinstance(value, tuple) and len(value) == 2, \"Верните пару (новые веса, новое смещение).\"\nnew_w, new_b = value\nnew_w = np.asarray(new_w, dtype=float)\nassert new_w.shape == w_before.shape, \"Форма весов не меняется: шаг сдвигает их, а не пересобирает.\"\nproba = 1.0 / (1.0 + np.exp(-(X @ w_before + b_before)))\nexpected_w = w_before - 0.1 * (X.T @ (proba - y) / len(y))\nassert np.allclose(new_w, expected_w, atol=1e-9), \"Шаг: w − α Xᵀ(h − y) / m.\"\nassert abs(float(new_b) - (b_before - 0.1 * float(np.mean(proba - y)))) < 1e-9, \"Смещение обновляется так же: b − α mean(h − y).\"\nassert np.allclose(w, w_before, atol=0.0) and abs(float(b) - b_before) < 1e-12, \"Функция не должна менять переданные w и b: нужен новый массив, а не вычитание на месте.\"\ndouble_w, double_b = descent_step(X, y, w_before, b_before, 0.2)\nassert np.allclose(double_w - w_before, 2.0 * (new_w - w_before), atol=1e-9), \"Скорость обучения — множитель шага: с 0.2 веса сдвигаются вдвое дальше.\"\nassert abs((float(double_b) - b_before) - 2.0 * (float(new_b) - b_before)) < 1e-9, \"И смещение тоже: шаг пропорционален learning_rate.\"\nassert loss_at(new_w, float(new_b)) < loss_at(w_before, b_before), \"Шаг против градиента обязан уменьшать потерю.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — три числа.\"\nassert abs(float(result[0]) - float(new_w[0])) < 1e-6, \"Первое — новый первый вес.\"\nassert abs(float(result[1]) - float(new_w[1])) < 1e-6, \"Второе — новый второй вес.\"\nassert abs(float(result[2]) - float(new_b)) < 1e-6, \"Третье — новое смещение.\"\n"
+    },
+    {
+      "id": 4012,
+      "prompt": "Студент домножил градиент логарифмической потери на σ′(z) — «на всякий случай, как в нейросетях». Что не так с таким спуском?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "gradient": 0.7
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Оптимум тот же, но шаг искажён: σ′ не больше 0.25, а на уверенных объектах почти ноль — их вклад пропадает, и спуск замедляется",
+        "Потеря перестанет быть выпуклой, и спуск начнёт застревать в локальных минимумах",
+        "Ничего: σ′ сокращается с производной потерь и на шаг не влияет",
+        "Веса начнут расти на каждой итерации, и спуск разойдётся"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "descent",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 4013,
+      "prompt": "Напиши функцию `predict_labels(proba, threshold=0.5)`: переводит вероятности в классы. Вероятность не меньше порога — класс 1, иначе 0: сравнивать нужно (`proba >= threshold`), а не округлять. Аргумент приведи к `np.asarray(proba, dtype=float)`, верни массив целых нулей и единиц. В `result` сохрани кортеж `(predict_labels([0.9, 0.5, 0.499999], 0.5).tolist(), predict_labels([0.5], 0.51).tolist(), predict_labels([0.7]).tolist())`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "gradient": 0.75
+      },
+      "difficulty": 0.35,
+      "options": [],
+      "answer": null,
+      "rubric_id": 73,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\n\n# Веса для заданий про градиент: считаем по ним, а не по обученной модели.\nw = np.array([0.3, -0.7])\nb = 0.2\n\n# Маленькая выборка с разделимыми классами — для проверки класса модели.\nX_small = np.array([[-1.0, -1.0], [-2.0, -2.0], [1.0, 1.0], [2.0, 2.0]])\ny_small = np.array([0, 0, 1, 1])\n\n# Вероятности обученной модели — для заданий про порог.\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n",
+      "section": "predict",
+      "starter": "def predict_labels(proba, threshold=0.5):\n    \"\"\"Вероятности в классы 0 и 1 по порогу.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nlabels = predict_labels(np.array([0.9, 0.5, 0.499999, 0.1]), 0.5)\nassert isinstance(labels, np.ndarray), \"Функция возвращает массив numpy.\"\nassert np.issubdtype(labels.dtype, np.integer), \"В массиве целые 0 и 1, а не True/False и не вероятности.\"\nassert labels.tolist() == [1, 1, 0, 0], \"Порог включается: 0.5 — уже класс 1, 0.499999 — ещё класс 0.\"\nassert predict_labels([0.5], 0.5).tolist() == [1], \"Вероятность ровно 0.5 попадает в класс 1: сравнение >= , а округление отправило бы её в класс 0.\"\nassert predict_labels([0.5], 0.51).tolist() == [0], \"С порогом 0.51 та же вероятность становится классом 0: порог — свободный параметр, а не сама модель.\"\nassert predict_labels([0.7]).tolist() == [1], \"По умолчанию порог 0.5.\"\nassert predict_labels([0.2, 0.8]).tolist() == [0, 1], \"Число предсказанных единиц растёт с понижением порога.\"\nassert predict_labels([1.0, 0.0]).tolist() == [1, 0], \"Уверенные вероятности переводятся в свои классы.\"\nassert len(predict_labels(np.array([0.4, 0.6, 0.5]))) == 3, \"Длина ответа совпадает с длиной входа.\"\nassert isinstance(result, tuple) and len(result) == 3, \"В result — кортеж из трёх списков.\"\nassert list(result[0]) == [1, 1, 0], \"Первый список — классы вероятностей [0.9, 0.5, 0.499999] при пороге 0.5.\"\nassert list(result[1]) == [0], \"Второй — вероятность 0.5 при пороге 0.51.\"\nassert list(result[2]) == [1], \"Третий — вероятность 0.7 при пороге по умолчанию.\"\n"
+    },
+    {
+      "id": 4014,
+      "prompt": "Напиши функцию `threshold_report(y_true, proba, thresholds)`: для каждого порога из `thresholds` вернуть тройку `(порог, сколько объектов отнесено к классу 1, точность)`. Точность — доля верных ответов от 0 до 1, а не проценты. Список троек идёт в том же порядке, что и пороги. В `result` сохрани `[(float(t), int(n), round(float(a), 4)) for t, n, a in report]` для `report = threshold_report(y, proba, (0.3, 0.5, 0.7))` — по вероятностям обученной модели из setup.",
+      "answer_type": "code",
+      "concept_weights": {
+        "gradient": 0.8
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 74,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\n\n# Веса для заданий про градиент: считаем по ним, а не по обученной модели.\nw = np.array([0.3, -0.7])\nb = 0.2\n\n# Маленькая выборка с разделимыми классами — для проверки класса модели.\nX_small = np.array([[-1.0, -1.0], [-2.0, -2.0], [1.0, 1.0], [2.0, 2.0]])\ny_small = np.array([0, 0, 1, 1])\n\n# Вероятности обученной модели — для заданий про порог.\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n",
+      "section": "predict",
+      "starter": "def threshold_report(y_true, proba, thresholds):\n    \"\"\"Для каждого порога: (порог, число единиц, точность).\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nreport = threshold_report(y, proba, (0.3, 0.5, 0.7))\nassert isinstance(report, list) and len(report) == 3, \"На каждый порог — своя строка: список из трёх троек.\"\nassert all(len(row) == 3 for row in report), \"Строка — тройка (порог, число единиц, точность).\"\nassert [float(row[0]) for row in report] == [0.3, 0.5, 0.7], \"Пороги идут в том же порядке, что и на входе.\"\ncounts = [int(row[1]) for row in report]\nassert counts == sorted(counts, reverse=True), \"Чем выше порог, тем меньше объектов попадает в класс 1.\"\nfor threshold, count, accuracy in report:\n    labels = (np.asarray(proba, dtype=float) >= float(threshold)).astype(int)\n    expected = int(labels.sum())\n    assert int(count) == expected, f\"При пороге {threshold} в класс 1 попадает {expected} объектов, а не {int(count)}: округлять вероятности вместо сравнения нельзя.\"\n    assert abs(float(accuracy) - float(np.mean(labels == np.asarray(y)))) < 1e-9, f\"При пороге {threshold} точность — доля верных ответов от 0 до 1, без процентов.\"\nassert counts[0] > counts[2], \"Сдвиг порога меняет ответы: строки обязаны отличаться.\"\nsingle = threshold_report(y, proba, (0.5,))\nassert len(single) == 1 and int(single[0][1]) == 96, \"На данных setup порог 0.5 относит к классу 1 ровно 96 объектов из 200.\"\nassert abs(float(single[0][2]) - 0.865) < 1e-9, \"Точность при пороге 0.5 — 0.865.\"\nedge = threshold_report(np.array([1, 1]), np.array([0.5, 0.5]), (0.5,))\nassert int(edge[0][1]) == 2, \"Вероятность ровно 0.5 при пороге 0.5 — класс 1: сравнение >=, а не >.\"\nassert isinstance(result, list) and len(result) == 3, \"В result — список из трёх строк.\"\nfor index, (_, count, accuracy) in enumerate(report):\n    assert abs(float(result[index][0]) - float(report[index][0])) < 1e-9, \"Порядок и значения порогов сохраняются.\"\n    assert int(result[index][1]) == int(count), \"Число единиц переносится в result без изменений.\"\n    assert abs(float(result[index][2]) - round(float(accuracy), 4)) < 1e-9, \"Точность в result округлена до четырёх знаков.\"\n"
+    },
+    {
+      "id": 4015,
+      "prompt": "Модель выдала вероятность 0.5, а порог равен 0.5. К какому классу попадёт объект — и почему для этого не годится `np.round`?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "gradient": 0.7
+      },
+      "difficulty": 0.4,
+      "options": [
+        "К классу 1: сравнение `>= 0.5` включает границу, а `np.round(0.5)` даёт 0 и отправил бы объект в класс 0",
+        "К классу 0: вероятность 0.5 — это ещё не «больше половины»",
+        "Зависит от модели: разные реализации решают это по-своему",
+        "Ни к одному: вероятность 0.5 означает отказ модели от ответа"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "setup": null,
+      "section": "predict",
+      "starter": null,
+      "tests": null
+    },
+    {
+      "id": 4016,
+      "prompt": "Итоговое задание занятия. Напиши класс `MyLogisticRegression` с конструктором `__init__(self, learning_rate=0.1, n_iterations=2000)`, методами `fit(X, y)` (обучение градиентным спуском из нулей, возвращает `self`), `predict_proba(X)` (вероятности класса 1) и `predict(X, threshold=0.5)` (классы 0 и 1). Веса и смещение — атрибуты `weights` и `bias`: они нужны после обучения. В `result` сохрани кортеж `(round(float(np.mean(model.predict(X) == y)), 4), int(small.predict(X_small).sum()), round(float(small.predict_proba(X_small)[0]), 4), round(float(small.bias), 4))`, где `model = MyLogisticRegression().fit(X, y)`, а `small = MyLogisticRegression(n_iterations=1000).fit(X_small, y_small)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "gradient": 0.9
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 75,
+      "setup": "import numpy as np\nfrom sklearn.datasets import make_classification\nfrom sklearn.linear_model import LogisticRegression\n\nX, y = make_classification(\n    n_samples=200,\n    n_features=2,\n    n_redundant=0,\n    n_informative=2,\n    random_state=1,\n    n_clusters_per_class=1,\n)\n\n# Веса для заданий про градиент: считаем по ним, а не по обученной модели.\nw = np.array([0.3, -0.7])\nb = 0.2\n\n# Маленькая выборка с разделимыми классами — для проверки класса модели.\nX_small = np.array([[-1.0, -1.0], [-2.0, -2.0], [1.0, 1.0], [2.0, 2.0]])\ny_small = np.array([0, 0, 1, 1])\n\n# Вероятности обученной модели — для заданий про порог.\nmodel = LogisticRegression().fit(X, y)\nproba = model.predict_proba(X)[:, 1]\n",
+      "section": null,
+      "final": true,
+      "starter": "class MyLogisticRegression:\n    def __init__(self, learning_rate=0.1, n_iterations=2000):\n        \"\"\"Логистическая регрессия, обученная своим градиентным спуском.\"\"\"\n\n\n    def fit(self, X, y):\n        \"\"\"Обучает модель и возвращает self.\"\"\"\n\n\n    def predict_proba(self, X):\n        \"\"\"Вероятности класса 1.\"\"\"\n\n\n    def predict(self, X, threshold=0.5):\n        \"\"\"Классы 0 и 1 по порогу.\"\"\"\n\n\nresult = None\n",
+      "tests": "assert \"result\" in globals(), \"Сохраните ответ в переменную result.\"\nmodel = MyLogisticRegression(learning_rate=0.1, n_iterations=2000)\nfitted = model.fit(X, y)\nassert fitted is model, \"fit возвращает self: иначе model = MyLogisticRegression().fit(X, y) оставит в переменной None.\"\nassert hasattr(model, \"weights\") and model.weights is not None, \"Веса — атрибут модели: локальная переменная внутри fit исчезнет вместе с вызовом.\"\nassert np.asarray(model.weights, dtype=float).shape == (X.shape[1],), \"Веса — вектор длины числа признаков.\"\nassert isinstance(model.bias, (int, float, np.floating)), \"Смещение — атрибут-число.\"\nown = model.predict_proba(X)\nassert isinstance(own, np.ndarray) and own.shape == (len(y),), \"predict_proba возвращает по вероятности на каждую строку X.\"\nassert np.all(own >= 0.0) and np.all(own <= 1.0), \"Вероятности лежат в отрезке от 0 до 1: логиты ещё нужно пропустить через сигмоиду.\"\nexpected = 1.0 / (1.0 + np.exp(-(X @ np.asarray(model.weights, dtype=float) + float(model.bias))))\nassert np.allclose(own, expected, atol=1e-9), \"Вероятность — сигмоида от X @ w + b при весах, найденных в fit.\"\nlabels = model.predict(X)\nassert isinstance(labels, np.ndarray) and np.issubdtype(labels.dtype, np.integer), \"predict возвращает массив целых классов 0 и 1.\"\nassert labels.tolist() == (own >= 0.5).astype(int).tolist(), \"predict — это порог 0.5 по вероятностям predict_proba.\"\naccuracy = float(np.mean(labels == y))\nassert accuracy >= 0.85, f\"Со скоростью 0.1 за 2000 итераций модель угадывает около 0.87 ответов, а не {accuracy:.4f}.\"\ncustom = model.predict(X, threshold=0.3)\nassert int(custom.sum()) > int(labels.sum()), \"Понижение порога увеличивает число предсказанных единиц.\"\nassert np.allclose(model.predict_proba(X), own, atol=1e-12), \"Порог меняет ответы, но не вероятности: модель та же.\"\nsmall = MyLogisticRegression(n_iterations=1000).fit(X_small, y_small)\nassert small.predict(X_small).tolist() == [0, 0, 1, 1], \"На разделимых данных классы угадываются.\"\none_step = MyLogisticRegression(n_iterations=1).fit(X, y)\nassert float(np.mean(np.abs(one_step.predict_proba(X) - 0.5))) < float(np.mean(np.abs(own - 0.5))), \"Одна итерация почти не сдвигает вероятности от 0.5: обучение — это цикл, а не один шаг.\"\nassert isinstance(result, tuple) and len(result) == 4, \"В result — кортеж из четырёх значений.\"\nassert abs(float(result[0]) - accuracy) < 1e-4, \"Первое — точность модели на обучающей выборке.\"\nassert int(result[1]) == 2, \"Второе — сколько из четырёх малых объектов отнесено к классу 1.\"\nassert abs(float(result[2]) - 0.0094) < 1e-4, \"Третье — вероятность первого малого объекта (класс 0, уверенность высокая).\"\nassert abs(float(result[3])) < 1e-4, \"Четвёртое — смещение малой модели: данные симметричны, поэтому ноль.\"\n"
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 65,
+      "name": "Код: логистическая функция"
+    },
+    {
+      "id": 66,
+      "name": "Код: производная сигмоиды"
+    },
+    {
+      "id": 67,
+      "name": "Код: логарифмическая потеря"
+    },
+    {
+      "id": 68,
+      "name": "Код: потеря по логитам"
+    },
+    {
+      "id": 69,
+      "name": "Код: вероятности и потеря по весам"
+    },
+    {
+      "id": 70,
+      "name": "Код: градиент логарифмической потери"
+    },
+    {
+      "id": 71,
+      "name": "Код: обучение градиентным спуском"
+    },
+    {
+      "id": 72,
+      "name": "Код: один шаг спуска"
+    },
+    {
+      "id": 73,
+      "name": "Код: вероятности в классы"
+    },
+    {
+      "id": 74,
+      "name": "Код: отчёт по порогам"
+    },
+    {
+      "id": 75,
+      "name": "Код: свой класс логистической регрессии"
+    }
+  ],
+  "criteria": [
+    {
+      "id": 139,
+      "rubric_id": 65,
+      "criterion": "Сигмоида считается по формуле 1 / (1 + exp(−z)), а не похожей",
+      "weight": 1.0,
+      "positive_example": "σ(1) ≈ 0.731059 и σ(−1) ≈ 0.268941 — сумма единица",
+      "negative_example": "1 / (1 + exp(z)) — это σ(−z), знак в экспоненте потерян"
+    },
+    {
+      "id": 140,
+      "rubric_id": 65,
+      "criterion": "Функция работает и со скаляром, и с массивом",
+      "weight": 1.0,
+      "positive_example": "np.asarray(z, dtype=float) внутри — массив обрабатывается поэлементно",
+      "negative_example": "math.exp внутри — на массиве падает TypeError"
+    },
+    {
+      "id": 141,
+      "rubric_id": 66,
+      "criterion": "Производная выражена через саму сигмоиду: σ(z)(1 − σ(z))",
+      "weight": 1.0,
+      "positive_example": "s * (1 - s), где s = sigmoid(z) — максимум 0.25 в нуле",
+      "negative_example": "s * (1 + s) — в нуле даёт 0.75, а не 0.25"
+    },
+    {
+      "id": 142,
+      "rubric_id": 66,
+      "criterion": "Производная сверена с конечной разностью, а не только с константами",
+      "weight": 1.0,
+      "positive_example": "(σ(z + eps) − σ(z − eps)) / (2 eps) даёт то же число",
+      "negative_example": "значения производной вписаны константами"
+    },
+    {
+      "id": 143,
+      "rubric_id": 67,
+      "criterion": "Оба слагаемых потери на месте: −y ln h − (1 − y) ln(1 − h)",
+      "weight": 1.0,
+      "positive_example": "для y = 0 потеря равна −ln(1 − h), например 2.302585 при h = 0.9",
+      "negative_example": "только −y ln h — объекты класса 0 перестают что-либо стоить"
+    },
+    {
+      "id": 144,
+      "rubric_id": 67,
+      "criterion": "Вероятности зажаты: уверенный промах даёт большое число, а не inf",
+      "weight": 1.0,
+      "positive_example": "np.clip(proba, 1e-12, 1 - 1e-12) — потеря остаётся конечной",
+      "negative_example": "логарифм нуля даёт inf и превращает среднее в inf или nan"
+    },
+    {
+      "id": 145,
+      "rubric_id": 68,
+      "criterion": "Потеря считается по логитам устойчиво: logaddexp(0, z) − y z",
+      "weight": 1.0,
+      "positive_example": "при z = −1000 потеря равна 1000, при z = 1000 — почти ноль",
+      "negative_example": "σ(z) при z = ±1000 округляется до 0 и 1, и потеря становится inf"
+    },
+    {
+      "id": 146,
+      "rubric_id": 68,
+      "criterion": "На умеренных логитах результат совпадает с потерей по вероятностям",
+      "weight": 1.0,
+      "positive_example": "та же формула даёт −mean(y ln h + (1 − y) ln(1 − h))",
+      "negative_example": "перепутан знак: вместо logaddexp − y z считается y z − logaddexp… это то же самое, а вот y z + logaddexp — уже нет"
+    },
+    {
+      "id": 147,
+      "rubric_id": 69,
+      "criterion": "Вероятности считаются по переданным весам, а не по данным из setup",
+      "weight": 1.0,
+      "positive_example": "predict_proba(X, w_other, b_other) даёт другие вероятности и другую потерю",
+      "negative_example": "вероятности обученной модели возвращаются при любых аргументах"
+    },
+    {
+      "id": 148,
+      "rubric_id": 69,
+      "criterion": "Своя потеря совпадает с библиотечной на тех же вероятностях",
+      "weight": 1.0,
+      "positive_example": "разница со sklearn.metrics.log_loss меньше 1e-9",
+      "negative_example": "сумма вместо среднего — потеря вырастает в 200 раз"
+    },
+    {
+      "id": 149,
+      "rubric_id": 70,
+      "criterion": "Градиент считается как Xᵀ(h − y) / m по вероятностям прямого прохода",
+      "weight": 1.0,
+      "positive_example": "X.T @ (proba - y) / len(y) — сходится с конечной разностью",
+      "negative_example": "X.T @ (y - proba) / len(y) — знак перепутан, потеря растёт на каждом шаге"
+    },
+    {
+      "id": 150,
+      "rubric_id": 70,
+      "criterion": "Градиент по смещению — среднее (h − y), а не сумма и не градиент по весам",
+      "weight": 1.0,
+      "positive_example": "np.mean(proba - y) — одно число",
+      "negative_example": "np.sum(proba - y) — без деления на m шаг зависит от размера выборки"
+    },
+    {
+      "id": 151,
+      "rubric_id": 71,
+      "criterion": "Каждая итерация — прямой проход, градиент и шаг; веса и смещение обновляются вместе",
+      "weight": 1.0,
+      "positive_example": "w -= lr * X.T @ (h - y) / len(y) и b -= lr * mean(h - y) в одном цикле",
+      "negative_example": "обновляются только веса, а смещение остаётся нулём"
+    },
+    {
+      "id": 152,
+      "rubric_id": 71,
+      "criterion": "История потерь начинается с ln 2 и убывает монотонно",
+      "weight": 1.0,
+      "positive_example": "history[0] ≈ 0.693147, длина n_iterations + 1, последняя потеря ≈ 0.30",
+      "negative_example": "история из одних и тех же чисел или растущая потеря при перепутанном знаке"
+    },
+    {
+      "id": 153,
+      "rubric_id": 72,
+      "criterion": "Один шаг сдвигает веса и смещение на −α·градиент",
+      "weight": 1.0,
+      "positive_example": "с learning_rate 0.2 смещение вдвое больше, чем с 0.1",
+      "negative_example": "шаг не зависит от learning_rate или берётся по (y − h)"
+    },
+    {
+      "id": 154,
+      "rubric_id": 72,
+      "criterion": "Переданные веса и смещение не меняются: создаётся новый массив",
+      "weight": 1.0,
+      "positive_example": "w_new = w - lr * grad_w — исходный w тот же",
+      "negative_example": "w -= lr * grad_w — веса вызывающей стороны испорчены"
+    },
+    {
+      "id": 155,
+      "rubric_id": 73,
+      "criterion": "Классы получаются сравнением с порогом, а не округлением",
+      "weight": 1.0,
+      "positive_example": "вероятность 0.5 при пороге 0.5 становится классом 1",
+      "negative_example": "np.round(0.5) даёт 0 и отправляет граничный объект в класс 0"
+    },
+    {
+      "id": 156,
+      "rubric_id": 73,
+      "criterion": "Порог — параметр функции, по умолчанию 0.5",
+      "weight": 1.0,
+      "positive_example": "predict_labels([0.5], 0.51) возвращает 0, а predict_labels([0.5]) — 1",
+      "negative_example": "порог вписан в тело функции, и аргумент игнорируется"
+    },
+    {
+      "id": 157,
+      "rubric_id": 74,
+      "criterion": "Для каждого порога считаются своё число единиц и своя точность",
+      "weight": 1.0,
+      "positive_example": "пороги 0.3, 0.5, 0.7 дают 114, 96 и 81 объект класса 1",
+      "negative_example": "вероятности округляются, и все три строки выходят одинаковыми"
+    },
+    {
+      "id": 158,
+      "rubric_id": 74,
+      "criterion": "Точность — доля верных ответов от 0 до 1",
+      "weight": 1.0,
+      "positive_example": "при пороге 0.5 точность 0.865",
+      "negative_example": "точность умножена на 100 (86.5) или поделена на число объектов"
+    },
+    {
+      "id": 159,
+      "rubric_id": 75,
+      "criterion": "Класс хранит веса и смещение в атрибутах и возвращает self из fit",
+      "weight": 1.0,
+      "positive_example": "model.fit(X, y).predict(X) работает: атрибуты weights и bias заполнены",
+      "negative_example": "fit без return — model = MyLogisticRegression().fit(X, y) даёт None"
+    },
+    {
+      "id": 160,
+      "rubric_id": 75,
+      "criterion": "predict переводит вероятности в классы порогом, predict_proba их не меняет",
+      "weight": 1.0,
+      "positive_example": "predict(X, 0.3) относит к классу 1 больше объектов, а вероятности те же",
+      "negative_example": "predict_proba возвращает логиты без сигмоиды"
+    }
+  ],
+  "legacy": {}
+}

@@ -5,11 +5,14 @@
 """
 
 import asyncio
+import logging
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
-from llm_tutor.web import accounts
+from llm_tutor.config import Settings
+from llm_tutor.web import accounts, mailer
 from llm_tutor.web.accounts import AccountError, EmailTaken, User
 from llm_tutor.web.security import (
     TOO_MANY_ATTEMPTS,
@@ -20,10 +23,14 @@ from llm_tutor.web.security import (
     set_session_cookie,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api")
 
 REGISTRATION_CLOSED = "Регистрация закрыта. Обратитесь к администратору."
 WRONG_CREDENTIALS = "Неверный email или пароль."
+TOO_MANY_RESETS = "Слишком много запросов письма. Подождите 15 минут и попробуйте снова."
+RESET_SUBJECT = "Восстановление пароля в llm·tutor"
 
 # Верхние границы — только против мусора: настоящие проверки в accounts.
 _LONG = 1000
@@ -47,6 +54,36 @@ class RenameBody(BaseModel):
 class PasswordBody(BaseModel):
     current: str = Field(max_length=_LONG)
     new: str = Field(max_length=_LONG)
+
+
+class ForgotPasswordBody(BaseModel):
+    email: str = Field(max_length=_LONG)
+
+
+class ResetPasswordBody(BaseModel):
+    token: str = Field(max_length=_LONG)
+    password: str = Field(max_length=_LONG)
+
+
+def reset_link(settings: Settings, token: str) -> str:
+    """Абсолютная ссылка восстановления — из PUBLIC_BASE_URL.
+
+    Не из ``request.base_url``: за прокси заголовок Host подконтролен клиенту,
+    и в письмо ушла бы ссылка на чужой хост.
+    """
+    return f"{settings.public_base_url.rstrip('/')}/reset-password?token={quote(token, safe='')}"
+
+
+def reset_letter(user: User, link: str, ttl_minutes: int) -> str:
+    """Текст письма: что случилось, сколько живёт ссылка и что делать, если это не вы."""
+    return (
+        f"Здравствуйте, {user.name}!\n\n"
+        "Кто-то запросил восстановление пароля в llm·tutor для этого адреса.\n"
+        f"Ссылка действует {ttl_minutes} мин и сработает один раз:\n\n"
+        f"{link}\n\n"
+        "Пароль изменится только после того, как вы откроете ссылку и зададите новый.\n"
+        "Если восстановление запросили не вы — просто не открывайте её.\n"
+    )
 
 
 def user_view(user: User) -> dict[str, str]:
@@ -148,4 +185,77 @@ async def change_password(
     password_hash = await asyncio.to_thread(accounts.hash_password, body.new)
     accounts.set_password(db, user.id, password_hash, keep_token=session_token(request))
     limiter.reset(user.email)
+    return {"ok": True}
+
+
+@router.post("/auth/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordBody, request: Request, background: BackgroundTasks
+) -> dict:
+    """Письмо со ссылкой восстановления пароля.
+
+    Ответ одинаков для зарегистрированного, неизвестного и кривого адреса:
+    иначе по коду ответа можно было бы перебирать, кто здесь учится. Текст
+    «проверьте почту» живёт в шаблоне страницы, а не в ответе.
+    """
+    settings = request.app.state.settings
+    limiter = request.app.state.reset_limiter
+    if limiter.blocked(body.email):
+        raise HTTPException(status_code=429, detail={"message": TOO_MANY_RESETS})
+    # Счётчик растёт для любого адреса: блокировка по «известным» адресам
+    # сама выдавала бы, кто здесь учится.
+    limiter.failure(body.email)
+    db = accounts_db(request)
+    user = accounts.find_user(db, body.email)
+    if user is not None:
+        token = accounts.create_reset_token(
+            db, user.id, ttl=settings.password_reset_ttl_minutes * 60
+        )
+        # Письмо — фоном, после ответа: медленный SMTP не держит ученика,
+        # а его отказ не ломает запрос.
+        background.add_task(
+            mailer.send_safely,
+            request.app.state.mailer,
+            to=user.email,
+            subject=RESET_SUBJECT,
+            text=reset_letter(
+                user, reset_link(settings, token), settings.password_reset_ttl_minutes
+            ),
+        )
+    return {"ok": True}
+
+
+@router.post("/auth/reset-password")
+async def reset_password(body: ResetPasswordBody, request: Request, response: Response) -> dict:
+    """Смена пароля по одноразовой ссылке из письма.
+
+    Лимитера здесь нет намеренно: токен — 32 случайных байта, перебор
+    невозможен, а счётчик мешал бы честной опечатке. Изменяющий запрос и так
+    закрыт ``api_guard`` (чужой Origin — 403, не-JSON — 415).
+    """
+    settings = request.app.state.settings
+    db = accounts_db(request)
+    try:
+        accounts.check_password(body.password)
+    except AccountError as error:
+        # Проверка до похода в БД: слабый пароль не должен сжигать ссылку —
+        # ученик исправит опечатку и отправит ту же форму снова.
+        raise _field_error(error) from error
+    user = accounts.reset_token_user(db, body.token)
+    if user is None:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "token", "message": accounts.RESET_TOKEN_INVALID},
+        )
+    # scrypt — в потоке: цикл событий обслуживает ходы всех учеников.
+    password_hash = await asyncio.to_thread(accounts.hash_password, body.password)
+    try:
+        accounts.reset_password(db, body.token, password_hash)
+    except AccountError as error:
+        # Гонку двух переходов по одной ссылке выиграл другой запрос.
+        raise _field_error(error) from error
+    # Прежние неудачные попытки входа — уже история: пароль новый.
+    request.app.state.login_limiter.reset(user.email)
+    clear_session_cookie(response, settings)
+    logger.info("Пароль восстановлен по ссылке: ученик %s", user.id)
     return {"ok": True}

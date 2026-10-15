@@ -9,7 +9,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+/build/
 develop-eggs/
 dist/
 downloads/
@@ -57,6 +57,9 @@ data/raw/
 
 # --- БД учеников веба ---
 data/users/
+
+# Курсы, созданные преподавателем: их содержимое — данные установки, а не код
+data/courses/
 
 # Журналы исполнения планов (CLAUDE.md: в git не попадают)
 .superpowers/

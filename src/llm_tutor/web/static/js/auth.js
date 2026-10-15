@@ -1,4 +1,4 @@
-/* Формы входа и регистрации: отправка JSON, ошибки рядом с полем, показ пароля. */
+/* Формы входа, регистрации и восстановления пароля: JSON, ошибки у поля, показ пароля. */
 (() => {
   const { $, request } = window.App;
 
@@ -32,7 +32,17 @@
     button.disabled = true;
     try {
       await request(form.dataset.endpoint, { method: "POST", body, timeout: 20000 });
-      location.assign(form.dataset.next || "/");
+      if (form.dataset.next) {
+        location.assign(form.dataset.next);
+        return;
+      }
+      // Форма без data-next — восстановление пароля: уходить со страницы некуда
+      // (ученик ещё не вошёл), поэтому прячем поля и показываем подтверждение.
+      const scope = form.closest(".login-card") || form.parentElement;
+      scope.querySelectorAll("[data-until-success]").forEach((element) => { element.hidden = true; });
+      scope.querySelectorAll("[data-success], [data-after-success]").forEach((element) => { element.hidden = false; });
+      // Токен из письма уже сожжён, пароль — секрет: в полях не остаётся ничего.
+      form.querySelectorAll("input").forEach((input) => { input.value = ""; });
     } catch (problem) {
       showError(form, problem.field, problem.message);
       button.disabled = false;
@@ -51,6 +61,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".auth-form").forEach((form) => form.addEventListener("submit", submit));
     document.querySelectorAll(".toggle-password").forEach((button) => button.addEventListener("click", togglePassword));
-    $(".auth-form input")?.focus();
+    // Скрытый токен из ссылки в фокусе не нуждается — он и не фокусируется.
+    $(".auth-form input:not([type=hidden])")?.focus();
   });
 })();

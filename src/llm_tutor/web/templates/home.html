@@ -9,7 +9,7 @@
 {% if not user %}
 <section class="hero">
   <div class="hero-copy">
-    <p class="eyebrow">Тьютор по курсу mlcourse.ai</p>
+    <p class="eyebrow">{{ brand_caption }}</p>
     <h1>Разбирайтесь в данных с тьютором, который проверяет, а не угадывает</h1>
     <p class="hero-lead">Теория и практика по теме слева, тьютор в чате справа. Ответы проверяет код, а не модель: тесты к заданиям запускаются прямо в браузере.</p>
     <div class="hero-actions">
@@ -33,12 +33,12 @@
   </ol>
 </section>
 <section class="course-section" aria-labelledby="catalog-title">
-  <h2 id="catalog-title" class="section-title">Курс</h2>
+  <h2 id="catalog-title" class="section-title">Курсы</h2>
   <div class="course-grid">{% for card in cards %}{% include "_course_card.html" %}{% endfor %}</div>
 </section>
 {% elif not courses %}
 <section class="panel empty-start">
-  <div class="empty"><strong>Выберите курс, чтобы начать</strong>Пока доступен один курс — mlcourse.ai: пять модулей, от pandas до случайного леса.</div>
+  <div class="empty"><strong>Выберите курс, чтобы начать</strong>Каталог курсов — на странице «Мои курсы»: запись открывает занятие.</div>
   <div class="course-actions centered"><a class="btn primary" href="/courses">К курсам{{ icon('arrow') }}</a></div>
 </section>
 {% else %}

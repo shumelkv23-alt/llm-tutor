@@ -1,14 +1,224 @@
 {% extends "base.html" %}
-{% block eyebrow %}Админка{% endblock %}
-{% block heading %}Курс{% endblock %}
-{% block description %}Где ученики застревают: воронка по занятиям.{% endblock %}
+{% block eyebrow %}Админка · курс{% endblock %}
+{# Страница одна на два экрана: обзор своего курса (раздел «Курсы») и воронка по
+   занятиям (вкладка «Курс»). Их различает контекст: обзор приходит с полями
+   modules/sources, аналитика — с funnel/students. #}
+{% block heading %}{% if sources is defined %}{{ course.title }}{% else %}Курс{% endif %}{% endblock %}
+{% block description %}{% if sources is defined %}Модули, материалы, генерация и публикация.{% else %}Где ученики застревают: воронка по занятиям.{% endif %}{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
+{% block actions %}{% if sources is defined %}<a class="btn" href="/admin/courses">Все курсы</a>{% endif %}{% endblock %}
 {% block content %}
 {% include "_admin_tabs.html" %}
 
+{% if sources is defined %}
+{% set course_url = "/api/admin/courses/" ~ course.id %}
+{% set source_kinds = {'file': 'файл', 'url': 'страница', 'github': 'репозиторий'} %}
+{# Название берём из формы курса, вводную — из структуры: JS собирает
+   структуру целиком, а эти два поля в строках не редактируются. #}
+<div id="admin-course" data-screen="course" data-course="{{ course.id }}" data-api="{{ course_url }}"
+     data-plan-title="{{ course.title }}" data-plan-intro="{{ plan.intro if plan else '' }}">
+
+  <p class="notice error" id="course-error" role="alert" hidden></p>
+
+  <section class="panel" aria-labelledby="course-meta-title">
+    <h2 id="course-meta-title" class="section-title">Курс</h2>
+    <form class="admin-form" id="course-meta" novalidate>
+      <div class="form-row">
+        <label>Название<input name="title" type="text" maxlength="200" required value="{{ course.title }}"></label>
+        <label>Подпись<input name="subtitle" type="text" maxlength="200" value="{{ course.subtitle }}"></label>
+      </div>
+      <p class="field-error" data-error-for="title" hidden></p>
+      <label>Описание<textarea name="description" rows="3" maxlength="2000">{{ course.description }}</textarea></label>
+      <label>Ссылка на источник<input name="source_url" type="url" maxlength="500" value="{{ course.source_url }}"></label>
+      <p class="form-error" role="alert" hidden></p>
+      <div class="admin-actions">
+        <button class="btn primary" type="submit">Сохранить</button>
+        {% if course.status == 'published' %}
+        <button class="btn" type="button" data-action="unpublish">Снять с публикации</button>
+        {% else %}
+        <button class="btn" type="button" data-action="publish">Опубликовать</button>
+        <button class="btn danger" type="button" data-action="delete">Удалить курс</button>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="course-sources-title">
+    <h2 id="course-sources-title" class="section-title">Материалы курса</h2>
+    <p class="form-hint">Принимаются .md, .markdown, .txt, .html, .htm и .ipynb — до 512 КБ на файл и до 50 источников на курс. Материалы читает генерация: чем ближе они к вашему курсу, тем меньше правок потом.</p>
+    <ul class="source-list" id="source-list">
+      {% for source in sources %}
+      <li class="source-row" data-source="{{ source.id }}">
+        <div class="source-main">
+          <span class="source-title">{{ source.title }}</span>
+          <span class="badge">{{ source_kinds.get(source.kind, source.kind) }}</span>
+          <span class="source-meta muted">{{ (source.bytes / 1024) | round(1) }} КБ · {{ source.origin }}</span>
+        </div>
+        <button class="btn ghost" type="button" data-action="remove-source" data-source="{{ source.id }}">Убрать</button>
+      </li>
+      {% else %}
+      <li class="muted" data-empty="1">Материалов пока нет.</li>
+      {% endfor %}
+    </ul>
+    <label class="file-field">Добавить файлы<input id="source-file" type="file" multiple accept=".md,.markdown,.txt,.html,.htm,.ipynb"></label>
+    <p class="form-hint">Файлы читает браузер и отправляет текстом — на сервер ничего не «заливается».</p>
+    <div class="source-add">
+      <label>Ссылка на страницу<input id="source-url" type="url" maxlength="1000" placeholder="https://example.com/article"></label>
+      <button class="btn" type="button" data-action="add-url">Добавить страницу</button>
+    </div>
+    <div class="source-add">
+      <label>Ссылка на репозиторий GitHub<input id="source-github" type="url" maxlength="1000" placeholder="https://github.com/user/repo"></label>
+      <button class="btn" type="button" data-action="add-github">Добавить репозиторий</button>
+    </div>
+  </section>
+
+  {# Структура: из каких модулей состоит курс и что в каждом. Составляется до
+     генерации модулей — по ней берутся название модуля и число занятий.
+     Номера задаёт порядок строк, поэтому у сгенерированного модуля кнопки
+     удаления нет: его место меняют только стрелками (они двигают и файлы). #}
+  {% set generated = modules | map(attribute='number') | list %}
+  <section class="panel" aria-labelledby="course-structure-title">
+    <h2 id="course-structure-title" class="section-title">Структура курса</h2>
+    <p class="form-hint">Структура — из каких модулей состоит курс: отсюда генерация возьмёт название модуля и число занятий. Составьте её руками или попросите модель, но <strong>до</strong> генерации модулей.</p>
+    <form class="admin-form" id="course-structure" novalidate>
+      <ul class="structure-list" id="structure-list">
+        {% if plan %}
+        {% for module in plan.modules %}
+        <li class="structure-row">
+          <span class="structure-number" aria-hidden="true">{{ module.number }}</span>
+          <label class="structure-cell">Название<input data-field="title" type="text" maxlength="200" value="{{ module.title }}"></label>
+          <label class="structure-cell">Тема<input data-field="theme" type="text" maxlength="200" value="{{ module.theme }}"></label>
+          <label class="structure-cell">Занятий<input data-field="lessons" type="number" min="2" max="10" step="1" value="{{ module.lessons }}"></label>
+          <div class="structure-order">
+            <button class="btn ghost icon-only" type="button" data-action="swap-module" data-a="{{ module.number - 1 }}" data-b="{{ module.number }}" aria-label="Поднять модуль {{ module.number }} выше"{% if loop.first %} disabled{% endif %}>↑</button>
+            <button class="btn ghost icon-only" type="button" data-action="swap-module" data-a="{{ module.number }}" data-b="{{ module.number + 1 }}" aria-label="Опустить модуль {{ module.number }} ниже"{% if loop.last %} disabled{% endif %}>↓</button>
+          </div>
+          <div class="structure-actions">
+            {% if module.number in generated %}
+            <span class="badge success">готов</span>
+            {% else %}
+            <button class="btn" type="button" data-action="generate-module" data-module="{{ module.number }}">Сгенерировать</button>
+            <button class="btn ghost icon-only" type="button" data-action="remove-module" aria-label="Убрать модуль {{ module.number }} из структуры">{{ icon('close') }}</button>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+        {% endif %}
+      </ul>
+      <p class="muted" id="structure-none"{% if plan and plan.modules %} hidden{% endif %}>Модулей в структуре пока нет — добавьте их кнопкой ниже или попросите модель.</p>
+      <p class="field-error" data-error-for="modules" hidden></p>
+      <div class="admin-actions">
+        <button class="btn" type="button" data-action="add-module">Добавить модуль</button>
+        <button class="btn primary" type="button" data-action="save-structure">Сохранить структуру</button>
+        <button class="btn" type="button" data-action="make-structure">Составить структуру{% if plan %} заново{% endif %}</button>
+      </div>
+      <label>Что учесть (для модели)<textarea id="struct-hints" rows="2" maxlength="2000" placeholder="Для новичков: больше практики, меньше математики; данные — про города"></textarea></label>
+      <p class="form-hint">Номер модуля — его место в списке: модули идут подряд с 1, модулей не меньше двух, занятий в модуле — 2–10. Стрелки меняют модули местами вместе с их файлами и конспектами, поэтому сначала сохраните правки, а страница после перестановки перезагрузится.</p>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="generation-title">
+    <h2 id="generation-title" class="section-title">Генерация модуля</h2>
+    <p class="notice" role="status">Генерация зовёт модель 15–30 раз на модуль: это минуты ожидания и деньги. Запускайте её, когда материалы уже загружены.</p>
+    <div class="admin-form">
+      <div class="form-row">
+        <label>Номер модуля<input id="gen-module" type="number" min="1" max="10" step="1" value="1" required></label>
+        <label>Название модуля<input id="gen-name" type="text" maxlength="200" autocomplete="off" placeholder="Основы pandas"></label>
+      </div>
+      <label>Что учесть<textarea id="gen-hints" rows="3" maxlength="2000" placeholder="Больше практики с groupby, меньше теории; данные — про города"></textarea></label>
+      <p class="form-hint">Номер — 1–10. Название необязательно: пусто — возьмём из структуры курса. «Перегенерировать» собирает модуль с нуля, не подхватывая готовые шаги.</p>
+      <div class="admin-actions">
+        <button class="btn primary" type="button" data-action="generate" data-force="false"{% if running %} hidden{% endif %}>{{ icon('play') }}<span>Сгенерировать модуль</span></button>
+        <button class="btn" type="button" data-action="regenerate" data-force="true"{% if running %} hidden{% endif %}>{{ icon('refresh') }}<span>Перегенерировать</span></button>
+        <button class="btn danger" type="button" data-action="cancel-run"{% if not running %} hidden{% endif %}>{{ icon('close') }}<span>Отменить</span></button>
+      </div>
+    </div>
+    <div class="run" id="gen-run" hidden>
+      <div class="run-head"><strong class="run-step" id="gen-step"></strong><span class="muted" id="gen-count"></span></div>
+      <div class="progress-track"><span class="progress-fill" id="gen-fill"></span></div>
+      <p class="notice error" id="gen-error" role="alert" hidden></p>
+      <div class="notice" id="gen-warnings" role="status" hidden></div>
+    </div>
+  </section>
+
+  {% if broken or warnings %}
+  <section class="panel" aria-labelledby="course-warnings-title">
+    <h2 id="course-warnings-title" class="section-title">Перед публикацией</h2>
+    {% if broken %}
+    <p class="notice error" role="alert">{{ broken }}</p>
+    {% endif %}
+    {% if warnings %}
+    <div class="notice" role="status">
+      <strong>Чего не хватает курсу:</strong>
+      <ul class="warn-list">
+        {% for warning in warnings %}<li>{{ warning }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    <p class="form-hint">Публикация откроет курс ученикам; пока курс черновик, его править можно спокойно.</p>
+  </section>
+  {% endif %}
+
+  <section class="panel" aria-labelledby="course-modules-title">
+    <h2 id="course-modules-title" class="section-title">Модули</h2>
+    {% if modules %}
+    <div class="table-wrap">
+      <table class="topics-table admin-table">
+        <thead>
+          <tr>
+            <th scope="col">Модуль</th>
+            <th scope="col">Название</th>
+            <th scope="col">Занятий</th>
+            <th scope="col">Разделов</th>
+            <th scope="col">Заданий</th>
+            <th scope="col">Конспектов</th>
+            <th scope="col">Статус</th>
+            <th scope="col"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for module in modules %}
+          <tr data-module="{{ module.number }}">
+            {% if module.error %}
+            <th scope="row">Модуль {{ module.number }}</th>
+            <td colspan="7" class="muted">Не читается: {{ module.error }}</td>
+            {% else %}
+            <th scope="row">{{ module.number }}</th>
+            <td>{{ module.title }}</td>
+            <td>{{ module.lessons }}</td>
+            <td>{{ module.sections }}</td>
+            {# У словаря `module['items']` — ключ, а `module.items` вернул бы
+               встроенный метод dict: обращаемся по ключу явно. #}
+            <td>{{ module['items'] }}</td>
+            <td>{{ module.theory }}</td>
+            <td><span class="badge{% if module.published %} success{% endif %}">{{ 'готов' if module.published else 'черновик' }}</span></td>
+            {# Черновик админу доступен: на странице занятия он увидит пометку «Черновик». #}
+            <td><div class="row-actions">
+              <a class="btn" href="/admin/courses/{{ course.id }}/modules/{{ module.number }}">Редактор</a>
+              <a class="btn ghost" href="/lesson/{{ course.id }}" target="_blank" rel="noopener">Посмотреть как ученик</a>
+            </div></td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><strong>Модулей нет</strong>Загрузите материалы и запустите генерацию — модуль появится здесь, и его можно будет править руками.</div>
+    {% endif %}
+  </section>
+
+</div>
+
+{% else %}
+
 <p class="admin-snapshot muted">Данные на {{ built_at }}, учеников на курсе: {{ students }} ·
-  <a href="?refresh=1">Обновить</a></p>
+  <a href="?refresh=1&amp;course={{ admin_course.id }}">Обновить</a></p>
+
+{% if broken %}
+<p class="notice error" role="alert">{{ broken }}</p>
+{% endif %}
 
 <section class="panel" aria-labelledby="funnel-title">
   <h2 id="funnel-title" class="section-title">Воронка по занятиям</h2>
@@ -39,4 +249,5 @@
   </details>
   {% endfor %}
 </section>
+{% endif %}
 {% endblock %}

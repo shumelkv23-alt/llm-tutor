@@ -258,16 +258,26 @@ def test_section_or_final_on_flat_node_item_fails(field) -> None:
         seed_module.build_course(seeds)
 
 
-# --- содержание опубликованного модуля ---
+# --- содержание опубликованного модуля: предупреждения, а не отказ ---
+#
+# Курс пишется по частям: открыть модуль, где ещё не все задания, автор
+# вправе. Недописанность — предупреждение в ``course.warnings`` (его печатает
+# и CLI, и старт веба), а не отказ загрузить курс: отказ оставил бы автора без
+# курса вовсе. Ученика такая недописанность не запирает — см.
+# ``tests/test_lesson_gaps.py``.
 
 
 def _thin_section(m1: dict, m2: dict) -> None:
     m1["items"].remove(_section_items(m1, "l1_group", "pivot")[0])
 
 
-def test_published_section_needs_two_items(tmp_path) -> None:
-    with pytest.raises(SeedError, match="l1_group/pivot опубликованного модуля 1 меньше 2"):
-        _load(tmp_path, _thin_section)
+def test_published_section_with_few_items_is_a_warning(tmp_path) -> None:
+    course = _load(tmp_path, _thin_section)
+
+    assert thin_sections(course) == ["l1_group/pivot"]
+    assert any(
+        "l1_group/pivot" in warning and "меньше 2" in warning for warning in course.warnings
+    )
 
 
 def _no_final(m1: dict, m2: dict) -> None:
@@ -276,9 +286,11 @@ def _no_final(m1: dict, m2: dict) -> None:
     ]
 
 
-def test_published_lesson_needs_final_item(tmp_path) -> None:
-    with pytest.raises(SeedError, match="У занятия l2_box нет итогового задания"):
-        _load(tmp_path, _no_final)
+def test_published_lesson_without_final_is_a_warning(tmp_path) -> None:
+    course = _load(tmp_path, _no_final)
+
+    assert lessons_without_final(course) == ["l2_box"]
+    assert any("У занятия l2_box нет итогового задания" in w for w in course.warnings)
 
 
 def test_unpublished_module_loads_without_content_and_cli_lists_gaps(tmp_path, capsys) -> None:
@@ -301,11 +313,13 @@ def test_unpublished_module_loads_without_content_and_cli_lists_gaps(tmp_path, c
     assert "Без конспекта" in out and "l1_frames" in out
 
 
-def test_published_lesson_needs_theory(tmp_path) -> None:
+def test_published_lesson_without_theory_is_a_warning(tmp_path) -> None:
     paths = _course_copy(tmp_path)
     (paths[0].parent / "theory" / "topic01" / "l1_frames.md").unlink()
-    with pytest.raises(SeedError, match="У занятия l1_frames нет конспекта"):
-        load_course_data(paths)
+
+    course = load_course_data(paths)
+
+    assert any("У занятия l1_frames нет конспекта" in w for w in course.warnings)
 
 
 def _rewrite_theory(paths: list[Path], node_id: str, edit: Callable[[str], str]) -> None:
@@ -313,14 +327,16 @@ def _rewrite_theory(paths: list[Path], node_id: str, edit: Callable[[str], str])
     path.write_text(edit(path.read_text(encoding="utf-8")), encoding="utf-8")
 
 
-def test_theory_needs_heading_for_every_section(tmp_path) -> None:
+def test_theory_section_without_heading_is_a_warning(tmp_path) -> None:
     paths = _course_copy(tmp_path)
     _rewrite_theory(paths, "l1_select", lambda text: text.replace("## Булевы маски", "## Маски"))
-    with pytest.raises(SeedError, match="нет заголовка «## Булевы маски»"):
-        load_course_data(paths)
+
+    course = load_course_data(paths)
+
+    assert any("нет заголовка «## Булевы маски»" in w for w in course.warnings)
 
 
-def test_theory_headings_must_follow_seed_order(tmp_path) -> None:
+def test_theory_headings_out_of_seed_order_is_a_warning(tmp_path) -> None:
     def swap(text: str) -> str:
         return text.replace("## loc и iloc", "## TMP").replace(
             "## Булевы маски", "## loc и iloc"
@@ -328,8 +344,10 @@ def test_theory_headings_must_follow_seed_order(tmp_path) -> None:
 
     paths = _course_copy(tmp_path)
     _rewrite_theory(paths, "l1_select", swap)
-    with pytest.raises(SeedError, match="не по порядку разделов"):
-        load_course_data(paths)
+
+    course = load_course_data(paths)
+
+    assert any("не по порядку разделов" in w for w in course.warnings)
 
 
 def test_heading_inside_code_block_does_not_count(tmp_path) -> None:
@@ -338,8 +356,10 @@ def test_heading_inside_code_block_does_not_count(tmp_path) -> None:
 
     paths = _course_copy(tmp_path)
     _rewrite_theory(paths, "l1_select", hide)
-    with pytest.raises(SeedError, match="нет заголовка «## Булевы маски»"):
-        load_course_data(paths)
+
+    course = load_course_data(paths)
+
+    assert any("нет заголовка «## Булевы маски»" in w for w in course.warnings)
 
 
 def test_theory_headings_skip_fenced_code() -> None:

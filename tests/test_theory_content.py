@@ -112,4 +112,6 @@ def test_every_section_has_an_example(node_id: str) -> None:
 def test_python_blocks_use_python_label(node_id: str) -> None:
     labels = _FENCE_RE.findall(COURSE.theory[node_id])
     opening = labels[0::2]  # метки открывающих строк (закрывающие — пустые)
-    assert set(opening) <= {"python", ""}, (node_id, opening)
+    # Пример без метки не исполнится `test_theory_examples_run` и не отрисуется
+    # как код, но раньше оставался незамеченным: пустая метка считалась нормой.
+    assert set(opening) <= {"python"}, (node_id, opening)
