@@ -1007,6 +1007,12 @@ dialog p {
   grid-column: 2;
 }
 
+/* С картой знаний «Аккаунт» тянется на две строки: иначе под карточкой курса
+   оставалась дыра высотой с левую панель (аудит 74–75). */
+.profile-grid:has(> .knowledge) > .panel:first-child {
+  grid-row: span 2;
+}
+
 .account-facts {
   display: grid;
   gap: 10px;
@@ -1145,6 +1151,10 @@ dialog p {
 
   .profile-grid > .panel:nth-child(n + 3) {
     grid-column: auto;
+  }
+
+  .profile-grid:has(> .knowledge) > .panel:first-child {
+    grid-row: auto;
   }
 }
 
@@ -1780,7 +1790,8 @@ pre code .p {
 }
 
 .kg-key.ahead {
-  opacity: 0.45;
+  border-width: 1.5px;
+  border-style: dotted;
 }
 
 .kg-card {

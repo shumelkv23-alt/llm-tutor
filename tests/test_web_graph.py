@@ -62,7 +62,7 @@ async def test_graph_lists_nodes_and_edges_of_open_modules(enrolled, web_app) ->
     assert all(edge["from"] in ids and edge["to"] in ids for edge in body["edges"])
     assert {edge["hard"] for edge in body["edges"]} == {True, False}
     node = body["nodes"][0]
-    assert set(node) == {"id", "name", "module", "status", "weak", "mastery", "confident"}
+    assert set(node) == {"id", "name", "module", "status", "weak", "mastery", "confident", "needs_survey"}
     assert 0 <= node["mastery"] <= 100
     assert [module["number"] for module in body["modules"]] == sorted({n["module"] for n in body["nodes"]})
 
@@ -102,9 +102,62 @@ async def test_graph_shows_current_closed_and_weak(enrolled, web_app) -> None:
 
 
 async def test_graph_tells_about_pending_item(enrolled, web_app) -> None:
+    """Флаг — из состояния сессии: с ним карта спрашивает перед переходом (аудит 74–75)."""
     await _finish_survey(enrolled)
-    state = repos.get_session_state(_db(web_app), repos.get_open_session(_db(web_app)))
+    conn = _db(web_app)
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id)
+    item_id = repos.get_items(conn)[0].id
+
+    repos.update_session_state(conn, session_id, state.model_copy(update={"pending_item_id": item_id}))
+    assert (await enrolled.get(GRAPH)).json()["pending_item"] is True
+    repos.update_session_state(conn, session_id, state.model_copy(update={"pending_item_id": None}))
+    assert (await enrolled.get(GRAPH)).json()["pending_item"] is False
+
+
+async def test_graph_hides_unpublished_module(enrolled, web_app) -> None:
+    conn = _db(web_app)
+    last = max(topic.number for topic in repos.get_topics(conn))
+    conn.execute("UPDATE topics SET published = 0 WHERE id = ?", (last,))
+    conn.commit()
+
+    body = (await enrolled.get(GRAPH)).json()
+    ids = {node["id"] for node in body["nodes"]}
+
+    assert all(node["module"] != last for node in body["nodes"])
+    assert last not in [module["number"] for module in body["modules"]]
+    assert all(edge["from"] in ids and edge["to"] in ids for edge in body["edges"])
+
+
+async def test_graph_marks_modules_behind_pending_survey(enrolled, web_app) -> None:
+    """Висит анкета модуля 2: переход в модули без анкеты сервер отклонит (409)."""
+    await _finish_survey(enrolled)
+    body = (await enrolled.get(GRAPH)).json()
+    assert body["pending_survey"] is None
+    target = next(node["id"] for node in body["nodes"] if node["module"] == 2)
+    assert (await enrolled.post(f"/api/courses/{COURSE}/lesson/switch", json={"node_id": target})).status_code == 200
 
     body = (await enrolled.get(GRAPH)).json()
 
-    assert body["pending_item"] is (state.pending_item_id is not None)
+    assert body["pending_survey"] == 2
+    by_module = {node["module"]: node["needs_survey"] for node in body["nodes"]}
+    assert by_module[1] is False
+    assert all(by_module[m] for m in by_module if m >= 2)
+    blocked = next(node["id"] for node in body["nodes"] if node["module"] == 3)
+    assert (await enrolled.post(f"/api/courses/{COURSE}/lesson/switch", json={"node_id": blocked})).status_code == 409
+
+
+async def test_profile_has_no_graph_without_course_or_with_broken_course(student, web_app) -> None:
+    assert 'id="knowledge"' not in (await student.get("/profile")).text
+    await student.post(f"/api/courses/{COURSE}/enroll", json={})
+    assert 'id="knowledge"' in (await student.get("/profile")).text
+
+    user = accounts.find_user(web_app.state.accounts, "ann@example.com")
+    pool = web_app.state.userdbs
+    path = pool.path(user.id, COURSE)
+    pool.close_all()
+    path.write_bytes(b"not a database at all" * 100)
+    html = (await student.get("/profile")).text
+
+    assert 'id="knowledge"' not in html
+    assert "knowledge-graph.js" not in html

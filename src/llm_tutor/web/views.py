@@ -484,13 +484,19 @@ def graph_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     state = repos.get_session_state(conn, session_id) if session_id else SessionState()
     current = state.current_node_id if state.current_node_id and graph.has_node(state.current_node_id) else None
     modules = {row.topic_id for row in rows}
+    topics = repos.get_topics(conn)
+    # Модули без пройденной анкеты: пока висит анкета другого модуля, переход
+    # к их занятиям сервер отклонит (``/lesson/switch`` → 409), карта это знает.
+    surveyed = {topic.number for topic in topics if survey.is_completed(conn, topic.survey)}
+    pending = pending_survey_topic(conn)
     return {
         "current": current,
         "survey_done": course_survey_done(conn),
         "pending_item": state.pending_item_id is not None,
+        "pending_survey": pending.number if pending is not None else None,
         "modules": [
             {"number": topic.number, "title": topic.title}
-            for topic in repos.get_topics(conn)
+            for topic in topics
             if topic.number in modules
         ],
         "nodes": [
@@ -502,6 +508,7 @@ def graph_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
                 "weak": row.weak,
                 "mastery": round(row.mastery * 100),
                 "confident": row.confident,
+                "needs_survey": row.topic_id not in surveyed,
             }
             for row in rows
         ],

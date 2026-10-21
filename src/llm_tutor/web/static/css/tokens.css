@@ -56,8 +56,8 @@
   --graph-m4: #9a7a1e;
   --graph-m5: #8a5fa3;
   --graph-m6: #4f8a3a;
-  --graph-link: #c3ced5;
-  --graph-link-hl: #5f7786;
+  --graph-link: #7f8f9a;
+  --graph-link-hl: #3f5666;
   --graph-canvas: #fbfcfd;
 
   /* Состояния: цвет — только дополнительный сигнал к подписи */
@@ -115,8 +115,8 @@
   --graph-m4: #d4b04c;
   --graph-m5: #b48ad0;
   --graph-m6: #86c46c;
-  --graph-link: #2c3644;
-  --graph-link-hl: #8a9bb0;
+  --graph-link: #5d6f86;
+  --graph-link-hl: #b3c2d3;
   --graph-canvas: #0e1626;
 
   --danger: #f08080;
@@ -147,15 +147,15 @@
     --primary-soft: #133b40;
     --primary-text: #60c4ba;
     --accent-text: #ff9a61;
-      --accent-soft: #3a2316;
+    --accent-soft: #3a2316;
     --graph-m1: #3cb7ae;
     --graph-m2: #e07aa6;
     --graph-m3: #7194d8;
     --graph-m4: #d4b04c;
     --graph-m5: #b48ad0;
     --graph-m6: #86c46c;
-    --graph-link: #2c3644;
-    --graph-link-hl: #8a9bb0;
+    --graph-link: #5d6f86;
+    --graph-link-hl: #b3c2d3;
     --graph-canvas: #0e1626;
 
     --danger: #f08080;

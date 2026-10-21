@@ -18,6 +18,7 @@
   const statusLine = $("#kg-status");
   const card = $("#kg-card");
   const list = $("#kg-list");
+  const hud = root.querySelector(".kg-hud");
   const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const STATUS = {
@@ -65,6 +66,8 @@
   const colorOf = (node) => palette.modules[(node.module - 1) % MODULE_COLORS];
   const radius = (node) => 4 + Math.sqrt(node.degree) * 2.3;
   const statusText = (node) => (node.weak ? "закрыто слабо" : STATUS[node.status] || node.status);
+  const graphPath = `/api/courses/${encodeURIComponent(course)}/graph`;
+  const names = (ids) => ids.map((id) => byId[id].name);
   const moduleTitle = (number) => data.modules.find((m) => m.number === number)?.title || "";
 
   function build(payload) {
@@ -145,8 +148,14 @@
     const ratio = window.devicePixelRatio || 1;
     const { width, height } = canvas.getBoundingClientRect();
     if (!width || !height) return;
-    canvas.width = Math.round(width * ratio);
-    canvas.height = Math.round(height * ratio);
+    // Буфер холста — только при смене размера: иначе он пересоздавался бы
+    // на каждом кадре и движении мыши (аудит 74–75).
+    const w = Math.round(width * ratio);
+    const h = Math.round(height * ratio);
+    if (canvas.width !== w || canvas.height !== h) {
+      canvas.width = w;
+      canvas.height = h;
+    }
     const ctx = canvas.getContext("2d");
     ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
     ctx.fillStyle = palette.canvas;
@@ -174,7 +183,9 @@
       const color = colorOf(node);
       const r = radius(node);
       const faded = lit && !lit.has(node.id);
-      const base = node.status === "ahead" ? 0.45 : 1;
+      // «Впереди» отличается тонким пунктиром, а не бледностью: при 0.45
+      // контур не дотягивал до 3:1 к фону (WCAG 1.4.11, аудит 74–75).
+      const base = 1;
       ctx.globalAlpha = faded ? 0.18 : base;
       if (node.status === "current") {
         ctx.beginPath();
@@ -199,8 +210,9 @@
         ctx.fillStyle = palette.canvas;
         ctx.fill();
         ctx.strokeStyle = color;
-        ctx.lineWidth = node.weak ? 2 : 1.6;
+        ctx.lineWidth = node.weak ? 2 : node.status === "ahead" ? 1.3 : 1.8;
         if (node.weak) ctx.setLineDash([2.5, 2]);
+        else if (node.status === "ahead") ctx.setLineDash([1.5, 2.5]);
         ctx.stroke();
         ctx.setLineDash([]);
         if (node.status === "claimed") {
@@ -217,9 +229,9 @@
         ctx.lineWidth = 2 / view.s;
         ctx.stroke();
       }
-      const label = node.degree >= 7 || view.s > 1.25 || node.status === "current" || (lit && lit.has(node.id));
+      const label = node.degree >= 7 || view.s > 1.8 || node.status === "current" || (lit && lit.has(node.id));
       if (label) {
-        ctx.globalAlpha = faded ? 0.15 : node.status === "ahead" ? 0.65 : 1;
+        ctx.globalAlpha = faded ? 0.15 : 1;
         ctx.fillStyle = palette.label;
         const size = 11.5 / Math.max(view.s, 0.8);
         ctx.font = `${node === focus || node.status === "current" ? 700 : 500} ${size}px ${palette.font}`;
@@ -269,7 +281,7 @@
     draw();
   }
 
-  function centerOn(node, scale = 1.5) {
+  function centerOn(node, scale = 1.3) {
     view.s = scale;
     view.x = -node.x * view.s;
     view.y = -node.y * view.s;
@@ -278,13 +290,15 @@
 
   // --- карточка занятия ---
 
+  /** Обязательные (жёсткие) пререквизиты, ещё не пройденные: тем же правилом
+   * сервер считает статус «доступно», и карточка ему не противоречит. */
   function missingBefore(id) {
     const seen = new Set();
     const stack = [id];
     while (stack.length) {
       const current = stack.pop();
       for (const link of links) {
-        if (link.t.id === current && !seen.has(link.s.id)) {
+        if (link.hard && link.t.id === current && !seen.has(link.s.id)) {
           seen.add(link.s.id);
           stack.push(link.s.id);
         }
@@ -293,16 +307,28 @@
     return [...seen].filter((x) => !["closed", "claimed"].includes(byId[x].status));
   }
 
-  async function go(node) {
-    if (data.pending_item) {
-      const ok = await confirm("Перейти к другому занятию?", "Задание, которое ждёт ответа, будет снято.", { label: "Перейти" });
-      if (!ok) return;
-    }
+  let going = false;
+
+  async function go(node, button) {
+    // Второе нажатие, пока идёт первое, не шлёт второй переход (аудит 74–75).
+    if (going) return;
+    going = true;
+    button.disabled = true;
     try {
+      // Задание могли взять в другой вкладке — спрашиваем по свежему состоянию.
+      const fresh = await request(graphPath);
+      if (fresh.pending_item) {
+        const ok = await confirm("Перейти к другому занятию?", "Задание, которое ждёт ответа, будет снято.", { label: "Перейти" });
+        if (!ok) return;
+      }
       await request(`/api/courses/${encodeURIComponent(course)}/lesson/switch`, { method: "POST", body: { node_id: node.id } });
       window.location.assign(lessonHref);
+      return;
     } catch (problem) {
       notify(problem.message, { error: true });
+    } finally {
+      going = false;
+      button.disabled = false;
     }
   }
 
@@ -317,18 +343,28 @@
     card.append(el("h3", "", node.name));
     card.append(el("p", "kg-meta", `Модуль ${node.module} · ${moduleTitle(node.module)}`));
     const facts = [`Статус: ${statusText(node)}`, `владение ${node.mastery}%${node.confident ? "" : " (мало данных)"}`];
-    const missing = missingBefore(node.id);
-    facts.push(missing.length ? `до него не пройдено занятий: ${missing.length}` : "всё, что нужно до него, пройдено");
+    const missing = ["closed", "claimed", "current", "available"].includes(node.status) ? [] : missingBefore(node.id);
+    facts.push(missing.length ? `обязательных занятий до него не пройдено: ${missing.length}` : "можно проходить");
     card.append(el("p", "kg-meta", facts.join(" · ")));
+    const before = links.filter((l) => l.t === node).map((l) => l.s.id);
+    const after = links.filter((l) => l.s === node).map((l) => l.t.id);
+    if (before.length) card.append(el("p", "kg-meta", `Нужно до: ${names(before).join(", ")}`));
+    if (after.length) card.append(el("p", "kg-meta", `Открывает: ${names(after).join(", ")}`));
     const actions = el("div", "kg-actions");
     if (node.status === "current") {
       const link = el("a", "btn primary", "Продолжить занятие");
       link.href = lessonHref;
       actions.append(link);
+    } else if (data.survey_done && data.pending_survey !== null && data.pending_survey !== undefined && node.needs_survey) {
+      // Сервер такой переход отклонит (409): сначала висящая анкета.
+      actions.append(el("p", "kg-meta", `Сначала анкета модуля ${data.pending_survey}: она открыта на странице занятия.`));
+      const link = el("a", "btn primary", "К анкете");
+      link.href = lessonHref;
+      actions.append(link);
     } else if (data.survey_done) {
       const button = el("button", "btn primary", "Перейти к занятию");
       button.type = "button";
-      button.addEventListener("click", () => go(node));
+      button.addEventListener("click", () => go(node, button));
       actions.append(button);
     } else {
       actions.append(el("p", "kg-meta", "Перейти к занятию можно после анкеты курса."));
@@ -344,10 +380,17 @@
     card.hidden = false;
   }
 
-  function select(node) {
+  function select(node, { announce = false } = {}) {
     selected = node;
     renderCard();
     draw();
+    if (node && announce) {
+      // С клавиатуры и в диктор: фокус на заголовок карточки, она в зоне видимости.
+      const heading = card.querySelector("h3");
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
+    }
+    if (node) card.scrollIntoView({ block: "nearest", behavior: reduced ? "auto" : "smooth" });
   }
 
   function renderList() {
@@ -362,8 +405,8 @@
         button.setAttribute("aria-pressed", "false");
         button.setAttribute("aria-label", `${node.name}: ${statusText(node)}`);
         button.addEventListener("click", () => {
-          select(node);
           centerOn(node);
+          select(node, { announce: true });
         });
         const li = el("li");
         li.append(button);
@@ -378,6 +421,9 @@
   let dragged = null;
   let pan = null;
   let moved = false;
+  let downAt = null;
+  // Сдвиг меньше порога — ещё нажатие, а не перетаскивание: палец дрожит.
+  const DRAG_THRESHOLD = 5;
   const pointers = new Map();
   let pinch = null;
 
@@ -409,9 +455,11 @@
     canvas.setPointerCapture(event.pointerId);
     pointers.set(event.pointerId, event);
     moved = false;
+    downAt = { x: event.clientX, y: event.clientY };
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
       pinch = { distance: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), scale: view.s };
+      if (dragged) dragged.fixed = false; // иначе точка навсегда выпала бы из физики
       dragged = null;
       pan = null;
       return;
@@ -438,13 +486,12 @@
       return;
     }
     const p = toWorld(event);
-    if (dragged) {
-      moved = true;
+    if (downAt && !moved && Math.hypot(event.clientX - downAt.x, event.clientY - downAt.y) > DRAG_THRESHOLD) moved = true;
+    if (dragged && moved) {
       dragged.x = p.x;
       dragged.y = p.y;
       kick(0.3);
-    } else if (pan) {
-      moved = true;
+    } else if (pan && moved) {
       view.x = event.clientX - pan.x;
       view.y = event.clientY - pan.y;
       draw();
@@ -468,6 +515,7 @@
     }
     dragged = null;
     pan = null;
+    downAt = null;
     canvas.classList.remove("dragging");
   }
   canvas.addEventListener("pointerup", release);
@@ -501,6 +549,10 @@
     if (node) {
       select(node);
       centerOn(node);
+    } else if (data && data.pending_survey) {
+      notify(`Сейчас идёт анкета модуля ${data.pending_survey}: она на странице занятия.`);
+    } else if (data && data.survey_done) {
+      notify("Текущего занятия нет: выберите любое на карте.");
     } else {
       notify("Текущего занятия пока нет: курс начнётся после анкеты.");
     }
@@ -520,9 +572,10 @@
 
   async function load() {
     try {
-      const payload = await request(`/api/courses/${encodeURIComponent(course)}/graph`);
+      const payload = await request(graphPath);
       if (!payload.nodes.length) {
         statusLine.textContent = "В курсе пока нет открытых занятий.";
+        hud.hidden = true;
         return;
       }
       readPalette();
@@ -536,6 +589,7 @@
       if (!reduced) kick(0.15);
     } catch (problem) {
       statusLine.textContent = problem.message;
+      hud.hidden = true;
     }
   }
   load();
