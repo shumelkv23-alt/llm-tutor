@@ -32,7 +32,7 @@ uv run python -m llm_tutor.web.cli make-admin --email ann@example.com   # раз
 | `web/` | `app` (сборка, CSP, статика с `?v=`), `accounts` + `api_auth` + `security` (вход, сессии, Origin, роль админа), `userdb` (пул БД учеников), `api_lesson` (ходы занятия), `views` (данные для шаблонов и API), `pages`, `markdown` (рендер без HTML), `courses`, `cli` (`import-legacy`, `make-admin`, `revoke-admin`) |
 | `web/` админка | `admin` (снимок по всем ученикам с кэшем, воронка по занятиям, карточка ученика), `pages_admin` (`/admin/students`, `/admin/students/{id}`, `/admin/course`), `api_admin` (сброс пароля, закрытие сессий, выдача и снятие роли) |
 | `web/` курсы | `courses` (реестр курсов), `course/store` (каталог курса: метаданные, счётчики id), `pages_admin_courses` (`/admin/courses`, карточка курса, редактор модуля), `api_admin_courses` (создание, источники, генерация, правка, публикация), `jobs` (фоновые прогоны генерации) |
-| `web/static/js` | `app` (оболочка, запросы, тема и сайдбар), `prefs` (вид до отрисовки), `lesson` (ход занятия, `act`), `split`, `chat`, `theory`, `practice`, `code` + `pyodide-worker`, `survey`, `route`, `profile`, `courses`, `auth`, `admin` |
+| `web/static/js` | `app` (оболочка, запросы, тема и сайдбар), `prefs` (вид до отрисовки), `lesson` (ход занятия, `act`), `split`, `chat` (и плашка фрагмента), `selection` (панель над выделенным), `theory`, `practice`, `code` + `pyodide-worker`, `survey`, `route`, `profile`, `courses`, `auth`, `admin` |
 | `core/` | `turn` (ход: ответ на задание / тьютор, вход в узел, закрытие, переход между модулями), `guided` (урок по частям, «ответ или реплика»), `verify` (проверочный проход), `lesson` (статусы тем, переход, анкета модуля, начало урока), `overview`, `context` (пакет промпта), `intents` |
 | `course/build/` | создание курса преподавателем: `sources` (файлы, GitHub, страница), `steps` (структура курса + конвейер генерации модуля), `schemas`/`prompts` (что и как спрашиваем у модели), `material` (отбор материала источников), `edit` (правка модуля и публикация), `check` (проверка код-заданий запуском) |
 | `student/` | `survey` (адаптивная анкета по конфигу модуля, `Progress`), `route` (маршрут, рабочий участок модуля, статусы шагов), `planner` (приоритет, режимы), `beta` (модель владения), `guide` (критерий закрытия), `diagnostic` (выбор задания по узлу, запись свидетельств) |
@@ -179,6 +179,16 @@ uv run python -m llm_tutor.web.cli make-admin --email ann@example.com   # раз
   один `ts`): ответы в админке считаются свёрткой по `(item_id, ts, source)`.
   `events.hints_used`/`time_spent` нигде не заполняются — столбцов про них
   в админке нет.
+- **Вопрос по выделенному фрагменту** (срезы 76–78). Фрагмент — поле `quote`
+  хода `chat` → `core.context.Focus`; в журнал — только в `messages.meta`
+  реплики ученика (`{"quote": …}`), реплика — сам вопрос. Намерения
+  разбираются **только по вопросу**: «пропусти» внутри фрагмента — не команда.
+  Тексты готовых кнопок — `core.context.FOCUS_QUESTIONS`, их копия в
+  `static/js/selection.js` (сверяет тест); ни один не должен ловиться
+  `intents.detect` («объясни подробнее» — намерение «не понял»). Код во
+  фрагменте не `strip()`-ится, а выравнивается (`focus_text`), иначе модель
+  видит ложную ошибку отступа. Цитата конспекта/задания в истории — дословно,
+  без повторного Markdown. В редакторе Tab — отступ, к панели ведёт Alt+F10.
 - Временный пароль (`/api/admin/.../reset-password`) уходит только в ответе с
   `no-store` и не пишется ни в лог, ни в `admin_log`. Диалог с паролем на
   странице очищает поле синхронно: событие `close` у `<dialog>` приходит на
