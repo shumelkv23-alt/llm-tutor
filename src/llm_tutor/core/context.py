@@ -11,6 +11,7 @@
 import json
 import re
 import sqlite3
+import textwrap
 import time
 from dataclasses import dataclass
 from typing import Literal
@@ -99,6 +100,23 @@ class Focus:
     text: str
 
 
+def focus_text(source: FocusSource, text: str) -> str:
+    """Фрагмент к виду для промпта и журнала; пустой — ``""``.
+
+    Текст обрезается по краям. Код — нет: ``strip()`` снял бы отступ только у
+    первой строки, и модель объясняла бы ошибку отступа, которой у ученика
+    нет. У кода срезаются пустые строки по краям и общий отступ.
+    """
+    if source != "code":
+        return text.strip()
+    lines = text.splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return textwrap.dedent("\n".join(lines)).rstrip()
+
+
 def fence(text: str) -> str:
     """Ограждение длиннее любой серии ` в тексте: изнутри его не закрыть."""
     longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
@@ -138,12 +156,17 @@ def focus_from_meta(meta: str | None) -> Focus | None:
     return Focus(source, text)
 
 
+_MARKER_QUOTES = str.maketrans({"„": '"', "“": '"', "”": '"'})
+
+
 def _tail_content(content: str, meta: str | None) -> str:
     """Реплика ученика в хвосте: с фрагментом — пометка, к чему был вопрос."""
     focus = focus_from_meta(meta)
     if focus is None:
         return content
-    short = " ".join(focus.text.split())
+    # Кавычки пометки внутри фрагмента закрыли бы её раньше: дальше текст
+    # фрагмента выглядел бы прямой речью, а не цитатой.
+    short = " ".join(focus.text.split()).translate(_MARKER_QUOTES)
     if len(short) > FOCUS_TAIL_CHARS:
         short = short[: FOCUS_TAIL_CHARS - 1] + "…"
     return f"{content}\n\n(про фрагмент: „{short}“)"

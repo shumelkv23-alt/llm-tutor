@@ -1,5 +1,7 @@
 """Ход с выделенным фрагментом: намерения, задание, журнал (срез 76)."""
 
+import json
+
 import pytest
 from legacy_course import load_seed
 from test_turn import ALL_BLOCKS, _claim, _FailingTutor, _FakeTutor, _set_state, _state
@@ -143,3 +145,19 @@ async def test_turn_without_focus_writes_no_user_meta(conn, settings) -> None:
     )
 
     assert _last_user(conn).meta is None
+
+
+async def test_task_chars_stay_on_tutor_reply(conn, settings) -> None:
+    """Фрагмент не вытесняет task_chars реплики тьютора, выдавшей задание."""
+    load_seed(conn)
+    _set_state(conn, current_node_id="groupby", pending_item_id=1)
+
+    await handle_turn(
+        conn, _FakeTutor(), "m", "закрой тему", now=1.0, settings=settings,
+        answer_mode="tutor", focus=TASK,
+    )
+
+    assistant = _messages(conn)[-1]
+    assert assistant.role == "assistant"
+    assert json.loads(assistant.meta)["task_chars"] > 0
+    assert "quote" not in json.loads(assistant.meta)

@@ -16,7 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided, lesson, turn, verify
-from llm_tutor.core.context import FOCUS_MAX_CHARS, FOCUS_SOURCES, Focus, fence
+from llm_tutor.core.context import FOCUS_MAX_CHARS, FOCUS_SOURCES, Focus, fence, focus_text
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -212,15 +212,15 @@ class SurveyBody(BaseModel):
 class QuoteBody(BaseModel):
     """Фрагмент страницы занятия, о котором спрашивает ученик (срез 76).
 
-    Источник и длину после обрезки пробелов проверяет ``chat()``: общий
-    обработчик 422 назвал бы поле по последнему сегменту пути — ``text``, как
-    поле вопроса. Здесь — только типы и грубый предел тела.
+    Источник и длину после обрезки проверяет ``chat()``: общий обработчик 422
+    назвал бы поле по последнему сегменту пути — ``text``, как поле вопроса.
+    Поэтому здесь только типы, без ``max_length``.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     source: str
-    text: str = Field(max_length=4 * FOCUS_MAX_CHARS)
+    text: str
 
 
 class ChatBody(BaseModel):
@@ -354,7 +354,7 @@ def _focus(quote: QuoteBody) -> Focus:
             status_code=422,
             detail={"field": "quote.source", "message": "Неизвестный источник фрагмента."},
         )
-    text = quote.text.strip()
+    text = focus_text(quote.source, quote.text)
     if not text:
         raise HTTPException(
             status_code=422, detail={"field": "quote.text", "message": "Пустой фрагмент."}

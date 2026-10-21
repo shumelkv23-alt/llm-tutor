@@ -156,3 +156,30 @@ async def test_old_messages_have_no_quote(enrolled, web_app) -> None:
     old = {m["html"]: m for m in messages if m["role"] == "user"}
     assert old["<p>старая реплика</p>\n"]["quote"] is None
     assert old["<p>битый meta</p>\n"]["quote"] is None
+
+
+# --- аудит среза 76 ---
+
+
+async def test_huge_quote_names_its_field(enrolled) -> None:
+    """Слишком длинный фрагмент — ошибка у quote.text, а не у поля вопроса."""
+    await _finish(enrolled)
+
+    response = await enrolled.post(
+        f"{BASE}/chat",
+        json={"text": "почему?", "quote": {"source": "code", "text": "x" * (6 * FOCUS_MAX_CHARS)}},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["field"] == "quote.text"
+
+
+async def test_code_quote_keeps_indent(enrolled, web_app) -> None:
+    await _finish(enrolled)
+
+    await enrolled.post(
+        f"{BASE}/chat",
+        json={"text": "почему?", "quote": {"source": "code", "text": "    if a:\n        b()\n"}},
+    )
+
+    assert focus_from_meta(_user_messages(web_app)[-1].meta).text == "if a:\n    b()"
