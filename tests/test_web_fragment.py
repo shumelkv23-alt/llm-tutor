@@ -92,3 +92,67 @@ async def test_chat_quote_before_survey_is_409(enrolled) -> None:
     )
 
     assert response.status_code == 409
+
+
+# --- плашка фрагмента в репликах (срез 77) ---
+
+
+async def _ask(client, source: str, text: str) -> dict:
+    response = await client.post(
+        f"{BASE}/chat", json={"text": "почему?", "quote": {"source": source, "text": text}}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+async def test_turn_response_carries_quote(enrolled) -> None:
+    await _finish(enrolled)
+
+    body = await _ask(enrolled, "code", "df.drop('a', axis=1)")
+
+    user, *rest = body["messages"]
+    quote = user["quote"]
+    assert quote["source"] == "code"
+    assert quote["label"] == "Из моего кода"
+    assert "<pre>" in quote["html"] and "<code" in quote["html"]
+    assert "почему?" in user["html"]
+    assert all(message["quote"] is None for message in rest)
+
+
+@pytest.mark.parametrize(
+    ("source", "label"), [("theory", "Из теории"), ("task", "Из задания"), ("code", "Из моего кода")]
+)
+async def test_quote_survives_reload(enrolled, source, label) -> None:
+    await _finish(enrolled)
+    sent = (await _ask(enrolled, source, "groupby делит строки"))["messages"][0]["quote"]
+
+    messages = (await enrolled.get(f"{BASE}/state")).json()["state"]["messages"]
+
+    user = [m for m in messages if m["role"] == "user"][-1]
+    assert user["quote"] == sent
+    assert user["quote"]["label"] == label
+
+
+@pytest.mark.parametrize("source", ["theory", "code"])
+@pytest.mark.parametrize("text", ["<script>alert(1)</script>", '<img src=x onerror="alert(1)">'])
+async def test_quote_html_is_escaped(enrolled, source, text) -> None:
+    await _finish(enrolled)
+
+    html = (await _ask(enrolled, source, text))["messages"][0]["quote"]["html"]
+
+    assert "<script" not in html and "<img" not in html
+    assert "&lt;" in html
+
+
+async def test_old_messages_have_no_quote(enrolled, web_app) -> None:
+    await _finish(enrolled)
+    conn = _user_db(web_app)
+    session_id = repos.get_open_session(conn)
+    repos.add_message(conn, session_id, "user", "старая реплика", ts=10.0**10)
+    repos.add_message(conn, session_id, "user", "битый meta", ts=10.0**10 + 1, meta="{")
+
+    messages = (await enrolled.get(f"{BASE}/state")).json()["state"]["messages"]
+
+    old = {m["html"]: m for m in messages if m["role"] == "user"}
+    assert old["<p>старая реплика</p>\n"]["quote"] is None
+    assert old["<p>битый meta</p>\n"]["quote"] is None

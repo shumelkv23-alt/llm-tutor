@@ -9,6 +9,7 @@ import sqlite3
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided
+from llm_tutor.core.context import Focus, FocusSource, fence, focus_from_meta
 from llm_tutor.core.lesson import (
     course_survey_done,
     pending_survey_topic,
@@ -182,8 +183,37 @@ def topic_view(topic: Topic) -> dict:
 CHAT_HISTORY = 60
 
 
-def message_view(role: str, text: str, *, ts: float | None = None) -> dict:
-    return {"role": role, "html": str(markdown.render(text)), "ts": ts}
+# Подпись плашки фрагмента в чате (срез 77).
+QUOTE_LABELS: dict[FocusSource, str] = {
+    "theory": "Из теории",
+    "task": "Из задания",
+    "code": "Из моего кода",
+}
+
+
+def quote_view(focus: Focus) -> dict:
+    """Плашка фрагмента над репликой ученика: код — моноширинным блоком."""
+    if focus.source == "code":
+        mark = fence(focus.text)
+        source = f"{mark}python\n{focus.text}\n{mark}"
+    else:
+        source = focus.text
+    return {
+        "source": focus.source,
+        "label": QUOTE_LABELS[focus.source],
+        "html": str(markdown.render(source)),
+    }
+
+
+def message_view(
+    role: str, text: str, *, ts: float | None = None, quote: Focus | None = None
+) -> dict:
+    return {
+        "role": role,
+        "html": str(markdown.render(text)),
+        "ts": ts,
+        "quote": quote_view(quote) if quote is not None else None,
+    }
 
 
 FINAL_LABEL = "Итоговое задание"
@@ -378,7 +408,12 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
         ],
         "modules": [module_view(module) for module in module_rows(conn, rows)],
         "messages": [
-            message_view(message.role, _without_task(message.content, message.meta), ts=message.ts)
+            message_view(
+                message.role,
+                _without_task(message.content, message.meta),
+                ts=message.ts,
+                quote=focus_from_meta(message.meta) if message.role == "user" else None,
+            )
             for message in messages
             if message.role in ("user", "assistant")
         ],

@@ -145,7 +145,13 @@ async def lesson_context(
     )
 
 
-def turn_response(ctx: LessonContext, user_text: str | None, reply: TurnReply | str) -> dict:
+def turn_response(
+    ctx: LessonContext,
+    user_text: str | None,
+    reply: TurnReply | str,
+    *,
+    quote: Focus | None = None,
+) -> dict:
     """Ответ хода: реплики для чата и свежее состояние занятия.
 
     Задание в чат не идёт (см. инвариант ``TurnReply``): оно в состоянии, его
@@ -154,7 +160,7 @@ def turn_response(ctx: LessonContext, user_text: str | None, reply: TurnReply | 
     """
     messages = []
     if user_text:
-        messages.append(views.message_view("user", user_text))
+        messages.append(views.message_view("user", user_text, quote=quote))
     if isinstance(reply, str):
         text = reply
     elif reply.item_id is not None:
@@ -338,7 +344,7 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
             ),
             LLM_FAILURE_REPLY,
         )
-        return turn_response(ctx, text, reply)
+        return turn_response(ctx, text, reply, quote=focus)
 
 
 def _focus(quote: QuoteBody) -> Focus:
