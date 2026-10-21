@@ -428,6 +428,67 @@
   line-height: 1.45;
 }
 
+/* --- Фрагмент, о котором спрашивает ученик (срез 77) --- */
+
+.chat-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 6px 4px 6px 12px;
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  font-size: 13px;
+  flex: none;
+  min-width: 0;
+}
+
+.chat-quote[hidden] {
+  display: none;
+}
+
+.chat-quote-text {
+  flex: 1;
+  min-width: 0;
+  margin: 6px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.chat-quote.code #chat-quote-body {
+  font-family: var(--font-mono);
+}
+
+.msg-quote {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid currentColor;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.msg-quote figcaption {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.msg-quote-body {
+  max-height: 12em;
+  overflow: auto;
+}
+
+.msg-quote pre {
+  max-width: 100%;
+}
+
 .lesson.locked .chat-form,
 .lesson.locked .chat-chips {
   opacity: 0.55;

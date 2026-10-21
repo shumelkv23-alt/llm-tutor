@@ -94,6 +94,11 @@
         <button type="button" class="chip" data-say="Покажи пример на коде.">Дай пример</button>
         <button type="button" class="chip" data-action="task">Дай задание</button>
       </div>
+      <div class="chat-quote" id="chat-quote" hidden>
+        <p class="chat-quote-text"><strong id="chat-quote-label"></strong> <span id="chat-quote-body"></span></p>
+        <button class="btn ghost icon-only" type="button" id="chat-quote-remove" aria-label="Убрать фрагмент">{{ icon('close') }}</button>
+      </div>
+      <p class="visually-hidden" id="chat-quote-status" aria-live="polite"></p>
       <form class="chat-form" id="chat-form">
         <label class="visually-hidden" for="chat-input">Сообщение тьютору</label>
         <textarea id="chat-input" name="text" rows="2" maxlength="8000" placeholder="Спросите тьютора… Enter — отправить, Shift+Enter — новая строка"></textarea>
