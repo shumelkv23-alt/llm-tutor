@@ -237,6 +237,12 @@ async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
     return {"state": views.lesson_state(ctx.conn, settings=ctx.settings)}
 
 
+@router.get("/courses/{course_id}/graph")
+async def course_graph(ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Карта знаний в профиле: занятия курса со статусами и связи (срез 74)."""
+    return views.graph_view(ctx.conn, settings=ctx.settings)
+
+
 @router.post("/courses/{course_id}/lesson/survey/next")
 async def survey_next(body: SurveyBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
     topic = _survey_topic(ctx)

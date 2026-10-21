@@ -9,7 +9,11 @@ import sqlite3
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided
-from llm_tutor.core.lesson import course_survey_done, pending_survey_topic, survey_way_back
+from llm_tutor.core.lesson import (
+    course_survey_done,
+    pending_survey_topic,
+    survey_way_back,
+)
 from llm_tutor.core.overview import (
     ModuleRow,
     course_progress,
@@ -462,4 +466,53 @@ def learning_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
         "modules": [module_view(module) for module in module_rows(conn, rows)],
         "next_steps": next_steps(conn, settings=settings),
         "solved": solved_items(conn),
+    }
+
+
+# --- Карта знаний (срез 74) ---
+
+
+def graph_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
+    """Граф курса для карты знаний в профиле: занятия со статусами и связи.
+
+    Чтение, а не ход: сессию не заводит. Узлы — открытые модули
+    (``CourseGraph.load``), статусы и владение — те же, что в таблице тем.
+    """
+    graph = CourseGraph.load(conn)
+    rows = topic_rows(conn, settings=settings)
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    current = state.current_node_id if state.current_node_id and graph.has_node(state.current_node_id) else None
+    modules = {row.topic_id for row in rows}
+    topics = repos.get_topics(conn)
+    # Модули без пройденной анкеты: пока висит анкета другого модуля, переход
+    # к их занятиям сервер отклонит (``/lesson/switch`` → 409), карта это знает.
+    surveyed = {topic.number for topic in topics if survey.is_completed(conn, topic.survey)}
+    pending = pending_survey_topic(conn)
+    return {
+        "current": current,
+        "survey_done": course_survey_done(conn),
+        "pending_item": state.pending_item_id is not None,
+        "pending_survey": pending.number if pending is not None else None,
+        "modules": [
+            {"number": topic.number, "title": topic.title}
+            for topic in topics
+            if topic.number in modules
+        ],
+        "nodes": [
+            {
+                "id": row.id,
+                "name": row.name,
+                "module": row.topic_id,
+                "status": row.status,
+                "weak": row.weak,
+                "mastery": round(row.mastery * 100),
+                "confident": row.confident,
+                "needs_survey": row.topic_id not in surveyed,
+            }
+            for row in rows
+        ],
+        "edges": [
+            {"from": src, "to": dst, "hard": hard} for src, dst, hard in graph.prerequisite_edges()
+        ],
     }

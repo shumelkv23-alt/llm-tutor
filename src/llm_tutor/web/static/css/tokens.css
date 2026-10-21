@@ -49,6 +49,16 @@
   --accent: #ff6e20;
   --accent-text: #b34a14;
   --accent-soft: #fff0e8;
+  /* Карта знаний (срез 75): цвет модуля в графе, по кругу для 6+ модулей. */
+  --graph-m1: #1f8a85;
+  --graph-m2: #b8467a;
+  --graph-m3: #4a6fb0;
+  --graph-m4: #9a7a1e;
+  --graph-m5: #8a5fa3;
+  --graph-m6: #4f8a3a;
+  --graph-link: #7f8f9a;
+  --graph-link-hl: #3f5666;
+  --graph-canvas: #fbfcfd;
 
   /* Состояния: цвет — только дополнительный сигнал к подписи */
   --danger: #a33131;
@@ -99,6 +109,15 @@
   --primary-text: #60c4ba;
   --accent-text: #ff9a61;
   --accent-soft: #3a2316;
+  --graph-m1: #3cb7ae;
+  --graph-m2: #e07aa6;
+  --graph-m3: #7194d8;
+  --graph-m4: #d4b04c;
+  --graph-m5: #b48ad0;
+  --graph-m6: #86c46c;
+  --graph-link: #5d6f86;
+  --graph-link-hl: #b3c2d3;
+  --graph-canvas: #0e1626;
 
   --danger: #f08080;
   --danger-soft: #3a1c1f;
@@ -129,6 +148,15 @@
     --primary-text: #60c4ba;
     --accent-text: #ff9a61;
     --accent-soft: #3a2316;
+    --graph-m1: #3cb7ae;
+    --graph-m2: #e07aa6;
+    --graph-m3: #7194d8;
+    --graph-m4: #d4b04c;
+    --graph-m5: #b48ad0;
+    --graph-m6: #86c46c;
+    --graph-link: #5d6f86;
+    --graph-link-hl: #b3c2d3;
+    --graph-canvas: #0e1626;
 
     --danger: #f08080;
     --danger-soft: #3a1c1f;

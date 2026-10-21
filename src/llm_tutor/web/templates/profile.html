@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block eyebrow %}Аккаунт{% endblock %}
 {% block description %}Данные аккаунта и прогресс по текущему курсу.{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script>{% if card and card.status != 'error' %}<script src="{{ static_url('js/knowledge-graph.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="profile-grid">
   <section class="panel" aria-labelledby="account-title">
@@ -54,6 +54,36 @@
     </div>
     {% endif %}
   </section>
+  {% if card.status != 'error' %}
+  <section class="panel knowledge" id="knowledge" aria-labelledby="knowledge-title" data-course="{{ card.id }}" data-href="{{ card.href }}">
+    <div class="panel-header">
+      <div><p class="eyebrow">Карта знаний</p><h2 id="knowledge-title">Как связаны занятия</h2></div>
+    </div>
+    <p class="muted kg-lead">Точка — занятие, линия — «нужно до». Чем крупнее точка, тем больше занятий от неё зависит. Нажмите на занятие, чтобы открыть его карточку.</p>
+    <div class="kg-stage" id="kg-stage">
+      <canvas id="kg-canvas" aria-hidden="true"></canvas>
+      <div class="kg-tip" id="kg-tip" hidden></div>
+      <div class="kg-hud">
+        <button class="btn" type="button" id="kg-fit">Вписать</button>
+        <button class="btn" type="button" id="kg-current">К текущему</button>
+      </div>
+      <p class="kg-status muted" id="kg-status" role="status">Загружаем карту…</p>
+    </div>
+    <ul class="kg-legend" aria-label="Обозначения">
+      <li><i class="kg-key closed"></i>Закрыто</li>
+      <li><i class="kg-key weak"></i>Закрыто слабо</li>
+      <li><i class="kg-key current"></i>Сейчас</li>
+      <li><i class="kg-key claimed"></i>Знакомо по анкете</li>
+      <li><i class="kg-key available"></i>Доступно</li>
+      <li><i class="kg-key ahead"></i>Впереди</li>
+    </ul>
+    <div class="kg-card" id="kg-card" aria-live="polite" hidden></div>
+    <details class="kg-list">
+      <summary>Все занятия списком</summary>
+      <div id="kg-list"></div>
+    </details>
+  </section>
+  {% endif %}
   {% else %}
   <section class="panel"><div class="empty"><strong>Курсов пока нет</strong>Запишитесь на курс в разделе «Мои курсы» — здесь появится прогресс.</div></section>
   {% endif %}
