@@ -19,7 +19,7 @@ from typing import Literal
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.core import guided, intents
-from llm_tutor.core.context import build_context
+from llm_tutor.core.context import Focus, build_context, focus_meta
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.legacy import legacy_passed
 from llm_tutor.db import repos
@@ -175,8 +175,13 @@ def post_turn(
     mastery: list[beta.MasteryUpdate] | None = None,
     now: float | None = None,
     task_text: str | None = None,
+    focus: Focus | None = None,
 ) -> None:
     """Пишет ход одним коммитом; при сбое откатывает всё.
+
+    ``focus`` — фрагмент страницы, о котором спрашивал ученик: ложится в
+    ``meta`` его реплики (сама реплика — только вопрос), веб рисует из него
+    плашку в истории, а ``core/context`` — пометку в хвосте диалога.
 
     ``task_text`` — выданное в ходе задание, которым заканчивается
     ``assistant_text``. Его длина ложится в ``meta`` реплики: модель видит ход
@@ -189,7 +194,15 @@ def post_turn(
         else None
     )
     try:
-        repos.add_message(conn, session_id, "user", user_text, ts=stamp, commit=False)
+        repos.add_message(
+            conn,
+            session_id,
+            "user",
+            user_text,
+            ts=stamp,
+            meta=focus_meta(focus) if focus else None,
+            commit=False,
+        )
         repos.add_message(
             conn, session_id, "assistant", assistant_text, ts=stamp, meta=meta, commit=False
         )
@@ -334,6 +347,7 @@ async def _tutor_branch(
     settings: Settings,
     force_stuck: bool = False,
     allow_stuck: bool = True,
+    focus: Focus | None = None,
 ) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool]:
     """Тьюторский путь: контекст → модель → новый уровень подсказки.
 
@@ -355,6 +369,7 @@ async def _tutor_branch(
         budget_tokens=settings.context_budget_tokens,
         now=now,
         settings=settings,
+        focus=focus,
     )
     idle_state = state.model_copy(update={"last_activity": now})
 
@@ -522,6 +537,7 @@ def _enter_claimed(
     user_text: str,
     now: float,
     settings: Settings,
+    focus: Focus | None = None,
 ) -> TurnReply:
     """Ход входа в заявленный узел: объявление и первое задание прохода.
 
@@ -544,6 +560,7 @@ def _enter_claimed(
         task_text=tail,
         state=new_state.model_copy(update={"route": fresh_route}),
         now=now,
+        focus=focus,
     )
     return TurnReply(
         text=text,
@@ -564,6 +581,7 @@ async def handle_turn(
     allow_intents: bool = True,
     answer_mode: AnswerMode = "auto",
     grade: GradeResult | None = None,
+    focus: Focus | None = None,
 ) -> TurnReply:
     """Один ход диалога: ответ на задание или реплика тьютору.
 
@@ -574,6 +592,10 @@ async def handle_turn(
 
     ``grade`` — готовый вердикт по висящему заданию (тесты кода в браузере):
     ход идёт веткой ответа без грейдера и без разбора намерений.
+
+    ``focus`` — фрагмент страницы, о котором спрашивает ученик (веб). Намерения
+    разбираются только по ``user_text``: «пропусти» внутри выделенного текста —
+    не команда. Фрагмент идёт модели в тьюторской ветке, а в журнал — на любой.
     """
     if grade is not None:
         allow_intents, answer_mode = False, "answer"
@@ -590,12 +612,16 @@ async def handle_turn(
     # задании «пропусти» ушло бы в ветку ответа и записалось как неверный ответ.
     intent = intents.detect(user_text) if allow_intents else None
     if intent == "skip":
-        return TurnReply(text=_skip_turn(conn, session_id, state, user_text, now=stamp))
+        return TurnReply(
+            text=_skip_turn(conn, session_id, state, user_text, now=stamp, focus=focus)
+        )
     if intent == "close_topic":
         # Закрытие — отдельный проход; он сам запишет ход и состояние. Слова
         # ученика отдаём как есть: иначе в журнале остался бы синтетический
         # повод, и модель на следующем ходу не увидела бы реплики ученика.
-        return verify.start_verification(conn, now=stamp, settings=s, user_text=user_text)
+        return verify.start_verification(
+            conn, now=stamp, settings=s, user_text=user_text, focus=focus
+        )
     force_stuck = intent == "stuck"
     options: list[str] | None = None
     # Второе сообщение хода — задание. Появится, если задание реально выдано:
@@ -750,7 +776,7 @@ async def handle_turn(
                 # Заявленное в анкете не объясняем — подтверждаем проходом.
                 return _enter_claimed(
                     conn, session_id, graph, state, route, node_id,
-                    user_text=user_text, now=stamp, settings=s,
+                    user_text=user_text, now=stamp, settings=s, focus=focus,
                 )
             else:
                 state = state.model_copy(
@@ -767,7 +793,7 @@ async def handle_turn(
             button = guided.button(new_state)
             return _finish_turn(
                 conn, session_id, graph, user_text, reply, new_state, button=button,
-                now=stamp, settings=s,
+                now=stamp, settings=s, focus=focus,
             )
         reply, events, mastery, new_state, wants_close = await _tutor_branch(
             conn,
@@ -780,6 +806,7 @@ async def handle_turn(
             now=stamp,
             settings=s,
             force_stuck=force_stuck,
+            focus=focus,
         )
         if wants_close:
             # Модель заметила просьбу закрыть тему: реплика тьютора и слова
@@ -793,7 +820,8 @@ async def handle_turn(
             # возвращает пустыми, а всё остальное проход задаёт сам и пишет
             # своим `post_turn`.
             return verify.start_verification(
-                conn, now=stamp, settings=s, user_text=user_text, tutor_reply=reply
+                conn, now=stamp, settings=s, user_text=user_text, tutor_reply=reply,
+                focus=focus,
             )
         if state.pending_item_id is not None and not force_stuck:
             # Вопрос при висящем задании: ответили тьютором, задание не тронули.
@@ -824,6 +852,7 @@ async def handle_turn(
         events=events,
         mastery=mastery,
         now=stamp,
+        focus=focus,
     )
     return TurnReply(
         text=reply,
@@ -993,6 +1022,7 @@ def _finish_turn(
     button: tuple[str, str] | None,
     now: float,
     settings: Settings,
+    focus: Focus | None = None,
 ) -> TurnReply:
     """Пересчёт маршрута, запись хода и ответ без задания (ход урока)."""
     fresh_route, route_note = route_mod.refresh(conn, state, graph, now=now, settings=settings)
@@ -1005,6 +1035,7 @@ def _finish_turn(
         assistant_text=reply,
         state=state.model_copy(update={"route": fresh_route}),
         now=now,
+        focus=focus,
     )
     return TurnReply(text=reply, button=button)
 
@@ -1564,6 +1595,7 @@ def _skip_turn(
     user_text: str,
     *,
     now: float,
+    focus: Focus | None = None,
 ) -> str:
     """Снимает ожидание ответа, НЕ записывая свидетельство."""
     if state.pending_item_id is None:
@@ -1577,6 +1609,7 @@ def _skip_turn(
             update={"pending_item_id": None, "phase": "explain", "last_activity": now}
         ),
         now=now,
+        focus=focus,
     )
     return SKIP_REPLY
 
