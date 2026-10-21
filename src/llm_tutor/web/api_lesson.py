@@ -7,7 +7,6 @@
 
 import asyncio
 import logging
-import re
 import sqlite3
 from collections.abc import Awaitable
 from dataclasses import dataclass
@@ -17,6 +16,7 @@ from pydantic import BaseModel, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided, lesson, turn, verify
+from llm_tutor.core.context import fence
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -372,9 +372,8 @@ def code_message(code: str, passed: bool, report: str) -> str:
     """Реплика ученика в журнале: код и итог тестов — тьютор увидит их в истории."""
     verdict = "все проверки пройдены" if passed else f"не пройдено — {report or 'ошибка'}"
     # Ограждение длиннее любой серии ` в коде: иначе ``` внутри кода закроет блок раньше.
-    longest = max((len(run) for run in re.findall(r"`+", code)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return f"{fence}python\n{code.rstrip()}\n{fence}\n\nРезультат проверки: {verdict}"
+    mark = fence(code)
+    return f"{mark}python\n{code.rstrip()}\n{mark}\n\nРезультат проверки: {verdict}"
 
 
 @router.post("/courses/{course_id}/lesson/code-result")
