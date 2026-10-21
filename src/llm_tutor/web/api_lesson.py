@@ -12,11 +12,11 @@ from collections.abc import Awaitable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided, lesson, turn, verify
-from llm_tutor.core.context import fence
+from llm_tutor.core.context import FOCUS_MAX_CHARS, FOCUS_SOURCES, Focus, fence
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -203,8 +203,23 @@ class SurveyBody(BaseModel):
     answers: list[StrictInt] = Field(max_length=32)
 
 
+class QuoteBody(BaseModel):
+    """Фрагмент страницы занятия, о котором спрашивает ученик (срез 76).
+
+    Источник и длину после обрезки пробелов проверяет ``chat()``: общий
+    обработчик 422 назвал бы поле по последнему сегменту пути — ``text``, как
+    поле вопроса. Здесь — только типы и грубый предел тела.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    text: str = Field(max_length=4 * FOCUS_MAX_CHARS)
+
+
 class ChatBody(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
+    quote: QuoteBody | None = None
 
 
 class AnswerBody(BaseModel):
@@ -308,15 +323,45 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=422, detail={"field": "text", "message": "Пустое сообщение."})
+    focus = _focus(body.quote) if body.quote else None
     async with ctx.lock:
         reply = await _safe(
             # Чат — всегда к тьютору: ответы на задание идут формой «Практики».
             turn.handle_turn(
-                ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings, answer_mode="tutor"
+                ctx.conn,
+                ctx.client,
+                ctx.model,
+                text,
+                settings=ctx.settings,
+                answer_mode="tutor",
+                focus=focus,
             ),
             LLM_FAILURE_REPLY,
         )
         return turn_response(ctx, text, reply)
+
+
+def _focus(quote: QuoteBody) -> Focus:
+    """Фрагмент из тела запроса; неизвестный источник или длина — 422 у поля."""
+    if quote.source not in FOCUS_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "quote.source", "message": "Неизвестный источник фрагмента."},
+        )
+    text = quote.text.strip()
+    if not text:
+        raise HTTPException(
+            status_code=422, detail={"field": "quote.text", "message": "Пустой фрагмент."}
+        )
+    if len(text) > FOCUS_MAX_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "field": "quote.text",
+                "message": f"Фрагмент длиннее {FOCUS_MAX_CHARS} знаков.",
+            },
+        )
+    return Focus(quote.source, text)
 
 
 @router.post("/courses/{course_id}/lesson/answer")

@@ -1,15 +1,15 @@
 """Ход с выделенным фрагментом: намерения, задание, журнал (срез 76)."""
 
 import pytest
-
 from legacy_course import load_seed
+from test_turn import ALL_BLOCKS, _claim, _FailingTutor, _FakeTutor, _set_state, _state
+
 from llm_tutor.core import intents
 from llm_tutor.core.context import FOCUS_QUESTIONS, FOCUS_RULE, Focus, focus_from_meta
 from llm_tutor.core.turn import SKIP_REPLY, handle_turn, start_practice_reply
 from llm_tutor.course.ingest import ingest_text
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
-from test_turn import ALL_BLOCKS, _claim, _FailingTutor, _FakeTutor, _set_state, _state
 
 TASK = Focus("task", "найдите среднее по столбцу")
 
