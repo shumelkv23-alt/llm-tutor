@@ -156,6 +156,10 @@ class CourseGraph:
             if not hard_only or data["hard"]
         ]
 
+    def prerequisite_edges(self) -> list[tuple[str, str, bool]]:
+        """Все рёбра «нужно до»: ``(откуда, куда, жёсткое)`` в порядке добавления."""
+        return [(src, dst, bool(data["hard"])) for src, dst, data in self._graph.edges(data=True)]
+
     def prerequisites(self, node_id: str) -> list[str]:
         """Прямые пререквизиты (жёсткие и мягкие), отсортированные по id."""
         return sorted(src for src, _ in self._in_edges(node_id))
