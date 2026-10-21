@@ -315,7 +315,13 @@
   mount();
   renderHead();
   setText(loadDraft() ?? SANDBOX_TEXT);
-  window.Lesson.code = { open };
+  window.Lesson.code = {
+    open,
+    // Редактор нужен панели вопросов по выделенному (selection.js, срез 78).
+    get editor() {
+      return editor;
+    },
+  };
   window.Lesson.onState((state) => {
     if (!state.survey) sync(state);
   });

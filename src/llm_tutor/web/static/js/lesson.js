@@ -132,6 +132,7 @@ window.Lesson = (() => {
     });
     if (state) renderHead();
     window.Lesson.chat?.typing(value);
+    document.dispatchEvent(new CustomEvent("lesson:busy", { detail: value }));
   }
 
   /**

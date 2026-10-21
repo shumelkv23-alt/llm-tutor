@@ -183,3 +183,18 @@ async def test_code_quote_keeps_indent(enrolled, web_app) -> None:
     )
 
     assert focus_from_meta(_user_messages(web_app)[-1].meta).text == "if a:\n    b()"
+
+
+# --- панель выделения (срез 78) ---
+
+
+def test_selection_js_questions_match_core() -> None:
+    """Вопросы готовых кнопок в браузере — те же, что проверены на намерения."""
+    from pathlib import Path
+
+    from llm_tutor.core.context import FOCUS_QUESTIONS
+    from llm_tutor.web.app import STATIC_DIR
+
+    script = (Path(STATIC_DIR) / "js" / "selection.js").read_text(encoding="utf-8")
+    for question in FOCUS_QUESTIONS:
+        assert f'"{question}"' in script

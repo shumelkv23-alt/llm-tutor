@@ -489,6 +489,59 @@
   max-width: 100%;
 }
 
+/* --- Панель вопросов над выделенным (срез 78); место ставит JS --- */
+
+.selection-bar {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+}
+
+.selection-bar[hidden] {
+  display: none;
+}
+
+.selection-bar button {
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--primary-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selection-bar button:hover:not(:disabled) {
+  background: var(--primary-soft);
+}
+
+.selection-bar button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.selection-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .selection-bar button {
+    min-height: 44px;
+  }
+}
+
 .lesson.locked .chat-form,
 .lesson.locked .chat-chips {
   opacity: 0.55;
