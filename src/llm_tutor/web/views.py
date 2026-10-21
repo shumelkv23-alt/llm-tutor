@@ -7,6 +7,8 @@ import json
 import logging
 import sqlite3
 
+from markupsafe import escape
+
 from llm_tutor.config import Settings
 from llm_tutor.core import guided
 from llm_tutor.core.context import Focus, FocusSource, fence, focus_from_meta
@@ -192,17 +194,18 @@ QUOTE_LABELS: dict[FocusSource, str] = {
 
 
 def quote_view(focus: Focus) -> dict:
-    """Плашка фрагмента над репликой ученика: код — моноширинным блоком."""
+    """Плашка фрагмента над репликой ученика: код — моноширинным блоком.
+
+    Текст конспекта и задания показывается дословно: это уже отрисованная
+    страница, и повторный разбор Markdown исказил бы цитату (``# …`` стал бы
+    заголовком, ``__len__`` — жирным ``len``).
+    """
     if focus.source == "code":
         mark = fence(focus.text)
-        source = f"{mark}python\n{focus.text}\n{mark}"
+        html = str(markdown.render(f"{mark}python\n{focus.text}\n{mark}"))
     else:
-        source = focus.text
-    return {
-        "source": focus.source,
-        "label": QUOTE_LABELS[focus.source],
-        "html": str(markdown.render(source)),
-    }
+        html = "<p>" + str(escape(focus.text)).replace("\n", "<br>\n") + "</p>\n"
+    return {"source": focus.source, "label": QUOTE_LABELS[focus.source], "html": html}
 
 
 def message_view(

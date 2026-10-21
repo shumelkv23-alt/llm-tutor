@@ -198,3 +198,19 @@ def test_selection_js_questions_match_core() -> None:
     script = (Path(STATIC_DIR) / "js" / "selection.js").read_text(encoding="utf-8")
     for question in FOCUS_QUESTIONS:
         assert f'"{question}"' in script
+
+
+# --- аудит среза 77 ---
+
+
+@pytest.mark.parametrize("source", ["theory", "task"])
+async def test_text_quote_is_shown_verbatim(enrolled, source) -> None:
+    """Фрагмент — уже отрисованный текст: Markdown в нём не разбирается заново."""
+    await _finish(enrolled)
+    text = "# считаем длину\nn = df.__len__()\n* звёздочка <b>"
+
+    html = (await _ask(enrolled, source, text))["messages"][0]["quote"]["html"]
+
+    assert "<h1" not in html and "<strong" not in html and "<li" not in html
+    assert "# считаем длину<br>" in html
+    assert "df.__len__()" in html and "* звёздочка &lt;b&gt;" in html

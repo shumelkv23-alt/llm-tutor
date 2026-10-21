@@ -22,12 +22,8 @@
   const QUOTE_LABELS = { theory: "Из теории", task: "Из задания", code: "Из моего кода" };
   // Фрагмент, прикреплённый «Спросить…» к полю ввода: {source, text} или null.
   let attached = null;
-
-  function escapeHtml(text) {
-    const box = document.createElement("div");
-    box.textContent = text;
-    return box.innerHTML;
-  }
+  // Отложенное объявление диктору (см. attach).
+  let announceTimer = null;
 
   function nearBottom() {
     return log.scrollHeight - log.scrollTop - log.clientHeight < NEAR_BOTTOM;
@@ -142,10 +138,19 @@
 
   /** Прикрепить фрагмент к полю ввода (заменяет прежний) и перейти к вопросу. */
   function attach(focus, { announce = true } = {}) {
+    // До анкеты чат закрыт: поле выключено, вопрос не уйдёт.
+    if (window.Lesson.state?.survey) return;
     attached = { source: focus.source, text: focus.text };
     renderAttached();
+    // Диктор повторяет объявление, только если текст области изменился:
+    // сначала очищаем, затем пишем — так слышна и замена фрагмента тем же.
+    clearTimeout(announceTimer);
+    quoteStatus.textContent = "";
     if (announce) {
-      quoteStatus.textContent = `Фрагмент прикреплён: ${QUOTE_LABELS[focus.source].toLowerCase()}`;
+      const text = `Фрагмент прикреплён: ${QUOTE_LABELS[focus.source].toLowerCase()}`;
+      announceTimer = setTimeout(() => {
+        quoteStatus.textContent = text;
+      }, 100);
     }
     input.focus();
   }
@@ -153,29 +158,39 @@
   function detach() {
     attached = null;
     renderAttached();
+    clearTimeout(announceTimer);
     quoteStatus.textContent = "";
+  }
+
+  /** Время последней реплики ученика в истории (null — реплик нет). */
+  function lastUserTs() {
+    const users = (window.Lesson.state?.messages || []).filter((message) => message.role === "user");
+    return users.length ? users[users.length - 1].ts : null;
   }
 
   /** Ход чата с вопросом и (необязательно) фрагментом. */
   function ask(question, focus = null) {
+    if (window.Lesson.state?.survey) return Promise.resolve(null);
     const quote = focus ? { source: focus.source, text: focus.text } : null;
     const body = quote ? { text: question, quote } : { text: question };
     return window.Lesson.act("chat", body, { echo: question, quote });
   }
 
-  /** Реплика из поля ввода или чипа; фрагмент над полем уходит только с полем. */
-  async function send(text, { withQuote = true } = {}) {
+  /** Реплика из поля ввода вместе с прикреплённым фрагментом. */
+  async function send(text) {
     const clean = text.trim();
     if (!clean || locked()) return;
-    const quote = withQuote ? attached : null;
+    const quote = attached;
+    const before = lastUserTs();
     input.value = "";
     autosize();
     if (quote) detach();
     const result = await ask(clean, quote);
-    // Текст возвращаем, только если сервер реплику не принял: после «результат
-    // неизвестен» состояние перечитано, и реплика может быть уже в журнале.
-    const users = (window.Lesson.state?.messages || []).filter((message) => message.role === "user");
-    const delivered = Boolean(users.length && users[users.length - 1].html.includes(escapeHtml(clean)));
+    // Текст и плашку возвращаем, только если реплика не легла в журнал. После
+    // «результат неизвестен» состояние перечитано: новая реплика ученика в нём —
+    // ход дошёл. Сверяем время реплики, а не текст: тот же вопрос мог быть и
+    // раньше, а HTML реплики экранирован иначе, чем textContent.
+    const delivered = lastUserTs() !== before;
     if (!result && !input.value && !delivered) {
       input.value = clean;
       if (quote && !attached) attach(quote, { announce: false });
@@ -217,7 +232,8 @@
       window.Lesson.selectTab("practice");
       window.Lesson.selectView("lesson");
     } else {
-      send(chip.dataset.say, { withQuote: false });
+      // Чип — готовая реплика: черновик в поле и прикреплённый фрагмент не трогаем.
+      ask(chip.dataset.say);
     }
   });
 
