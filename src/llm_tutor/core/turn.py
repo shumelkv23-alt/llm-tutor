@@ -202,6 +202,7 @@ def _warmup(
     graph: CourseGraph,
     state: SessionState,
     *,
+    previous: Route | None,
     now: float,
     settings: Settings,
 ) -> tuple[SessionState, str, str, list[str] | None] | None:
@@ -211,13 +212,24 @@ def _warmup(
     начато. Разминка — до ``WARMUP_SIZE`` просроченных занятий по одному
     заданию; повторение выключено или спрашивать нечего — ``None``. Состояние
     занятия не меняется, только ``review``. Возвращает состояние, строку-пояснение
-    и задание (текст, варианты).
+    и задание (текст, варианты). ``previous`` — маршрут до хода: занятие, закрытое
+    этим ходом (в том числе заново, со старой просроченной строкой), не спрашивается.
     """
     next_id = state.current_node_id
     if next_id is None or not graph.has_node(next_id) or not review.enabled(conn):
         return None
+    closed_before = {
+        step.concept_id
+        for step in (previous.steps if previous is not None else [])
+        if step.status == "closed"
+    }
+    just_closed = {
+        step.concept_id
+        for step in (state.route.steps if state.route is not None else [])
+        if step.status == "closed" and step.concept_id not in closed_before
+    }
     due = review.due_lessons(conn, graph, state.route, now=now, settings=settings)
-    queue = due[: review.WARMUP_SIZE]
+    queue = [node_id for node_id in due if node_id not in just_closed][: review.WARMUP_SIZE]
     if not queue:
         return None
     series = ReviewState(kind="warmup", queue=queue, total=len(queue))
@@ -872,7 +884,7 @@ async def handle_turn(
             # Граница занятий (срез 81): перед новым занятием — разминка по
             # просроченному пройденному. Урок или проход начнёт `core/review`,
             # когда разминка кончится или будет пропущена.
-            warmup = _warmup(conn, graph, new_state, now=stamp, settings=s)
+            warmup = _warmup(conn, graph, new_state, previous=state.route, now=stamp, settings=s)
             if warmup is not None:
                 new_state, warm_note, tail, options = warmup
                 reply = f"{reply}\n\n{warm_note}"

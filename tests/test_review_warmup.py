@@ -209,3 +209,30 @@ async def test_warmup_wrong_answer_then_lesson(conn, settings) -> None:
 
     assert "Освежить: раздел" in reply.text and "верно 0 из 1" in reply.text
     assert _state(conn).lesson_part == 1
+
+
+# --- аудит среза 81 ---
+
+
+async def test_warmup_does_not_ask_the_lesson_closed_this_turn(conn, settings) -> None:
+    """Занятие, которое ученик только что закрыл заново, на разминку не идёт."""
+    load_lessons(conn)
+    await _enter(conn, settings)
+    # l1_frames уже была на лестнице и просрочена, потом переоткрылась; закрываем её снова.
+    _make_due(conn, "l1_frames")
+
+    reply = await _finish_lesson(conn, settings)
+
+    state = _state(conn)
+    assert state.review is None, "разминка спросила только что закрытое занятие"
+    assert state.lesson_part == 1 and reply.button is not None
+    assert repos.get_review_rows(conn)["l1_frames"].due_at == 0.5  # строка не сброшена
+
+
+async def test_warmup_other_due_lesson_still_asked_when_current_is_also_due(conn, settings) -> None:
+    await _setup(conn, settings, "l1_group")
+    _make_due(conn, "l1_frames")
+
+    await _finish_lesson(conn, settings)
+
+    assert _state(conn).review.node_id == "l1_group"

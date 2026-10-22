@@ -81,13 +81,14 @@ async def _begin_lesson(
     состояние с обновлённым маршрутом.
     """
     if state.mode == "verify":
-        new_state, task_text, options = turn._issue_task(
+        new_state, task_text, task_options = turn._issue_task(
             conn, graph, state, now=now, settings=settings
         )
         issued = new_state.pending_item_id is not None
-        text, tail, options, button = ("" if issued else task_text), None, None, None
-        if issued:
-            text, tail, options = "", task_text, options
+        # Задание — отдельным сообщением (tail); «заданий нет» остаётся текстом.
+        text, tail, options, button = (
+            ("", task_text, task_options, None) if issued else (task_text, None, None, None)
+        )
     else:
         text, new_state = await turn._start_lesson(
             conn, client, model, session_id, state, graph, now=now, settings=settings
