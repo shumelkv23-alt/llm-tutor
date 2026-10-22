@@ -6,8 +6,8 @@ from test_lesson_sections import _answer as _answer_turn
 from test_lesson_sections import _check, _enter, _pending
 from test_turn import _state
 
-from llm_tutor.course.graph import CourseGraph
 from llm_tutor.core.turn import post_turn
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import Event, ReviewRow, Route, RouteStep, SessionState
 from llm_tutor.student import review
@@ -553,7 +553,7 @@ def _rubric(conn, rubric_id: int, *, with_criterion: bool = True) -> None:
 def _only_new_items(conn, *item_ids: int) -> None:
     """Гасит весь банк занятия l1_frames, кроме перечисленных."""
     conn.execute(
-        "UPDATE items SET active = 0 WHERE id NOT IN (%s)" % ",".join("?" * len(item_ids)),
+        f"UPDATE items SET active = 0 WHERE id NOT IN ({','.join('?' * len(item_ids))})",
         item_ids,
     )
     conn.commit()

@@ -5,9 +5,8 @@ from test_lesson_interface import _unpublish
 from test_lesson_sections import _answer, _check, _enter, _pending, _wrong
 from test_turn import _FakeTutor, _set_state, _state
 
-from llm_tutor.core import guided
+from llm_tutor.core import guided, turn
 from llm_tutor.core import review as core_review
-from llm_tutor.core import turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import ReviewRow

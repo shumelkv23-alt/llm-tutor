@@ -9,7 +9,6 @@ from test_turn import _set_state, _state
 from test_web_lesson import _user_db
 from web_fakes import ScriptedTutor
 
-from llm_tutor.core import review as core_review
 from llm_tutor.core import turn
 from llm_tutor.course.seed import load_course_data
 from llm_tutor.db import repos

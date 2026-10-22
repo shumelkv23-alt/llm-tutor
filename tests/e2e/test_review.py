@@ -1,9 +1,8 @@
 """Повторение по расписанию в браузере (срезы 79–83, фикстура занятий)."""
 
 import pytest
-from playwright.async_api import expect
-
 from helpers import close_first_lesson, enroll, make_due, show_view, sign_up, survey_ui
+from playwright.async_api import expect
 
 pytestmark = pytest.mark.e2e
 

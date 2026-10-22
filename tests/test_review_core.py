@@ -4,14 +4,13 @@ import json
 
 import pytest
 from course_fixtures import correct_answer, load_lessons
-from test_lesson_sections import _check, _enter, _pending, _wrong
+from test_lesson_sections import _check, _enter, _wrong
 from test_turn import _FakeTutor, _set_state, _state
 
 from llm_tutor.core import review as core_review
 from llm_tutor.core import turn
 from llm_tutor.db import repos
 from llm_tutor.schemas import Event, ReviewRow
-from llm_tutor.student import review
 
 DAY = 86_400.0
 NOW = 100 * DAY + 3_600.0
