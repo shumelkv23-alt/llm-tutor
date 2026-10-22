@@ -214,3 +214,17 @@ async def test_text_quote_is_shown_verbatim(enrolled, source) -> None:
     assert "<h1" not in html and "<strong" not in html and "<li" not in html
     assert "# считаем длину<br>" in html
     assert "df.__len__()" in html and "* звёздочка &lt;b&gt;" in html
+
+
+def test_selection_js_has_no_extra_questions() -> None:
+    """Аудит 78: сверка в обе стороны — лишний вопрос в JS тоже ошибка."""
+    import re
+    from pathlib import Path
+
+    from llm_tutor.core.context import FOCUS_QUESTIONS
+    from llm_tutor.web.app import STATIC_DIR
+
+    script = (Path(STATIC_DIR) / "js" / "selection.js").read_text(encoding="utf-8")
+    block = script[script.index("const QUESTIONS = [") : script.index("];", script.index("const QUESTIONS = ["))]
+    found = re.findall(r'\["[^"]+", "([^"]+)"\]', block)
+    assert sorted(found) == sorted(FOCUS_QUESTIONS)

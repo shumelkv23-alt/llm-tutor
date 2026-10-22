@@ -1314,6 +1314,9 @@
 
 /* Полоса разделов над вкладками: на узком экране прокручивается вбок. */
 .section-strip {
+  /* Опорный блок для скрытых подписей (.visually-hidden, absolute): иначе они
+     выходили за полосу и давали горизонтальную прокрутку на 390 px (аудит 78). */
+  position: relative;
   display: flex;
   gap: 6px;
   margin: 0;
@@ -1428,4 +1431,14 @@
 
 .route-module.soon strong {
   color: var(--muted);
+}
+
+/* Невидимый блок, на котором selection.js считает текст выделения (innerText). */
+.selection-measure {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 600px;
+  white-space: normal;
+  pointer-events: none;
 }

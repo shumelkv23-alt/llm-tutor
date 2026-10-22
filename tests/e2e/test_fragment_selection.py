@@ -257,3 +257,165 @@ async def test_scroll_hides_only_when_selection_moves(lesson) -> None:
     )
     assert moved
     await expect(bar).to_be_hidden()
+
+
+# --- аудит среза 78 ---
+
+
+async def _active_text(page) -> str:
+    return await page.evaluate("() => document.activeElement.textContent")
+
+
+async def _select_in_editor(page) -> None:
+    await page.click("#tab-btn-code")
+    await page.evaluate(
+        """() => {
+            const cm = Lesson.code.editor;
+            cm.setValue("for i in range(3):\\n    print(i)\\n");
+            cm.focus();
+            cm.setSelection({line: 1, ch: 0}, {line: 1, ch: 12});
+        }"""
+    )
+    await expect(page.locator(BAR)).to_be_visible()
+
+
+async def test_alt_f10_from_editor_keeps_focus_in_panel(lesson) -> None:
+    """I-1: CodeMirror не забирает фокус обратно; Esc возвращает его в редактор."""
+    page = lesson
+    await _select_in_editor(page)
+
+    await page.keyboard.press("Alt+F10")
+    await page.wait_for_timeout(100)
+    assert await _active_text(page) == "Объясни"
+    await expect(page.locator(BAR)).to_be_visible()
+
+    await page.keyboard.press("Escape")
+    assert await page.evaluate("() => Boolean(document.activeElement.closest('.CodeMirror'))")
+
+
+async def test_alt_f10_after_escape_brings_panel_back(lesson) -> None:
+    """M-3: Esc спрятал панель, выделение осталось — Alt+F10 возвращает её."""
+    page = lesson
+    await page.focus("#tab-theory")
+    await _select(page, "#tab-theory .theory-body p")
+    await page.keyboard.press("Tab")
+    await page.keyboard.press("Escape")
+    await expect(page.locator(BAR)).to_be_hidden()
+
+    await page.keyboard.press("Alt+F10")
+    await expect(page.locator(BAR)).to_be_visible()
+    assert await _active_text(page) == "Объясни"
+
+
+async def test_triple_click_on_task_prompt_shows_panel(lesson) -> None:
+    """I-2: тройной клик тянет конец выделения в вариант ответа — хвост пустой."""
+    page = lesson
+    sent = _chat_requests(page)
+    await page.click("#tab-btn-practice")
+    for _ in range(4):
+        if await page.locator("#tab-practice .task-prompt").count():
+            break
+        await take_or_skip(page)
+    prompt = page.locator("#tab-practice .task-prompt").first
+    await prompt.click(click_count=3)
+
+    await expect(page.locator(BAR)).to_be_visible()
+    await page.click(f"{BAR} button:has-text('Объясни')")
+    await _idle(page)
+    quote = sent[-1].post_data_json["quote"]
+    assert quote["source"] == "task"
+    assert quote["text"] == (await prompt.inner_text()).strip()
+
+
+async def test_selection_ending_in_other_text_shows_nothing(lesson) -> None:
+    page = lesson
+    await page.evaluate(
+        """() => {
+            const range = document.createRange();
+            range.setStart(document.querySelector('#tab-theory .theory-body p'), 0);
+            range.setEnd(document.querySelector('.chat-head'), 1);
+            const selection = document.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+        }"""
+    )
+    await page.wait_for_timeout(150)
+    await expect(page.locator(BAR)).to_be_hidden()
+
+
+async def test_code_block_buttons_stay_out_of_quote(lesson) -> None:
+    """M-1: подписи «Скопировать» / «Открыть в редакторе» не уходят модели."""
+    page = lesson
+    sent = _chat_requests(page)
+    await _select(page, "#tab-theory .theory-body .code-block")
+    await page.click(f"{BAR} button:has-text('Объясни')")
+    await _idle(page)
+
+    text = sent[-1].post_data_json["quote"]["text"]
+    assert "Скопировать" not in text and "Открыть в редакторе" not in text
+    assert text.strip()
+
+
+async def test_long_selection_is_clipped_and_accepted(lesson) -> None:
+    page = lesson
+    responses: list[int] = []
+    page.on("response", lambda r: responses.append(r.status) if r.url.endswith("/lesson/chat") else None)
+    await _select(page, "#tab-theory .theory-body")
+    await page.click(f"{BAR} button:has-text('Проще')")
+    await _idle(page)
+
+    assert responses == [200]
+
+
+async def test_keyboard_choice_keeps_focus_off_body(lesson) -> None:
+    """I-3: после готовой кнопки с клавиатуры фокус не теряется на body."""
+    page = lesson
+    await page.focus("#tab-theory")
+    await _select(page, "#tab-theory .theory-body p")
+    await page.keyboard.press("Tab")
+    await page.keyboard.press("Enter")
+    await _idle(page)
+
+    assert await page.evaluate("() => document.activeElement !== document.body")
+
+
+async def test_ctrl_a_in_theory_selects_only_theory(lesson) -> None:
+    """M-2: с клавиатуры текст выделяется Ctrl+A — только конспект, не страница."""
+    page = lesson
+    await page.focus("#tab-theory")
+    await page.keyboard.press("Control+a")
+
+    await expect(page.locator(BAR)).to_be_visible()
+    inside = await page.evaluate(
+        """() => {
+            const range = getSelection().getRangeAt(0);
+            const root = document.querySelector('#tab-theory .theory-body');
+            return root.contains(range.startContainer) && root.contains(range.endContainer)
+                && range.toString().trim().length > 100;
+        }"""
+    )
+    assert inside
+
+
+async def test_panel_flips_above_at_bottom_edge(lesson) -> None:
+    page = lesson
+    await page.evaluate(
+        """() => {
+            const p = document.querySelector('#tab-theory .theory-body p');
+            p.scrollIntoView({block: 'end'});
+        }"""
+    )
+    await _select(page, "#tab-theory .theory-body p")
+    await expect(page.locator(BAR)).to_be_visible()
+    bar = await page.locator(BAR).bounding_box()
+    rect = await page.evaluate("() => { const r = getSelection().getRangeAt(0).getBoundingClientRect(); return {top: r.top, bottom: r.bottom}; }")
+    height = await page.evaluate("() => innerHeight")
+
+    assert bar["y"] + bar["height"] <= height
+    assert bar["y"] + bar["height"] <= rect["top"] or bar["y"] >= rect["bottom"]
+
+
+async def test_phone_lesson_has_no_horizontal_scroll(page, live_server) -> None:
+    await page.set_viewport_size({"width": 390, "height": 844})
+    await _open(page, live_server)
+    assert await page.evaluate("() => document.documentElement.scrollWidth") <= 390
