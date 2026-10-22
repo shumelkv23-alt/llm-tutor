@@ -502,3 +502,43 @@ async def test_home_block_orders_courses_by_overdue(ready, make_course, web_app)
 
     block = html.split("Повторить сегодня")[1]
     assert block.index("/lesson/mlcourse#review") < block.index("/lesson/python-basics#review")
+
+
+# --- аудит среза 82 ---
+
+
+async def test_stale_next_button_does_not_abort_series(ready, web_app) -> None:
+    """Старая кнопка «Дальше» из другой вкладки не гасит идущую серию."""
+    await _start(ready)
+    state = _state(_user_db(web_app))
+
+    response = await ready.post(
+        f"{BASE}/next", json={"node_id": state.current_node_id, "part": state.lesson_part + 7}
+    )
+
+    assert response.status_code == 200, response.text
+    after = _state(_user_db(web_app))
+    assert after.review is not None and after.review.item_id == state.review.item_id
+    assert after.lesson_part == state.lesson_part
+
+
+async def test_stale_next_button_does_not_stop_warmup(ready, web_app) -> None:
+    _warmup_state(web_app)
+
+    response = await ready.post(f"{BASE}/next", json={"node_id": "l1_select", "part": 3})
+
+    assert response.status_code == 200, response.text
+    assert _state(_user_db(web_app)).review is not None
+    assert repos.get_review_rows(_user_db(web_app))["l1_group"].due_at == PAST
+
+
+async def test_refresh_node_ids_are_bounded(ready) -> None:
+    long_id = "x" * 201
+    response = await ready.post(
+        f"{BASE}/review/start", json={"kind": "refresh", "node_ids": [long_id]}
+    )
+    assert response.status_code == 422
+    too_many = await ready.post(
+        f"{BASE}/review/start", json={"kind": "refresh", "node_ids": ["l1_group"] * 101}
+    )
+    assert too_many.status_code == 422

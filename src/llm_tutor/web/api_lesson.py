@@ -10,7 +10,7 @@ import logging
 import sqlite3
 from collections.abc import Awaitable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
@@ -285,7 +285,9 @@ class ReviewStartBody(BaseModel):
     """Начало серии повторения: «Срочное» (``due``) или «Освежить» (``refresh``)."""
 
     kind: Literal["due", "refresh"]
-    node_ids: list[str] = Field(default_factory=list, max_length=100)
+    node_ids: list[Annotated[str, Field(max_length=200)]] = Field(
+        default_factory=list, max_length=100
+    )
 
 
 class ReviewSettingsBody(BaseModel):
@@ -549,15 +551,20 @@ async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_contex
     """
     _require_survey(ctx)
     async with ctx.lock:
-        series = _review_series(ctx)
-        if series is not None and series.kind == "warmup":
+        state = _lesson_session_state(ctx)
+        series = state.review
+        # Старая кнопка из другой вкладки (тема или часть не совпали с состоянием)
+        # серию не трогает: она получит «Эта часть уже позади».
+        live = body.node_id == state.current_node_id and body.part == state.lesson_part
+        if series is not None and live and series.kind == "warmup":
             # «Дальше» в разминке — то же, что «Пропустить разминку».
             reply = await _safe(
                 core_review.stop(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
                 LLM_FAILURE_REPLY,
             )
             return turn_response(ctx, core_review.STOP_WARMUP_TEXT, reply)
-        _abort_review(ctx)
+        if series is not None and live:
+            _abort_review(ctx)
         reply = await _safe(
             _sync(
                 turn.lesson_next_reply,

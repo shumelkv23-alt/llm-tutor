@@ -129,3 +129,31 @@ async def test_home_block_leads_to_review_tab(student_page, tmp_path, lessons_se
     await page.wait_for_selector("#lesson[aria-busy=false]")
     await expect(page.locator("#tab-btn-review")).to_have_attribute("aria-selected", "true")
     assert page.errors == []
+
+
+async def test_review_fits_320px(browser, lessons_server, tmp_path) -> None:
+    context = await browser.new_context(viewport={"width": 320, "height": 700})
+    page = await context.new_page()
+    errors: list[str] = []
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    await sign_up(page, lessons_server)
+    await enroll(page, lessons_server)
+    await survey_ui(page)
+    make_due(tmp_path / "users", "l1_group")
+    await page.reload()
+    await page.wait_for_selector("#lesson[aria-busy=false]")
+
+    await page.click("#tab-btn-review")
+    await expect(page.locator("#tab-review")).to_contain_text("Срочное: 1")
+    assert await page.evaluate("document.documentElement.scrollWidth") <= 320
+
+    async with page.expect_response("**/lesson/review/start"):
+        await page.locator("#tab-review button:has-text('Начать')").click()
+    await page.wait_for_selector("#lesson:not(.busy)")
+    await expect(page.locator(".review-plate")).to_be_visible()
+    assert await page.evaluate("document.documentElement.scrollWidth") <= 320
+
+    await page.goto(f"{lessons_server}/")
+    assert await page.evaluate("document.documentElement.scrollWidth") <= 320
+    assert errors == []
+    await context.close()
