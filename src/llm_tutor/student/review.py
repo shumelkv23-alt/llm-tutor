@@ -7,11 +7,15 @@
 """
 
 import sqlite3
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
+from llm_tutor.config import Settings
+from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
-from llm_tutor.schemas import ReviewRow
+from llm_tutor.schemas import Item, ReviewRow, Route
+from llm_tutor.student import beta, diagnostic
 
 # Через сколько дней после закрытия (ступень 0) и после верного повторения
 # (ступени 1…5) занятию возвращаться.
@@ -129,3 +133,69 @@ def write_changes(
             repos.upsert_review(conn, change.concept_id, change.step, change.due_at, commit=False)
     if commit:
         conn.commit()
+
+
+def pick_item(
+    conn: sqlite3.Connection,
+    concept_id: str,
+    *,
+    now: float,
+    exclude: Collection[int] = (),
+) -> Item | None:
+    """Задание для повторения занятия или ``None``, если подходящих нет.
+
+    Берутся задания, главный концепт которых — это занятие, кроме итогового,
+    ``exclude`` и решённых за ``RECENT_ITEM_SECONDS``. Сначала ни разу не
+    отвеченные (по id), затем те, на которые отвечали раньше всех.
+    """
+    answered = repos.last_answer_ts(conn)
+    candidates = [
+        item
+        for item in diagnostic._available_items(conn, include_rubric=True, include_runnable=True)
+        if main_concept(item) == concept_id
+        and not item.final
+        and item.id not in exclude
+        and (item.id not in answered or now - answered[item.id] >= RECENT_ITEM_SECONDS)
+    ]
+    candidates.sort(key=lambda item: (item.id in answered, answered.get(item.id, 0.0), item.id))
+    return candidates[0] if candidates else None
+
+
+def closed_lessons(graph: CourseGraph, route: Route | None) -> list[str]:
+    """Закрытые занятия маршрута, которые есть в графе (порядок маршрута)."""
+    if route is None:
+        return []
+    return [
+        step.concept_id
+        for step in route.steps
+        if step.status == "closed" and graph.has_node(step.concept_id)
+    ]
+
+
+def due_lessons(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    route: Route | None,
+    *,
+    now: float,
+    settings: Settings,
+) -> list[str]:
+    """Занятия, готовые к повторению сейчас.
+
+    Занятие закрыто, есть в графе (модуль не снят с публикации), срок в
+    расписании наступил и есть чем спросить (``pick_item``). Сначала самые
+    просроченные, при равной просрочке — слабее владение.
+    """
+    rows = repos.get_review_rows(conn)
+    due = [
+        (cid, rows[cid].due_at)
+        for cid in closed_lessons(graph, route)
+        if cid in rows and rows[cid].due_at <= now and pick_item(conn, cid, now=now) is not None
+    ]
+    due.sort(
+        key=lambda pair: (
+            pair[1],  # меньший срок — большая просрочка
+            beta.estimate(conn, pair[0], now=now, settings=settings).mean,
+        )
+    )
+    return [cid for cid, _ in due]

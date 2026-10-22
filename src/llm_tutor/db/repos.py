@@ -646,6 +646,15 @@ def upsert_mastery(
         conn.commit()
 
 
+def last_answer_ts(conn: sqlite3.Connection) -> dict[int, float]:
+    """Когда ученик последний раз отвечал на задание: ``item_id`` → ``MAX(ts)``."""
+    rows = conn.execute(
+        "SELECT item_id, MAX(ts) AS ts FROM events "
+        "WHERE item_id IS NOT NULL GROUP BY item_id"
+    ).fetchall()
+    return {int(r["item_id"]): float(r["ts"]) for r in rows}
+
+
 # --- review_schedule (повторение по расписанию, срез 79) ---
 
 
