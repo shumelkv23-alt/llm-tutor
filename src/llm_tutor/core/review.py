@@ -20,7 +20,8 @@ from collections.abc import Sequence
 from typing import Literal
 
 from llm_tutor.config import Settings, get_settings
-from llm_tutor.core import turn
+from llm_tutor.core import intents, turn, verify
+from llm_tutor.core.context import Focus
 from llm_tutor.core.turn import TurnReply, post_turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import main_concept
@@ -278,3 +279,90 @@ def abort(conn: sqlite3.Connection, *, now: float | None = None) -> None:
         session_id,
         state.model_copy(update={"review": None, "last_activity": stamp}),
     )
+
+
+def _view(state: SessionState, series: ReviewState, item_section: str | None) -> SessionState:
+    """Состояние глазами тьютора: занятие, раздел и задание повторения.
+
+    Строится только для запроса модели и в БД не пишется: поля урока остаются
+    такими, какими были. Пройденные разделы и режим урока в виде не нужны —
+    они относятся к другому занятию.
+    """
+    return state.model_copy(
+        update={
+            "current_node_id": series.node_id,
+            "section_id": item_section,
+            "passed_sections": [],
+            "weak_sections": [],
+            "skipped_sections": [],
+            "mode": None,
+            "hint_level": 0,
+            "pending_item_id": series.item_id,
+            "task_hinted": series.hinted,
+            "phase": "practice",
+        }
+    )
+
+
+async def chat(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    text: str,
+    *,
+    stuck: bool = False,
+    focus: Focus | None = None,
+    now: float | None = None,
+    settings: Settings | None = None,
+) -> TurnReply:
+    """Реплика ученика тьютору посреди серии: вопрос по заданию повторения.
+
+    Контекст — по занятию и разделу задания повторения. Вопрос (и «Застрял»)
+    ставит ``hinted``: ответ после помощи двигает лестницу слабее. Короткие
+    команды: «пропусти» пропускает задание, «закрой тему» снимает серию и
+    ведёт в проверочный проход по текущему занятию. ``focus`` — выделенный
+    фрагмент: команды разбираются только по ``text``.
+    """
+    s = settings or get_settings()
+    stamp = time.time() if now is None else now
+    session_id, state = _session(conn, stamp)
+    series, node_id = _active_item(conn, state)
+
+    intent = None if stuck else intents.detect(text)
+    if intent == "skip":
+        return skip(conn, now=stamp, settings=s)
+    if intent == "close_topic":
+        abort(conn, now=stamp)
+        return verify.start_verification(
+            conn, now=stamp, settings=s, user_text=text, focus=focus
+        )
+    stuck = stuck or intent == "stuck"
+
+    graph = CourseGraph.load(conn)
+    item = repos.get_item(conn, series.item_id)  # type: ignore[arg-type]
+    view = _view(state, series, item.section if item is not None else None)
+    reply, _, _, new_view, wants_close = await turn._tutor_branch(
+        conn, client, model, session_id, text, view, graph,
+        now=stamp, settings=s, force_stuck=stuck, allow_stuck=False, focus=focus,
+    )
+    if wants_close:
+        abort(conn, now=stamp)
+        return verify.start_verification(
+            conn, now=stamp, settings=s, user_text=text, tutor_reply=reply, focus=focus
+        )
+    # «Застрял» в уроке уводит узел в усиленный проход; в повторении это лишь
+    # просьба о помощи, и фраза про «остаёмся на этом узле» ученику не нужна.
+    reply = reply.removesuffix(f"\n\n{turn.STUCK_NOTE}")
+    reply = f"{reply}\n\n{turn.PENDING_ITEM_NOTE}"
+    new_series = series.model_copy(update={"hinted": series.hinted or new_view.task_hinted})
+    post_turn(
+        conn,
+        session_id,
+        user_text=text,
+        assistant_text=reply,
+        state=state.model_copy(update={"review": new_series, "last_activity": stamp}),
+        review_node_id=node_id,
+        focus=focus,
+        now=stamp,
+    )
+    return TurnReply(text=reply)

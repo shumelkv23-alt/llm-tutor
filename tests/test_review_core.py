@@ -302,3 +302,130 @@ async def test_abort_clears_series_without_touching_schedule(conn, settings) -> 
     assert _state(conn).review is None
     assert repos.get_review_rows(conn) == rows
     core_review.abort(conn, now=NOW)  # повтор — не ошибка
+
+
+# --- чат и «Застрял» во время серии ---
+
+
+def _system(client) -> str:
+    return client.calls[-1][0].content
+
+
+async def test_chat_context_uses_review_section(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    item = repos.get_item(conn, _state(conn).review.item_id)
+    client = _FakeTutor("Разъяснение")
+
+    reply = await core_review.chat(conn, client, "m", "Что тут спрашивают?", now=NOW, settings=settings)
+
+    system = _system(client)
+    assert f"Конспект текущего раздела «{item.section}»" in system
+    assert "Группировка" in system
+    assert "Конспект текущего раздела «Series»" not in system
+    assert reply.text.startswith("Разъяснение") and reply.text.endswith(turn.PENDING_ITEM_NOTE)
+
+
+async def test_chat_marks_hinted_keeps_step(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    await core_review.chat(conn, _FakeTutor(), "m", "Подскажи", now=NOW, settings=settings)
+    assert _state(conn).review.hinted is True
+    item = repos.get_item(conn, _state(conn).review.item_id)
+
+    await core_review.answer(
+        conn, _FakeTutor(), "m", correct_answer(item), now=NOW, settings=settings
+    )
+
+    assert repos.get_review_rows(conn)["l1_group"] == ReviewRow(
+        concept_id="l1_group", step=1, due_at=NOW + DAY
+    )
+
+
+async def test_stuck_marks_hinted_without_lesson_side_effects(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    skip = {"review", "last_activity", "route"}
+    before = _state(conn).model_dump(exclude=skip)
+
+    reply = await core_review.chat(
+        conn, _FakeTutor("Подсказка", hint_level=2), "m", turn.STUCK_KICKOFF_TEXT,
+        stuck=True, now=NOW, settings=settings,
+    )
+
+    state = _state(conn)
+    assert state.review.hinted is True
+    assert state.model_dump(exclude=skip) == before  # усиленный проход урока не включился
+    assert turn.STUCK_NOTE not in reply.text and "Подсказка" in reply.text
+
+
+async def test_chat_skip_intent_skips_review_item(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group", "l1_select")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    first = _state(conn).review
+    client = _FakeTutor()
+
+    reply = await core_review.chat(conn, client, "m", "пропусти", now=NOW, settings=settings)
+
+    assert client.calls == []  # команда, а не вопрос тьютору
+    assert repos.get_review_rows(conn)[first.node_id].due_at == NOW + DAY
+    assert _events(conn, first.node_id) == []
+    assert _state(conn).review.node_id != first.node_id and reply.item_id is not None
+
+
+async def test_chat_close_topic_aborts_series_and_starts_verification(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+
+    await core_review.chat(
+        conn, _FakeTutor("ок", wants_close_topic=True), "m", "я это знаю", now=NOW, settings=settings
+    )
+
+    state = _state(conn)
+    assert state.review is None
+    assert state.mode == "verify" and state.current_node_id == "l1_frames"
+
+
+async def test_chat_llm_failure_does_not_mark_hinted(conn, settings) -> None:
+    from test_turn import _FailingTutor
+
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+
+    await core_review.chat(conn, _FailingTutor(), "m", "вопрос", now=NOW, settings=settings)
+
+    assert _state(conn).review.hinted is False
+
+
+async def test_chat_lesson_fields_untouched_and_journal_marked(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    skip = {"review", "last_activity", "route"}
+    before = _state(conn).model_dump(exclude=skip)
+
+    await core_review.chat(conn, _FakeTutor(), "m", "Вопрос", now=NOW, settings=settings)
+
+    assert _state(conn).model_dump(exclude=skip) == before
+    last = conn.execute("SELECT meta FROM messages ORDER BY id DESC LIMIT 2").fetchall()
+    assert [json.loads(r["meta"]) for r in last] == [{"review": "l1_group"}] * 2
+
+
+async def test_lesson_tail_labels_review_messages(conn, settings) -> None:
+    """Ход урока после серии видит её реплики с пометкой, а не как вопросы по занятию."""
+    from llm_tutor.core.context import REVIEW_TAIL_LABEL
+
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    await core_review.chat(conn, _FakeTutor(), "m", "Чем это поможет?", now=NOW, settings=settings)
+    core_review.abort(conn, now=NOW)
+    client = _FakeTutor()
+
+    await turn.handle_turn(
+        conn, client, "m", "Расскажи про Series", now=NOW + 1, settings=settings,
+        answer_mode="tutor",
+    )
+
+    label = REVIEW_TAIL_LABEL.format(name="Группировка")
+    contents = [m.content for m in client.calls[-1] if m.role in ("user", "assistant")]
+    assert any(c.startswith(label + "Чем это поможет?") for c in contents)
+    assert any(c.startswith(label + "🔁 Повторение") for c in contents)

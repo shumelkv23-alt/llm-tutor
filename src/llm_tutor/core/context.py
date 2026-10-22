@@ -161,6 +161,31 @@ def focus_from_meta(meta: str | None) -> Focus | None:
 _MARKER_QUOTES = str.maketrans({"„": '"', "“": '"', "”": '"'})
 
 
+# Метка реплик серии повторения в хвосте диалога (срез 80): модель не должна
+# принимать их за вопросы по текущему занятию.
+REVIEW_TAIL_LABEL = "(повторение занятия «{name}») "
+
+
+def review_from_meta(meta: str | None) -> str | None:
+    """Занятие повторения из ``messages.meta`` реплики; нет метки или битый meta — ``None``."""
+    try:
+        node_id = json.loads(meta).get("review") if meta else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return node_id if isinstance(node_id, str) and node_id else None
+
+
+def _tail_label(meta: str | None, graph: CourseGraph | None) -> str:
+    """Метка реплики повторения или пустая строка."""
+    node_id = review_from_meta(meta)
+    if node_id is None:
+        return ""
+    name = node_id
+    if graph is not None and graph.has_node(node_id):
+        name = graph.concept(node_id).name
+    return REVIEW_TAIL_LABEL.format(name=name)
+
+
 def _tail_content(content: str, meta: str | None) -> str:
     """Реплика ученика в хвосте: с фрагментом — пометка, к чему был вопрос."""
     focus = focus_from_meta(meta)
@@ -395,7 +420,8 @@ def build_context(
         tail = [
             ChatMessage(
                 role=message.role,
-                content=(
+                content=_tail_label(message.meta, graph)
+                + (
                     _tail_content(message.content, message.meta)
                     if message.role == "user"
                     else message.content
