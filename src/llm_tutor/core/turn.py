@@ -27,7 +27,7 @@ from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
-from llm_tutor.schemas import Event, GradeResult, Item, Route, SessionState
+from llm_tutor.schemas import Event, GradeResult, Item, ReviewState, Route, SessionState
 from llm_tutor.student import beta, diagnostic, guide, hints, review, survey
 from llm_tutor.student import route as route_mod
 
@@ -103,6 +103,9 @@ CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — п�
 
 # Шапка задания повторения (срез 80): над заданием в «Практике» стоит плашка.
 REVIEW_STEP_HEADER = "🔁 Повторение · «{name}» · {position} из {total}"
+
+# Разминка перед новым занятием (срез 81).
+WARMUP_NOTE = "Перед «{next}» — разминка: вспомним пройденное."
 
 AnswerMode = Literal["auto", "answer", "tutor"]
 
@@ -192,6 +195,38 @@ def issue_review_item(
         None,
         None,
     )
+
+
+def _warmup(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    now: float,
+    settings: Settings,
+) -> tuple[SessionState, str, str, list[str] | None] | None:
+    """Разминка вместо начала следующего занятия или ``None``, если её не будет.
+
+    Вызывается на границе занятий: занятие закрыто, следующее выбрано, но не
+    начато. Разминка — до ``WARMUP_SIZE`` просроченных занятий по одному
+    заданию; повторение выключено или спрашивать нечего — ``None``. Состояние
+    занятия не меняется, только ``review``. Возвращает состояние, строку-пояснение
+    и задание (текст, варианты).
+    """
+    next_id = state.current_node_id
+    if next_id is None or not graph.has_node(next_id) or not review.enabled(conn):
+        return None
+    due = review.due_lessons(conn, graph, state.route, now=now, settings=settings)
+    queue = due[: review.WARMUP_SIZE]
+    if not queue:
+        return None
+    series = ReviewState(kind="warmup", queue=queue, total=len(queue))
+    new_state, tail, options = issue_review_item(
+        conn, graph, state.model_copy(update={"review": series}), now=now
+    )
+    if tail is None:
+        return None
+    return new_state, WARMUP_NOTE.format(next=graph.concept(next_id).name), tail, options
 
 
 def _normalize_choice_answer(item: Item, text: str) -> str:
@@ -744,6 +779,8 @@ async def handle_turn(
     # отказ «заданий нет» остаётся в тексте, отдельным сообщением ему не быть.
     tail: str | None = None
     button: tuple[str, str] | None = None
+    # Вместо начала занятия задана разминка: задание в `tail` — её, не урока.
+    warmed = False
     answered_item_id = state.pending_item_id
 
     pending_item = (
@@ -832,9 +869,17 @@ async def handle_turn(
                 new_state = new_state.model_copy(update={"check_misses": 1})
         if closed_note:
             reply = f"{reply}\n\n{closed_note}"
+            # Граница занятий (срез 81): перед новым занятием — разминка по
+            # просроченному пройденному. Урок или проход начнёт `core/review`,
+            # когда разминка кончится или будет пропущена.
+            warmup = _warmup(conn, graph, new_state, now=stamp, settings=s)
+            if warmup is not None:
+                new_state, warm_note, tail, options = warmup
+                reply = f"{reply}\n\n{warm_note}"
+                warmed = True
             # Следующая тема — урок частями; заявленную (проход) не объясняем,
             # её вопрос выдаст общий `_issue_task` ниже.
-            if new_state.current_node_id is not None and new_state.mode != "verify":
+            elif new_state.current_node_id is not None and new_state.mode != "verify":
                 explanation, new_state = await _start_lesson(
                     conn, client, model, session_id, new_state, graph, now=stamp, settings=s
                 )
@@ -860,7 +905,11 @@ async def handle_turn(
             button = guided.button(new_state)
         # Задание: второй шанс или вопрос заявленной темы. После урока (кнопка)
         # и когда следующей темы нет (курс пройден, анкета модуля) — не выдаём.
-        if button is None and not (closed_note and new_state.current_node_id is None):
+        if (
+            button is None
+            and not warmed
+            and not (closed_note and new_state.current_node_id is None)
+        ):
             new_state, task_text, options = _issue_task(
                 conn,
                 graph,
@@ -970,11 +1019,12 @@ async def handle_turn(
         now=stamp,
         focus=focus,
     )
+    shown = new_state.review.item_id if warmed and new_state.review else new_state.pending_item_id
     return TurnReply(
         text=reply,
         options=options,
         tail=tail,
-        item_id=new_state.pending_item_id if tail else None,
+        item_id=shown if tail else None,
         button=button,
     )
 
