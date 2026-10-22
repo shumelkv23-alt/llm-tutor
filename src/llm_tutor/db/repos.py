@@ -21,6 +21,7 @@ from llm_tutor.schemas import (
     Event,
     Item,
     Message,
+    ReviewRow,
     Role,
     Rubric,
     SessionState,
@@ -641,6 +642,41 @@ def upsert_mastery(
         "next_review = COALESCE(excluded.next_review, mastery.next_review)",
         (concept_id, alpha, beta, last_seen, next_review),
     )
+    if commit:
+        conn.commit()
+
+
+# --- review_schedule (повторение по расписанию, срез 79) ---
+
+
+def get_review_rows(conn: sqlite3.Connection) -> dict[str, ReviewRow]:
+    """Вся лестница повторений: ``concept_id`` → строка."""
+    rows = conn.execute("SELECT concept_id, step, due_at FROM review_schedule").fetchall()
+    return {r["concept_id"]: ReviewRow(**dict(r)) for r in rows}
+
+
+def upsert_review(
+    conn: sqlite3.Connection,
+    concept_id: str,
+    step: int,
+    due_at: float,
+    *,
+    commit: bool = True,
+) -> None:
+    """Ставит занятие на ступень лестницы со сроком (создаёт или обновляет)."""
+    conn.execute(
+        "INSERT INTO review_schedule (concept_id, step, due_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(concept_id) DO UPDATE SET "
+        "step = excluded.step, due_at = excluded.due_at",
+        (concept_id, step, due_at),
+    )
+    if commit:
+        conn.commit()
+
+
+def delete_review(conn: sqlite3.Connection, concept_id: str, *, commit: bool = True) -> None:
+    """Снимает занятие с лестницы (нет строки — не ошибка)."""
+    conn.execute("DELETE FROM review_schedule WHERE concept_id = ?", (concept_id,))
     if commit:
         conn.commit()
 

@@ -261,6 +261,16 @@ class Event(BaseModel):
     ts: float | None = None
 
 
+class ReviewRow(BaseModel):
+    """Закрытое занятие на лестнице повторений (таблица ``review_schedule``)."""
+
+    concept_id: str
+    # Ступень лестницы: индекс в ``student.review.LADDER_DAYS``.
+    step: int = Field(ge=0)
+    # Срок повторения, unix-секунды UTC.
+    due_at: float
+
+
 class Observation(BaseModel):
     """Наблюдение, извлечённое из диалога (экстрактор, Фаза 2)."""
 

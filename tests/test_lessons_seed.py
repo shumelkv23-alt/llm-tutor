@@ -112,7 +112,7 @@ def test_migration_006_adds_columns_with_defaults(tmp_path) -> None:
     upgraded = get_conn(path)
     try:
         migrate(upgraded)
-        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == 6
+        assert upgraded.execute("PRAGMA user_version").fetchone()[0] == connection.SCHEMA_VERSION
         row = upgraded.execute("SELECT sections FROM concepts").fetchone()
         assert row["sections"] == "[]"
         row = upgraded.execute("SELECT section, final FROM items").fetchone()
