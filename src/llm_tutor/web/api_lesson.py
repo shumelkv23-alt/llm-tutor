@@ -7,16 +7,16 @@
 
 import asyncio
 import logging
-import re
 import sqlite3
 from collections.abc import Awaitable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided, lesson, turn, verify
+from llm_tutor.core.context import FOCUS_MAX_CHARS, FOCUS_SOURCES, Focus, fence, focus_text
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -145,7 +145,13 @@ async def lesson_context(
     )
 
 
-def turn_response(ctx: LessonContext, user_text: str | None, reply: TurnReply | str) -> dict:
+def turn_response(
+    ctx: LessonContext,
+    user_text: str | None,
+    reply: TurnReply | str,
+    *,
+    quote: Focus | None = None,
+) -> dict:
     """Ответ хода: реплики для чата и свежее состояние занятия.
 
     Задание в чат не идёт (см. инвариант ``TurnReply``): оно в состоянии, его
@@ -154,7 +160,7 @@ def turn_response(ctx: LessonContext, user_text: str | None, reply: TurnReply | 
     """
     messages = []
     if user_text:
-        messages.append(views.message_view("user", user_text))
+        messages.append(views.message_view("user", user_text, quote=quote))
     if isinstance(reply, str):
         text = reply
     elif reply.item_id is not None:
@@ -203,8 +209,23 @@ class SurveyBody(BaseModel):
     answers: list[StrictInt] = Field(max_length=32)
 
 
+class QuoteBody(BaseModel):
+    """Фрагмент страницы занятия, о котором спрашивает ученик (срез 76).
+
+    Источник и длину после обрезки проверяет ``chat()``: общий обработчик 422
+    назвал бы поле по последнему сегменту пути — ``text``, как поле вопроса.
+    Поэтому здесь только типы, без ``max_length``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    source: str
+    text: str
+
+
 class ChatBody(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
+    quote: QuoteBody | None = None
 
 
 class AnswerBody(BaseModel):
@@ -308,15 +329,60 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=422, detail={"field": "text", "message": "Пустое сообщение."})
+    focus = _focus(body.quote) if body.quote else None
     async with ctx.lock:
         reply = await _safe(
             # Чат — всегда к тьютору: ответы на задание идут формой «Практики».
             turn.handle_turn(
-                ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings, answer_mode="tutor"
+                ctx.conn,
+                ctx.client,
+                ctx.model,
+                text,
+                settings=ctx.settings,
+                answer_mode="tutor",
+                focus=focus,
             ),
             LLM_FAILURE_REPLY,
         )
-        return turn_response(ctx, text, reply)
+        return turn_response(ctx, text, reply, quote=focus)
+
+
+def _focus(quote: QuoteBody) -> Focus:
+    """Фрагмент из тела запроса; неизвестный источник или длина — 422 у поля."""
+    if quote.source not in FOCUS_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "quote.source", "message": "Неизвестный источник фрагмента."},
+        )
+    # Сырой текст — до разбора: фрагмент в мегабайты не должен доходить до
+    # focus_text (запас в 4 раза — на пустые строки и отступы кода).
+    if len(quote.text) > 4 * FOCUS_MAX_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "quote.text", "message": f"Фрагмент длиннее {FOCUS_MAX_CHARS} знаков."},
+        )
+    try:
+        quote.text.encode("utf-8")
+    except UnicodeEncodeError:
+        # Непарный суррогат: журнал его не запишет, ответ не сериализуется (M-1).
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "quote.text", "message": "Во фрагменте недопустимые символы."},
+        ) from None
+    text = focus_text(quote.source, quote.text)
+    if not text:
+        raise HTTPException(
+            status_code=422, detail={"field": "quote.text", "message": "Пустой фрагмент."}
+        )
+    if len(text) > FOCUS_MAX_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "field": "quote.text",
+                "message": f"Фрагмент длиннее {FOCUS_MAX_CHARS} знаков.",
+            },
+        )
+    return Focus(quote.source, text)
 
 
 @router.post("/courses/{course_id}/lesson/answer")
@@ -372,9 +438,8 @@ def code_message(code: str, passed: bool, report: str) -> str:
     """Реплика ученика в журнале: код и итог тестов — тьютор увидит их в истории."""
     verdict = "все проверки пройдены" if passed else f"не пройдено — {report or 'ошибка'}"
     # Ограждение длиннее любой серии ` в коде: иначе ``` внутри кода закроет блок раньше.
-    longest = max((len(run) for run in re.findall(r"`+", code)), default=0)
-    fence = "`" * max(3, longest + 1)
-    return f"{fence}python\n{code.rstrip()}\n{fence}\n\nРезультат проверки: {verdict}"
+    mark = fence(code)
+    return f"{mark}python\n{code.rstrip()}\n{mark}\n\nРезультат проверки: {verdict}"
 
 
 @router.post("/courses/{course_id}/lesson/code-result")

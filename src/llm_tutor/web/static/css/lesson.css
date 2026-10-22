@@ -428,6 +428,126 @@
   line-height: 1.45;
 }
 
+/* --- Фрагмент, о котором спрашивает ученик (срез 77) --- */
+
+.chat-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 16px 8px;
+  padding: 6px 4px 6px 12px;
+  border-left: 3px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary-soft);
+  font-size: 13px;
+  flex: none;
+  min-width: 0;
+}
+
+.chat-quote[hidden] {
+  display: none;
+}
+
+.chat-quote-text {
+  flex: 1;
+  min-width: 0;
+  margin: 6px 0 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.chat-quote.code #chat-quote-body {
+  font-family: var(--font-mono);
+}
+
+.msg-quote {
+  margin: 0 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid currentColor;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 13px;
+  min-width: 0;
+}
+
+.msg-quote figcaption {
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.msg-quote-body {
+  max-height: 12em;
+  overflow: auto;
+}
+
+/* Цитата конспекта или задания — дословно, с переносами и отступами строк:
+   и с сервера, и в эхе до ответа (финальное ревью, M-3/M-4). */
+.msg-quote:not(.code) .msg-quote-body {
+  white-space: pre-wrap;
+}
+
+.msg-quote pre {
+  max-width: 100%;
+}
+
+/* --- Панель вопросов над выделенным (срез 78); место ставит JS --- */
+
+.selection-bar {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-width: calc(100vw - 16px);
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-lift);
+}
+
+.selection-bar[hidden] {
+  display: none;
+}
+
+.selection-bar button {
+  min-height: 36px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--primary-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.selection-bar button:hover:not(:disabled) {
+  background: var(--primary-soft);
+}
+
+.selection-bar button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.selection-bar button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .selection-bar button {
+    min-height: 44px;
+  }
+}
+
 .lesson.locked .chat-form,
 .lesson.locked .chat-chips {
   opacity: 0.55;
@@ -1200,6 +1320,9 @@
 
 /* Полоса разделов над вкладками: на узком экране прокручивается вбок. */
 .section-strip {
+  /* Опорный блок для скрытых подписей (.visually-hidden, absolute): иначе они
+     выходили за полосу и давали горизонтальную прокрутку на 390 px (аудит 78). */
+  position: relative;
   display: flex;
   gap: 6px;
   margin: 0;
@@ -1314,4 +1437,14 @@
 
 .route-module.soon strong {
   color: var(--muted);
+}
+
+/* Невидимый блок, на котором selection.js считает текст выделения (innerText). */
+.selection-measure {
+  position: fixed;
+  top: 0;
+  left: -10000px;
+  width: 600px;
+  white-space: normal;
+  pointer-events: none;
 }

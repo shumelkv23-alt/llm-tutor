@@ -188,7 +188,12 @@ async def test_chat_turn(enrolled) -> None:
 
     body = (await enrolled.post(f"{BASE}/chat", json={"text": "что такое groupby?"})).json()
 
-    assert body["messages"][0] == {"role": "user", "html": "<p>что такое groupby?</p>\n", "ts": None}
+    assert body["messages"][0] == {
+        "role": "user",
+        "html": "<p>что такое groupby?</p>\n",
+        "ts": None,
+        "quote": None,
+    }
     assert body["messages"][1]["role"] == "assistant"
     assert body["state"]["messages"][-1]["role"] == "assistant"
 

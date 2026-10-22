@@ -132,16 +132,18 @@ window.Lesson = (() => {
     });
     if (state) renderHead();
     window.Lesson.chat?.typing(value);
+    document.dispatchEvent(new CustomEvent("lesson:busy", { detail: value }));
   }
 
   /**
    * Ход занятия: POST к API, реплики — в чат, состояние — во все панели.
-   * `echo` — что показать в чате от ученика до ответа сервера.
+   * `echo` — что показать в чате от ученика до ответа сервера, `quote` —
+   * фрагмент над ним (плашка, срез 77).
    */
-  async function act(path, body = {}, { echo = null } = {}) {
+  async function act(path, body = {}, { echo = null, quote = null } = {}) {
     if (busy) return null;
     setBusy(true);
-    const pending = echo ? window.Lesson.chat?.pending(echo) : null;
+    const pending = echo ? window.Lesson.chat?.pending(echo, quote) : null;
     try {
       const data = await request(`${base}/${path}`, { method: "POST", body });
       pending?.remove();

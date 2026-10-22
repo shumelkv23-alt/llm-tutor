@@ -10,6 +10,7 @@ import sqlite3
 import time
 
 from llm_tutor.config import Settings, get_settings
+from llm_tutor.core.context import Focus
 from llm_tutor.core.turn import TurnReply, _issue_task, post_turn
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -34,6 +35,7 @@ def _post_reply(
     now: float,
     options: list[str] | None = None,
     issued: bool = False,
+    focus: Focus | None = None,
 ) -> TurnReply:
     """Пишет ход прохода одним коммитом и отдаёт ответ.
 
@@ -51,6 +53,7 @@ def _post_reply(
         task_text=text if issued and state.pending_item_id is not None else None,
         state=state,
         now=now,
+        focus=focus,
     )
     if issued and state.pending_item_id is not None:
         # Задание выдано: см. инвариант TurnReply — задание в ``tail``.
@@ -67,6 +70,7 @@ def start_verification(
     settings: Settings | None = None,
     user_text: str = VERIFY_KICKOFF_TEXT,
     tutor_reply: str | None = None,
+    focus: Focus | None = None,
 ) -> TurnReply:
     """Вход в проверочный проход по текущему узлу.
 
@@ -89,6 +93,7 @@ def start_verification(
             user_text=user_text,
             tutor_reply=tutor_reply,
             now=stamp,
+            focus=focus,
         )
 
     node_id = state.current_node_id
@@ -101,6 +106,7 @@ def start_verification(
             user_text=user_text,
             tutor_reply=tutor_reply,
             now=stamp,
+            focus=focus,
         )
     if not graph.has_node(node_id):
         # Узел убрали из графа (правка seed или БД руками) — иначе занятие
@@ -116,6 +122,7 @@ def start_verification(
             user_text=user_text,
             tutor_reply=tutor_reply,
             now=stamp,
+            focus=focus,
         )
 
     # Проход начинается заново: узел в режим «проверить и идти дальше», серия
@@ -146,4 +153,5 @@ def start_verification(
         now=stamp,
         options=options,
         issued=True,
+        focus=focus,
     )
