@@ -265,8 +265,9 @@ class ReviewRow(BaseModel):
     """Закрытое занятие на лестнице повторений (таблица ``review_schedule``)."""
 
     concept_id: str
-    # Ступень лестницы: индекс в ``student.review.LADDER_DAYS``.
-    step: int = Field(ge=0)
+    # Ступень лестницы: индекс в ``student.review.LADDER_DAYS`` (6 ступеней;
+    # согласованность проверяет тест).
+    step: int = Field(ge=0, le=5)
     # Срок повторения, unix-секунды UTC.
     due_at: float
 

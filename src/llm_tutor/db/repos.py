@@ -561,6 +561,11 @@ def replace_seed(
     conn.commit()
 
 
+def get_concept_ids(conn: sqlite3.Connection) -> set[str]:
+    """Id всех концептов курса, в том числе погашенных (на них ссылаются внешние ключи)."""
+    return {r["id"] for r in conn.execute("SELECT id FROM concepts").fetchall()}
+
+
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
     """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(

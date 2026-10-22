@@ -98,9 +98,10 @@ def plan_answer(
     """Что делать с расписанием после ответа по занятию.
 
     Нет строки: ошибка заводит ступень 0 на завтра, верный ответ ничего не
-    меняет. Ошибка — на две ступени вниз (не ниже 0), завтра. Верно с
-    подсказкой — ступень та же, завтра. Верно в срок — ступень вверх; после
-    последней занятие уходит с лестницы. Верно раньше срока — без изменений.
+    меняет. Ошибка — на две ступени вниз (не ниже 0), завтра. Верно раньше
+    срока — без изменений, с подсказкой или без: «Освежить» интервал не
+    сокращает. Верно в срок с подсказкой — ступень та же, завтра; без неё —
+    ступень вверх, после последней занятие уходит с лестницы.
     """
     if row is None:
         if passed:
@@ -108,10 +109,10 @@ def plan_answer(
         return ScheduleChange(concept_id, 0, now + _DAY)
     if not passed:
         return ScheduleChange(concept_id, max(0, row.step - 2), now + _DAY)
-    if hinted:
-        return ScheduleChange(concept_id, row.step, now + _DAY)
     if not due:
         return None
+    if hinted:
+        return ScheduleChange(concept_id, row.step, now + _DAY)
     nxt = row.step + 1
     if nxt >= len(LADDER_DAYS):
         return ScheduleChange(concept_id, None, None)
@@ -146,6 +147,35 @@ def write_changes(
         conn.commit()
 
 
+def _bank(conn: sqlite3.Connection) -> list[Item]:
+    """Задания банка, пригодные для повторения (ещё без отбора по занятию)."""
+    return [
+        item
+        for item in diagnostic._available_items(conn, include_rubric=True, include_runnable=True)
+        if not item.final
+    ]
+
+
+def _pick(
+    bank: Sequence[Item],
+    answered: Mapping[int, float],
+    concept_id: str,
+    *,
+    now: float,
+    exclude: Collection[int],
+) -> Item | None:
+    """``pick_item`` по уже прочитанным банку и журналу ответов."""
+    candidates = [
+        item
+        for item in bank
+        if main_concept(item) == concept_id
+        and item.id not in exclude
+        and (item.id not in answered or now - answered[item.id] >= RECENT_ITEM_SECONDS)
+    ]
+    candidates.sort(key=lambda item: (item.id in answered, answered.get(item.id, 0.0), item.id))
+    return candidates[0] if candidates else None
+
+
 def pick_item(
     conn: sqlite3.Connection,
     concept_id: str,
@@ -159,17 +189,7 @@ def pick_item(
     ``exclude`` и решённых за ``RECENT_ITEM_SECONDS``. Сначала ни разу не
     отвеченные (по id), затем те, на которые отвечали раньше всех.
     """
-    answered = repos.last_answer_ts(conn)
-    candidates = [
-        item
-        for item in diagnostic._available_items(conn, include_rubric=True, include_runnable=True)
-        if main_concept(item) == concept_id
-        and not item.final
-        and item.id not in exclude
-        and (item.id not in answered or now - answered[item.id] >= RECENT_ITEM_SECONDS)
-    ]
-    candidates.sort(key=lambda item: (item.id in answered, answered.get(item.id, 0.0), item.id))
-    return candidates[0] if candidates else None
+    return _pick(_bank(conn), repos.last_answer_ts(conn), concept_id, now=now, exclude=exclude)
 
 
 def closed_lessons(graph: CourseGraph, route: Route | None) -> list[str]:
@@ -198,10 +218,18 @@ def due_lessons(
     просроченные, при равной просрочке — слабее владение.
     """
     rows = repos.get_review_rows(conn)
+    candidates = [
+        cid for cid in closed_lessons(graph, route) if cid in rows and rows[cid].due_at <= now
+    ]
+    if not candidates:
+        return []
+    # Банк и журнал читаются один раз на все занятия: вызов идёт с каждым
+    # состоянием занятия и с главной.
+    bank, answered = _bank(conn), repos.last_answer_ts(conn)
     due = [
         (cid, rows[cid].due_at)
-        for cid in closed_lessons(graph, route)
-        if cid in rows and rows[cid].due_at <= now and pick_item(conn, cid, now=now) is not None
+        for cid in candidates
+        if _pick(bank, answered, cid, now=now, exclude=()) is not None
     ]
     due.sort(
         key=lambda pair: (
@@ -262,17 +290,21 @@ def backfill(conn: sqlite3.Connection, route: Route | None, *, now: float) -> No
     """Один раз заводит строки расписания закрытым занятиям старого ученика.
 
     Ступень — по давности ``closed_at``, срок — не раньше завтра и не раньше
-    ``closed_at`` + лестница; сроки раскладываются по дню с лимитом. Отметка —
+    ``closed_at`` + лестница; сроки раскладываются по дню с лимитом. Шаги с id,
+    которого нет среди концептов курса, пропускаются. Отметка —
     факт ``review_backfill``; без маршрута строк нет, отметка всё равно ставится.
     Всё одним коммитом.
     """
     if repos.get_fact(conn, BACKFILL_FACT) is not None:
         return
     rows = repos.get_review_rows(conn)
+    known = repos.get_concept_ids(conn)
     changes: list[ScheduleChange] = []
     if route is not None:
         for step in route.steps:
-            if step.status != "closed" or step.concept_id in rows:
+            # Шаг старого снимка с id вне курса: на концепт ссылается внешний
+            # ключ, и строка уронила бы открытие БД ученика насовсем.
+            if step.status != "closed" or step.concept_id in rows or step.concept_id not in known:
                 continue
             ladder = _backfill_step(step.closed_at, now)
             closed_at = now if step.closed_at is None else step.closed_at

@@ -435,3 +435,216 @@ async def test_rows_created_when_disabled(conn, settings):
     assert "l1_frames" in review.due_lessons(
         conn, graph, _state(conn).route, now=due_at, settings=settings
     )
+
+
+# --- аудит среза 79 ---
+
+
+def _concepts(conn, *ids: str) -> None:
+    """Заводит пустые концепты: на них ссылается внешний ключ расписания."""
+    for cid in ids:
+        conn.execute("INSERT INTO concepts (id, name) VALUES (?, ?)", (cid, cid))
+    conn.commit()
+
+
+def test_backfill_skips_concepts_unknown_to_the_course(conn):
+    """Шаг снимка маршрута с id вне курса (призрак) не роняет открытие БД ученика."""
+    load_lessons(conn)
+    route = _aged_route({"ghost": 10, "l1_frames": 10})
+
+    review.backfill(conn, route, now=NOW)
+
+    assert set(repos.get_review_rows(conn)) == {"l1_frames"}
+    assert repos.get_fact(conn, "review_backfill") == "1"
+
+
+def test_backfill_ghost_does_not_take_a_day_slot(conn):
+    """Пропущенный призрак не занимает место в дневном лимите."""
+    load_lessons(conn)
+    ids = [f"ghost{i}" for i in range(10)]
+    review.backfill(conn, _aged_route({**dict.fromkeys(ids, 40.0), "l1_frames": 40.0}), now=NOW)
+    assert repos.get_review_rows(conn)["l1_frames"].due_at == NOW + DAY
+
+
+def test_backfill_spreads_over_days_by_daily_limit(conn):
+    load_lessons(conn)
+    ids = [f"c{i}" for i in range(25)]
+    _concepts(conn, *ids)
+
+    review.backfill(conn, _aged_route(dict.fromkeys(ids, 40.0)), now=NOW)
+
+    days = sorted(review.utc_day(row.due_at) for row in repos.get_review_rows(conn).values())
+    base = review.utc_day(NOW) + 1
+    assert days == [base] * 10 + [base + 1] * 10 + [base + 2] * 5
+
+
+@pytest.mark.parametrize(
+    ("age_days", "step"),
+    [(3 - 1e-6, 0), (3.0, 1), (7 - 1e-6, 1), (7.0, 2), (14 - 1e-6, 2), (14.0, 3)],
+)
+def test_backfill_step_boundaries(conn, age_days, step):
+    load_lessons(conn)
+    review.backfill(conn, _aged_route({"l1_frames": age_days}), now=NOW)
+    assert repos.get_review_rows(conn)["l1_frames"].step == step
+
+
+def test_hinted_correct_on_not_due_row_changes_nothing():
+    """«Освежить» с подсказкой не сокращает интервал непросроченной строки."""
+    row = ReviewRow(concept_id="a", step=3, due_at=NOW + 5 * DAY)
+    assert review.plan_answer(row, "a", passed=True, hinted=True, due=False, now=NOW) is None
+
+
+def test_hinted_mistake_on_not_due_row_still_drops():
+    row = ReviewRow(concept_id="a", step=3, due_at=NOW + 5 * DAY)
+    assert review.plan_answer(row, "a", passed=False, hinted=True, due=False, now=NOW) == (
+        review.ScheduleChange("a", 1, NOW + DAY)
+    )
+
+
+def test_review_row_step_is_bounded_by_the_ladder():
+    last = len(review.LADDER_DAYS) - 1
+    ReviewRow(concept_id="a", step=last, due_at=NOW)
+    with pytest.raises(ValueError):
+        ReviewRow(concept_id="a", step=last + 1, due_at=NOW)
+
+
+def test_pick_item_recent_boundary(conn):
+    """Ровно сутки назад — уже можно, на секунду позже — ещё нельзя."""
+    load_lessons(conn)
+    for item_id in (3002, 3003, 3004):
+        _answer(conn, item_id, "l1_frames", NOW)  # свежие: не мешают
+    _answer(conn, 3001, "l1_frames", NOW - review.RECENT_ITEM_SECONDS)
+    item = review.pick_item(conn, "l1_frames", now=NOW)
+    assert item is not None and item.id == 3001
+
+    _answer(conn, 3001, "l1_frames", NOW - review.RECENT_ITEM_SECONDS + 1)
+    assert review.pick_item(conn, "l1_frames", now=NOW) is None
+
+
+def test_due_at_equal_now_is_due(conn, settings):
+    course = load_lessons(conn)
+    graph = CourseGraph(course.nodes, course.edges)
+    repos.upsert_review(conn, "l1_frames", 0, NOW)
+    route = _route("l1_frames")
+    assert review.due_lessons(conn, graph, route, now=NOW, settings=settings) == ["l1_frames"]
+    assert review.due_lessons(conn, graph, route, now=NOW - 1, settings=settings) == []
+
+
+def _bank_item(conn, item_id: int, **fields) -> None:
+    from llm_tutor.schemas import Item
+
+    repos.upsert_item(
+        conn,
+        Item(id=item_id, prompt="Вопрос", concept_weights={"l1_frames": 1.0}, **fields),
+    )
+
+
+def _rubric(conn, rubric_id: int, *, with_criterion: bool = True) -> None:
+    from llm_tutor.schemas import Criterion, Rubric
+
+    repos._write_rubric(conn, Rubric(id=rubric_id, name="р"))
+    if with_criterion:
+        repos._write_criterion(
+            conn, Criterion(id=rubric_id * 10, rubric_id=rubric_id, criterion="критерий")
+        )
+    conn.commit()
+
+
+def _only_new_items(conn, *item_ids: int) -> None:
+    """Гасит весь банк занятия l1_frames, кроме перечисленных."""
+    conn.execute(
+        "UPDATE items SET active = 0 WHERE id NOT IN (%s)" % ",".join("?" * len(item_ids)),
+        item_ids,
+    )
+    conn.commit()
+
+
+def test_pick_item_takes_code_with_tests(conn):
+    load_lessons(conn)
+    _bank_item(conn, 9001, answer_type="code", tests="assert result == 1")
+    _only_new_items(conn, 9001)
+    item = review.pick_item(conn, "l1_frames", now=NOW)
+    assert item is not None and item.id == 9001
+
+
+def test_pick_item_skips_code_without_tests_and_rubric(conn):
+    load_lessons(conn)
+    _bank_item(conn, 9001, answer_type="code")
+    _only_new_items(conn, 9001)
+    assert review.pick_item(conn, "l1_frames", now=NOW) is None
+
+
+def test_pick_item_open_needs_a_graded_rubric(conn):
+    load_lessons(conn)
+    _rubric(conn, 70)
+    _rubric(conn, 71, with_criterion=False)
+    _bank_item(conn, 9001, answer_type="open", rubric_id=71)
+    _bank_item(conn, 9002, answer_type="open")
+    _only_new_items(conn, 9001, 9002)
+    assert review.pick_item(conn, "l1_frames", now=NOW) is None
+
+    _bank_item(conn, 9003, answer_type="open", rubric_id=70)
+    _only_new_items(conn, 9001, 9002, 9003)
+    item = review.pick_item(conn, "l1_frames", now=NOW)
+    assert item is not None and item.id == 9003
+
+
+def test_last_answer_ts_takes_max_and_ignores_null_item(conn):
+    load_lessons(conn)
+    _answer(conn, 3001, "l1_frames", 10.0)
+    _answer(conn, 3001, "l1_frames", 30.0)
+    _answer(conn, 3001, "l1_frames", 20.0)
+    _answer(conn, 3002, "l1_frames", 5.0)
+    repos.add_event(conn, Event(source="self", result=1.0, concept_id="l1_frames", ts=99.0))
+    assert repos.last_answer_ts(conn) == {3001: 30.0, 3002: 5.0}
+
+
+def test_post_turn_commits_closure_and_schedule_together(conn):
+    load_lessons(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    old, new = _closure_route({"l1_frames": "current"}, {"l1_frames": ("closed", "full")})
+    repos.update_session_state(conn, session_id, SessionState(route=old))
+    post_turn(
+        conn, session_id, user_text="u", assistant_text="a", state=SessionState(route=new),
+        now=NOW, schedule=[review.ScheduleChange("l1_select", 2, NOW + 7 * DAY)],
+    )
+    rows = repos.get_review_rows(conn)
+    assert rows["l1_frames"] == ReviewRow(concept_id="l1_frames", step=0, due_at=NOW + DAY)
+    assert rows["l1_select"].step == 2
+
+
+def test_post_turn_rolls_back_closure_and_schedule_together(conn, monkeypatch):
+    load_lessons(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    old, new = _closure_route({"l1_frames": "current"}, {"l1_frames": ("closed", "full")})
+    repos.update_session_state(conn, session_id, SessionState(route=old))
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("сбой записи")
+
+    monkeypatch.setattr(repos, "update_session_state", boom)
+    with pytest.raises(RuntimeError):
+        post_turn(
+            conn, session_id, user_text="u", assistant_text="a", state=SessionState(route=new),
+            now=NOW, schedule=[review.ScheduleChange("l1_select", 2, NOW + 7 * DAY)],
+        )
+    assert repos.get_review_rows(conn) == {}
+
+
+def test_due_lessons_reads_the_bank_once(conn, settings, monkeypatch):
+    """Банк читается один раз на все занятия, а не на каждое (0,3 с на полном курсе)."""
+    from llm_tutor.student import diagnostic
+
+    course = load_lessons(conn)
+    graph = CourseGraph(course.nodes, course.edges)
+    route = _route("l1_frames", "l1_select", "l1_group", "l2_hist")
+    for cid in ("l1_frames", "l1_select", "l1_group", "l2_hist"):
+        repos.upsert_review(conn, cid, 1, NOW - DAY)
+    calls = []
+    original = diagnostic._available_items
+    monkeypatch.setattr(
+        diagnostic, "_available_items", lambda *a, **k: calls.append(1) or original(*a, **k)
+    )
+
+    assert len(review.due_lessons(conn, graph, route, now=NOW, settings=settings)) == 4
+    assert len(calls) == 1
