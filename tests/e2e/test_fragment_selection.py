@@ -419,3 +419,52 @@ async def test_phone_lesson_has_no_horizontal_scroll(page, live_server) -> None:
     await page.set_viewport_size({"width": 390, "height": 844})
     await _open(page, live_server)
     assert await page.evaluate("() => document.documentElement.scrollWidth") <= 390
+
+
+# --- финальное ревью ветки ---
+
+
+async def test_partial_selection_inside_code_keeps_lines(lesson) -> None:
+    """I-1: выделение внутри одного блока кода уходит с переносами и отступами."""
+    page = lesson
+    sent = _chat_requests(page)
+    expected = await page.evaluate(
+        """() => {
+            const pre = [...document.querySelectorAll('#tab-theory .theory-body pre')]
+                .find((p) => p.textContent.trim().split('\\n').length >= 3);
+            const walker = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            const range = document.createRange();
+            range.setStart(nodes[0], 0);
+            const last = nodes[nodes.length - 1];
+            range.setEnd(last, last.length);
+            const selection = document.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
+            return pre.textContent.trim();
+        }"""
+    )
+    await expect(page.locator(BAR)).to_be_visible()
+    await page.click(f"{BAR} button:has-text('Объясни')")
+    await _idle(page)
+
+    text = sent[-1].post_data_json["quote"]["text"]
+    assert "\n" in text
+    assert text.splitlines()[:3] == expected.splitlines()[:3]
+
+
+async def test_attached_quote_is_dropped_on_lesson_switch(lesson) -> None:
+    """M-2: прикреплённый фрагмент не переживает смену занятия."""
+    page = lesson
+    await _select(page, "#tab-theory .theory-body p")
+    await page.click(f"{BAR} button:has-text('Спросить…')")
+    await expect(page.locator("#chat-quote")).to_be_visible()
+
+    other = await page.evaluate(
+        "() => Lesson.state.topics.find((t) => t.id !== Lesson.state.node.id && t.module === 1).id"
+    )
+    await page.evaluate("(id) => Lesson.act('switch', {node_id: id})", other)
+    await _idle(page)
+
+    await expect(page.locator("#chat-quote")).to_be_hidden()

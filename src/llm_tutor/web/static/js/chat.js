@@ -263,8 +263,14 @@
 
   window.Lesson.chat = { append, replace, pending, typing, scrollToEnd, attach, ask, QUOTE_LABELS };
 
+  let attachedNode = null;
   window.Lesson.onState((state) => {
     const off = Boolean(state.survey);
+    // Фрагмент — про занятие, на котором его выделили: смена занятия или
+    // анкета модуля снимают его, иначе вопрос ушёл бы с чужой цитатой (M-2).
+    const node = state.node?.id ?? null;
+    if (attached && (off || (attachedNode !== null && node !== attachedNode))) detach();
+    attachedNode = node;
     input.disabled = off;
     form.querySelector("button").disabled = off;
     document.querySelectorAll("#chat-chips .chip").forEach((chip) => {

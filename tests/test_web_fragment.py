@@ -212,7 +212,7 @@ async def test_text_quote_is_shown_verbatim(enrolled, source) -> None:
     html = (await _ask(enrolled, source, text))["messages"][0]["quote"]["html"]
 
     assert "<h1" not in html and "<strong" not in html and "<li" not in html
-    assert "# считаем длину<br>" in html
+    assert "# считаем длину\nn = df" in html  # переносы — текстом, плашка с pre-wrap
     assert "df.__len__()" in html and "* звёздочка &lt;b&gt;" in html
 
 
@@ -228,3 +228,45 @@ def test_selection_js_has_no_extra_questions() -> None:
     block = script[script.index("const QUESTIONS = [") : script.index("];", script.index("const QUESTIONS = ["))]
     found = re.findall(r'\["[^"]+", "([^"]+)"\]', block)
     assert sorted(found) == sorted(FOCUS_QUESTIONS)
+
+
+# --- финальное ревью ветки ---
+
+
+async def test_huge_blank_code_quote_is_rejected_fast(enrolled) -> None:
+    """C-1: 300 000 пустых строк не держат сервер — 422 до разбора фрагмента."""
+    import time
+
+    await _finish(enrolled)
+    started = time.monotonic()
+    response = await enrolled.post(
+        f"{BASE}/chat", json={"text": "почему?", "quote": {"source": "code", "text": "\n" * 300_000 + "x = 1"}}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["field"] == "quote.text"
+    assert time.monotonic() - started < 1.0
+
+
+def test_focus_text_trims_blank_lines_linearly() -> None:
+    import time
+
+    from llm_tutor.core.context import focus_text
+
+    text = "  \n" * 200_000 + "    x = 1\n    y = 2\n" + "\n" * 200_000
+    started = time.monotonic()
+    assert focus_text("code", text) == "x = 1\ny = 2"
+    assert time.monotonic() - started < 1.0
+
+
+async def test_lone_surrogate_in_quote_is_422(enrolled) -> None:
+    """M-1: непарный суррогат — 422 у поля, а не 500 при записи журнала."""
+    await _finish(enrolled)
+    response = await enrolled.post(
+        f"{BASE}/chat",
+        content='{"text": "a", "quote": {"source": "code", "text": "x\\ud800"}}',
+        headers={"Content-Type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]["field"] == "quote.text"

@@ -204,7 +204,9 @@ def quote_view(focus: Focus) -> dict:
         mark = fence(focus.text)
         html = str(markdown.render(f"{mark}python\n{focus.text}\n{mark}"))
     else:
-        html = "<p>" + str(escape(focus.text)).replace("\n", "<br>\n") + "</p>\n"
+        # Переносы и отступы — текстом: плашка стоит с white-space: pre-wrap
+        # (финальное ревью, M-3), <br> удвоил бы переносы.
+        html = "<p>" + str(escape(focus.text)) + "</p>\n"
     return {"source": focus.source, "label": QUOTE_LABELS[focus.source], "html": html}
 
 

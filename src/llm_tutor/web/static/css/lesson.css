@@ -485,6 +485,12 @@
   overflow: auto;
 }
 
+/* Цитата конспекта или задания — дословно, с переносами и отступами строк:
+   и с сервера, и в эхе до ответа (финальное ревью, M-3/M-4). */
+.msg-quote:not(.code) .msg-quote-body {
+  white-space: pre-wrap;
+}
+
 .msg-quote pre {
   max-width: 100%;
 }

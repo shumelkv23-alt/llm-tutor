@@ -110,10 +110,12 @@ def focus_text(source: FocusSource, text: str) -> str:
     if source != "code":
         return text.strip()
     lines = text.splitlines()
-    while lines and not lines[0].strip():
-        lines.pop(0)
-    while lines and not lines[-1].strip():
-        lines.pop()
+    # Срез по индексам, а не pop(0): тот квадратичен по числу пустых строк, и
+    # фрагмент из сотен тысяч «\n» держал сервер (финальное ревью, C-1).
+    filled = [index for index, line in enumerate(lines) if line.strip()]
+    if not filled:
+        return ""
+    lines = lines[filled[0] : filled[-1] + 1]
     return textwrap.dedent("\n".join(lines)).rstrip()
 
 

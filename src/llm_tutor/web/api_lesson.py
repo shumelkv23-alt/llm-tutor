@@ -354,6 +354,21 @@ def _focus(quote: QuoteBody) -> Focus:
             status_code=422,
             detail={"field": "quote.source", "message": "Неизвестный источник фрагмента."},
         )
+    # Сырой текст — до разбора: фрагмент в мегабайты не должен доходить до
+    # focus_text (запас в 4 раза — на пустые строки и отступы кода).
+    if len(quote.text) > 4 * FOCUS_MAX_CHARS:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "quote.text", "message": f"Фрагмент длиннее {FOCUS_MAX_CHARS} знаков."},
+        )
+    try:
+        quote.text.encode("utf-8")
+    except UnicodeEncodeError:
+        # Непарный суррогат: журнал его не запишет, ответ не сериализуется (M-1).
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "quote.text", "message": "Во фрагменте недопустимые символы."},
+        ) from None
     text = focus_text(quote.source, quote.text)
     if not text:
         raise HTTPException(

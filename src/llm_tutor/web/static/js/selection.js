@@ -167,7 +167,17 @@
   function rangeText(range) {
     const box = document.createElement("div");
     box.className = "selection-measure";
-    box.append(range.cloneContents());
+    // Выделение внутри одного <pre>: клон не несёт самого <pre>, и innerText
+    // схлопнул бы переносы и отступы кода (финальное ревью, I-1).
+    const common = range.commonAncestorContainer;
+    const inPre = (common.nodeType === Node.ELEMENT_NODE ? common : common.parentElement)?.closest("pre");
+    if (inPre) {
+      const pre = document.createElement("pre");
+      pre.append(range.cloneContents());
+      box.append(pre);
+    } else {
+      box.append(range.cloneContents());
+    }
     box.querySelectorAll(".code-tools").forEach((node) => node.remove());
     document.body.append(box);
     // innerText, а не textContent: переносы между абзацами и строки <pre>.
