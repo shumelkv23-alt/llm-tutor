@@ -29,7 +29,12 @@ _MIN_FAILURE_MASS = 0.05
 
 
 def _next_review(mean: float, now: float) -> float:
-    """Момент следующего повторения концепта (см. константы выше)."""
+    """Момент следующего повторения концепта (см. константы выше).
+
+    Пишется в ``mastery.next_review``, но расписание повторений занятий —
+    таблица ``review_schedule`` (``student/review``): просрочка этого поля
+    маршрут и планировщик больше не читают.
+    """
     ratio = mean / max(1.0 - mean, _MIN_FAILURE_MASS)
     days = min(REVIEW_MAX_DAYS, max(0.25 * REVIEW_BASE_DAYS, REVIEW_BASE_DAYS * ratio))
     return now + days * SECONDS_PER_DAY

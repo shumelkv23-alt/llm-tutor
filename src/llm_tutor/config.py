@@ -117,6 +117,8 @@ class Settings(BaseSettings):
     priority_w1: float = 0.25
     priority_w2: float = 0.25
     priority_w3: float = 0.20
+    # w4 — прежний вес срочности повторения: слагаемое снято (срез 79), поле
+    # оставлено, чтобы `.env` с PRIORITY_W4 по-прежнему читался.
     priority_w4: float = 0.15
     priority_w5: float = 0.10
     priority_w6: float = 0.05

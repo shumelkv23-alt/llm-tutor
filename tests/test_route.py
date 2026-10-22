@@ -188,16 +188,39 @@ def test_route_on_real_seed_covers_path_to_goal(conn, settings) -> None:
 # --- фиксы ревью: просевший узел, снимок, молчание, приоритет ---
 
 
-def test_decayed_node_leaves_closed_and_goes_for_review(conn, settings) -> None:
-    """Забытый узел должен вернуться в маршрут (§6.4 — долгий перерыв)."""
+def test_overdue_closed_lesson_stays_closed(conn, settings) -> None:
+    """Просроченный ``mastery.next_review`` занятие не открывает.
+
+    Повторять пройденное — дело расписания ``review_schedule`` (срез 79), а не
+    маршрута: закрытое занятие остаётся закрытым, режим «повторение» не выдаётся.
+    """
     graph = _graph(["a"], [])
     repos.upsert_concept(conn, Concept(id="a", name="a"))
-    # владение ещё выше порога «сжатого прохода», но повторение просрочено
+    # владение выше порога «сжатого прохода», повторение давно просрочено
     repos.upsert_mastery(conn, "a", alpha=3.0, beta=1.0, last_seen=0.0, next_review=-1000.0)
     previous = Route(steps=[RouteStep(concept_id="a", mode="skip", status="closed")])
 
     result = route_mod.build_route(
         conn, graph, previous=previous, now=0.0, settings=settings
+    )
+
+    assert _statuses(result)["a"] == "closed"
+    assert all(step.mode != "review" for step in result.steps)
+
+
+def test_failures_still_reopen(conn, settings) -> None:
+    """Два провала после закрытия открывают занятие и при просроченном повторении."""
+    graph = _graph(["a"], [])
+    repos.upsert_concept(conn, Concept(id="a", name="a"))
+    repos.upsert_mastery(conn, "a", alpha=3.0, beta=1.0, last_seen=0.0, next_review=-1000.0)
+    previous = Route(
+        steps=[RouteStep(concept_id="a", mode="full", status="closed", closed_at=10.0)]
+    )
+    for ts in range(11, 11 + route_mod.REOPEN_FAILURES):
+        repos.add_event(conn, Event(source="autotest", result=0.0, concept_id="a", ts=float(ts)))
+
+    result = route_mod.build_route(
+        conn, graph, previous=previous, now=20.0, settings=settings
     )
 
     assert _statuses(result)["a"] != "closed"

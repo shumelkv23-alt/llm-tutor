@@ -4,7 +4,9 @@
 освоены; мягкие пререквизиты не блокируют, а лишь роняют приоритет.
 Приоритет — линейная комбинация нормализованных слагаемых (см. архитектуру,
 §6.3); режим прохода выбирается по порогам владения с приоритетом более
-специфичных случаев (повторение / буксовка).
+специфичных случаев (буксовка). Повторение пройденного по расписанию ведёт
+``student/review`` (таблица ``review_schedule``): просрочка ``mastery.next_review``
+ни режим, ни приоритет не меняет.
 """
 
 import sqlite3
@@ -23,8 +25,6 @@ FAILURE_WINDOW_DAYS = 3.0
 FAILURE_PENALTY_CAP = 2.0
 # Апостериорная σ ниже порога = владение подтверждено, можно пропускать.
 CONFIDENT_UNCERTAINTY = 0.10
-# Просрочка повторения на этот срок даёт максимальную срочность.
-REVIEW_PERIOD_SECONDS = 7 * 86_400.0
 # Столько недавних провалов подряд трактуем как «буксовку» (wheel spinning).
 STUCK_FAILURES = 3
 
@@ -36,6 +36,8 @@ MODE_LABELS: dict[NodeMode, str] = {
     "full": "полный проход",
     "reinforce": "усиленный проход",
     "revisit": "вернуться к пререквизиту",
+    # Планировщик «review» больше не выдаёт (срез 79); ключ нужен снимкам
+    # маршрута, записанным раньше.
     "review": "повторение",
 }
 
@@ -122,24 +124,14 @@ def _readiness(graph: CourseGraph, node_id: str, means: dict[str, beta.Mastery],
     return covered / total_weight
 
 
-def _urgency(mastery: beta.Mastery, now: float) -> float:
-    """Срочность повторения: 0 — не назначено, →1 — сильно просрочено."""
-    if mastery.next_review is None:
-        return 0.0
-    return min(1.0, max(0.0, (now - mastery.next_review) / REVIEW_PERIOD_SECONDS))
-
-
 def _choose_mode(
     mastery: beta.Mastery,
     *,
     weak_soft_prereq: bool,
-    overdue: bool,
     stuck: bool,
     settings: Settings,
 ) -> NodeMode:
     """Режим прохода узла по владению с приоритетом специфичных случаев."""
-    if overdue and mastery.mean >= settings.mastery_compressed_threshold:
-        return "review"
     if stuck:
         return "reinforce"
     if (
@@ -181,7 +173,6 @@ def mode_for_node(
     return _choose_mode(
         mastery,
         weak_soft_prereq=weak_soft,
-        overdue=mastery.next_review is not None and stamp >= mastery.next_review,
         stuck=failures >= STUCK_FAILURES,
         settings=s,
     )
@@ -259,7 +250,6 @@ def ready_nodes(
             s.priority_w1 * importance
             + s.priority_w2 * (1.0 - mastery.mean)
             + s.priority_w3 * _readiness(graph, node_id, means, s.mastery_verify_threshold)
-            + s.priority_w4 * _urgency(mastery, stamp)
             - s.priority_w5 * graph.difficulty(node_id)
             - s.priority_w6 * min(failures / FAILURE_PENALTY_CAP, 1.0)
         )
