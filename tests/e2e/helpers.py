@@ -60,3 +60,79 @@ async def take_or_skip(page) -> None:
         async with page.expect_response("**/lesson/skip"):
             await page.click("#confirm-submit")
     await page.wait_for_selector("#lesson:not(.busy)")
+
+
+async def survey_ui(page) -> None:
+    """Анкета модуля кнопками: «С нуля» на каждый вопрос, затем «Начать урок»."""
+    await page.click("text=Поехали")
+    for _ in range(10):
+        await page.wait_for_selector(".survey-option, .survey-summary")
+        if await page.locator(".survey-summary").count():
+            break
+        await page.locator(".survey-option").first.click()
+        await page.wait_for_selector("#survey[aria-busy=false]")
+    await page.click("text=Начать урок")
+    await page.wait_for_selector("#pane-left:not(.surveying)")
+
+
+async def show_view(page, view: str) -> None:
+    """«Урок»/«Чат» на узком экране; на широком обе панели видны и переключателя нет."""
+    switch = page.locator(f"#view-{view}")
+    if await switch.is_visible():
+        await switch.click()
+
+
+async def check_ui(page) -> None:
+    """Кнопка урока в чате → вопрос раздела во вкладке «Практика»."""
+    await show_view(page, "chat")
+    async with page.expect_response("**/lesson/next"):
+        await page.locator("#lesson-next").click()
+    await page.wait_for_selector("#lesson:not(.busy)")
+    await show_view(page, "lesson")
+    await page.click("#tab-btn-practice")
+
+
+async def answer_first_option(page) -> None:
+    """Первый вариант (в фикстуре занятий он верный) и «Ответить»."""
+    await page.locator(".practice-option").first.click()
+    async with page.expect_response("**/lesson/answer"):
+        await page.click(".practice-answer button[type=submit]")
+    await page.wait_for_selector("#lesson:not(.busy)")
+
+
+async def close_first_lesson(page) -> None:
+    """Два раздела и итоговое задание занятия «Series и DataFrame» — занятие закрыто."""
+    for _ in range(2):
+        await check_ui(page)
+        await answer_first_option(page)
+    await page.fill("input.practice-input", "final_l1_frames")
+    async with page.expect_response("**/lesson/answer"):
+        await page.click(".practice-answer button[type=submit]")
+    await page.wait_for_selector("#lesson:not(.busy)")
+
+
+def make_due(users_dir, *concept_ids: str) -> None:
+    """Занятия закрыты в маршруте ученика и просрочены на лестнице повторений.
+
+    Пишем в БД ученика напрямую: сервер читает состояние на каждый ход, а чтобы
+    дойти до просрочки ходами, пришлось бы ждать сутки.
+    """
+    from llm_tutor.db import repos
+    from llm_tutor.db.connection import get_conn
+
+    conn = get_conn(str(next(users_dir.glob("*/mlcourse.sqlite3"))))
+    try:
+        session_id = repos.get_open_session(conn)
+        state = repos.get_session_state(conn, session_id)
+        steps = [
+            step.model_copy(update={"status": "closed", "closed_at": 1.0})
+            if step.concept_id in concept_ids
+            else step
+            for step in state.route.steps
+        ]
+        route = state.route.model_copy(update={"steps": steps})
+        repos.update_session_state(conn, session_id, state.model_copy(update={"route": route}))
+        for concept_id in concept_ids:
+            repos.upsert_review(conn, concept_id, 1, 1.0)
+    finally:
+        conn.close()

@@ -444,3 +444,61 @@ async def test_card_skips_missing_lesson(ready, web_app) -> None:
     assert [x["id"] for x in state["review"]["lessons"]] == ["l1_group"]
     body = await _start(ready)
     assert body["state"]["review"]["active"]["total"] == 1
+
+
+# --- страница занятия и главная ---
+
+
+async def test_lesson_page_has_review_tab(ready) -> None:
+    html = (await ready.get("/lesson/mlcourse")).text
+
+    assert 'id="tab-btn-review"' in html and 'aria-controls="tab-review"' in html
+    assert 'id="tab-review"' in html and 'aria-labelledby="tab-btn-review"' in html
+    assert "/static/js/review.js?v=" in html
+    assert 'style="' not in html.split('id="tab-review"')[1].split("</section>")[0]
+
+
+async def test_home_shows_review_today_block(ready) -> None:
+    html = (await ready.get("/")).text
+
+    assert "Повторить сегодня" in html
+    assert 'href="/lesson/mlcourse#review"' in html
+    assert "к повторению: <b>1</b>" in html
+
+
+async def test_courses_page_card_shows_review_due(ready) -> None:
+    html = (await ready.get("/courses")).text
+    assert "к повторению: <b>1</b>" in html
+
+
+async def test_home_without_due_has_no_block(lessons_student) -> None:
+    await _finish_survey(lessons_student)
+    html = (await lessons_student.get("/")).text
+    assert "Повторить сегодня" not in html and "к повторению" not in html
+
+
+async def test_home_hides_block_for_disabled_course(ready) -> None:
+    await ready.post(f"{BASE}/review/settings", json={"enabled": False})
+    html = (await ready.get("/")).text
+    assert "Повторить сегодня" not in html and "к повторению" not in html
+
+
+async def test_home_block_orders_courses_by_overdue(ready, make_course, web_app) -> None:
+    """Самые просроченные курсы — сверху блока."""
+    from llm_tutor.schemas import Route, RouteStep, SessionState
+    from llm_tutor.web import accounts
+
+    make_course("python-basics", status="published")
+    await ready.post("/api/courses/python-basics/enroll", json={})
+    user = accounts.find_user(web_app.state.accounts, "ann@example.com")
+    conn = web_app.state.userdbs.open(user.id, "python-basics")
+    node = conn.execute("SELECT id FROM concepts ORDER BY id").fetchone()["id"]
+    route = Route(steps=[RouteStep(concept_id=node, mode="full", status="closed", closed_at=1.0)])
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.update_session_state(conn, session_id, SessionState(route=route))
+    repos.upsert_review(conn, node, 1, time.time() - 3_600)  # просрочено на час, у mlcourse — на десятилетия
+
+    html = (await ready.get("/")).text
+
+    block = html.split("Повторить сегодня")[1]
+    assert block.index("/lesson/mlcourse#review") < block.index("/lesson/python-basics#review")

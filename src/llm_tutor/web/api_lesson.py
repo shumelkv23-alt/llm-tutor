@@ -717,4 +717,5 @@ async def review_settings(
     _require_survey(ctx)
     async with ctx.lock:
         review.set_enabled(ctx.conn, body.enabled)
-        return {"state": views.lesson_state(ctx.conn, settings=ctx.settings)}
+        # Форма ответа — как у остальных ходов (браузер дописывает messages в чат).
+        return turn_response(ctx, None, TurnReply(text=""))

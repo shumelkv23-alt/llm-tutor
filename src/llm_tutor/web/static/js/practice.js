@@ -39,6 +39,38 @@
     return element;
   }
 
+  /** «Пропустить»: в повторении занятие вернётся завтра, в уроке — позже. */
+  function skipButton() {
+    return button("Пропустить", "ghost", async () => {
+      const reviewing = Boolean(window.Lesson.state?.review?.active);
+      const ok = await confirm(
+        "Пропустить задание?",
+        reviewing ? "Ответ не запишется, это занятие вернётся завтра." : "Ответ не запишется, к теме вернёмся позже.",
+        { label: "Пропустить" }
+      );
+      if (ok) await window.Lesson.act("skip", {}, { echo: "Пропустить задание." });
+    });
+  }
+
+  /** Плашка серии повторения над заданием и кнопка, которая её останавливает. */
+  function reviewPlate(active) {
+    const plate = el("div", "review-plate");
+    plate.setAttribute("role", "status");
+    plate.append(
+      icon("refresh"),
+      el("span", "review-plate-text", `Повторение · занятие «${active.node_name}» · ${active.position} из ${active.total}`)
+    );
+    const warmup = active.kind === "warmup";
+    plate.append(
+      button(warmup ? "Пропустить разминку" : "Закончить", "ghost", async () => {
+        const data = await window.Lesson.act("review/stop");
+        // Разминка кончилась — началось занятие, его теория слева.
+        if (data && warmup) window.Lesson.selectTab("theory");
+      })
+    );
+    return plate;
+  }
+
   async function submit(item, answer) {
     const data = await window.Lesson.act("answer", { item_id: item.id, answer }, { echo: typeof answer === "number" ? item.options[answer] : answer });
     if (data) drafts.delete(item.id);
@@ -54,10 +86,7 @@
     box.append(
       button("Решить в редакторе", "primary", () => window.Lesson.code?.open(), "code"),
       button("Не понимаю", "ghost", () => window.Lesson.act("stuck", {}, { echo: "Не понял, давай подробнее." })),
-      button("Пропустить", "ghost", async () => {
-        const ok = await confirm("Пропустить задание?", "Ответ не запишется, к теме вернёмся позже.", { label: "Пропустить" });
-        if (ok) await window.Lesson.act("skip", {}, { echo: "Пропустить задание." });
-      })
+      skipButton()
     );
     const wrap = el("div", "practice-answer");
     wrap.append(el("p", "form-hint", "Код запускается прямо в браузере: «Запустить» показывает вывод, «Проверить» прогоняет проверки задания."), box);
@@ -131,10 +160,7 @@
     actions.append(
       send,
       button("Не понимаю", "ghost", () => window.Lesson.act("stuck", {}, { echo: "Не понял, давай подробнее." })),
-      button("Пропустить", "ghost", async () => {
-        const ok = await confirm("Пропустить задание?", "Ответ не запишется, к теме вернёмся позже.", { label: "Пропустить" });
-        if (ok) await window.Lesson.act("skip", {}, { echo: "Пропустить задание." });
-      })
+      skipButton()
     );
     form.append(actions);
     form.addEventListener("submit", (event) => {
@@ -175,19 +201,22 @@
       banner.append(icon("check"), closedNote);
       wrap.append(banner);
     }
-    if (state.mode === "verify" && state.node) {
+    const reviewing = state.review?.active || null;
+    if (reviewing) wrap.append(reviewPlate(reviewing));
+    if (state.mode === "verify" && state.node && !reviewing) {
       wrap.append(el("p", "verify-note", `Проверка занятия «${state.node.name}»: ответьте без подсказок — так занятие закроется.`));
     }
     const banner = verdictBanner();
     if (banner) wrap.append(banner);
 
     if (state.item) {
-      const card = el("article", `task-card${state.mode === "verify" ? " verify" : ""}`);
+      const card = el("article", `task-card${state.mode === "verify" && !reviewing ? " verify" : ""}${reviewing ? " review" : ""}`);
       const head = el("div", "task-head");
       head.append(el("span", "badge primary", TYPE_LABELS[state.item.type] || "Задание"));
       // Раздел занятия или итоговое (срез 55).
       if (state.item.part) head.append(el("span", "task-part", state.item.part));
-      head.append(el("span", "task-streak", `Верно подряд: ${state.streak} из ${state.streak_target}`));
+      // Серия подряд — про урок; к повторению она не относится.
+      if (!reviewing) head.append(el("span", "task-streak", `Верно подряд: ${state.streak} из ${state.streak_target}`));
       const prompt = el("div", "task-prompt");
       // Готовый HTML: задание прошло web.markdown.render на сервере.
       prompt.innerHTML = state.item.prompt_html;
