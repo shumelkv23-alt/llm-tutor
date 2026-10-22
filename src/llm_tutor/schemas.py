@@ -355,6 +355,27 @@ class Route(BaseModel):
         return sum(1 for step in self.steps if step.status == "closed")
 
 
+class ReviewState(BaseModel):
+    """Серия повторения пройденного (срез 80): разминка, «Срочное» или «Освежить».
+
+    Живёт в ``SessionState.review`` и не трогает поля урока: после серии занятие
+    продолжается ровно с того места, где остановилось.
+    """
+
+    kind: Literal["warmup", "due", "refresh"]
+    # Занятия, которые ещё не спрошены (без висящего).
+    queue: list[str] = Field(default_factory=list)
+    # Занятие и задание, которые висят сейчас; ответ засчитывается этому занятию.
+    node_id: str | None = None
+    item_id: int | None = None
+    # Ученик получил помощь по висящему заданию (спросил тьютора, «Застрял»).
+    hinted: bool = False
+    # Сколько занятий в серии (занятия без подходящих заданий не считаются).
+    total: int = 0
+    correct: int = 0
+    answered: int = 0
+
+
 class SessionState(BaseModel):
     """Состояние сессии (JSON в ``sessions.state``), меняется после каждого хода."""
 
@@ -403,3 +424,5 @@ class SessionState(BaseModel):
     final_passed: bool = False
     # Итоговое сдано после двух ошибок (срез 54): занятие закроется с ⚠️.
     final_weak: bool = False
+    # Идущая серия повторения (срез 80); ``None`` — серии нет.
+    review: ReviewState | None = None
