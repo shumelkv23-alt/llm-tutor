@@ -429,3 +429,65 @@ async def test_lesson_tail_labels_review_messages(conn, settings) -> None:
     contents = [m.content for m in client.calls[-1] if m.role in ("user", "assistant")]
     assert any(c.startswith(label + "Чем это поможет?") for c in contents)
     assert any(c.startswith(label + "🔁 Повторение") for c in contents)
+
+
+# --- аудит среза 80 ---
+
+
+async def test_lesson_removed_from_graph_mid_series_does_not_crash(conn, settings) -> None:
+    """Занятие следующее в очереди ушло из графа: серия идёт дальше (случай 5 спеки)."""
+    await _lesson_with_due(conn, settings, "l1_group", "l1_select")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    series = _state(conn).review
+    gone = series.queue[0]
+    conn.execute("UPDATE concepts SET active = 0 WHERE id = ?", (gone,))
+    conn.commit()
+    item = repos.get_item(conn, series.item_id)
+
+    reply = await core_review.answer(
+        conn, _FakeTutor(), "m", correct_answer(item), now=NOW, settings=settings
+    )
+
+    assert "верно 1 из 1" in reply.text and _state(conn).review is None
+    assert repos.get_review_rows(conn)[gone].step == 1  # строка осталась
+
+
+async def test_mistake_on_lesson_removed_from_graph_does_not_crash(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+    series = _state(conn).review
+    conn.execute("UPDATE concepts SET active = 0 WHERE id = ?", (series.node_id,))
+    conn.commit()
+    item = repos.get_item(conn, series.item_id)
+
+    reply = await core_review.answer(
+        conn, _FakeTutor(), "m", _wrong(item), now=NOW, settings=settings
+    )
+
+    assert "Не совсем ✗" in reply.text and _state(conn).review is None
+
+
+async def test_refresh_deduplicates_lessons(conn, settings) -> None:
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(
+        conn, kind="refresh", node_ids=["l1_group", "l1_group"], now=NOW, settings=settings
+    )
+    assert _state(conn).review.total == 1
+
+
+async def test_chat_with_fragment_keeps_quote_and_review_marks(conn, settings) -> None:
+    from llm_tutor.core.context import Focus, focus_from_meta
+
+    await _lesson_with_due(conn, settings, "l1_group")
+    core_review.start(conn, kind="due", now=NOW, settings=settings)
+
+    await core_review.chat(
+        conn, _FakeTutor(), "m", "Объясни этот фрагмент подробнее.",
+        focus=Focus("task", "df.groupby('a')"), now=NOW, settings=settings,
+    )
+
+    user_meta = conn.execute(
+        "SELECT meta FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 1"
+    ).fetchone()["meta"]
+    assert focus_from_meta(user_meta) == Focus("task", "df.groupby('a')")
+    assert json.loads(user_meta)["review"] == "l1_group"

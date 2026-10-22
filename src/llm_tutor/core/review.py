@@ -242,6 +242,8 @@ async def answer(
 
 def _mistake_note(graph: CourseGraph, node_id: str, section_id: str | None) -> str:
     """Что перечитать после ошибки: раздел конспекта занятия (ссылки нет)."""
+    if not graph.has_node(node_id):  # занятие ушло из графа, пока висело задание
+        return REVIEW_MISTAKE_NOTE_LESSON.format(name=node_id)
     name = graph.concept(node_id).name
     if section_id is None:
         return REVIEW_MISTAKE_NOTE_LESSON.format(name=name)

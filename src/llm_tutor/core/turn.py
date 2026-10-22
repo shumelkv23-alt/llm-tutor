@@ -149,7 +149,8 @@ def issue_review_item(
     """Выдаёт следующее задание серии повторения.
 
     Снимает занятия с головы очереди, пока ``review.pick_item`` не найдёт для
-    занятия задание; такие занятия в серию не идут (``total`` уменьшается).
+    занятия задание; занятия без заданий и ушедшие из графа в серию не идут
+    (``total`` уменьшается).
     Кладёт в ``state.review`` занятие и задание (помощь сбрасывается) и ничего
     больше в состоянии не трогает. Очередь исчерпана — ``(state, None, None)``,
     серию закрывает вызывающий.
@@ -160,7 +161,12 @@ def issue_review_item(
     queue, total = list(series.queue), series.total
     while queue:
         node_id = queue.pop(0)
-        item = review.pick_item(conn, node_id, now=now, exclude=exclude)
+        # Занятия, ушедшего из графа (модуль снят), в серию нет хода (случай 5 спеки).
+        item = (
+            review.pick_item(conn, node_id, now=now, exclude=exclude)
+            if graph.has_node(node_id)
+            else None
+        )
         if item is None:
             total -= 1
             continue
