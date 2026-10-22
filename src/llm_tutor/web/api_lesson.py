@@ -10,20 +10,22 @@ import logging
 import sqlite3
 from collections.abc import Awaitable
 from dataclasses import dataclass
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 
 from llm_tutor.config import Settings
 from llm_tutor.core import guided, lesson, turn, verify
+from llm_tutor.core import review as core_review
 from llm_tutor.core.context import FOCUS_MAX_CHARS, FOCUS_SOURCES, Focus, fence, focus_text
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
-from llm_tutor.schemas import CriterionResult, GradeResult, SessionState, Topic
-from llm_tutor.student import survey
+from llm_tutor.schemas import CriterionResult, GradeResult, ReviewState, SessionState, Topic
+from llm_tutor.student import review, survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
 from llm_tutor.web.accounts import User
@@ -205,6 +207,43 @@ async def _sync(func, *args, **kwargs):
     return func(*args, **kwargs)
 
 
+REVIEW_ACTIVE = "Повторение уже идёт."
+REVIEW_NOT_ACTIVE = "Сейчас нет повторения."
+REVIEW_BAD_LESSONS = "Эти занятия повторять нельзя: выберите закрытые."
+
+
+def _review_series(ctx: LessonContext) -> ReviewState | None:
+    """Идущая серия повторения (читается под замком ученика)."""
+    session_id = repos.get_open_session(ctx.conn)
+    if session_id is None:
+        return None
+    return repos.get_session_state(ctx.conn, session_id).review
+
+
+def _abort_review(ctx: LessonContext) -> None:
+    """Ход вне серии (переход, задание, проход) сначала её завершает, без реплики."""
+    if _review_series(ctx) is not None:
+        core_review.abort(ctx.conn)
+
+
+def _lesson_session_state(ctx: LessonContext) -> SessionState:
+    session_id = repos.get_open_session(ctx.conn)
+    return repos.get_session_state(ctx.conn, session_id) if session_id else SessionState()
+
+
+def _awaiting_item(ctx: LessonContext, state: SessionState):
+    """Задание, ответа на которое ждёт ход: при серии — её, иначе урока.
+
+    Пока идёт серия, задание урока (``pending_item_id``) ответа не принимает:
+    вторая вкладка с открытым заданием урока получит 409, а не зачёт уроку.
+    """
+    if state.review is not None:
+        item_id = state.review.item_id
+    else:
+        item_id = state.pending_item_id
+    return repos.get_item(ctx.conn, item_id) if item_id else None
+
+
 class SurveyBody(BaseModel):
     answers: list[StrictInt] = Field(max_length=32)
 
@@ -240,6 +279,17 @@ class CodeResultBody(BaseModel):
     passed: StrictBool
     # Первая упавшая проверка или ошибка выполнения (пусто, если всё прошло).
     report: str = Field(default="", max_length=4000)
+
+
+class ReviewStartBody(BaseModel):
+    """Начало серии повторения: «Срочное» (``due``) или «Освежить» (``refresh``)."""
+
+    kind: Literal["due", "refresh"]
+    node_ids: list[str] = Field(default_factory=list, max_length=100)
+
+
+class ReviewSettingsBody(BaseModel):
+    enabled: StrictBool
 
 
 class SwitchBody(BaseModel):
@@ -331,9 +381,14 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
         raise HTTPException(status_code=422, detail={"field": "text", "message": "Пустое сообщение."})
     focus = _focus(body.quote) if body.quote else None
     async with ctx.lock:
-        reply = await _safe(
+        if _review_series(ctx) is not None:
+            # Вопрос по заданию повторения: контекст — по его занятию и разделу.
+            call = core_review.chat(
+                ctx.conn, ctx.client, ctx.model, text, focus=focus, settings=ctx.settings
+            )
+        else:
             # Чат — всегда к тьютору: ответы на задание идут формой «Практики».
-            turn.handle_turn(
+            call = turn.handle_turn(
                 ctx.conn,
                 ctx.client,
                 ctx.model,
@@ -341,9 +396,8 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
                 settings=ctx.settings,
                 answer_mode="tutor",
                 focus=focus,
-            ),
-            LLM_FAILURE_REPLY,
-        )
+            )
+        reply = await _safe(call, LLM_FAILURE_REPLY)
         return turn_response(ctx, text, reply, quote=focus)
 
 
@@ -389,9 +443,8 @@ def _focus(quote: QuoteBody) -> Focus:
 async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
-        session_id = repos.get_open_session(ctx.conn)
-        state = repos.get_session_state(ctx.conn, session_id) if session_id else SessionState()
-        item = repos.get_item(ctx.conn, state.pending_item_id) if state.pending_item_id else None
+        state = _lesson_session_state(ctx)
+        item = _awaiting_item(ctx, state)
         if item is None or item.id != body.item_id:
             raise HTTPException(
                 status_code=STALE_ITEM_STATUS, detail={"message": turn.STALE_ITEM_REPLY}
@@ -408,8 +461,12 @@ async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context))
                     status_code=422, detail={"field": "answer", "message": "Пустой ответ."}
                 )
         before = repos.last_event_id(ctx.conn)
-        reply = await _safe(
-            turn.handle_turn(
+        if state.review is not None:
+            call = core_review.answer(
+                ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings
+            )
+        else:
+            call = turn.handle_turn(
                 ctx.conn,
                 ctx.client,
                 ctx.model,
@@ -417,9 +474,8 @@ async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context))
                 settings=ctx.settings,
                 allow_intents=False,
                 answer_mode="answer",
-            ),
-            LLM_FAILURE_REPLY,
-        )
+            )
+        reply = await _safe(call, LLM_FAILURE_REPLY)
         response = turn_response(ctx, text, reply)
         # Вердикт — из журнала, а не из текста ответа: его посчитал код.
         result = repos.item_result_after(ctx.conn, item.id, before)
@@ -447,9 +503,8 @@ async def code_result(body: CodeResultBody, ctx: LessonContext = Depends(lesson_
     """Итог тестов задания с кодом, выполненных в браузере (Pyodide)."""
     _require_survey(ctx)
     async with ctx.lock:
-        session_id = repos.get_open_session(ctx.conn)
-        state = repos.get_session_state(ctx.conn, session_id) if session_id else SessionState()
-        item = repos.get_item(ctx.conn, state.pending_item_id) if state.pending_item_id else None
+        state = _lesson_session_state(ctx)
+        item = _awaiting_item(ctx, state)
         if item is None or item.id != body.item_id:
             raise HTTPException(
                 status_code=STALE_ITEM_STATUS, detail={"message": turn.STALE_ITEM_REPLY}
@@ -466,12 +521,15 @@ async def code_result(body: CodeResultBody, ctx: LessonContext = Depends(lesson_
         )
         text = code_message(body.code, body.passed, report)
         before = repos.last_event_id(ctx.conn)
-        reply = await _safe(
-            turn.handle_turn(
+        if state.review is not None:
+            call = core_review.answer(
+                ctx.conn, ctx.client, ctx.model, text, grade=grade, settings=ctx.settings
+            )
+        else:
+            call = turn.handle_turn(
                 ctx.conn, ctx.client, ctx.model, text, settings=ctx.settings, grade=grade
-            ),
-            LLM_FAILURE_REPLY,
-        )
+            )
+        reply = await _safe(call, LLM_FAILURE_REPLY)
         response = turn_response(ctx, text, reply)
         result = repos.item_result_after(ctx.conn, item.id, before)
         response["verdict"] = {
@@ -491,6 +549,15 @@ async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_contex
     """
     _require_survey(ctx)
     async with ctx.lock:
+        series = _review_series(ctx)
+        if series is not None and series.kind == "warmup":
+            # «Дальше» в разминке — то же, что «Пропустить разминку».
+            reply = await _safe(
+                core_review.stop(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
+                LLM_FAILURE_REPLY,
+            )
+            return turn_response(ctx, core_review.STOP_WARMUP_TEXT, reply)
+        _abort_review(ctx)
         reply = await _safe(
             _sync(
                 turn.lesson_next_reply,
@@ -508,6 +575,7 @@ async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_contex
 async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
+        _abort_review(ctx)
         reply = await _safe(
             _sync(turn.start_practice_reply, ctx.conn, settings=ctx.settings), FAILURE_REPLY
         )
@@ -518,6 +586,12 @@ async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
 async def skip(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
+        if _review_series(ctx) is not None:
+            reply = await _safe(
+                core_review.skip(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
+                FAILURE_REPLY,
+            )
+            return turn_response(ctx, turn.SKIP_KICKOFF_TEXT, reply)
         try:
             text = turn.skip_pending(ctx.conn, settings=ctx.settings)
         except Exception:  # noqa: BLE001
@@ -530,10 +604,14 @@ async def skip(ctx: LessonContext = Depends(lesson_context)) -> dict:
 async def stuck(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
-        reply = await _safe(
-            turn.stuck_reply(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
-            LLM_FAILURE_REPLY,
-        )
+        if _review_series(ctx) is not None:
+            call = core_review.chat(
+                ctx.conn, ctx.client, ctx.model, turn.STUCK_KICKOFF_TEXT, stuck=True,
+                settings=ctx.settings,
+            )
+        else:
+            call = turn.stuck_reply(ctx.conn, ctx.client, ctx.model, settings=ctx.settings)
+        reply = await _safe(call, LLM_FAILURE_REPLY)
         return turn_response(ctx, turn.STUCK_KICKOFF_TEXT, reply)
 
 
@@ -541,6 +619,9 @@ async def stuck(ctx: LessonContext = Depends(lesson_context)) -> dict:
 async def resume(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
+        if _review_series(ctx) is not None:
+            # Идёт повторение: задание уже в «Практике», возобновлять нечего.
+            return turn_response(ctx, None, TurnReply(text=""))
         reply = await _safe(
             turn.resume_reply(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
             LLM_FAILURE_REPLY,
@@ -552,6 +633,7 @@ async def resume(ctx: LessonContext = Depends(lesson_context)) -> dict:
 async def verify_topic(ctx: LessonContext = Depends(lesson_context)) -> dict:
     _require_survey(ctx)
     async with ctx.lock:
+        _abort_review(ctx)
         reply = await _safe(
             _sync(verify.start_verification, ctx.conn, settings=ctx.settings), FAILURE_REPLY
         )
@@ -570,6 +652,7 @@ async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context))
         # (аудит среза 52, M2). В модуль с непройденной анкетой — только после.
         if first is not None and lesson.pending_survey_topic(ctx.conn) is not None:
             raise HTTPException(status_code=409, detail={"message": SURVEY_NOT_DONE})
+        _abort_review(ctx)
         try:
             if first is not None:
                 # Модуль темы без анкеты: сначала она, тема — следом (jump_node_id).
@@ -581,3 +664,57 @@ async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context))
             text = FAILURE_REPLY
         name = graph.concept(body.node_id).name
         return turn_response(ctx, f"Перейти к занятию «{name}»", text)
+
+
+# --- Повторение (срез 82) ---
+
+
+@router.post("/courses/{course_id}/lesson/review/start")
+async def review_start(body: ReviewStartBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Начинает серию «Срочное» или «Освежить»; серия уже идёт — 409."""
+    _require_survey(ctx)
+    async with ctx.lock:
+        if _review_series(ctx) is not None:
+            raise HTTPException(status_code=409, detail={"message": REVIEW_ACTIVE})
+        try:
+            reply = await core_review.start(
+                ctx.conn, ctx.client, ctx.model, kind=body.kind, node_ids=body.node_ids,
+                settings=ctx.settings,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"message": REVIEW_BAD_LESSONS}) from exc
+        except Exception:  # noqa: BLE001 — интерфейс не должен молчать
+            logger.exception("Сбой начала повторения")
+            reply = TurnReply(text=FAILURE_REPLY)
+        # Спрашивать нечего — реплика ученика в журнал не попала, и в чат тоже.
+        user_text = core_review.START_TEXTS[body.kind] if reply.item_id is not None else None
+        return turn_response(ctx, user_text, reply)
+
+
+@router.post("/courses/{course_id}/lesson/review/stop")
+async def review_stop(ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """«Закончить» серию или «Пропустить разминку»; серии нет — 409."""
+    _require_survey(ctx)
+    async with ctx.lock:
+        series = _review_series(ctx)
+        if series is None:
+            raise HTTPException(status_code=409, detail={"message": REVIEW_NOT_ACTIVE})
+        reply = await _safe(
+            core_review.stop(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
+            FAILURE_REPLY,
+        )
+        user_text = (
+            core_review.STOP_WARMUP_TEXT if series.kind == "warmup" else core_review.STOP_SERIES_TEXT
+        )
+        return turn_response(ctx, user_text, reply)
+
+
+@router.post("/courses/{course_id}/lesson/review/settings")
+async def review_settings(
+    body: ReviewSettingsBody, ctx: LessonContext = Depends(lesson_context)
+) -> dict:
+    """Переключатель «Предлагать повторение по этому курсу»."""
+    _require_survey(ctx)
+    async with ctx.lock:
+        review.set_enabled(ctx.conn, body.enabled)
+        return {"state": views.lesson_state(ctx.conn, settings=ctx.settings)}
