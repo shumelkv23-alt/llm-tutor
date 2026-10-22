@@ -712,6 +712,7 @@ def set_fact(
     *,
     source: str | None = None,
     confidence: float | None = None,
+    commit: bool = True,
 ) -> None:
     """Создаёт или перезаписывает факт профиля."""
     conn.execute(
@@ -723,7 +724,8 @@ def set_fact(
         "confidence = COALESCE(excluded.confidence, facts.confidence)",
         (key, value, source, confidence),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 # --- chunks (материалы курса для RAG, Срез 3) ---

@@ -1,10 +1,15 @@
 """Тесты таблицы расписания повторений и арифметики лестницы (срез 79)."""
 
-from course_fixtures import load_lessons
+import pytest
+from course_fixtures import correct_answer, load_lessons
+from test_lesson_sections import _answer as _answer_turn
+from test_lesson_sections import _check, _enter, _pending
+from test_turn import _state
 
 from llm_tutor.course.graph import CourseGraph
+from llm_tutor.core.turn import post_turn
 from llm_tutor.db import repos
-from llm_tutor.schemas import Event, ReviewRow, Route, RouteStep
+from llm_tutor.schemas import Event, ReviewRow, Route, RouteStep, SessionState
 from llm_tutor.student import review
 
 DAY = 86_400.0
@@ -213,3 +218,220 @@ def test_closed_lessons_in_route_order_and_in_graph(conn):
     )
     assert review.closed_lessons(graph, route) == ["l2_hist", "l1_group"]
     assert review.closed_lessons(graph, None) == []
+
+
+# --- строки при закрытии занятия ---
+
+
+def _closure_route(before: dict[str, str], after: dict[str, tuple[str, str]]) -> tuple[Route, Route]:
+    """Маршруты «до» (концепт → статус) и «после» (концепт → (статус, режим))."""
+    old = Route(steps=[RouteStep(concept_id=c, mode="full", status=st) for c, st in before.items()])
+    new = Route(
+        steps=[RouteStep(concept_id=c, mode=mode, status=st) for c, (st, mode) in after.items()]
+    )
+    return old, new
+
+
+def test_plan_closures_new_lesson_step_zero():
+    old, new = _closure_route({"a": "current"}, {"a": ("closed", "full")})
+    assert review.plan_closures({}, old, new, verify_node_id=None, now=NOW) == [
+        review.ScheduleChange("a", 0, NOW + DAY)
+    ]
+
+
+def test_plan_closures_verify_step_two():
+    old, new = _closure_route(
+        {"a": "current", "b": "current"}, {"a": ("closed", "verify"), "b": ("closed", "skip")}
+    )
+    changes = review.plan_closures({}, old, new, verify_node_id="a", now=NOW)
+    assert changes == [
+        review.ScheduleChange("a", 2, NOW + 7 * DAY),
+        review.ScheduleChange("b", 2, NOW + 7 * DAY),
+    ]
+
+
+def test_plan_closures_without_old_route_everything_is_new():
+    _, new = _closure_route({}, {"a": ("closed", "full")})
+    assert review.plan_closures({}, None, new, verify_node_id=None, now=NOW) == [
+        review.ScheduleChange("a", 0, NOW + DAY)
+    ]
+    assert review.plan_closures({}, new, None, verify_node_id=None, now=NOW) == []
+
+
+def test_plan_closures_existing_row_untouched():
+    old, new = _closure_route({"a": "current"}, {"a": ("closed", "full")})
+    rows = {"a": ReviewRow(concept_id="a", step=3, due_at=NOW + 9 * DAY)}
+    assert review.plan_closures(rows, old, new, verify_node_id=None, now=NOW) == []
+
+
+def test_plan_closures_already_closed_before_is_not_new():
+    old, new = _closure_route({"a": "closed"}, {"a": ("closed", "full")})
+    assert review.plan_closures({}, old, new, verify_node_id=None, now=NOW) == []
+
+
+def test_plan_closures_eleven_in_a_day_spill_over():
+    ids = [f"n{i}" for i in range(11)]
+    old, new = _closure_route(
+        {c: "current" for c in ids}, {c: ("closed", "full") for c in ids}
+    )
+    changes = review.plan_closures({}, old, new, verify_node_id=None, now=NOW)
+    assert [c.due_at for c in changes] == [NOW + DAY] * 10 + [NOW + 2 * DAY]
+
+
+async def test_closing_lesson_creates_row(conn, settings):
+    load_lessons(conn)
+    await _enter(conn, settings)
+    for _ in range(2):
+        _check(conn, settings)
+        await _answer_turn(conn, settings, correct_answer(_pending(conn)))
+    assert repos.get_review_rows(conn) == {}
+
+    await _answer_turn(conn, settings, correct_answer(_pending(conn)), now=4.0)
+
+    assert repos.get_review_rows(conn) == {
+        "l1_frames": ReviewRow(concept_id="l1_frames", step=0, due_at=4.0 + DAY)
+    }
+
+
+def test_closure_rolls_back_with_turn(conn, monkeypatch):
+    load_lessons(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    old, new = _closure_route({"l1_frames": "current"}, {"l1_frames": ("closed", "full")})
+    repos.update_session_state(conn, session_id, SessionState(route=old))
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("сбой записи")
+
+    monkeypatch.setattr(repos, "update_session_state", boom)
+    with pytest.raises(RuntimeError):
+        post_turn(
+            conn, session_id, user_text="u", assistant_text="a",
+            state=SessionState(route=new), now=NOW,
+        )
+
+    assert repos.get_review_rows(conn) == {}
+
+
+def test_post_turn_writes_schedule_param_in_same_commit(conn):
+    load_lessons(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    post_turn(
+        conn, session_id, user_text="u", assistant_text="a", state=SessionState(), now=NOW,
+        schedule=[review.ScheduleChange("l1_frames", 1, NOW + DAY)],
+    )
+    assert repos.get_review_rows(conn)["l1_frames"].step == 1
+
+
+def test_post_turn_closure_via_state_change(conn):
+    load_lessons(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    old, new = _closure_route({"l1_frames": "current"}, {"l1_frames": ("closed", "verify")})
+    repos.update_session_state(conn, session_id, SessionState(route=old, mode="verify", current_node_id="l1_frames"))
+    post_turn(
+        conn, session_id, user_text="u", assistant_text="a", state=SessionState(route=new), now=NOW
+    )
+    assert repos.get_review_rows(conn)["l1_frames"] == ReviewRow(
+        concept_id="l1_frames", step=2, due_at=NOW + 7 * DAY
+    )
+
+
+# --- перенос старых учеников ---
+
+
+def _aged_route(ages: dict[str, float | None]) -> Route:
+    return Route(
+        steps=[
+            RouteStep(
+                concept_id=cid, mode="full", status="closed",
+                closed_at=None if age is None else NOW - age * DAY,
+            )
+            for cid, age in ages.items()
+        ]
+    )
+
+
+def test_backfill_steps_by_age_and_once(conn):
+    load_lessons(conn)
+    route = _aged_route({"l1_frames": 1, "l1_select": 5, "l1_group": 10, "l2_hist": 40})
+
+    review.backfill(conn, route, now=NOW)
+
+    rows = repos.get_review_rows(conn)
+    assert {cid: row.step for cid, row in rows.items()} == {
+        "l1_frames": 0, "l1_select": 1, "l1_group": 2, "l2_hist": 3,
+    }
+    # Срок — не раньше завтра: 40 дней назад + 30 дней уже в прошлом.
+    assert all(row.due_at >= NOW + DAY for row in rows.values())
+    assert rows["l1_frames"].due_at == NOW + DAY  # (NOW-1д)+1д < NOW+1д
+    assert repos.get_fact(conn, "review_backfill") == "1"
+
+    repos.delete_review(conn, "l1_frames")
+    review.backfill(conn, route, now=NOW)  # повтор — факт уже стоит
+    assert "l1_frames" not in repos.get_review_rows(conn)
+
+
+def test_backfill_fresh_lesson_due_tomorrow(conn):
+    load_lessons(conn)
+    review.backfill(conn, _aged_route({"l1_frames": 0.1}), now=NOW)
+    # Закрыто 2.4 часа назад, ступень 0: closed_at + 1 день < now + 1 день.
+    assert repos.get_review_rows(conn)["l1_frames"].due_at == NOW + DAY
+
+
+def test_backfill_unknown_age_is_step_zero(conn):
+    load_lessons(conn)
+    review.backfill(conn, _aged_route({"l1_frames": None}), now=NOW)
+    assert repos.get_review_rows(conn)["l1_frames"] == ReviewRow(
+        concept_id="l1_frames", step=0, due_at=NOW + DAY
+    )
+
+
+def test_backfill_keeps_existing_rows_and_respects_limit(conn):
+    load_lessons(conn)
+    repos.upsert_review(conn, "l1_frames", 4, NOW + 20 * DAY)
+    route = _aged_route({"l1_frames": 40, "l1_select": 40})
+    review.backfill(conn, route, now=NOW)
+    rows = repos.get_review_rows(conn)
+    assert rows["l1_frames"].step == 4
+    assert rows["l1_select"].step == 3
+
+
+def test_backfill_without_route(conn):
+    load_lessons(conn)
+    review.backfill(conn, None, now=NOW)
+    assert repos.get_review_rows(conn) == {}
+    assert repos.get_fact(conn, "review_backfill") == "1"
+
+
+# --- переключатель ---
+
+
+def test_enabled_defaults_to_true_and_toggles(conn):
+    assert review.enabled(conn) is True
+    review.set_enabled(conn, False)
+    assert review.enabled(conn) is False
+    review.set_enabled(conn, True)
+    assert review.enabled(conn) is True
+
+
+def test_set_enabled_without_commit_rolls_back(conn):
+    review.set_enabled(conn, False, commit=False)
+    conn.rollback()
+    assert review.enabled(conn) is True
+
+
+async def test_rows_created_when_disabled(conn, settings):
+    course = load_lessons(conn)
+    graph = CourseGraph(course.nodes, course.edges)
+    review.set_enabled(conn, False)
+    await _enter(conn, settings)
+    for _ in range(2):
+        _check(conn, settings)
+        await _answer_turn(conn, settings, correct_answer(_pending(conn)))
+    await _answer_turn(conn, settings, correct_answer(_pending(conn)), now=4.0)
+    assert "l1_frames" in repos.get_review_rows(conn)
+
+    review.set_enabled(conn, True)
+    due_at = repos.get_review_rows(conn)["l1_frames"].due_at
+    assert "l1_frames" in review.due_lessons(
+        conn, graph, _state(conn).route, now=due_at, settings=settings
+    )

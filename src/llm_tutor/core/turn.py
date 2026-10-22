@@ -13,7 +13,7 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -28,7 +28,7 @@ from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, GradeResult, Item, Route, SessionState
-from llm_tutor.student import beta, diagnostic, guide, hints, survey
+from llm_tutor.student import beta, diagnostic, guide, hints, review, survey
 from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
@@ -176,12 +176,17 @@ def post_turn(
     now: float | None = None,
     task_text: str | None = None,
     focus: Focus | None = None,
+    schedule: Sequence[review.ScheduleChange] = (),
 ) -> None:
     """Пишет ход одним коммитом; при сбое откатывает всё.
 
     ``focus`` — фрагмент страницы, о котором спрашивал ученик: ложится в
     ``meta`` его реплики (сама реплика — только вопрос), веб рисует из него
     плашку в истории, а ``core/context`` — пометку в хвосте диалога.
+
+    Строки расписания повторений (срез 79): занятия, которые этот ход закрыл,
+    получают строку (сравнение маршрута из БД с новым), а ``schedule`` —
+    изменения от ходов повторения; всё ложится тем же коммитом.
 
     ``task_text`` — выданное в ходе задание, которым заканчивается
     ``assistant_text``. Его длина ложится в ``meta`` реплики: модель видит ход
@@ -210,6 +215,15 @@ def post_turn(
             repos.add_event(conn, event, stamp, commit=False)
         for change in mastery or []:
             beta.write_update(conn, change, commit=False)
+        old = repos.get_session_state(conn, session_id)
+        closures = review.plan_closures(
+            repos.get_review_rows(conn),
+            old.route,
+            state.route,
+            verify_node_id=old.current_node_id if old.mode == "verify" else None,
+            now=stamp,
+        )
+        review.write_changes(conn, [*closures, *schedule], commit=False)
         repos.update_session_state(conn, session_id, state, commit=False)
         conn.commit()
     except Exception:

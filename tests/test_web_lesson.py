@@ -101,7 +101,8 @@ async def test_survey_rejects_impossible_answers(enrolled, web_app, answers) -> 
 
     assert response.status_code == 422
     assert finish.status_code == 422
-    assert repos.get_facts(_user_db(web_app)) == {}
+    # Единственный факт — отметка переноса расписания повторений (срез 79).
+    assert repos.get_facts(_user_db(web_app)) == {"review_backfill": "1"}
 
 
 async def test_survey_finish_requires_complete_answers(enrolled, web_app) -> None:

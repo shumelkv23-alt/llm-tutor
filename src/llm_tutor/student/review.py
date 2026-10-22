@@ -14,7 +14,7 @@ from llm_tutor.config import Settings
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
-from llm_tutor.schemas import Item, ReviewRow, Route
+from llm_tutor.schemas import Item, ReviewRow, Route, RouteStep
 from llm_tutor.student import beta, diagnostic
 
 # Через сколько дней после закрытия (ступень 0) и после верного повторения
@@ -31,6 +31,9 @@ WARMUP_SIZE = 2
 SERIES_SIZE = 5
 
 _DAY = 86_400.0
+
+BACKFILL_FACT = "review_backfill"
+ENABLED_FACT = "review_enabled"
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,14 @@ def first_due(
     не записанных ``pending`` считаются вместе, день с ``DAILY_LIMIT`` сроков
     пропускается. Время суток — как у ``now``.
     """
+    day = utc_day(now) + int(LADDER_DAYS[step])
+    return _spill(rows, pending, day * _DAY + (now - utc_day(now) * _DAY))
+
+
+def _spill(
+    rows: Mapping[str, ReviewRow], pending: Sequence[ScheduleChange], target: float
+) -> float:
+    """Первое время суток ``target`` в день, где сроков меньше ``DAILY_LIMIT``."""
     load: dict[int, int] = {}
     for row in rows.values():
         day = utc_day(row.due_at)
@@ -69,10 +80,10 @@ def first_due(
             day = utc_day(change.due_at)
             load[day] = load.get(day, 0) + 1
 
-    day = utc_day(now) + int(LADDER_DAYS[step])
+    day = utc_day(target)
     while load.get(day, 0) >= DAILY_LIMIT:
         day += 1
-    return day * _DAY + (now - utc_day(now) * _DAY)
+    return day * _DAY + (target - utc_day(target) * _DAY)
 
 
 def plan_answer(
@@ -199,3 +210,88 @@ def due_lessons(
         )
     )
     return [cid for cid, _ in due]
+
+
+def _step_for_closure(step: RouteStep, verify_node_id: str | None) -> int:
+    """Ступень новой строки: сразу проверка (2) для проверенного и пропущенного занятия."""
+    if step.concept_id == verify_node_id or step.mode == "skip":
+        return VERIFY_START_STEP
+    return 0
+
+
+def plan_closures(
+    rows: Mapping[str, ReviewRow],
+    before: Route | None,
+    after: Route | None,
+    *,
+    verify_node_id: str | None,
+    now: float,
+) -> list[ScheduleChange]:
+    """Строки для занятий, закрытых этим ходом: закрыто в ``after``, не в ``before``.
+
+    Строка заводится только тем, у кого её ещё нет: повторное закрытие
+    расписание не сбрасывает. Занятие, которое ученик уже знает (проверка или
+    пропуск), начинает с ступени ``VERIFY_START_STEP``, остальные — с нуля.
+    Сроки считаются с учётом уже набранных в этом вызове изменений.
+    """
+    if after is None:
+        return []
+    closed_before = (
+        {s.concept_id for s in before.steps if s.status == "closed"} if before else set()
+    )
+    changes: list[ScheduleChange] = []
+    for step in after.steps:
+        if step.status != "closed" or step.concept_id in closed_before or step.concept_id in rows:
+            continue
+        ladder = _step_for_closure(step, verify_node_id)
+        due = first_due(rows, step=ladder, now=now, pending=changes)
+        changes.append(ScheduleChange(step.concept_id, ladder, due))
+    return changes
+
+
+def _backfill_step(closed_at: float | None, now: float) -> int:
+    """Ступень по давности закрытия: чем старше занятие, тем выше."""
+    age = 0.0 if closed_at is None else max(0.0, now - closed_at)
+    for step, days in enumerate((3.0, 7.0, 14.0)):
+        if age < days * _DAY:
+            return step
+    return 3
+
+
+def backfill(conn: sqlite3.Connection, route: Route | None, *, now: float) -> None:
+    """Один раз заводит строки расписания закрытым занятиям старого ученика.
+
+    Ступень — по давности ``closed_at``, срок — не раньше завтра и не раньше
+    ``closed_at`` + лестница; сроки раскладываются по дню с лимитом. Отметка —
+    факт ``review_backfill``; без маршрута строк нет, отметка всё равно ставится.
+    Всё одним коммитом.
+    """
+    if repos.get_fact(conn, BACKFILL_FACT) is not None:
+        return
+    rows = repos.get_review_rows(conn)
+    changes: list[ScheduleChange] = []
+    if route is not None:
+        for step in route.steps:
+            if step.status != "closed" or step.concept_id in rows:
+                continue
+            ladder = _backfill_step(step.closed_at, now)
+            closed_at = now if step.closed_at is None else step.closed_at
+            target = max(closed_at + LADDER_DAYS[ladder] * _DAY, now + _DAY)
+            changes.append(ScheduleChange(step.concept_id, ladder, _spill(rows, changes, target)))
+    try:
+        write_changes(conn, changes, commit=False)
+        repos.set_fact(conn, BACKFILL_FACT, "1", source="system", commit=False)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def enabled(conn: sqlite3.Connection) -> bool:
+    """Включено ли повторение (разминка и вкладка); по умолчанию — да."""
+    return repos.get_fact(conn, ENABLED_FACT) != "0"
+
+
+def set_enabled(conn: sqlite3.Connection, flag: bool, *, commit: bool = True) -> None:
+    """Включает или выключает повторение; строки расписания при этом не трогаются."""
+    repos.set_fact(conn, ENABLED_FACT, "1" if flag else "0", source="self", commit=commit)
