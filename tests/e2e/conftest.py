@@ -32,7 +32,12 @@ class EchoTutor:
         self.delay = 0.3
 
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        from llm_tutor.llm.schemas import ExplainObservation
+
         await asyncio.sleep(self.delay)
+        if schema is ExplainObservation:
+            # Скрытый оценщик «Объясни новичку»: ничего не заметил (срез 91).
+            return ExplainObservation()
         if "reply" not in schema.model_fields:
             raise RuntimeError("в e2e рубрики не проверяются")
         return schema(reply="**groupby** разбивает строки на группы.\n\n```python\ndf.groupby('city').size()\n```")

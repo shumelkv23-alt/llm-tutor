@@ -136,3 +136,29 @@ def make_due(users_dir, *concept_ids: str) -> None:
             repos.upsert_review(conn, concept_id, 1, 1.0)
     finally:
         conn.close()
+
+
+def close_module(users_dir, topic_id: int) -> None:
+    """Все занятия модуля закрыты в маршруте ученика — для «Объясни новичку».
+
+    Пишем в БД ученика напрямую, как ``make_due``: проходить модуль ходами долго.
+    """
+    from llm_tutor.course.graph import CourseGraph
+    from llm_tutor.db import repos
+    from llm_tutor.db.connection import get_conn
+
+    conn = get_conn(str(next(users_dir.glob("*/mlcourse.sqlite3"))))
+    try:
+        graph = CourseGraph.load(conn)
+        session_id = repos.get_open_session(conn)
+        state = repos.get_session_state(conn, session_id)
+        steps = [
+            step.model_copy(update={"status": "closed", "closed_at": 1.0})
+            if graph.topic_of(step.concept_id) == topic_id
+            else step
+            for step in state.route.steps
+        ]
+        route = state.route.model_copy(update={"steps": steps})
+        repos.update_session_state(conn, session_id, state.model_copy(update={"route": route}))
+    finally:
+        conn.close()
