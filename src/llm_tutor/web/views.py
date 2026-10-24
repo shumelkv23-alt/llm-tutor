@@ -7,10 +7,12 @@ import json
 import logging
 import sqlite3
 import time
+from collections.abc import Sequence
 
 from markupsafe import escape
 
 from llm_tutor.config import Settings
+from llm_tutor.core import explain as core_explain
 from llm_tutor.core import guided
 from llm_tutor.core.context import Focus, FocusSource, fence, focus_from_meta
 from llm_tutor.core.lesson import (
@@ -29,8 +31,17 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import Course as CourseData
 from llm_tutor.course.seed import SeedError
 from llm_tutor.db import repos
-from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
+from llm_tutor.schemas import (
+    ExplainConfig,
+    ExplainSession,
+    ExplainTurn,
+    Item,
+    SessionState,
+    SurveyConfig,
+    Topic,
+)
 from llm_tutor.student import diagnostic, guide, review, survey
+from llm_tutor.student import explain as student_explain
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
@@ -482,7 +493,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             }
             for row in rows
         ],
-        "modules": [module_view(module) for module in module_rows(conn, rows)],
+        "modules": explain_modules(conn, rows),
         "messages": [
             message_view(
                 message.role,
@@ -514,8 +525,8 @@ TOPIC_STATUS_LABELS = {
 WEAK_LABEL = "Слабое место"
 
 
-def module_view(module: ModuleRow) -> dict:
-    """Модуль для маршрута и профиля."""
+def module_view(module: ModuleRow, *, explain: bool = False) -> dict:
+    """Модуль для маршрута и профиля; ``explain`` — открыт ли «Объясни новичку»."""
     return {
         "number": module.number,
         "title": module.title,
@@ -523,6 +534,50 @@ def module_view(module: ModuleRow) -> dict:
         "total": module.total,
         "survey_done": module.survey_done,
         "published": module.published,
+        "explain": explain,
+    }
+
+
+def explain_modules(conn: sqlite3.Connection, rows) -> list[dict]:
+    """Модули для маршрута с флагом «Объясни новичку» (правило — ``core.explain``)."""
+    topics = {topic.number: topic for topic in repos.get_topics(conn)}
+    return [
+        module_view(module, explain=core_explain.module_reason(module, topics.get(module.number)) == "ok")
+        for module in module_rows(conn, rows)
+    ]
+
+
+def explain_session_view(
+    session: ExplainSession,
+    turns: Sequence[ExplainTurn],
+    config: ExplainConfig | None,
+    *,
+    title: str,
+    max_turns: int,
+) -> dict:
+    """Сессия для страницы режима: реплики, режим и полоска без названий идей.
+
+    Эталон до конца сессии не уходит в браузер: только счёт обязательных идей.
+    Отчёт (после завершения) — целиком, эталон в нём уже открыт.
+    """
+    done, total = (
+        student_explain.required_progress(session.state, config) if config else (0, 0)
+    )
+    return {
+        "id": session.id,
+        "topic": session.topic_id,
+        "title": title,
+        "mode": session.state.mode,
+        "status": session.status,
+        "started_at": session.started_at,
+        "messages": [
+            {"role": turn.role, "html": str(markdown.render(turn.content)), "ts": turn.ts}
+            for turn in turns
+        ],
+        "progress": {"done": done, "total": total},
+        "wrap_up": session.state.wrap_up_offered and session.status == "active",
+        "limit_left": max(0, max_turns - session.state.student_turns),
+        "report": session.report.model_dump() if session.report else None,
     }
 
 

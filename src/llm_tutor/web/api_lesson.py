@@ -31,6 +31,7 @@ from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.prompt_config import ExplainPrompts
 from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.schemas import CriterionResult, GradeResult, ReviewState, SessionState, Topic
 from llm_tutor.student import review, survey
@@ -125,6 +126,8 @@ class LessonContext:
     lock: asyncio.Lock
     settings: Settings
     client: LLMClient
+    # Промпты «Объясни новичку» (срез 88): читаются при старте приложения.
+    prompts: ExplainPrompts | None = None
 
     @property
     def model(self) -> str:
@@ -152,6 +155,7 @@ async def lesson_context(
         lock=pool.lock(user.id, course.id),
         settings=request.app.state.settings,
         client=request.app.state.client,
+        prompts=request.app.state.explain_prompts,
     )
 
 
