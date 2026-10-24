@@ -7,7 +7,7 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from markupsafe import escape
 
@@ -554,6 +554,7 @@ def explain_session_view(
     *,
     title: str,
     max_turns: int,
+    lesson_names: Mapping[str, str] | None = None,
 ) -> dict:
     """Сессия для страницы режима: реплики, режим и полоска без названий идей.
 
@@ -578,6 +579,17 @@ def explain_session_view(
         "wrap_up": session.state.wrap_up_offered and session.status == "active",
         "limit_left": max(0, max_turns - session.state.student_turns),
         "report": session.report.model_dump() if session.report else None,
+        # Названия занятий из отчёта (до завершения — пусто: отчёта нет).
+        "lessons": (
+            {
+                lesson: (lesson_names or {}).get(lesson, lesson)
+                for lesson in {idea.lesson for idea in session.report.ideas}
+                | set(session.report.review_lessons)
+                | {pitfall.lesson for pitfall in session.report.pitfalls}
+            }
+            if session.report
+            else {}
+        ),
     }
 
 

@@ -162,6 +162,41 @@ async def lesson_page(
     return render(request, "lesson.html", "lesson", user=user, course=card)
 
 
+def _explain_page(
+    request: Request, user: User, course_id: str, *, topic: str | None, session_id: int | None
+) -> Response:
+    """Страница «Объясни новичку»: проверки — как у страницы занятия."""
+    course = student_course(course_id, include_drafts=user.is_admin)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Такого курса нет.")
+    if course_id not in accounts.enrolled_courses(accounts_db(request), user.id):
+        return RedirectResponse(f"/lesson/{course_id}", status_code=303)
+    chosen = topic if topic and topic.isdigit() else ""
+    return render(
+        request,
+        "explain.html",
+        "lesson",
+        user=user,
+        course=course,
+        topic=chosen,
+        session_id=session_id or "",
+    )
+
+
+@router.get("/lesson/{course_id}/explain", response_class=HTMLResponse)
+async def explain_page(
+    course_id: str, request: Request, topic: str | None = None, user: User = Depends(page_user)
+) -> Response:
+    return _explain_page(request, user, course_id, topic=topic, session_id=None)
+
+
+@router.get("/lesson/{course_id}/explain/{session_id}", response_class=HTMLResponse)
+async def explain_history_page(
+    course_id: str, session_id: int, request: Request, user: User = Depends(page_user)
+) -> Response:
+    return _explain_page(request, user, course_id, topic=None, session_id=session_id)
+
+
 @router.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
     joined = datetime.fromtimestamp(user.created_at).strftime("%d.%m.%Y")

@@ -79,6 +79,11 @@ def session_view(ctx: LessonContext, session: ExplainSession) -> dict:
         topic.explain if topic else None,
         title=topic.title if topic else "",
         max_turns=ctx.prompts.limits.max_student_turns,
+        lesson_names=(
+            {concept.id: concept.name for concept in repos.get_concepts(ctx.conn)}
+            if session.report
+            else None
+        ),
     )
 
 

@@ -41,6 +41,14 @@
     toggle.setAttribute("aria-expanded", String(open));
     toggle.append(title, count);
     item.append(toggle);
+    if (module.explain) {
+      // Пройденный модуль можно объяснить новичку (срез 88).
+      const explain = document.createElement("a");
+      explain.className = "btn ghost route-explain";
+      explain.href = `/lesson/${encodeURIComponent(document.getElementById("lesson").dataset.course)}/explain?topic=${module.number}`;
+      explain.textContent = "Объясни новичку";
+      item.append(explain);
+    }
     return item;
   }
 
