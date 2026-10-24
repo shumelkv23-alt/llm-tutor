@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.prompt_config import load_explain
 from llm_tutor.web import accounts, courses, jobs, security
 from llm_tutor.web.mailer import MAIL_HELP, Mailer, build_mailer
 from llm_tutor.web.userdb import UserDBPool
@@ -198,6 +199,9 @@ def create_app(
     берётся ``client``: в тестах это подставной клиент, и лишних вызовов сети
     не будет.
     """
+    # Промпты «Объясни новичку» — первыми: битый файл останавливает запуск
+    # раньше, чем открыты БД и клиенты.
+    explain_prompts = load_explain(_project_path(settings.prompts_dir))
     owns_client = client is None
     owns_mailer = mailer is None
     llm = _llm_client(settings) if client is None else client
@@ -260,6 +264,7 @@ def create_app(
     # «Забыли пароль?» закрыли бы вход честному ученику (и наоборот).
     app.state.reset_limiter = security.LoginLimiter(limit=settings.password_reset_limit)
     app.state.userdbs = userdbs
+    app.state.explain_prompts = explain_prompts
     app.state.generator = gen
     # Прогоны генерации курса: свои у каждого приложения (web/jobs.py).
     app.state.jobs = jobs.JobRegistry()
