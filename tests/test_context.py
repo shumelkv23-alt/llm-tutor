@@ -252,3 +252,25 @@ def test_mastery_slice_skips_topics_of_future_modules(conn, settings) -> None:
 
     assert graph.concept("mini_box").name not in names
     assert graph.concept("describe_stats").name in names
+
+
+def test_tail_marks_review_messages(conn, settings) -> None:
+    """Реплики серии повторения в хвосте помечены занятием (срез 80)."""
+    from course_fixtures import load_lessons
+
+    from llm_tutor.core.context import REVIEW_TAIL_LABEL
+    from llm_tutor.course.graph import CourseGraph
+
+    load_lessons(conn)
+    graph = CourseGraph.load(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    repos.add_message(conn, session_id, "user", "про повтор", ts=1.0, meta='{"review": "l1_group"}')
+    repos.add_message(conn, session_id, "assistant", "ответ", ts=2.0, meta='{"review": "l1_group"}')
+    repos.add_message(conn, session_id, "user", "про урок", ts=3.0)
+    repos.add_message(conn, session_id, "assistant", "битый", ts=4.0, meta="не json")
+
+    package = build_context(conn, session_id, "q", graph=graph, settings=settings)
+
+    label = REVIEW_TAIL_LABEL.format(name="Группировка")
+    contents = [m.content for m in package.messages[1:-1]]
+    assert contents == [label + "про повтор", label + "ответ", "про урок", "битый"]

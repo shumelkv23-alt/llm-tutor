@@ -70,6 +70,9 @@ class ContextPackage:
 FocusSource = Literal["theory", "task", "code"]
 FOCUS_SOURCES: tuple[FocusSource, ...] = ("theory", "task", "code")
 FOCUS_MAX_CHARS = 1500
+# Не больше строк во фрагменте (срез 84): спрашивать про кусок, а не про весь
+# конспект. Копия — в static/js/selection.js (сверяет тест).
+FOCUS_MAX_LINES = 20
 # Фрагмент в пометке хвоста диалога: модели хватает начала, чтобы узнать место.
 FOCUS_TAIL_CHARS = 200
 FOCUS_PLACES: dict[FocusSource, str] = {
@@ -119,6 +122,15 @@ def focus_text(source: FocusSource, text: str) -> str:
     return textwrap.dedent("\n".join(lines)).rstrip()
 
 
+def focus_lines(text: str) -> int:
+    """Число непустых строк фрагмента.
+
+    Пустые не считаются: между абзацами конспекта innerText кладёт пустую
+    строку, и 10 абзацев иначе стали бы 19 строками. Так же считает браузер.
+    """
+    return sum(1 for line in text.splitlines() if line.strip())
+
+
 def fence(text: str) -> str:
     """Ограждение длиннее любой серии ` в тексте: изнутри его не закрыть."""
     longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
@@ -159,6 +171,31 @@ def focus_from_meta(meta: str | None) -> Focus | None:
 
 
 _MARKER_QUOTES = str.maketrans({"„": '"', "“": '"', "”": '"'})
+
+
+# Метка реплик серии повторения в хвосте диалога (срез 80): модель не должна
+# принимать их за вопросы по текущему занятию.
+REVIEW_TAIL_LABEL = "(повторение занятия «{name}») "
+
+
+def review_from_meta(meta: str | None) -> str | None:
+    """Занятие повторения из ``messages.meta`` реплики; нет метки или битый meta — ``None``."""
+    try:
+        node_id = json.loads(meta).get("review") if meta else None
+    except (ValueError, TypeError, AttributeError):
+        return None
+    return node_id if isinstance(node_id, str) and node_id else None
+
+
+def _tail_label(meta: str | None, graph: CourseGraph | None) -> str:
+    """Метка реплики повторения или пустая строка."""
+    node_id = review_from_meta(meta)
+    if node_id is None:
+        return ""
+    name = node_id
+    if graph is not None and graph.has_node(node_id):
+        name = graph.concept(node_id).name
+    return REVIEW_TAIL_LABEL.format(name=name)
 
 
 def _tail_content(content: str, meta: str | None) -> str:
@@ -395,7 +432,8 @@ def build_context(
         tail = [
             ChatMessage(
                 role=message.role,
-                content=(
+                content=_tail_label(message.meta, graph)
+                + (
                     _tail_content(message.content, message.meta)
                     if message.role == "user"
                     else message.content

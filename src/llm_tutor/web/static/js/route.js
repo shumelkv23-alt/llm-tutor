@@ -63,6 +63,13 @@
     status.className = "route-status";
     status.textContent = topic.weak ? WEAK_LABEL : window.Lesson.STATUS_LABELS[topic.status] || "";
     row.append(mark, name, status);
+    // Закрытое занятие остаётся закрытым, но повторению пора (срез 82).
+    if (topic.review_due) {
+      const due = document.createElement("span");
+      due.className = "route-review";
+      due.textContent = "пора повторить";
+      name.append(due);
+    }
     item.append(row);
     return item;
   }

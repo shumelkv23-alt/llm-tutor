@@ -43,6 +43,24 @@
 </section>
 {% else %}
 {% set main = courses[0] %}
+{% macro lessons_word(n) %}{% if n % 10 == 1 and n % 100 != 11 %}занятие{% elif n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14) %}занятия{% else %}занятий{% endif %}{% endmacro %}
+{# Курсы с просроченным повторением, самые просроченные — первыми. Выключенные
+   курсы приходят с review_due = 0 и сюда не попадают. #}
+{% set due_courses = courses|selectattr('card.review_due')|sort(attribute='card.review_overdue', reverse=true)|list %}
+{% if due_courses %}
+<section class="panel review-today" aria-labelledby="review-today-title">
+  <h2 id="review-today-title" class="section-title">Повторить сегодня</h2>
+  <ul class="review-today-list">
+    {% for item in due_courses %}
+    <li>
+      <span class="review-today-course">{{ item.card.title }}</span>
+      <span class="review-today-count">{{ item.card.review_due }} {{ lessons_word(item.card.review_due) }}</span>
+      <a class="btn primary" href="/lesson/{{ item.card.id }}#review">Повторить{{ icon('arrow') }}</a>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
 <div class="home-grid">
   <section class="panel continue-card" aria-labelledby="continue-title">
     <p class="eyebrow">{{ main.card.subtitle }}</p>
@@ -51,6 +69,7 @@
     <p class="notice error">Данные курса сейчас не открываются. Сообщите администратору.</p>
     {% else %}
     {% if main.card.current_topic %}<p class="continue-topic">Сейчас: <b>{{ main.card.current_topic }}</b></p>{% endif %}
+    {% if main.card.review_due %}<p class="course-review">{{ icon('refresh') }}<span>к повторению: <b>{{ main.card.review_due }}</b></span></p>{% endif %}
     <div class="progress" role="img" aria-label="Закрыто занятий: {{ main.card.closed }} из {{ main.card.topics }}">
       <div class="progress-label"><span>Закрыто занятий</span><b>{{ main.card.closed }} из {{ main.card.topics }}</b></div>
       <div class="progress-track"><span class="progress-fill" data-percent="{{ main.card.percent }}"></span></div>

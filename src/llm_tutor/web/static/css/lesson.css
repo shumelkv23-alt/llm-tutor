@@ -501,7 +501,7 @@
   position: fixed;
   z-index: 60;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 2px;
   max-width: calc(100vw - 16px);
   padding: 4px;
@@ -513,6 +513,12 @@
 
 .selection-bar[hidden] {
   display: none;
+}
+
+.selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
 }
 
 .selection-bar button {
@@ -540,6 +546,24 @@
 .selection-bar button:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Выделено больше 20 строк (срез 84): подсказка — своим рядом под кнопками;
+   ширина панели — по большему из рядов (аудит 84, M-3). */
+.selection-hint {
+  margin: 0;
+  padding: 2px 12px 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.selection-hint[hidden] {
+  display: none;
+}
+
+.selection-hint:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 @media (pointer: coarse) {
@@ -1447,4 +1471,118 @@
   width: 600px;
   white-space: normal;
   pointer-events: none;
+}
+
+/* --- Повторение (срез 82) --- */
+
+/* Плашка серии над заданием в «Практике». */
+.review-plate {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.review-plate-text {
+  flex: 1 1 220px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-card.review {
+  border-left-color: var(--accent);
+}
+
+/* Вкладка «Повторение». */
+.review {
+  max-width: 720px;
+  display: grid;
+  gap: 20px;
+}
+
+.review h2,
+.review h3 {
+  margin: 0;
+}
+
+.review-section {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.review-section p {
+  margin: 0;
+}
+
+.review-active {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.review-module {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.review-module legend {
+  padding: 0;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.review-lesson,
+.review-switch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.review-lesson input,
+.review-switch input {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  accent-color: var(--primary);
+}
+
+.review-switch small {
+  flex-basis: 100%;
+  padding-left: 28px;
+}
+
+.review-switch {
+  padding: 4px 2px;
+}
+
+.route-review {
+  display: block;
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
 }

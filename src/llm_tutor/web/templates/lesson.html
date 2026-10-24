@@ -20,6 +20,7 @@
 <script src="{{ static_url('js/theory.js') }}" defer></script>
 <script src="{{ static_url('js/survey.js') }}" defer></script>
 <script src="{{ static_url('js/practice.js') }}" defer></script>
+<script src="{{ static_url('js/review.js') }}" defer></script>
 <script src="{{ static_url('js/route.js') }}" defer></script>
 <script src="{{ static_url('js/code.js') }}" defer></script>
 <script src="{{ static_url('js/selection.js') }}" defer></script>
@@ -69,12 +70,14 @@
         <button type="button" role="tab" id="tab-btn-theory" aria-controls="tab-theory" aria-selected="true">{{ icon('book') }}Теория</button>
         <button type="button" role="tab" id="tab-btn-practice" aria-controls="tab-practice" aria-selected="false" tabindex="-1">{{ icon('check') }}Практика<span class="tab-dot" id="practice-dot" hidden></span></button>
         <button type="button" role="tab" id="tab-btn-code" aria-controls="tab-code" aria-selected="false" tabindex="-1">{{ icon('code') }}Код</button>
+        <button type="button" role="tab" id="tab-btn-review" aria-controls="tab-review" aria-selected="false" tabindex="-1">{{ icon('refresh') }}Повторение<span class="tab-dot" id="review-dot" hidden></span></button>
       </div>
       <div class="tab-panel" id="tab-theory" role="tabpanel" aria-labelledby="tab-btn-theory" tabindex="0">
         <div class="skeleton"></div>
       </div>
       <div class="tab-panel" id="tab-practice" role="tabpanel" aria-labelledby="tab-btn-practice" tabindex="0" hidden></div>
       <div class="tab-panel code-panel" id="tab-code" role="tabpanel" aria-labelledby="tab-btn-code" tabindex="-1" hidden></div>
+      <div class="tab-panel review-panel" id="tab-review" role="tabpanel" aria-labelledby="tab-btn-review" tabindex="0" hidden></div>
     </section>
 
     <div class="splitter" id="splitter" role="separator" tabindex="0" aria-orientation="vertical"

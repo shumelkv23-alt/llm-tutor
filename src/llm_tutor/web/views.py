@@ -6,6 +6,7 @@ HTML здесь появляется только из ``web.markdown.render`` (
 import json
 import logging
 import sqlite3
+import time
 
 from markupsafe import escape
 
@@ -29,7 +30,7 @@ from llm_tutor.course.seed import Course as CourseData
 from llm_tutor.course.seed import SeedError
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
-from llm_tutor.student import diagnostic, guide, survey
+from llm_tutor.student import diagnostic, guide, review, survey
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,10 @@ def course_card(
         "published": course.status == "published",
         # Прогресс по модулям (срез 55): «Модуль N — закрыто k из m» / «скоро».
         "modules": [],
+        # Повторение (срез 82): сколько занятий ждут и насколько самое просроченное
+        # просрочено (секунды) — по нему «Повторить сегодня» упорядочивает курсы.
+        "review_due": 0,
+        "review_overdue": 0.0,
     }
     if enrolled:
         try:
@@ -85,6 +90,7 @@ def course_card(
                 module_view(module)
                 for module in module_rows(conn, topic_rows(conn, settings=settings))
             ]
+            card["review_due"], card["review_overdue"] = review_due_info(conn, settings=settings)
         except (*COURSE_ERRORS, OSError):
             # Одна битая БД (или нечитаемый курс) не должна ронять каталог:
             # курс помечается недоступным, остальные показываются как обычно.
@@ -349,6 +355,64 @@ def lesson_view(
     }
 
 
+def review_due_info(
+    conn: sqlite3.Connection, *, settings: Settings, now: float | None = None
+) -> tuple[int, float]:
+    """Сколько занятий ждут повторения и насколько просрочено самое срочное (сек).
+
+    Повторение выключено — ``(0, 0.0)``: на главной курса с выключенным
+    повторением нет, а вкладка занятия считает своё (``review_view``).
+    """
+    if not review.enabled(conn):
+        return 0, 0.0
+    stamp = time.time() if now is None else now
+    session_id = repos.get_open_session(conn)
+    route = repos.get_session_state(conn, session_id).route if session_id else None
+    due = review.due_lessons(conn, CourseGraph.load(conn), route, now=stamp, settings=settings)
+    if not due:
+        return 0, 0.0
+    return len(due), max(0.0, stamp - repos.get_review_rows(conn)[due[0]].due_at)
+
+
+def review_view(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    settings: Settings,
+    now: float | None = None,
+) -> tuple[dict, set[str]]:
+    """Блок «Повторение» состояния занятия и множество занятий «пора повторить».
+
+    ``due`` считается и при выключенном повторении: переключатель гасит разминку
+    и число на главной, а вкладка работает вручную. ``lessons`` — закрытые
+    занятия для «Освежить».
+    """
+    stamp = time.time() if now is None else now
+    due = review.due_lessons(conn, graph, state.route, now=stamp, settings=settings)
+    series = state.review
+    active = None
+    if series is not None:
+        shown = series.node_id or ""
+        active = {
+            "kind": series.kind,
+            "node_name": graph.concept(shown).name if graph.has_node(shown) else shown,
+            "position": series.total - len(series.queue),
+            "total": series.total,
+        }
+    lessons = [
+        {
+            "module": graph.topic_of(node_id),
+            "id": node_id,
+            "name": graph.concept(node_id).name,
+            "due": node_id in due,
+        }
+        for node_id in review.closed_lessons(graph, state.route)
+    ]
+    block = {"enabled": review.enabled(conn), "due": len(due), "active": active, "lessons": lessons}
+    return block, set(due)
+
+
 def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     """Состояние занятия для страницы: всё, что рисуется слева и в чате.
 
@@ -367,6 +431,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             "item": None,
             "topics": [],
             "messages": [],
+            "review": None,
         }
     graph = CourseGraph.load(conn)
     session_id = repos.get_open_session(conn)
@@ -382,11 +447,16 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             "theory_html": str(markdown.render(repos.get_theory(conn, concept.id) or "")),
             "lesson": lesson_view(conn, graph, state, concept.id, settings=settings),
         }
-    item = repos.get_item(conn, state.pending_item_id) if state.pending_item_id else None
+    # Идущая серия повторения: в «Практике» её задание, а не урока.
+    series = state.review
+    shown_item = series.item_id if series is not None and series.item_id else state.pending_item_id
+    item = repos.get_item(conn, shown_item) if shown_item else None
     messages = repos.get_messages(conn, session_id)[-CHAT_HISTORY:] if session_id else []
     rows = topic_rows(conn, settings=settings)
+    review_block, review_due = review_view(conn, graph, state, settings=settings)
     return {
         "survey": False,
+        "review": review_block,
         "node": node,
         "item": item_view(item, graph) if item is not None else None,
         "mode": "verify" if state.mode == "verify" else "lesson",
@@ -408,6 +478,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
                 "status": row.status,
                 "module": row.topic_id,
                 "weak": row.weak,
+                "review_due": row.id in review_due,
             }
             for row in rows
         ],

@@ -14,12 +14,15 @@ import hashlib
 import logging
 import os
 import sqlite3
+import time
 from pathlib import Path
 
 from llm_tutor.config import Settings
 from llm_tutor.course.legacy import remap_progress
 from llm_tutor.course.seed import apply_course
+from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
+from llm_tutor.student import review
 from llm_tutor.web.courses import RENAMED_COURSES, course_data, get_course
 
 logger = logging.getLogger(__name__)
@@ -167,6 +170,10 @@ class UserDBPool:
             apply_course(conn, data)
             # Старые темы → занятия (срез 56): один раз, отметка — факт в БД.
             remap_progress(conn, data.legacy, settings=self._settings)
+            # Старые ученики (срез 79): закрытым занятиям — строки расписания, один раз.
+            session_id = repos.get_open_session(conn)
+            route = repos.get_session_state(conn, session_id).route if session_id else None
+            review.backfill(conn, route, now=time.time())
             if sync_materials(conn, self.materials_path_for(course_id)):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:

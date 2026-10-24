@@ -227,3 +227,57 @@ def test_existing_db_of_new_course_is_not_overwritten(tmp_path) -> None:
     assert repos.get_fact(pool.open(1, "mlcourse"), "secret") == "new"
     assert (users / "1" / "mlcourse-topic01.sqlite3").exists()
     pool.close_all()
+
+
+def test_userdb_open_runs_backfill(tmp_path) -> None:
+    """Снимок маршрута с закрытым занятием → при открытии появляется строка расписания."""
+    from llm_tutor.schemas import Route, RouteStep, SessionState
+
+    users = tmp_path / "users"
+    path = users / "1" / "mlcourse.sqlite3"
+    path.parent.mkdir(parents=True)
+    conn = get_conn(str(path))
+    migrate(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    route = Route(steps=[RouteStep(concept_id="pandas_structures", mode="full", status="closed", closed_at=1.0)])
+    repos.update_session_state(conn, session_id, SessionState(route=route))
+    conn.close()
+    pool = UserDBPool(users, tmp_path / "materials.sqlite3")
+
+    student = pool.open(1, "mlcourse")
+
+    assert list(repos.get_review_rows(student)) == ["pandas_structures"]
+    assert repos.get_fact(student, "review_backfill") == "1"
+    pool.close_all()
+
+
+def test_userdb_open_without_session_sets_backfill_fact(pool) -> None:
+    student = pool.open(1, COURSE)
+    assert repos.get_review_rows(student) == {}
+    assert repos.get_fact(student, "review_backfill") == "1"
+
+
+def test_userdb_open_survives_unknown_concept_in_route_snapshot(tmp_path) -> None:
+    """Призрак в снимке маршрута (id вне курса) не должен ронять открытие БД навсегда."""
+    from llm_tutor.schemas import Route, RouteStep, SessionState
+
+    users = tmp_path / "users"
+    path = users / "1" / "mlcourse.sqlite3"
+    path.parent.mkdir(parents=True)
+    conn = get_conn(str(path))
+    migrate(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    route = Route(
+        steps=[
+            RouteStep(concept_id="old_topic_ghost", mode="full", status="closed", closed_at=1.0),
+            RouteStep(concept_id="pandas_structures", mode="full", status="closed", closed_at=1.0),
+        ]
+    )
+    repos.update_session_state(conn, session_id, SessionState(route=route))
+    conn.close()
+    pool = UserDBPool(users, tmp_path / "materials.sqlite3")
+
+    student = pool.open(1, "mlcourse")  # раньше — IntegrityError при каждом открытии
+
+    assert list(repos.get_review_rows(student)) == ["pandas_structures"]
+    pool.close_all()

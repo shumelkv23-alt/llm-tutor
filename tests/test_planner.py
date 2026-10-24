@@ -108,11 +108,12 @@ def test_weak_node_with_weak_soft_prereq_is_revisit(conn, settings) -> None:
     assert _modes(ready_nodes(conn, graph, now=0.0, settings=settings))["t"] == "revisit"
 
 
-def test_overdue_node_is_review(conn, settings) -> None:
+def test_overdue_node_is_not_review(conn, settings) -> None:
+    """Просрочка ``next_review`` режим не меняет: повторение — в ``review_schedule``."""
     graph = _graph(["a"], [])
     _set_mastery(conn, "a", 0.8, next_review=-10_000.0)
 
-    assert _modes(ready_nodes(conn, graph, now=0.0, settings=settings)) == {"a": "review"}
+    assert _modes(ready_nodes(conn, graph, now=0.0, settings=settings)) == {"a": "verify"}
 
 
 def test_repeated_recent_failures_are_reinforce(conn, settings) -> None:
@@ -163,8 +164,8 @@ def test_goal_proximity_raises_importance() -> None:
     assert near > far
 
 
-def test_review_mode_reachable_after_scheduled_interval(conn, settings) -> None:
-    """Расписание из beta.update делает режим «повторение» достижимым в проде."""
+def test_review_mode_not_reached_after_scheduled_interval(conn, settings) -> None:
+    """Срок из ``beta.update`` прошёл — режима «повторение» всё равно нет."""
     graph = _graph(["a"], [])
     repos.upsert_concept(conn, Concept(id="a", name="a"))
     beta.update(conn, "a", correct=1.0, weight=4.0, now=0.0, settings=settings)
@@ -172,7 +173,22 @@ def test_review_mode_reachable_after_scheduled_interval(conn, settings) -> None:
     due = repos.get_mastery(conn, "a")["next_review"]
     nodes = ready_nodes(conn, graph, now=due + 1.0, settings=settings)
 
-    assert _modes(nodes) == {"a": "review"}
+    assert nodes
+    assert "review" not in _modes(nodes).values()
+
+
+def test_overdue_does_not_raise_priority(conn, settings) -> None:
+    """Просроченный ``next_review`` не поднимает узел в очереди готовых."""
+    graph = _graph(["a", "b"], [])
+    for node in ("a", "b"):
+        _set_mastery(conn, node, 0.6)
+    plain = ready_nodes(conn, graph, now=0.0, settings=settings)
+    _set_mastery(conn, "b", 0.6, next_review=-10 * 86_400.0)
+
+    overdue = ready_nodes(conn, graph, now=0.0, settings=settings)
+
+    assert [(n.concept_id, n.mode) for n in overdue] == [(n.concept_id, n.mode) for n in plain]
+    assert [n.priority for n in overdue] == [n.priority for n in plain]
 
 
 # --- цель и лимит ---

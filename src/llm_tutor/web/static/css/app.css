@@ -705,6 +705,19 @@ dialog p {
   color: var(--heading);
 }
 
+/* «к повторению: N» в карточке курса (срез 82). */
+.course-review {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.course-review b {
+  color: var(--accent-text);
+}
+
 .course-actions {
   display: flex;
   flex-wrap: wrap;
@@ -900,6 +913,46 @@ dialog p {
   background: var(--accent-soft);
   color: var(--accent-text);
   font-weight: 800;
+}
+
+/* Блок «Повторить сегодня» над карточками главной (срез 82). */
+.review-today {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 20px;
+  border-top: 3px solid var(--accent);
+}
+
+.review-today .section-title {
+  margin: 0;
+}
+
+.review-today-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+
+.review-today-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.review-today-course {
+  flex: 1 1 200px;
+  min-width: 0;
+  font-weight: 700;
+  color: var(--heading);
+  overflow-wrap: anywhere;
+}
+
+.review-today-count {
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 .home-grid {

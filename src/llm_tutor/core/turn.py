@@ -13,7 +13,7 @@ import json
 import logging
 import sqlite3
 import time
-from collections.abc import Collection, Mapping
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
@@ -27,8 +27,8 @@ from llm_tutor.grader import autocheck, rubric
 from llm_tutor.llm.client import LLMClient, LLMError
 from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
-from llm_tutor.schemas import Event, GradeResult, Item, Route, SessionState
-from llm_tutor.student import beta, diagnostic, guide, hints, survey
+from llm_tutor.schemas import Event, GradeResult, Item, ReviewState, Route, SessionState
+from llm_tutor.student import beta, diagnostic, guide, hints, review, survey
 from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
@@ -101,6 +101,12 @@ VERIFY_FAILED_NOTE = "Пока не подтвердилось — вернём�
 CLAIMED_CHECK_NOTE = "🔍 Проверим знакомое: «{name}» — пара быстрых вопросов."
 
 
+# Шапка задания повторения (срез 80): над заданием в «Практике» стоит плашка.
+REVIEW_STEP_HEADER = "🔁 Повторение · «{name}» · {position} из {total}"
+
+# Разминка перед новым занятием (срез 81).
+WARMUP_NOTE = "Перед «{next}» — разминка: вспомним пройденное."
+
 AnswerMode = Literal["auto", "answer", "tutor"]
 
 
@@ -133,6 +139,106 @@ def _render_item(item: Item) -> str:
         f"{index + 1}. {option}" for index, option in enumerate(item.options)
     )
     return f"{item.prompt}\n\n{options}"
+
+
+def issue_review_item(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    now: float,
+    exclude: Collection[int] = (),
+) -> tuple[SessionState, str | None, list[str] | None]:
+    """Выдаёт следующее задание серии повторения.
+
+    Снимает занятия с головы очереди, пока ``review.pick_item`` не найдёт для
+    занятия задание; занятия без заданий и ушедшие из графа в серию не идут
+    (``total`` уменьшается).
+    Кладёт в ``state.review`` занятие и задание (помощь сбрасывается) и ничего
+    больше в состоянии не трогает. Очередь исчерпана — ``(state, None, None)``,
+    серию закрывает вызывающий.
+    """
+    series = state.review
+    if series is None:
+        return state, None, None
+    queue, total = list(series.queue), series.total
+    while queue:
+        node_id = queue.pop(0)
+        # Занятия, ушедшего из графа (модуль снят), в серию нет хода (случай 5 спеки).
+        item = (
+            review.pick_item(conn, node_id, now=now, exclude=exclude)
+            if graph.has_node(node_id)
+            else None
+        )
+        if item is None:
+            total -= 1
+            continue
+        header = REVIEW_STEP_HEADER.format(
+            name=graph.concept(node_id).name, position=total - len(queue), total=total
+        )
+        new_series = series.model_copy(
+            update={
+                "queue": queue,
+                "node_id": node_id,
+                "item_id": item.id,
+                "hinted": False,
+                "total": total,
+            }
+        )
+        return (
+            state.model_copy(update={"review": new_series, "last_activity": now}),
+            f"{header}\n\n{_render_item(item)}",
+            item.options or None,
+        )
+    return (
+        state.model_copy(update={"review": series.model_copy(update={"queue": [], "total": total})}),
+        None,
+        None,
+    )
+
+
+def _warmup(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    state: SessionState,
+    *,
+    previous: Route | None,
+    now: float,
+    settings: Settings,
+) -> tuple[SessionState, str, str, list[str] | None] | None:
+    """Разминка вместо начала следующего занятия или ``None``, если её не будет.
+
+    Вызывается на границе занятий: занятие закрыто, следующее выбрано, но не
+    начато. Разминка — до ``WARMUP_SIZE`` просроченных занятий по одному
+    заданию; повторение выключено или спрашивать нечего — ``None``. Состояние
+    занятия не меняется, только ``review``. Возвращает состояние, строку-пояснение
+    и задание (текст, варианты). ``previous`` — маршрут до хода: занятие, закрытое
+    этим ходом (в том числе заново, со старой просроченной строкой), не спрашивается.
+    """
+    next_id = state.current_node_id
+    if next_id is None or not graph.has_node(next_id) or not review.enabled(conn):
+        return None
+    closed_before = {
+        step.concept_id
+        for step in (previous.steps if previous is not None else [])
+        if step.status == "closed"
+    }
+    just_closed = {
+        step.concept_id
+        for step in (state.route.steps if state.route is not None else [])
+        if step.status == "closed" and step.concept_id not in closed_before
+    }
+    due = review.due_lessons(conn, graph, state.route, now=now, settings=settings)
+    queue = [node_id for node_id in due if node_id not in just_closed][: review.WARMUP_SIZE]
+    if not queue:
+        return None
+    series = ReviewState(kind="warmup", queue=queue, total=len(queue))
+    new_state, tail, options = issue_review_item(
+        conn, graph, state.model_copy(update={"review": series}), now=now
+    )
+    if tail is None:
+        return None
+    return new_state, WARMUP_NOTE.format(next=graph.concept(next_id).name), tail, options
 
 
 def _normalize_choice_answer(item: Item, text: str) -> str:
@@ -176,6 +282,8 @@ def post_turn(
     now: float | None = None,
     task_text: str | None = None,
     focus: Focus | None = None,
+    schedule: Sequence[review.ScheduleChange] = (),
+    review_node_id: str | None = None,
 ) -> None:
     """Пишет ход одним коммитом; при сбое откатывает всё.
 
@@ -183,25 +291,31 @@ def post_turn(
     ``meta`` его реплики (сама реплика — только вопрос), веб рисует из него
     плашку в истории, а ``core/context`` — пометку в хвосте диалога.
 
+    Строки расписания повторений (срез 79): занятия, которые этот ход закрыл,
+    получают строку (сравнение маршрута из БД с новым), а ``schedule`` —
+    изменения от ходов повторения; всё ложится тем же коммитом.
+    ``review_node_id`` — занятие, о котором ход повторения: ложится в ``meta``
+    обеих реплик, и ``core/context`` помечает их в хвосте диалога.
+
     ``task_text`` — выданное в ходе задание, которым заканчивается
     ``assistant_text``. Его длина ложится в ``meta`` реплики: модель видит ход
     целиком, а веб в истории чата заменяет задание отметкой (оно в «Практике»).
     """
     stamp = time.time() if now is None else now
-    meta = (
-        json.dumps({"task_chars": len(task_text)})
-        if task_text and assistant_text.endswith(task_text)
-        else None
-    )
+    meta_parts: dict = {}
+    if task_text and assistant_text.endswith(task_text):
+        meta_parts["task_chars"] = len(task_text)
+    user_parts: dict = {}
+    if focus:
+        user_parts["quote"] = json.loads(focus_meta(focus))["quote"]
+    if review_node_id is not None:
+        meta_parts["review"] = review_node_id
+        user_parts["review"] = review_node_id
+    meta = json.dumps(meta_parts, ensure_ascii=False) if meta_parts else None
+    user_meta = json.dumps(user_parts, ensure_ascii=False) if user_parts else None
     try:
         repos.add_message(
-            conn,
-            session_id,
-            "user",
-            user_text,
-            ts=stamp,
-            meta=focus_meta(focus) if focus else None,
-            commit=False,
+            conn, session_id, "user", user_text, ts=stamp, meta=user_meta, commit=False
         )
         repos.add_message(
             conn, session_id, "assistant", assistant_text, ts=stamp, meta=meta, commit=False
@@ -210,11 +324,90 @@ def post_turn(
             repos.add_event(conn, event, stamp, commit=False)
         for change in mastery or []:
             beta.write_update(conn, change, commit=False)
+        old = repos.get_session_state(conn, session_id)
+        closures = review.plan_closures(
+            repos.get_review_rows(conn),
+            old.route,
+            state.route,
+            verify_node_id=old.current_node_id if old.mode == "verify" else None,
+            now=stamp,
+        )
+        review.write_changes(conn, [*closures, *schedule], commit=False)
         repos.update_session_state(conn, session_id, state, commit=False)
         conn.commit()
     except Exception:
         conn.rollback()
         raise
+
+
+async def grade_item(
+    conn: sqlite3.Connection,
+    client: LLMClient,
+    model: str,
+    item: Item,
+    user_text: str,
+    *,
+    grade: GradeResult | None,
+    settings: Settings,
+) -> GradeResult | None:
+    """Проверяет ответ на задание: тесты кода, автопроверка или рубрика.
+
+    ``grade`` — готовый вердикт (код проверили тестами в браузере ученика).
+    ``None`` — задание проверить нечем (тип без проверки, у открытого ответа нет
+    рубрики). Задание, которое не удалось проверить (рубрику убрали, эталон
+    битый), — ``RubricError``/``AutoCheckError``: что с ним делать, решает
+    вызывающий (урок и повторение разные).
+    """
+    if grade is not None:
+        return grade
+    if item.answer_type in diagnostic.AUTO_CHECKABLE:
+        return autocheck.check(item, _normalize_choice_answer(item, user_text))
+    if item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
+        return await rubric.grade(conn, client, model, item, user_text, settings=settings)
+    return None
+
+
+def item_evidence(
+    conn: sqlite3.Connection,
+    graph: CourseGraph,
+    item: Item,
+    measured: str,
+    result: GradeResult,
+    *,
+    from_tests: bool,
+    now: float,
+    settings: Settings,
+) -> tuple[list[Event], list[beta.MasteryUpdate]]:
+    """Свидетельства по вердикту: источник и вес зависят от того, кто проверял.
+
+    ``from_tests`` — вердикт дали тесты кода. Автопроверка и тесты — код, им
+    полный вес; вердикт модели по рубрике — ограниченный. Повтор того же
+    вопроса — свидетельство слабее: знания могло и не прибавиться.
+    """
+    first_time = not repos.item_was_answered(conn, item.id)
+    evidence_scale = 1.0 if first_time else settings.repeat_evidence_weight
+    return diagnostic.plan_evidence(
+        conn,
+        graph,
+        item,
+        measured,
+        result.score,
+        source=(
+            "autotest"
+            if from_tests
+            else "checked"
+            if item.answer_type in diagnostic.AUTO_CHECKABLE
+            else "rubric"
+        ),
+        weight_scale=evidence_scale
+        * (
+            1.0
+            if from_tests or item.answer_type in diagnostic.AUTO_CHECKABLE
+            else settings.rubric_evidence_weight
+        ),
+        now=now,
+        settings=settings,
+    )
 
 
 async def _answer_branch(
@@ -255,24 +448,7 @@ async def _answer_branch(
         )
 
     try:
-        if grade is not None:
-            result = grade
-        elif item.answer_type in diagnostic.AUTO_CHECKABLE:
-            result = autocheck.check(item, _normalize_choice_answer(item, user_text))
-        elif item.answer_type in diagnostic.RUBRIC_CHECKABLE and item.rubric_id is not None:
-            result = await rubric.grade(
-                conn, client, model, item, user_text, settings=settings
-            )
-        else:
-            # Тип задания код проверять не умеет (например, открытый ответ без
-            # рубрики) — это сбой задания, а не ошибка ученика.
-            return (
-                STALE_ITEM_REPLY,
-                [],
-                [],
-                state.model_copy(update={"pending_item_id": None}),
-                None,
-            )
+        result = await grade_item(conn, client, model, item, user_text, grade=grade, settings=settings)
     except (rubric.RubricError, autocheck.AutoCheckError):
         # Задание нельзя проверить (рубрику убрали, эталон битый) — снимаем его,
         # иначе оно залипнет и ученик не сможет выйти из него иначе как пропуском.
@@ -284,33 +460,20 @@ async def _answer_branch(
             state.model_copy(update={"pending_item_id": None}),
             None,
         )
+    if result is None:
+        # Тип задания код проверять не умеет (например, открытый ответ без
+        # рубрики) — это сбой задания, а не ошибка ученика.
+        return (
+            STALE_ITEM_REPLY,
+            [],
+            [],
+            state.model_copy(update={"pending_item_id": None}),
+            None,
+        )
 
     measured = state.current_node_id or next(iter(item.concept_weights), "")
-    # Повтор того же вопроса — свидетельство слабее: знания могло и не прибавиться.
-    first_time = not repos.item_was_answered(conn, item.id)
-    evidence_scale = 1.0 if first_time else settings.repeat_evidence_weight
-    events, mastery = diagnostic.plan_evidence(
-        conn,
-        graph,
-        item,
-        measured,
-        result.score,
-        source=(
-            "autotest"
-            if grade is not None
-            else "checked"
-            if item.answer_type in diagnostic.AUTO_CHECKABLE
-            else "rubric"
-        ),
-        # Тесты и автопроверка — код, им полный вес; вердикт модели — ограниченный.
-        weight_scale=evidence_scale
-        * (
-            1.0
-            if grade is not None or item.answer_type in diagnostic.AUTO_CHECKABLE
-            else settings.rubric_evidence_weight
-        ),
-        now=now,
-        settings=settings,
+    events, mastery = item_evidence(
+        conn, graph, item, measured, result, from_tests=grade is not None, now=now, settings=settings
     )
     new_state = state.model_copy(
         update={
@@ -628,6 +791,8 @@ async def handle_turn(
     # отказ «заданий нет» остаётся в тексте, отдельным сообщением ему не быть.
     tail: str | None = None
     button: tuple[str, str] | None = None
+    # Вместо начала занятия задана разминка: задание в `tail` — её, не урока.
+    warmed = False
     answered_item_id = state.pending_item_id
 
     pending_item = (
@@ -716,9 +881,17 @@ async def handle_turn(
                 new_state = new_state.model_copy(update={"check_misses": 1})
         if closed_note:
             reply = f"{reply}\n\n{closed_note}"
+            # Граница занятий (срез 81): перед новым занятием — разминка по
+            # просроченному пройденному. Урок или проход начнёт `core/review`,
+            # когда разминка кончится или будет пропущена.
+            warmup = _warmup(conn, graph, new_state, previous=state.route, now=stamp, settings=s)
+            if warmup is not None:
+                new_state, warm_note, tail, options = warmup
+                reply = f"{reply}\n\n{warm_note}"
+                warmed = True
             # Следующая тема — урок частями; заявленную (проход) не объясняем,
             # её вопрос выдаст общий `_issue_task` ниже.
-            if new_state.current_node_id is not None and new_state.mode != "verify":
+            elif new_state.current_node_id is not None and new_state.mode != "verify":
                 explanation, new_state = await _start_lesson(
                     conn, client, model, session_id, new_state, graph, now=stamp, settings=s
                 )
@@ -744,7 +917,11 @@ async def handle_turn(
             button = guided.button(new_state)
         # Задание: второй шанс или вопрос заявленной темы. После урока (кнопка)
         # и когда следующей темы нет (курс пройден, анкета модуля) — не выдаём.
-        if button is None and not (closed_note and new_state.current_node_id is None):
+        if (
+            button is None
+            and not warmed
+            and not (closed_note and new_state.current_node_id is None)
+        ):
             new_state, task_text, options = _issue_task(
                 conn,
                 graph,
@@ -854,11 +1031,12 @@ async def handle_turn(
         now=stamp,
         focus=focus,
     )
+    shown = new_state.review.item_id if warmed and new_state.review else new_state.pending_item_id
     return TurnReply(
         text=reply,
         options=options,
         tail=tail,
-        item_id=new_state.pending_item_id if tail else None,
+        item_id=shown if tail else None,
         button=button,
     )
 

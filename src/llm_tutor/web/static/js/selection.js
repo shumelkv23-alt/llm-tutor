@@ -15,6 +15,13 @@
     ["Спросить…", null],
   ];
   const MAX_CHARS = 1500;
+  // Копия core.context.FOCUS_MAX_LINES (сверяет tests/test_web_fragment.py):
+  // спрашивают про кусок, а не про весь конспект (срез 84).
+  const MAX_LINES = 20;
+  // Разделители строк — как у str.splitlines() на сервере, пустая строка —
+  // как у str.strip(): у JS trim() другой набор пробелов (аудит 84, M-1).
+  const LINE_BREAK = /\r\n|[\n\v\f\r\x1c-\x1e\x85\u2028\u2029]/;
+  const BLANK = /^[\t\n\v\f\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/;
   // Отступ от краёв окна и от выделения. На сенсорном экране под выделением
   // висят ручки выделения — зазор больше (аудит 78, M-4).
   const MARGIN = 8;
@@ -42,21 +49,65 @@
     button.addEventListener("click", () => choose(question));
     return button;
   });
-  bar.append(...buttons);
+  // Кнопки — своим рядом, подсказка — под ним: панель не шире большего из
+  // них (аудит 84, M-3).
+  const actions = document.createElement("div");
+  actions.className = "selection-actions";
+  actions.append(...buttons);
+  // Почему кнопки неактивны: выделено больше MAX_LINES строк. Alt+F10 ведёт
+  // сюда, а не на неактивную кнопку.
+  const hint = document.createElement("p");
+  hint.className = "selection-hint";
+  hint.tabIndex = -1;
+  hint.hidden = true;
+  bar.append(actions, hint);
   document.body.append(bar);
+  // Диктору подсказку объявляет постоянная скрытая область: область, которая
+  // появляется сразу с текстом, многие не озвучивают (аудит 84, Н-1).
+  const status = document.createElement("p");
+  status.id = "selection-status";
+  status.className = "visually-hidden";
+  status.setAttribute("aria-live", "polite");
+  document.body.append(status);
+  let statusTimer = null;
 
-  // Что выделено сейчас: {source, text, panel, restore, anchor, rect}; null —
-  // панели нет. `anchor()` — где выделение сейчас, `rect` — где было при показе.
+  // Что выделено сейчас: {source, text, lines, panel, restore, anchor, rect};
+  // null — панели нет. `lines` — непустые строки всего выделения (до обрезки по
+  // знакам). `anchor()` — где выделение сейчас, `rect` — где было при показе.
   let current = null;
 
   function locked() {
     return window.Lesson.busy || Boolean(window.Lesson.state?.survey);
   }
 
+  function tooLong() {
+    return Boolean(current && current.lines > MAX_LINES);
+  }
+
+  /** Текст подсказки и объявления; пишется, только если изменился: иначе
+   * каждый ход (lesson:busy) повторял бы объявление (аудит 84, Н-1). */
+  function say(text) {
+    hint.hidden = !text;
+    if (hint.textContent !== text) hint.textContent = text;
+    clearTimeout(statusTimer);
+    if (!text) {
+      status.textContent = "";
+    } else if (status.textContent !== text) {
+      // Сначала очищаем, затем пишем — как у прикреплённого фрагмента (chat.js).
+      status.textContent = "";
+      statusTimer = setTimeout(() => {
+        status.textContent = text;
+      }, 100);
+    }
+  }
+
   function sync() {
-    const off = locked();
+    const over = tooLong();
+    const off = locked() || over;
+    say(over ? `Выделите не больше ${MAX_LINES} строк (сейчас ${current.lines}).` : "");
     // Кнопка с фокусом станет неактивной — фокус потерялся бы на body (I-3).
-    if (off && current && bar.contains(document.activeElement)) current.restore();
+    // Фокус на подсказке оставляем: она и есть место, куда ведёт Alt+F10 (M-2).
+    if (off && current && buttons.includes(document.activeElement)) current.restore();
     buttons.forEach((button) => {
       button.disabled = off;
     });
@@ -66,6 +117,12 @@
     });
   }
 
+  /** Непустые строки — так же считает сервер (core.context.focus_lines): пустая
+   * строка между абзацами конспекта не в счёт. */
+  function lineCount(text) {
+    return text.split(LINE_BREAK).filter((line) => !BLANK.test(line)).length;
+  }
+
   /** Не длиннее предела сервера; режем по кодовым точкам, не по UTF-16. */
   function clip(text) {
     const chars = Array.from(text);
@@ -73,6 +130,9 @@
   }
 
   function place(rect) {
+    // Ширина fixed-панели зависит от места: на прежнем, у правого края, она
+    // сжалась бы в столбик. Меряем от левого края окна.
+    bar.style.left = "0px";
     const width = bar.offsetWidth;
     const height = bar.offsetHeight;
     // На сенсорном экране сверху встаёт системное меню копирования — панель
@@ -109,11 +169,12 @@
     // Фокус в панели, а она прячется — вернуть его в источник, а не на body (I-3).
     const focused = bar.contains(document.activeElement);
     bar.hidden = true;
+    say("");
     if (restore || focused) selected.restore();
   }
 
   function choose(question) {
-    if (!current || locked()) return;
+    if (!current || locked() || tooLong()) return;
     const focus = { source: current.source, text: current.text };
     const fromKeyboard = bar.contains(document.activeElement);
     hide();
@@ -198,6 +259,7 @@
     show({
       source: start.entry.source,
       text: clip(text),
+      lines: lineCount(text),
       panel,
       restore: () => panel.focus(),
       anchor: () => range.getBoundingClientRect(),
@@ -227,6 +289,7 @@
     show({
       source: "code",
       text: clip(text),
+      lines: lineCount(text),
       panel: codePanel,
       restore: () => editor.focus(),
       anchor: () => {
@@ -248,24 +311,53 @@
   /* --- Клавиатура --- */
 
   function focusBar() {
+    if (tooLong()) {
+      hint.focus();
+      return true;
+    }
     const first = buttons.find((button) => !button.disabled);
     if (!first) return false;
     first.focus();
     return true;
   }
 
-  /** Ctrl+A в «Теории» или «Практике» выделяет только источник, а не всю
-   * страницу: без caret browsing это единственный способ выделить текст
-   * с клавиатуры (аудит 78, M-2). */
+  /** Блок источника, где стоит курсор (выделение); без курсора — первый блок.
+   * Блок — ребёнок корня источника: абзац, список, код, таблица. */
+  function blockAt(root, selection) {
+    const node = selection.rangeCount ? selection.getRangeAt(0).startContainer : null;
+    let block = node && root.contains(node) && node !== root ? node : null;
+    while (block && block.parentNode !== root) block = block.parentNode;
+    // Пункт списка — меньше всего списка: список длиннее 20 строк не спросить.
+    const item = node?.parentElement?.closest("li");
+    if (block && item && block.contains(item)) return item;
+    return block ?? root.firstElementChild ?? root;
+  }
+
+  function selected(selection, node) {
+    if (selection.rangeCount !== 1) return false;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const now = selection.getRangeAt(0);
+    return (
+      now.compareBoundaryPoints(Range.START_TO_START, range) === 0 &&
+      now.compareBoundaryPoints(Range.END_TO_END, range) === 0
+    );
+  }
+
+  /** Ctrl+A в «Теории» или «Практике» выделяет блок, где курсор, а повторный —
+   * весь источник, но не всю страницу: без caret browsing это единственный
+   * способ выделить текст с клавиатуры (аудит 78, M-2). Сразу весь конспект
+   * длиннее MAX_LINES — спросить о нём нельзя (аудит 84, I-1). */
   function selectSource(active) {
     for (const entry of SOURCES) {
       const panel = document.querySelector(entry.panel);
       const root = panel?.querySelector(entry.selector.replace(`${entry.panel} `, ""));
       if (!panel || !root || entry.source === "code" || !panel.contains(active)) continue;
       if (active.closest(".CodeMirror, input, textarea, [contenteditable]")) return false;
-      const range = document.createRange();
-      range.selectNodeContents(root);
       const selection = document.getSelection();
+      const block = blockAt(root, selection);
+      const range = document.createRange();
+      range.selectNodeContents(selected(selection, block) ? root : block);
       selection.removeAllRanges();
       selection.addRange(range);
       return true;

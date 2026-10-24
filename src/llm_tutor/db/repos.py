@@ -21,6 +21,7 @@ from llm_tutor.schemas import (
     Event,
     Item,
     Message,
+    ReviewRow,
     Role,
     Rubric,
     SessionState,
@@ -560,6 +561,11 @@ def replace_seed(
     conn.commit()
 
 
+def get_concept_ids(conn: sqlite3.Connection) -> set[str]:
+    """Id всех концептов курса, в том числе погашенных (на них ссылаются внешние ключи)."""
+    return {r["id"] for r in conn.execute("SELECT id FROM concepts").fetchall()}
+
+
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
     """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(
@@ -645,6 +651,50 @@ def upsert_mastery(
         conn.commit()
 
 
+def last_answer_ts(conn: sqlite3.Connection) -> dict[int, float]:
+    """Когда ученик последний раз отвечал на задание: ``item_id`` → ``MAX(ts)``."""
+    rows = conn.execute(
+        "SELECT item_id, MAX(ts) AS ts FROM events "
+        "WHERE item_id IS NOT NULL GROUP BY item_id"
+    ).fetchall()
+    return {int(r["item_id"]): float(r["ts"]) for r in rows}
+
+
+# --- review_schedule (повторение по расписанию, срез 79) ---
+
+
+def get_review_rows(conn: sqlite3.Connection) -> dict[str, ReviewRow]:
+    """Вся лестница повторений: ``concept_id`` → строка."""
+    rows = conn.execute("SELECT concept_id, step, due_at FROM review_schedule").fetchall()
+    return {r["concept_id"]: ReviewRow(**dict(r)) for r in rows}
+
+
+def upsert_review(
+    conn: sqlite3.Connection,
+    concept_id: str,
+    step: int,
+    due_at: float,
+    *,
+    commit: bool = True,
+) -> None:
+    """Ставит занятие на ступень лестницы со сроком (создаёт или обновляет)."""
+    conn.execute(
+        "INSERT INTO review_schedule (concept_id, step, due_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(concept_id) DO UPDATE SET "
+        "step = excluded.step, due_at = excluded.due_at",
+        (concept_id, step, due_at),
+    )
+    if commit:
+        conn.commit()
+
+
+def delete_review(conn: sqlite3.Connection, concept_id: str, *, commit: bool = True) -> None:
+    """Снимает занятие с лестницы (нет строки — не ошибка)."""
+    conn.execute("DELETE FROM review_schedule WHERE concept_id = ?", (concept_id,))
+    if commit:
+        conn.commit()
+
+
 # --- facts (профиль/предпочтения, Срез 4.5) ---
 
 
@@ -667,6 +717,7 @@ def set_fact(
     *,
     source: str | None = None,
     confidence: float | None = None,
+    commit: bool = True,
 ) -> None:
     """Создаёт или перезаписывает факт профиля."""
     conn.execute(
@@ -678,7 +729,8 @@ def set_fact(
         "confidence = COALESCE(excluded.confidence, facts.confidence)",
         (key, value, source, confidence),
     )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 
 # --- chunks (материалы курса для RAG, Срез 3) ---
