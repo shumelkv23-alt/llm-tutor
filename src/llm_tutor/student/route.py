@@ -46,6 +46,10 @@ def _failures_since(conn: sqlite3.Connection, concept_id: str, since: float) -> 
     for event in repos.get_events(conn, concept_id):
         if event.ts is None or event.ts <= since or event.result >= 0.5:
             continue
+        # Неверное объяснение новичку (срез 86) — повод повторить, а не открыть
+        # занятие заново: оно лишь ставит занятие в расписание повторений.
+        if event.source == "explain":
+            continue
         item = repos.get_item(conn, event.item_id) if event.item_id is not None else None
         if item is None or concept_id not in item.concept_weights:
             total += 1.0
