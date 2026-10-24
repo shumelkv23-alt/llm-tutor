@@ -542,6 +542,24 @@
   cursor: default;
 }
 
+/* Выделено больше 20 строк (срез 84): подсказка — своей строкой под кнопками. */
+.selection-hint {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 2px 12px 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.selection-hint[hidden] {
+  display: none;
+}
+
+.selection-hint:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
 @media (pointer: coarse) {
   .selection-bar button {
     min-height: 44px;

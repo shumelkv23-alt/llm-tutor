@@ -70,6 +70,9 @@ class ContextPackage:
 FocusSource = Literal["theory", "task", "code"]
 FOCUS_SOURCES: tuple[FocusSource, ...] = ("theory", "task", "code")
 FOCUS_MAX_CHARS = 1500
+# Не больше строк во фрагменте (срез 84): спрашивать про кусок, а не про весь
+# конспект. Копия — в static/js/selection.js (сверяет тест).
+FOCUS_MAX_LINES = 20
 # Фрагмент в пометке хвоста диалога: модели хватает начала, чтобы узнать место.
 FOCUS_TAIL_CHARS = 200
 FOCUS_PLACES: dict[FocusSource, str] = {
@@ -117,6 +120,15 @@ def focus_text(source: FocusSource, text: str) -> str:
         return ""
     lines = lines[filled[0] : filled[-1] + 1]
     return textwrap.dedent("\n".join(lines)).rstrip()
+
+
+def focus_lines(text: str) -> int:
+    """Число непустых строк фрагмента.
+
+    Пустые не считаются: между абзацами конспекта innerText кладёт пустую
+    строку, и 10 абзацев иначе стали бы 19 строками. Так же считает браузер.
+    """
+    return sum(1 for line in text.splitlines() if line.strip())
 
 
 def fence(text: str) -> str:

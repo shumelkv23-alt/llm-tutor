@@ -15,6 +15,11 @@
     ["Спросить…", null],
   ];
   const MAX_CHARS = 1500;
+  // Копия core.context.FOCUS_MAX_LINES (сверяет tests/test_web_fragment.py):
+  // спрашивают про кусок, а не про весь конспект (срез 84).
+  const MAX_LINES = 20;
+  // Разделители строк — как у str.splitlines() на сервере.
+  const LINE_BREAK = /\r\n|[\n\v\f\r\x1c-\x1e\x85\u2028\u2029]/;
   // Отступ от краёв окна и от выделения. На сенсорном экране под выделением
   // висят ручки выделения — зазор больше (аудит 78, M-4).
   const MARGIN = 8;
@@ -42,19 +47,34 @@
     button.addEventListener("click", () => choose(question));
     return button;
   });
-  bar.append(...buttons);
+  // Почему кнопки неактивны: выделено больше MAX_LINES строк. Alt+F10 ведёт
+  // сюда, а не на неактивную кнопку; role="status" — диктор прочтёт сам.
+  const hint = document.createElement("p");
+  hint.className = "selection-hint";
+  hint.setAttribute("role", "status");
+  hint.tabIndex = -1;
+  hint.hidden = true;
+  bar.append(...buttons, hint);
   document.body.append(bar);
 
-  // Что выделено сейчас: {source, text, panel, restore, anchor, rect}; null —
-  // панели нет. `anchor()` — где выделение сейчас, `rect` — где было при показе.
+  // Что выделено сейчас: {source, text, lines, panel, restore, anchor, rect};
+  // null — панели нет. `lines` — непустые строки всего выделения (до обрезки по
+  // знакам). `anchor()` — где выделение сейчас, `rect` — где было при показе.
   let current = null;
 
   function locked() {
     return window.Lesson.busy || Boolean(window.Lesson.state?.survey);
   }
 
+  function tooLong() {
+    return Boolean(current && current.lines > MAX_LINES);
+  }
+
   function sync() {
-    const off = locked();
+    const over = tooLong();
+    const off = locked() || over;
+    hint.hidden = !over;
+    hint.textContent = over ? `Выделите не больше ${MAX_LINES} строк (сейчас ${current.lines}).` : "";
     // Кнопка с фокусом станет неактивной — фокус потерялся бы на body (I-3).
     if (off && current && bar.contains(document.activeElement)) current.restore();
     buttons.forEach((button) => {
@@ -64,6 +84,12 @@
     buttons.forEach((button, index) => {
       button.tabIndex = index === 0 ? 0 : -1;
     });
+  }
+
+  /** Непустые строки — так же считает сервер (core.context.focus_lines): пустая
+   * строка между абзацами конспекта не в счёт. */
+  function lineCount(text) {
+    return text.split(LINE_BREAK).filter((line) => line.trim()).length;
   }
 
   /** Не длиннее предела сервера; режем по кодовым точкам, не по UTF-16. */
@@ -113,7 +139,7 @@
   }
 
   function choose(question) {
-    if (!current || locked()) return;
+    if (!current || locked() || tooLong()) return;
     const focus = { source: current.source, text: current.text };
     const fromKeyboard = bar.contains(document.activeElement);
     hide();
@@ -198,6 +224,7 @@
     show({
       source: start.entry.source,
       text: clip(text),
+      lines: lineCount(text),
       panel,
       restore: () => panel.focus(),
       anchor: () => range.getBoundingClientRect(),
@@ -227,6 +254,7 @@
     show({
       source: "code",
       text: clip(text),
+      lines: lineCount(text),
       panel: codePanel,
       restore: () => editor.focus(),
       anchor: () => {
@@ -248,6 +276,10 @@
   /* --- Клавиатура --- */
 
   function focusBar() {
+    if (tooLong()) {
+      hint.focus();
+      return true;
+    }
     const first = buttons.find((button) => !button.disabled);
     if (!first) return false;
     first.focus();

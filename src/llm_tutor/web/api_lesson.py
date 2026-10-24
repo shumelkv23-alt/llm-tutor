@@ -18,7 +18,15 @@ from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
 from llm_tutor.config import Settings
 from llm_tutor.core import guided, lesson, turn, verify
 from llm_tutor.core import review as core_review
-from llm_tutor.core.context import FOCUS_MAX_CHARS, FOCUS_SOURCES, Focus, fence, focus_text
+from llm_tutor.core.context import (
+    FOCUS_MAX_CHARS,
+    FOCUS_MAX_LINES,
+    FOCUS_SOURCES,
+    Focus,
+    fence,
+    focus_lines,
+    focus_text,
+)
 from llm_tutor.core.turn import ROUTE_DONE_REPLY, TurnReply
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
@@ -436,6 +444,14 @@ def _focus(quote: QuoteBody) -> Focus:
             detail={
                 "field": "quote.text",
                 "message": f"Фрагмент длиннее {FOCUS_MAX_CHARS} знаков.",
+            },
+        )
+    if focus_lines(text) > FOCUS_MAX_LINES:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "field": "quote.text",
+                "message": f"Фрагмент длиннее {FOCUS_MAX_LINES} строк.",
             },
         )
     return Focus(quote.source, text)

@@ -357,14 +357,92 @@ async def test_code_block_buttons_stay_out_of_quote(lesson) -> None:
 
 
 async def test_long_selection_is_clipped_and_accepted(lesson) -> None:
+    """Строка длиннее 1500 знаков обрезается, а не запрещается."""
     page = lesson
     responses: list[int] = []
     page.on("response", lambda r: responses.append(r.status) if r.url.endswith("/lesson/chat") else None)
-    await _select(page, "#tab-theory .theory-body")
+    await page.click("#tab-btn-code")
+    await page.wait_for_selector(".CodeMirror")
+    await page.evaluate(
+        """() => {
+            const cm = document.querySelector('.CodeMirror').CodeMirror;
+            cm.setValue('s = "' + 'x'.repeat(3000) + '"');
+            cm.focus();
+            cm.execCommand('selectAll');
+        }"""
+    )
     await page.click(f"{BAR} button:has-text('Проще')")
     await _idle(page)
 
     assert responses == [200]
+
+
+# --- не больше 20 строк во фрагменте (срез 84) ---
+
+HINT = f"{BAR} .selection-hint"
+
+
+async def test_whole_theory_selection_is_refused(lesson) -> None:
+    page = lesson
+    sent = _chat_requests(page)
+    await _select(page, "#tab-theory .theory-body")
+
+    await expect(page.locator(BAR)).to_be_visible()
+    await expect(page.locator(HINT)).to_be_visible()
+    await expect(page.locator(HINT)).to_contain_text("Выделите не больше 20 строк")
+    for button in await page.locator(f"{BAR} button").all():
+        await expect(button).to_be_disabled()
+    await page.locator(f"{BAR} button:has-text('Проще')").click(force=True)
+    assert sent == []
+
+    # Выделение сузили — кнопки снова работают, подсказки нет.
+    await _select(page, "#tab-theory .theory-body p")
+    await expect(page.locator(HINT)).to_be_hidden()
+    await expect(page.locator(f"{BAR} button:has-text('Проще')")).to_be_enabled()
+    _clean(page)
+
+
+async def test_long_editor_selection_is_refused(lesson) -> None:
+    page = lesson
+    await page.click("#tab-btn-code")
+    await page.wait_for_selector(".CodeMirror")
+    await page.evaluate(
+        """() => {
+            const cm = document.querySelector('.CodeMirror').CodeMirror;
+            const lines = Array.from({length: 21}, (_, n) => `x${n} = ${n}`);
+            cm.setValue(lines.join('\\n\\n'));
+            cm.focus();
+            cm.execCommand('selectAll');
+        }"""
+    )
+
+    await expect(page.locator(HINT)).to_contain_text("сейчас 21")
+    await expect(page.locator(f"{BAR} button:has-text('Объясни')")).to_be_disabled()
+
+    # 20 строк с пустыми между ними — в пределе.
+    await page.evaluate(
+        """() => {
+            const cm = document.querySelector('.CodeMirror').CodeMirror;
+            cm.setSelection({line: 0, ch: 0}, {line: 38, ch: 7});
+        }"""
+    )
+    await expect(page.locator(HINT)).to_be_hidden()
+    await expect(page.locator(f"{BAR} button:has-text('Объясни')")).to_be_enabled()
+    _clean(page)
+
+
+async def test_alt_f10_on_long_selection_focuses_hint(lesson) -> None:
+    page = lesson
+    await page.focus("#tab-theory")
+    await page.keyboard.press("Control+a")
+    await expect(page.locator(HINT)).to_be_visible()
+
+    await page.keyboard.press("Alt+F10")
+
+    assert await page.evaluate("() => document.activeElement?.classList.contains('selection-hint')")
+    await page.keyboard.press("Escape")
+    await expect(page.locator(BAR)).to_be_hidden()
+    assert await page.evaluate("() => document.activeElement !== document.body")
 
 
 async def test_keyboard_choice_keeps_focus_off_body(lesson) -> None:

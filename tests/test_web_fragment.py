@@ -259,6 +259,60 @@ def test_focus_text_trims_blank_lines_linearly() -> None:
     assert time.monotonic() - started < 1.0
 
 
+# --- не больше 20 строк во фрагменте (срез 84) ---
+
+
+def test_focus_lines_counts_only_filled_lines() -> None:
+    """Пустые строки между абзацами конспекта и в коде не считаются."""
+    from llm_tutor.core.context import focus_lines
+
+    assert focus_lines("") == 0
+    assert focus_lines("a") == 1
+    assert focus_lines("a\n\nb\n   \nc\n") == 3
+    assert focus_lines("a\r\nb\rc") == 3
+
+
+async def test_quote_over_line_limit_is_422(enrolled, web_app, web_llm) -> None:
+    from llm_tutor.core.context import FOCUS_MAX_LINES
+
+    await _finish(enrolled)
+    calls, before = len(web_llm.calls), len(_user_messages(web_app))
+    text = "\n".join(f"x{n} = {n}" for n in range(FOCUS_MAX_LINES + 1))
+
+    response = await enrolled.post(f"{BASE}/chat", json={"text": "почему?", "quote": {"source": "code", "text": text}})
+
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    assert detail["field"] == "quote.text"
+    assert f"{FOCUS_MAX_LINES} строк" in detail["message"]
+    assert len(web_llm.calls) == calls
+    assert len(_user_messages(web_app)) == before
+
+
+async def test_quote_at_line_limit_with_blank_lines_is_accepted(enrolled, web_app) -> None:
+    """20 абзацев конспекта: innerText кладёт между ними пустые строки — это 20, а не 39."""
+    from llm_tutor.core.context import FOCUS_MAX_LINES
+
+    await _finish(enrolled)
+    text = "\n\n".join(f"Абзац {n}." for n in range(FOCUS_MAX_LINES))
+
+    response = await enrolled.post(f"{BASE}/chat", json={"text": "почему?", "quote": {"source": "theory", "text": text}})
+
+    assert response.status_code == 200, response.text
+    assert focus_from_meta(_user_messages(web_app)[-1].meta).text == text
+
+
+def test_selection_js_line_limit_matches_core() -> None:
+    import re
+    from pathlib import Path
+
+    from llm_tutor.core.context import FOCUS_MAX_LINES
+    from llm_tutor.web.app import STATIC_DIR
+
+    script = (Path(STATIC_DIR) / "js" / "selection.js").read_text(encoding="utf-8")
+    assert re.findall(r"const MAX_LINES = (\d+);", script) == [str(FOCUS_MAX_LINES)]
+
+
 async def test_lone_surrogate_in_quote_is_422(enrolled) -> None:
     """M-1: непарный суррогат — 422 у поля, а не 500 при записи журнала."""
     await _finish(enrolled)
