@@ -431,11 +431,17 @@ async def test_long_editor_selection_is_refused(lesson) -> None:
     _clean(page)
 
 
-async def test_alt_f10_on_long_selection_focuses_hint(lesson) -> None:
-    page = lesson
+async def _select_whole_theory_by_keyboard(page) -> None:
+    """Ctrl+A дважды: блок, затем весь конспект (аудит 84, I-1)."""
     await page.focus("#tab-theory")
     await page.keyboard.press("Control+a")
+    await page.keyboard.press("Control+a")
     await expect(page.locator(HINT)).to_be_visible()
+
+
+async def test_alt_f10_on_long_selection_focuses_hint(lesson) -> None:
+    page = lesson
+    await _select_whole_theory_by_keyboard(page)
 
     await page.keyboard.press("Alt+F10")
 
@@ -443,6 +449,108 @@ async def test_alt_f10_on_long_selection_focuses_hint(lesson) -> None:
     await page.keyboard.press("Escape")
     await expect(page.locator(BAR)).to_be_hidden()
     assert await page.evaluate("() => document.activeElement !== document.body")
+
+
+# --- аудит среза 84 ---
+
+
+async def test_ctrl_a_selects_block_at_caret(lesson) -> None:
+    """I-1: Ctrl+A выделяет блок, где курсор, — кнопки активны; повторный — весь конспект."""
+    page = lesson
+    paragraph = page.locator("#tab-theory .theory-body p").nth(2)
+    await paragraph.click()
+    await page.keyboard.press("Control+a")
+
+    selected = await page.evaluate("() => getSelection().toString().trim()")
+    assert selected == (await paragraph.inner_text()).strip()
+    await expect(page.locator(BAR)).to_be_visible()
+    await expect(page.locator(HINT)).to_be_hidden()
+    await expect(page.locator(f"{BAR} button:has-text('Объясни')")).to_be_enabled()
+
+    await page.keyboard.press("Control+a")
+    await expect(page.locator(HINT)).to_be_visible()
+    _clean(page)
+
+
+async def test_ctrl_a_without_caret_selects_first_block(lesson) -> None:
+    page = lesson
+    await page.focus("#tab-theory")
+    await page.evaluate("() => getSelection().removeAllRanges()")
+    await page.keyboard.press("Control+a")
+
+    await expect(page.locator(f"{BAR} button:has-text('Объясни')")).to_be_enabled()
+    selected = await page.evaluate("() => getSelection().toString().trim()")
+    first = await page.evaluate(
+        "() => document.querySelector('#tab-theory .theory-body').firstElementChild.innerText.trim()"
+    )
+    assert selected == first
+
+
+async def test_hint_keeps_focus_on_busy(lesson) -> None:
+    """M-2: ход занятия (lesson:busy, onState) не уводит фокус с подсказки."""
+    page = lesson
+    await _select_whole_theory_by_keyboard(page)
+    await page.keyboard.press("Alt+F10")
+
+    await page.evaluate("() => document.dispatchEvent(new Event('lesson:busy'))")
+
+    assert await page.evaluate("() => document.activeElement?.classList.contains('selection-hint')")
+
+
+async def test_bar_with_hint_has_no_empty_tail(lesson) -> None:
+    """M-3: панель с подсказкой не шире большего из рядов — кнопок и подсказки."""
+    page = lesson
+    await page.set_viewport_size({"width": 1400, "height": 900})
+    await _select_whole_theory_by_keyboard(page)
+
+    widths = await page.evaluate(
+        """() => {
+            const bar = document.querySelector('.selection-bar');
+            const buttons = [...bar.querySelectorAll('button')];
+            const row = buttons.at(-1).getBoundingClientRect().right - buttons[0].getBoundingClientRect().left;
+            const range = document.createRange();
+            range.selectNodeContents(bar.querySelector('.selection-hint'));
+            return { bar: bar.getBoundingClientRect().width, row, hint: range.getBoundingClientRect().width };
+        }"""
+    )
+    assert widths["bar"] <= max(widths["row"], widths["hint"]) + 40, widths
+
+
+async def test_bar_is_not_squeezed_by_old_position(lesson) -> None:
+    """Ширина панели меряется не на прежнем месте: у правого края она сжималась
+    в столбик, и подсказка шла по слову в строку."""
+    page = lesson
+    await page.set_viewport_size({"width": 1400, "height": 900})
+    await _select_whole_theory_by_keyboard(page)
+    await page.set_viewport_size({"width": 360, "height": 780})
+    await _select_whole_theory_by_keyboard(page)
+
+    width = await page.evaluate("() => document.querySelector('.selection-bar').getBoundingClientRect().width")
+    assert width > 310
+
+
+async def test_hint_is_announced_once(lesson) -> None:
+    """Н-1: объявляет постоянная скрытая область, и только при смене текста."""
+    page = lesson
+    await _select_whole_theory_by_keyboard(page)
+    status = page.locator("#selection-status")
+    await expect(status).to_contain_text("Выделите не больше 20 строк")
+    assert await status.get_attribute("aria-live") == "polite"
+
+    changes = await page.evaluate(
+        """async () => {
+            const status = document.getElementById('selection-status');
+            let count = 0;
+            new MutationObserver(() => count++).observe(status, { childList: true, characterData: true, subtree: true });
+            document.dispatchEvent(new Event('lesson:busy'));
+            await new Promise((done) => setTimeout(done, 300));
+            return count;
+        }"""
+    )
+    assert changes == 0
+
+    await _select(page, "#tab-theory .theory-body p")
+    await expect(status).to_have_text("")
 
 
 async def test_keyboard_choice_keeps_focus_off_body(lesson) -> None:
@@ -469,7 +577,7 @@ async def test_ctrl_a_in_theory_selects_only_theory(lesson) -> None:
             const range = getSelection().getRangeAt(0);
             const root = document.querySelector('#tab-theory .theory-body');
             return root.contains(range.startContainer) && root.contains(range.endContainer)
-                && range.toString().trim().length > 100;
+                && range.toString().trim().length > 0;
         }"""
     )
     assert inside

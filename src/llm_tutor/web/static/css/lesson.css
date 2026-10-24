@@ -501,7 +501,7 @@
   position: fixed;
   z-index: 60;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 2px;
   max-width: calc(100vw - 16px);
   padding: 4px;
@@ -513,6 +513,12 @@
 
 .selection-bar[hidden] {
   display: none;
+}
+
+.selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
 }
 
 .selection-bar button {
@@ -542,9 +548,9 @@
   cursor: default;
 }
 
-/* Выделено больше 20 строк (срез 84): подсказка — своей строкой под кнопками. */
+/* Выделено больше 20 строк (срез 84): подсказка — своим рядом под кнопками;
+   ширина панели — по большему из рядов (аудит 84, M-3). */
 .selection-hint {
-  flex-basis: 100%;
   margin: 0;
   padding: 2px 12px 4px;
   color: var(--muted);

@@ -313,6 +313,47 @@ def test_selection_js_line_limit_matches_core() -> None:
     assert re.findall(r"const MAX_LINES = (\d+);", script) == [str(FOCUS_MAX_LINES)]
 
 
+def _selection_js_regex(name: str) -> str:
+    import re
+    from pathlib import Path
+
+    from llm_tutor.web.app import STATIC_DIR
+
+    script = (Path(STATIC_DIR) / "js" / "selection.js").read_text(encoding="utf-8")
+    (source,) = re.findall(rf"const {name} = /(.+)/;", script)
+    return source
+
+
+def test_selection_js_blank_line_matches_python_strip() -> None:
+    """Аудит 84, M-1: пустую строку браузер и сервер определяют одинаково
+    (JS trim снимает U+FEFF, а str.strip — нет; с U+001F наоборот)."""
+    import re
+    import sys
+
+    blank = re.compile(_selection_js_regex("BLANK"))
+    wrong = [
+        hex(code)
+        for code in range(sys.maxunicode + 1)
+        if not 0xD800 <= code <= 0xDFFF and bool(blank.fullmatch(chr(code) * 2)) != (not (chr(code) * 2).strip())
+    ]
+    assert wrong == []
+
+
+def test_selection_js_line_break_matches_splitlines() -> None:
+    import re
+    import sys
+
+    line_break = re.compile(_selection_js_regex("LINE_BREAK"))
+    wrong = [
+        hex(code)
+        for code in range(sys.maxunicode + 1)
+        if not 0xD800 <= code <= 0xDFFF
+        and len(line_break.split(f"a{chr(code)}b")) != len(f"a{chr(code)}b".splitlines())
+    ]
+    assert wrong == []
+    assert line_break.split("a\r\nb") == ["a", "b"]
+
+
 async def test_lone_surrogate_in_quote_is_422(enrolled) -> None:
     """M-1: непарный суррогат — 422 у поля, а не 500 при записи журнала."""
     await _finish(enrolled)
