@@ -266,3 +266,18 @@ def test_revisited_closed_lesson_keeps_module_passed(db, settings) -> None:
     state = repos.get_session_state(db, state_id)
     repos.update_session_state(db, state_id, state.model_copy(update={"current_node_id": "l1_frames"}))
     assert _reasons(db, settings)[1] == "ok"
+
+
+def test_finish_failure_rolls_back(db, settings, monkeypatch) -> None:
+    # Сбой не из sqlite внутри завершения не оставляет полузаписи на общем соединении.
+    sid = _played(db, settings, series_vs_frame="correct")
+
+    def boom(*args, **kwargs):
+        raise ValueError("сбой")
+
+    monkeypatch.setattr(explain.logic, "plan_schedule", boom)
+    with pytest.raises(ValueError):
+        explain.finish(db, session_id=sid, now=NOW, settings=settings)
+    assert not db.in_transaction
+    assert _explain_events(db) == []
+    assert repos.get_explain_session(db, sid).status == "active"

@@ -55,7 +55,7 @@ def test_report_counts_and_reference() -> None:
 def test_report_pitfalls() -> None:
     state = ExplainState(
         pitfalls_named=["groupby_returns_df"],
-        pitfalls_used=[PitfallUse(id="iloc_by_label", turn=3, fixed=None)],
+        pitfalls_used=[PitfallUse(id="iloc_by_label", turn=3, fixed=False)],
     )
     report = _report(state)
     outcomes = {p.id: (p.outcome, p.fix) for p in report.pitfalls}
@@ -98,7 +98,9 @@ def test_review_lessons_order() -> None:
 
 def test_review_lessons_missed_pitfall() -> None:
     state = _state(series_vs_frame="correct", loc_vs_iloc="correct", split_apply_combine="correct")
-    state = state.model_copy(update={"pitfalls_used": [PitfallUse(id="iloc_by_label", turn=3)]})
+    state = state.model_copy(
+        update={"pitfalls_used": [PitfallUse(id="iloc_by_label", turn=3, fixed=False)]}
+    )
     assert _report(state).review_lessons == ["l1_select"]
 
 
@@ -157,7 +159,9 @@ def test_schedule_gap() -> None:
 
 def test_schedule_missed_pitfall_is_gap() -> None:
     state = _state(series_vs_frame="correct", loc_vs_iloc="correct", split_apply_combine="correct")
-    state = state.model_copy(update={"pitfalls_used": [PitfallUse(id="iloc_by_label", turn=3)]})
+    state = state.model_copy(
+        update={"pitfalls_used": [PitfallUse(id="iloc_by_label", turn=3, fixed=False)]}
+    )
     assert [c.concept_id for c in _schedule(state)] == ["l1_select"]
 
 
@@ -193,3 +197,18 @@ def test_explain_failures_do_not_reopen(conn, settings) -> None:
 def test_dialogue_failures_reopen(conn, settings) -> None:
     # Контроль: те же провалы из диалога занятие открывают (REOPEN_FAILURES).
     assert _failures_after_close(conn, settings, "dialogue") != "closed"
+
+
+def test_unclear_pitfall_not_scheduled() -> None:
+    # Ученик на загвоздку не ответил ясно (fixed=None): не «пропустил ошибку».
+    state = _state(**{idea.id: "correct" for idea in CONFIG.ideas})
+    state = state.model_copy(update={"pitfalls_used": [PitfallUse(id="iloc_by_label", turn=3)]})
+    report = _report(state)
+    assert [(p.id, p.outcome) for p in report.pitfalls] == [("iloc_by_label", "unclear")]
+    assert report.review_lessons == []
+    assert _schedule(state) == []
+
+
+def test_refuted_pitfall_is_missed() -> None:
+    state = ExplainState(pitfalls_used=[PitfallUse(id="iloc_by_label", turn=3, fixed=False)])
+    assert [(p.outcome, p.fix is not None) for p in _report(state).pitfalls] == [("missed", True)]

@@ -53,9 +53,13 @@ class TurnPlan:
     contradiction: str | None = None
 
 
+# Разметка и кавычки, которые не меняют слов: **жирный**, `код`, «ёлочки», "лапки".
+_MARKUP = str.maketrans("", "", "`*«»“”„\"'")
+
+
 def normalize(text: str) -> str:
-    """Текст для сверки цитат и шинглов: без регистра, ё, обратных кавычек и лишних пробелов."""
-    lowered = text.lower().replace("ё", "е").replace("`", "")
+    """Текст для сверки цитат и шинглов: без регистра, ё, разметки, кавычек и лишних пробелов."""
+    lowered = text.lower().replace("ё", "е").translate(_MARKUP)
     return re.sub(r"\s+", " ", lowered).strip()
 
 
@@ -78,12 +82,18 @@ def looks_pasted(text: str, theory: Sequence[str], *, min_chars: int, overlap: f
 
 
 def clean_observation(
-    obs: ExplainObservation, config: ExplainConfig, student_text: str
+    obs: ExplainObservation,
+    config: ExplainConfig,
+    student_text: str,
+    *,
+    context: Sequence[str] = (),
 ) -> ExplainObservation:
-    """Наблюдение после проверки кодом.
+    """Наблюдение после проверки кодом: модель не может приписать ученику чужих слов.
 
-    Неизвестные id отброшены; «correct» без дословной цитаты из реплики — «partial»
-    (модель не может засчитать то, чего ученик не говорил); противоречие обрезано.
+    Неизвестные id отброшены. Цитата, которой нет в реплике дословно, снимается:
+    «correct» без неё — «partial», «wrong» без неё не засчитывается вовсе.
+    Противоречие остаётся, только если это слова ученика — из этой реплики или
+    прошлых (``context``): иначе через него к новичку утёк бы эталон.
     """
     idea_ids = {idea.id for idea in config.ideas}
     pitfall_ids = {pitfall.id for pitfall in config.pitfalls}
@@ -93,10 +103,17 @@ def clean_observation(
         if verdict.id not in idea_ids:
             continue
         quote = normalize(verdict.quote or "")
-        if verdict.verdict == "correct" and not (quote and quote in text):
-            verdict = IdeaVerdict(id=verdict.id, verdict="partial", quote=verdict.quote)
-        ideas.append(verdict)
+        if quote and quote in text:
+            ideas.append(verdict)
+        elif verdict.verdict == "correct":
+            ideas.append(IdeaVerdict(id=verdict.id, verdict="partial"))
+        elif verdict.verdict == "partial":
+            ideas.append(IdeaVerdict(id=verdict.id, verdict="partial"))
     contradiction = (obs.contradiction or "").strip()[:CONTRADICTION_MAX_CHARS] or None
+    if contradiction is not None:
+        said = [text, *(normalize(line) for line in context)]
+        if not any(normalize(contradiction) in line for line in said):
+            contradiction = None
     return obs.model_copy(
         update={
             "ideas": ideas,
@@ -259,7 +276,10 @@ def build_report(
         if pitfall.id in state.pitfalls_named:
             outcome = "named"
         elif pitfall.id in used:
-            outcome = "fixed" if used[pitfall.id].fixed else "missed"
+            fixed = used[pitfall.id].fixed
+            # None — ученик не ответил ясно (или оценщик не ответил): это не
+            # «пропустил ошибку», в повторение такое не идёт.
+            outcome = "fixed" if fixed else "missed" if fixed is False else "unclear"
         else:
             continue
         pitfalls.append(
@@ -267,7 +287,7 @@ def build_report(
                 id=pitfall.id,
                 lesson=pitfall.lesson,
                 outcome=outcome,
-                fix=pitfall.fix if outcome == "missed" else None,
+                fix=pitfall.fix if outcome in ("missed", "unclear") else None,
             )
         )
     required = {idea.id for idea in config.ideas if idea.required}

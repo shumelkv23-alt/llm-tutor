@@ -62,7 +62,7 @@ def test_quote_with_line_break_matches() -> None:
 
 def test_unknown_ids_dropped() -> None:
     obs = _obs(
-        ideas=[_verdict("nope", "wrong"), _verdict("loc_vs_iloc", "wrong")],
+        ideas=[_verdict("nope", "wrong", "текст"), _verdict("loc_vs_iloc", "wrong", "текст")],
         pitfalls_named=["nope", "iloc_by_label"],
     )
     cleaned = explain.clean_observation(obs, CONFIG, "текст")
@@ -71,7 +71,7 @@ def test_unknown_ids_dropped() -> None:
 
 
 def test_contradiction_trimmed_to_300() -> None:
-    cleaned = explain.clean_observation(_obs(contradiction="я" * 500), CONFIG, "текст")
+    cleaned = explain.clean_observation(_obs(contradiction="я" * 500), CONFIG, "я" * 600)
     assert len(cleaned.contradiction) == 300
 
 
@@ -315,3 +315,46 @@ def test_ask_first_lesson_with_missing() -> None:
 def test_ask_when_nothing_said() -> None:
     plan, _ = _choose(ExplainState(student_turns=1))
     assert (plan.directive, plan.lesson) == ("ask", "l1_frames")
+
+
+# --- Аудит финального ревью ---
+
+
+def test_contradiction_not_from_student_dropped() -> None:
+    # Оценщик видит эталон: «противоречие» не из слов ученика — канал утечки.
+    leak = CONFIG.ideas[0].text
+    cleaned = explain.clean_observation(_obs(contradiction=leak), CONFIG, "Series — это столбец")
+    assert cleaned.contradiction is None
+
+
+def test_contradiction_from_earlier_turn_kept() -> None:
+    obs = _obs(contradiction="loc берёт позиции")
+    cleaned = explain.clean_observation(
+        obs, CONFIG, "loc берёт метки", context=["Сначала скажу: loc берёт позиции."]
+    )
+    assert cleaned.contradiction == "loc берёт позиции"
+
+
+def test_unverified_quote_dropped_for_partial() -> None:
+    obs = _obs(ideas=[_verdict("loc_vs_iloc", "partial", "выдуманная цитата")])
+    cleaned = explain.clean_observation(obs, CONFIG, "Не знаю, честно.")
+    assert (cleaned.ideas[0].verdict, cleaned.ideas[0].quote) == ("partial", None)
+
+
+def test_downgraded_correct_loses_quote() -> None:
+    obs = _obs(ideas=[_verdict("loc_vs_iloc", "correct", "выдуманная цитата")])
+    cleaned = explain.clean_observation(obs, CONFIG, "Не знаю, честно.")
+    assert (cleaned.ideas[0].verdict, cleaned.ideas[0].quote) == ("partial", None)
+
+
+def test_wrong_needs_verified_quote() -> None:
+    obs = _obs(ideas=[_verdict("series_vs_frame", "wrong", "Series это словарь")])
+    assert explain.clean_observation(obs, CONFIG, "Не знаю, честно.").ideas == []
+    kept = explain.clean_observation(obs, CONFIG, "Я думаю, Series это словарь.")
+    assert kept.ideas[0].verdict == "wrong"
+
+
+def test_quote_ignores_bold_and_guillemets() -> None:
+    obs = _obs(ideas=[_verdict("split_apply_combine", "correct", 'groupby делит строки на "группы"')])
+    text = "**groupby** делит строки на «группы»"
+    assert explain.clean_observation(obs, CONFIG, text).ideas[0].verdict == "correct"

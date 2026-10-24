@@ -211,7 +211,8 @@ def directive_text(prompts: ExplainPrompts, plan: TurnPlan, lessons: Mapping[str
     if plan.directive == "pitfall" and plan.pitfall is not None:
         return directives.pitfall.format(lesson=lesson, belief=plan.pitfall.belief)
     if plan.directive == "confused":
-        return directives.confused.format(contradiction=plan.contradiction or "")
+        # Это слова ученика (clean_observation) — и они тоже в ограждении, как данные.
+        return directives.confused.format(contradiction=_fenced(plan.contradiction or ""))
     return getattr(directives, plan.directive).format()
 
 
@@ -250,14 +251,18 @@ async def _novice_reply(
     client: LLMClient,
     prompts: ExplainPrompts,
     module: ModuleContext,
-    state: ExplainState,
     plan: TurnPlan,
     *,
+    fallback_index: int,
     tail: Sequence[ExplainTurn],
     text: str,
     settings: Settings,
-) -> tuple[str, ExplainState]:
-    """Ответ новичка: лекцию — один повтор со ``strict``, потом запасной вопрос."""
+) -> tuple[str, bool, int]:
+    """Ответ новичка: лекцию — один повтор со ``strict``, потом запасной вопрос.
+
+    Возвращает реплику, прозвучала ли установка хода (только первый ответ её
+    несёт: ``strict`` и запасной вопрос — нет) и индекс следующего запасного.
+    """
     limits = prompts.limits
 
     async def ask(directive: str) -> str:
@@ -279,16 +284,15 @@ async def _novice_reply(
         logger.warning("Новичок не ответил: %s", error)
         raise ExplainError("llm") from error
     if novice_reply_ok(reply, max_chars=limits.novice_max_chars):
-        return reply, state
+        return reply, True, fallback_index
     try:
         reply = await ask(prompts.novice.directives.strict.format())
     except (LLMError, ValidationError):
         reply = ""
     if novice_reply_ok(reply, max_chars=limits.novice_max_chars):
-        return reply, state
+        return reply, False, fallback_index
     questions = prompts.novice.fallback_questions
-    fallback = questions[state.fallback_index % len(questions)]
-    return fallback, state.model_copy(update={"fallback_index": state.fallback_index + 1})
+    return questions[fallback_index % len(questions)], False, fallback_index + 1
 
 
 def _meta(**fields) -> dict | None:
@@ -335,17 +339,22 @@ async def turn(
         client, prompts, module.config, session.state,
         tail=tail, text=text, speaker="student", settings=settings,
     )
-    obs = logic.clean_observation(raw, module.config, text)
+    said = [turn.content for turn in tail if turn.role == "student"]
+    obs = logic.clean_observation(raw, module.config, text, context=said)
     pasted = obs.pasted or logic.looks_pasted(
         text, module.theory, min_chars=limits.paste_min_chars, overlap=limits.paste_overlap
     )
-    state = logic.apply_observation(session.state, obs, pasted=pasted)
-    plan, state = logic.choose_directive(
-        state, obs, module.config, pasted=pasted, limits=limits, lesson_order=list(module.lessons)
+    observed = logic.apply_observation(session.state, obs, pasted=pasted)
+    plan, chosen = logic.choose_directive(
+        observed, obs, module.config, pasted=pasted, limits=limits, lesson_order=list(module.lessons)
     )
-    reply, state = await _novice_reply(
-        client, prompts, module, state, plan, tail=tail, text=text, settings=settings
+    reply, voiced, fallback_index = await _novice_reply(
+        client, prompts, module, plan,
+        fallback_index=observed.fallback_index, tail=tail, text=text, settings=settings,
     )
+    # Не прозвучавшая установка не отмечается: загвоздку, которую новичок не
+    # сказал, ученик не мог «пропустить», а «кажется, понял» — не было сказано.
+    state = (chosen if voiced else observed).model_copy(update={"fallback_index": fallback_index})
     novice_meta = _meta(
         directive=plan.directive,
         lesson=plan.lesson,
@@ -361,7 +370,9 @@ async def turn(
         if state.student_turns >= limits.max_student_turns:
             _close(conn, session, state, "limit", now=now, settings=settings)
         conn.commit()
-    except sqlite3.Error:
+    except Exception:
+        # Любой сбой — откат: соединение общее, полузапись закоммитил бы
+        # следующий ход ученика.
         conn.rollback()
         raise
     return repos.get_explain_session(conn, session.id)
@@ -411,7 +422,9 @@ async def _mentor_turn(
             now=now,
         )
         conn.commit()
-    except sqlite3.Error:
+    except Exception:
+        # Любой сбой — откат: соединение общее, полузапись закоммитил бы
+        # следующий ход ученика.
         conn.rollback()
         raise
     return repos.get_explain_session(conn, session.id)
@@ -507,7 +520,9 @@ def start(
             conn, session_id, "novice", prompts.novice.opening.format(title=title), ts=now
         )
         conn.commit()
-    except sqlite3.Error:
+    except Exception:
+        # Любой сбой — откат: соединение общее, полузапись закоммитил бы
+        # следующий ход ученика.
         conn.rollback()
         raise
     return repos.get_explain_session(conn, session_id)
@@ -591,7 +606,9 @@ def finish(
         reason = end_reason or ("coverage" if session.state.wrap_up_offered else "button")
         report = _close(conn, session, session.state, reason, now=now, settings=settings)
         conn.commit()
-    except sqlite3.Error:
+    except Exception:
+        # Любой сбой — откат: соединение общее, полузапись закоммитил бы
+        # следующий ход ученика.
         conn.rollback()
         raise
     return report

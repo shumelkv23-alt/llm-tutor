@@ -540,11 +540,11 @@ class IdeaReport(BaseModel):
 
 
 class PitfallReport(BaseModel):
-    """Загвоздка в отчёте; ``fix`` — только у пропущенной."""
+    """Загвоздка в отчёте; ``fix`` — у пропущенной и у неразобранной (``unclear``)."""
 
     id: str
     lesson: str
-    outcome: Literal["named", "fixed", "missed"]
+    outcome: Literal["named", "fixed", "missed", "unclear"]
     fix: str | None = None
 
 
