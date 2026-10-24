@@ -128,3 +128,64 @@ class GradingTutor:
 
     async def chat(self, messages, *, model=None, temperature=None) -> str:
         return "Разбираем."
+
+
+class ExplainLLM:
+    """Модели «Объясни новичку»: оценщик, новичок и наставник по заготовкам.
+
+    Роль — по вызову: ``chat_structured`` со схемой ``ExplainObservation`` —
+    оценщик, с ``NoviceReply`` — новичок, ``chat`` — наставник. Заготовки
+    выдаются по очереди, последняя повторяется. ``fail`` — роли, которые
+    бросают ``LLMError``. Сообщения каждого вызова — в ``calls[роль]``.
+    """
+
+    def __init__(
+        self,
+        *,
+        observations=(),
+        replies=("Понятно, а почему так?",),
+        mentor=("Смотри: это делается так.",),
+        fail=frozenset(),
+    ) -> None:
+        self.observations = list(observations)
+        self.replies = list(replies)
+        self.mentor = list(mentor)
+        self.fail = set(fail)
+        self.calls: dict[str, list[list]] = {"evaluator": [], "novice": [], "mentor": []}
+        self.models: dict[str, list[str | None]] = {"evaluator": [], "novice": [], "mentor": []}
+        # Порядок вызовов по ролям: оценщик зовётся раньше новичка.
+        self.order: list[str] = []
+        self.closed = False
+
+    @staticmethod
+    def _next(queue: list, default):
+        if not queue:
+            return default
+        return queue.pop(0) if len(queue) > 1 else queue[0]
+
+    def _record(self, role: str, messages, model) -> None:
+        self.calls[role].append(list(messages))
+        self.models[role].append(model)
+        self.order.append(role)
+        if role in self.fail:
+            from llm_tutor.llm.client import LLMError
+
+            raise LLMError(f"{role} недоступен", retryable=True)
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        from llm_tutor.llm.schemas import ExplainObservation, NoviceReply
+
+        if schema is ExplainObservation:
+            self._record("evaluator", messages, model)
+            return self._next(self.observations, ExplainObservation())
+        if schema is NoviceReply:
+            self._record("novice", messages, model)
+            return NoviceReply(reply=self._next(self.replies, "А почему?"))
+        raise AssertionError(f"Неожиданный структурный вызов: {schema.__name__}")
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        self._record("mentor", messages, model)
+        return self._next(self.mentor, "Смотри.")
+
+    async def aclose(self) -> None:
+        self.closed = True
