@@ -20,8 +20,6 @@ from llm_tutor.web.api_lesson import LessonContext, lesson_context
 
 router = APIRouter(prefix="/api")
 
-SHARE_FACT = "explain_share"
-
 ERRORS: dict[str, tuple[int, str]] = {
     "not_available": (409, "Этот модуль пока нельзя объяснять: сначала пройдите его целиком."),
     "other_active": (409, "Сначала завершите начатое объяснение другого модуля."),
@@ -64,11 +62,6 @@ class SettingsBody(BaseModel):
 def _fail(error: explain.ExplainError) -> HTTPException:
     status, message = ERRORS[error.code]
     return HTTPException(status_code=status, detail={"message": message})
-
-
-def share_enabled(conn) -> bool:
-    """Согласие ученика показывать сессии преподавателю (по умолчанию — нет)."""
-    return repos.get_fact(conn, SHARE_FACT) == "1"
 
 
 def session_view(ctx: LessonContext, session: ExplainSession) -> dict:
@@ -124,7 +117,7 @@ async def overview(ctx: LessonContext = Depends(lesson_context)) -> dict:
             ],
             "active": session_view(ctx, active) if active else None,
             "history": _history(ctx),
-            "share": share_enabled(ctx.conn),
+            "share": explain.share_enabled(ctx.conn),
         }
 
 
@@ -201,5 +194,5 @@ async def session_detail(session_id: int, ctx: LessonContext = Depends(lesson_co
 async def settings(body: SettingsBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
     """«Показывать мои сессии преподавателю»: действует сразу."""
     async with ctx.lock:
-        repos.set_fact(ctx.conn, SHARE_FACT, "1" if body.share else "0", source="explain")
-        return {"share": share_enabled(ctx.conn)}
+        explain.set_share(ctx.conn, body.share)
+        return {"share": explain.share_enabled(ctx.conn)}
