@@ -210,6 +210,52 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
     return warnings
 
 
+# Эталон «Объясни новичку» (срез 85): столько идей и загвоздок на модуль.
+EXPLAIN_MIN_IDEAS = 5
+EXPLAIN_MAX_IDEAS = 8
+EXPLAIN_MIN_REQUIRED = 3
+EXPLAIN_MIN_PITFALLS = 2
+
+
+def _check_explain(seeds: Sequence[Seed]) -> list[str]:
+    """Эталон «Объясни новичку»: формат — ошибка, отсутствие — предупреждение.
+
+    Как с недописанным содержанием: опубликованный модуль без эталона валиден,
+    режим для него просто недоступен.
+    """
+    warnings: list[str] = []
+    for seed in seeds:
+        number = seed.topic.number
+        explain = seed.topic.explain
+        if explain is None:
+            if seed.topic.published:
+                warnings.append(f"У модуля {number} нет эталона «Объясни новичку»")
+            continue
+        ideas, pitfalls = explain.ideas, explain.pitfalls
+        if not EXPLAIN_MIN_IDEAS <= len(ideas) <= EXPLAIN_MAX_IDEAS:
+            raise SeedError(
+                f"В эталоне модуля {number} {len(ideas)} идей, нужно "
+                f"{EXPLAIN_MIN_IDEAS}–{EXPLAIN_MAX_IDEAS}"
+            )
+        required = sum(1 for idea in ideas if idea.required)
+        if required < EXPLAIN_MIN_REQUIRED:
+            raise SeedError(
+                f"В эталоне модуля {number} {required} обязательных идей, нужно "
+                f"не меньше {EXPLAIN_MIN_REQUIRED}"
+            )
+        if len(pitfalls) < EXPLAIN_MIN_PITFALLS:
+            raise SeedError(
+                f"В эталоне модуля {number} {len(pitfalls)} загвоздок, нужно "
+                f"не меньше {EXPLAIN_MIN_PITFALLS}"
+            )
+        _check_unique(f"эталона модуля {number}", [entry.id for entry in [*ideas, *pitfalls]])
+        own = {node.id for node in seed.nodes}
+        foreign = sorted({entry.lesson for entry in [*ideas, *pitfalls]} - own)
+        if foreign:
+            raise SeedError(f"Эталон модуля {number} ссылается на чужие занятия: {foreign}")
+    return warnings
+
+
 def main_concept(item: Item) -> str | None:
     """Главный концепт задания — с наибольшим весом (при равенстве — первый).
 
@@ -454,6 +500,7 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
     warnings = _check_topics(ordered)
     warnings.extend(_check_lessons(ordered, items))
+    warnings.extend(_check_explain(ordered))
     legacy = _merge_legacy(ordered, nodes)
     return Course(
         topics=tuple(seed.topic for seed in ordered),

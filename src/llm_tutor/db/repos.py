@@ -19,6 +19,11 @@ from llm_tutor.schemas import (
     Criterion,
     Edge,
     Event,
+    ExplainConfig,
+    ExplainReport,
+    ExplainSession,
+    ExplainState,
+    ExplainTurn,
     Item,
     Message,
     ReviewRow,
@@ -442,16 +447,18 @@ def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
 def _write_topic(conn: sqlite3.Connection, topic: Topic) -> None:
     """Upsert модуля без коммита; анкета хранится JSON-ом."""
     conn.execute(
-        "INSERT INTO topics (id, title, intro, survey, published, active) "
-        "VALUES (?, ?, ?, ?, ?, 1) "
+        "INSERT INTO topics (id, title, intro, survey, published, explain, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, 1) "
         "ON CONFLICT(id) DO UPDATE SET title = excluded.title, intro = excluded.intro, "
-        "survey = excluded.survey, published = excluded.published, active = 1",
+        "survey = excluded.survey, published = excluded.published, "
+        "explain = excluded.explain, active = 1",
         (
             topic.number,
             topic.title,
             topic.intro,
             topic.survey.model_dump_json(),
             int(topic.published),
+            topic.explain.model_dump_json() if topic.explain is not None else None,
         ),
     )
 
@@ -464,13 +471,14 @@ def _row_to_topic(row: sqlite3.Row) -> Topic:
         survey=SurveyConfig.model_validate_json(row["survey"]),
         active=bool(row["active"]),
         published=bool(row["published"]),
+        explain=ExplainConfig.model_validate_json(row["explain"]) if row["explain"] else None,
     )
 
 
 def get_topics(conn: sqlite3.Connection) -> list[Topic]:
     """Активные модули курса по возрастанию номера."""
     rows = conn.execute(
-        "SELECT id, title, intro, survey, published, active FROM topics WHERE active = 1 ORDER BY id"
+        "SELECT id, title, intro, survey, published, explain, active FROM topics WHERE active = 1 ORDER BY id"
     ).fetchall()
     return [_row_to_topic(row) for row in rows]
 
@@ -478,7 +486,7 @@ def get_topics(conn: sqlite3.Connection) -> list[Topic]:
 def get_topic(conn: sqlite3.Connection, topic_id: int) -> Topic | None:
     """Активный модуль по номеру или ``None``."""
     row = conn.execute(
-        "SELECT id, title, intro, survey, published, active FROM topics WHERE id = ? AND active = 1",
+        "SELECT id, title, intro, survey, published, explain, active FROM topics WHERE id = ? AND active = 1",
         (topic_id,),
     ).fetchone()
     return _row_to_topic(row) if row else None
@@ -693,6 +701,144 @@ def delete_review(conn: sqlite3.Connection, concept_id: str, *, commit: bool = T
     conn.execute("DELETE FROM review_schedule WHERE concept_id = ?", (concept_id,))
     if commit:
         conn.commit()
+
+
+# --- explain_sessions / explain_turns («Объясни новичку», срез 85) ---
+
+_EXPLAIN_SESSION_COLUMNS = (
+    "id, topic_id, started_at, updated_at, ended_at, status, end_reason, state, report"
+)
+
+
+def _row_to_explain_session(row: sqlite3.Row) -> ExplainSession:
+    return ExplainSession(
+        id=row["id"],
+        topic_id=row["topic_id"],
+        started_at=row["started_at"],
+        updated_at=row["updated_at"],
+        ended_at=row["ended_at"],
+        status=row["status"],
+        end_reason=row["end_reason"],
+        state=ExplainState.model_validate_json(row["state"]),
+        report=ExplainReport.model_validate_json(row["report"]) if row["report"] else None,
+    )
+
+
+def create_explain_session(
+    conn: sqlite3.Connection, topic_id: int, *, now: float, commit: bool = True
+) -> int:
+    """Новая активная сессия по модулю ``topic_id``; возвращает id."""
+    cur = conn.execute(
+        "INSERT INTO explain_sessions (topic_id, started_at, updated_at, state) "
+        "VALUES (?, ?, ?, ?)",
+        (topic_id, now, now, ExplainState().model_dump_json()),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def get_explain_session(conn: sqlite3.Connection, session_id: int) -> ExplainSession | None:
+    row = conn.execute(
+        f"SELECT {_EXPLAIN_SESSION_COLUMNS} FROM explain_sessions WHERE id = ?", (session_id,)
+    ).fetchone()
+    return _row_to_explain_session(row) if row else None
+
+
+def active_explain_session(conn: sqlite3.Connection) -> ExplainSession | None:
+    """Активная сессия ученика (по правилам режима она одна)."""
+    row = conn.execute(
+        f"SELECT {_EXPLAIN_SESSION_COLUMNS} FROM explain_sessions "
+        "WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return _row_to_explain_session(row) if row else None
+
+
+def list_explain_sessions(conn: sqlite3.Connection) -> list[ExplainSession]:
+    """Все сессии, новые сверху."""
+    rows = conn.execute(
+        f"SELECT {_EXPLAIN_SESSION_COLUMNS} FROM explain_sessions ORDER BY started_at DESC, id DESC"
+    ).fetchall()
+    return [_row_to_explain_session(row) for row in rows]
+
+
+def update_explain_session(
+    conn: sqlite3.Connection,
+    session_id: int,
+    *,
+    state: ExplainState,
+    updated_at: float,
+    status: str | None = None,
+    ended_at: float | None = None,
+    end_reason: str | None = None,
+    report: ExplainReport | None = None,
+    commit: bool = False,
+) -> None:
+    """Пишет состояние сессии; ``None`` у остальных полей — оставить как было."""
+    conn.execute(
+        "UPDATE explain_sessions SET state = ?, updated_at = ?, "
+        "status = COALESCE(?, status), ended_at = COALESCE(?, ended_at), "
+        "end_reason = COALESCE(?, end_reason), report = COALESCE(?, report) WHERE id = ?",
+        (
+            state.model_dump_json(),
+            updated_at,
+            status,
+            ended_at,
+            end_reason,
+            report.model_dump_json() if report is not None else None,
+            session_id,
+        ),
+    )
+    if commit:
+        conn.commit()
+
+
+def delete_explain_session(
+    conn: sqlite3.Connection, session_id: int, *, commit: bool = False
+) -> None:
+    """Удаляет сессию вместе с репликами (внешний ключ с каскадом)."""
+    conn.execute("DELETE FROM explain_sessions WHERE id = ?", (session_id,))
+    if commit:
+        conn.commit()
+
+
+def add_explain_turn(
+    conn: sqlite3.Connection,
+    session_id: int,
+    role: str,
+    content: str,
+    *,
+    ts: float,
+    meta: dict | None = None,
+    commit: bool = False,
+) -> int:
+    """Реплика сессии; ``meta`` — JSON (вставка, установка хода, загвоздка, занятие)."""
+    cur = conn.execute(
+        "INSERT INTO explain_turns (session_id, ts, role, content, meta) VALUES (?, ?, ?, ?, ?)",
+        (session_id, ts, role, content, json.dumps(meta, ensure_ascii=False) if meta else None),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def get_explain_turns(conn: sqlite3.Connection, session_id: int) -> list[ExplainTurn]:
+    rows = conn.execute(
+        "SELECT id, session_id, ts, role, content, meta FROM explain_turns "
+        "WHERE session_id = ? ORDER BY id",
+        (session_id,),
+    ).fetchall()
+    return [
+        ExplainTurn(
+            id=row["id"],
+            session_id=row["session_id"],
+            ts=row["ts"],
+            role=row["role"],
+            content=row["content"],
+            meta=json.loads(row["meta"]) if row["meta"] else {},
+        )
+        for row in rows
+    ]
 
 
 # --- facts (профиль/предпочтения, Срез 4.5) ---

@@ -11,7 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 Role = Literal["system", "user", "assistant"]
 
 # Откуда пришло свидетельство об ученике (по убыванию надёжности).
-EventSource = Literal["autotest", "checked", "rubric", "dialogue", "self"]
+# ``explain`` — объяснение модуля новичку (срез 85): слабое, закрытые занятия не
+# переоткрывает (``student/route._failures_since``).
+EventSource = Literal["autotest", "checked", "rubric", "dialogue", "self", "explain"]
 
 # Режим прохода узла (см. student/planner.py).
 NodeMode = Literal["skip", "verify", "compressed", "full", "reinforce", "revisit", "review"]
@@ -231,6 +233,51 @@ class SurveyConfig(BaseModel):
         raise KeyError(f"Нет блока анкеты с ключом {key!r}")
 
 
+class ExplainIdea(BaseModel):
+    """Ключевая идея модуля для «Объясни новичку» (срез 85).
+
+    ``text`` и ``expect`` видят оценщик и наставник, ученик — только в отчёте;
+    новичку они не передаются никогда.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    lesson: str = Field(min_length=1)
+    text: str = Field(min_length=1)
+    required: bool = False
+    # Что должен сказать ученик, чтобы идея считалась объяснённой (для оценщика).
+    expect: str = Field(min_length=1)
+
+
+class ExplainPitfall(BaseModel):
+    """Типичная загвоздка модуля: новичок «понимает» с этой ошибкой.
+
+    ``belief`` — фраза новичка (её он и получает), ``fix`` — почему это неверно:
+    видят оценщик и наставник, ученик — в отчёте.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    lesson: str = Field(min_length=1)
+    belief: str = Field(min_length=1)
+    fix: str = Field(min_length=1)
+
+
+class ExplainConfig(BaseModel):
+    """Эталон модуля для «Объясни новичку»: идеи и загвоздки.
+
+    Числа (5–8 идей, обязательных ≥ 3, загвоздок ≥ 2) и принадлежность занятий
+    модулю проверяет ``course.seed._check_explain``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ideas: list[ExplainIdea]
+    pitfalls: list[ExplainPitfall]
+
+
 class Topic(BaseModel):
     """Модуль курса: номер, название, вводная и анкета (срез 24)."""
 
@@ -244,6 +291,8 @@ class Topic(BaseModel):
     # Модуль открыт ученикам (срез 53): неопубликованный виден в маршруте как
     # «скоро», но войти в него нельзя.
     published: bool = True
+    # Эталон «Объясни новичку» (срез 85); ``None`` — режим для модуля недоступен.
+    explain: ExplainConfig | None = None
 
 
 class Event(BaseModel):
@@ -426,3 +475,117 @@ class SessionState(BaseModel):
     final_weak: bool = False
     # Идущая серия повторения (срез 80); ``None`` — серии нет.
     review: ReviewState | None = None
+
+
+# --- «Объясни новичку» (срез 85): состояние и итог сессии ---
+
+IdeaState = Literal["missing", "partial", "correct", "wrong"]
+
+# Почему сессия закончилась: кнопкой, после «кажется, понял», по лимиту реплик
+# или брошенной (долго без ходов).
+EndReason = Literal["button", "coverage", "limit", "stale"]
+
+
+class IdeaProgress(BaseModel):
+    """Где ученик сейчас с одной идеей эталона."""
+
+    state: IdeaState = "missing"
+    # Дословная цитата ученика, на которой оценщик основал вердикт.
+    quote: str | None = None
+    # Идея стала верной после того, как её затронул наставник: вес вдвое меньше.
+    mentor: bool = False
+
+
+class PitfallUse(BaseModel):
+    """Загвоздка, которую новичок подбросил на ходу ``turn``."""
+
+    id: str
+    turn: int
+    # Исправил ли ученик ошибку новичка (``None`` — ещё не ясно).
+    fixed: bool | None = None
+
+
+class ExplainState(BaseModel):
+    """Живое состояние сессии (JSON в ``explain_sessions.state``)."""
+
+    mode: Literal["novice", "mentor"] = "novice"
+    ideas: dict[str, IdeaProgress] = Field(default_factory=dict)
+    pitfalls_used: list[PitfallUse] = Field(default_factory=list)
+    # Загвоздки, которые ученик назвал сам, без подсказки новичка.
+    pitfalls_named: list[str] = Field(default_factory=list)
+    # Идеи, которые затронул наставник.
+    mentor_ideas: list[str] = Field(default_factory=list)
+    student_turns: int = 0
+    mentor_turns: int = 0
+    pasted_turns: int = 0
+    # Сколько раз ученик просил «просто дай ответ».
+    answer_requests: int = 0
+    # Ходов подряд без изменения покрытия.
+    stalled_turns: int = 0
+    last_pitfall_turn: int | None = None
+    wrap_up_offered: bool = False
+    # Какой запасной вопрос новичка следующий (по кругу).
+    fallback_index: int = 0
+
+
+class IdeaReport(BaseModel):
+    """Идея в отчёте: состояние и — если не верно — эталон."""
+
+    id: str
+    lesson: str
+    state: IdeaState
+    quote: str | None = None
+    mentor: bool = False
+    reference: str | None = None
+
+
+class PitfallReport(BaseModel):
+    """Загвоздка в отчёте; ``fix`` — только у пропущенной."""
+
+    id: str
+    lesson: str
+    outcome: Literal["named", "fixed", "missed"]
+    fix: str | None = None
+
+
+class ExplainReport(BaseModel):
+    """Отчёт сессии (JSON в ``explain_sessions.report``); собирает код."""
+
+    topic_id: int
+    required_done: int
+    required_total: int
+    ideas_done: int
+    ideas_total: int
+    ideas: list[IdeaReport] = Field(default_factory=list)
+    pitfalls: list[PitfallReport] = Field(default_factory=list)
+    # Занятия «повторить»: сначала с ошибками, потом с пробелами.
+    review_lessons: list[str] = Field(default_factory=list)
+    student_turns: int = 0
+    mentor_used: bool = False
+    pasted_turns: int = 0
+    end_reason: EndReason
+
+
+class ExplainSession(BaseModel):
+    """Строка ``explain_sessions``."""
+
+    id: int
+    topic_id: int
+    started_at: float
+    updated_at: float
+    ended_at: float | None = None
+    status: Literal["active", "finished"] = "active"
+    end_reason: EndReason | None = None
+    state: ExplainState = Field(default_factory=ExplainState)
+    report: ExplainReport | None = None
+
+
+class ExplainTurn(BaseModel):
+    """Строка ``explain_turns``: реплика сессии."""
+
+    id: int
+    session_id: int
+    ts: float
+    role: Literal["student", "novice", "mentor"]
+    content: str
+    meta: dict = Field(default_factory=dict)
