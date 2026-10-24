@@ -257,3 +257,12 @@ def test_gone_lesson_skipped(db, settings) -> None:
     assert "ghost_lesson" in report.review_lessons
     assert {e.concept_id for e in _explain_events(db)} == {"l1_select"}
     assert "ghost_lesson" not in repos.get_review_rows(db)
+
+
+def test_revisited_closed_lesson_keeps_module_passed(db, settings) -> None:
+    # Ученик вернулся к закрытому занятию модуля через «Маршрут»: оно текущее,
+    # но модуль от этого не перестаёт быть пройденным.
+    state_id = repos.get_open_session(db)
+    state = repos.get_session_state(db, state_id)
+    repos.update_session_state(db, state_id, state.model_copy(update={"current_node_id": "l1_frames"}))
+    assert _reasons(db, settings)[1] == "ok"

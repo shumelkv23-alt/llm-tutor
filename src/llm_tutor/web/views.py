@@ -493,7 +493,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             }
             for row in rows
         ],
-        "modules": explain_modules(conn, rows),
+        "modules": explain_modules(conn, rows, state),
         "messages": [
             message_view(
                 message.role,
@@ -538,11 +538,18 @@ def module_view(module: ModuleRow, *, explain: bool = False) -> dict:
     }
 
 
-def explain_modules(conn: sqlite3.Connection, rows) -> list[dict]:
+def explain_modules(conn: sqlite3.Connection, rows, state: SessionState) -> list[dict]:
     """Модули для маршрута с флагом «Объясни новичку» (правило — ``core.explain``)."""
     topics = {topic.number: topic for topic in repos.get_topics(conn)}
+    passed = core_explain.passed_modules(rows, state)
     return [
-        module_view(module, explain=core_explain.module_reason(module, topics.get(module.number)) == "ok")
+        module_view(
+            module,
+            explain=core_explain.module_reason(
+                module, topics.get(module.number), passed=module.number in passed
+            )
+            == "ok",
+        )
         for module in module_rows(conn, rows)
     ]
 

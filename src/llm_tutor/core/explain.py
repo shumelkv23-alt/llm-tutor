@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from llm_tutor.config import Settings
 from llm_tutor.core import overview
 from llm_tutor.core.context import fence
+from llm_tutor.core.lesson import closed_from_route
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient, LLMError
@@ -34,6 +35,7 @@ from llm_tutor.schemas import (
     ExplainSession,
     ExplainState,
     ExplainTurn,
+    SessionState,
     Topic,
 )
 from llm_tutor.student import beta, review
@@ -428,24 +430,46 @@ class ModuleAvailability:
     reason: AvailabilityReason
 
 
-def module_reason(row: overview.ModuleRow, topic: Topic | None) -> AvailabilityReason:
+def passed_modules(rows: Sequence[overview.TopicRow], state: SessionState) -> set[int]:
+    """Модули, все занятия которых закрыты.
+
+    Текущее занятие в списке тем — «current», даже если оно закрыто (ученик
+    вернулся к нему через «Маршрут»), поэтому закрытие берётся и из снимка
+    маршрута: повтор пройденного не отнимает режим у модуля.
+    """
+    closed = closed_from_route(state) | {row.id for row in rows if row.status == "closed"}
+    lessons: dict[int, list[str]] = {}
+    for row in rows:
+        lessons.setdefault(row.topic_id, []).append(row.id)
+    return {topic for topic, ids in lessons.items() if all(node in closed for node in ids)}
+
+
+def module_reason(
+    row: overview.ModuleRow, topic: Topic | None, *, passed: bool
+) -> AvailabilityReason:
     """Почему модуль можно или нельзя объяснять (одно правило для ядра и веба)."""
     if not row.published:
         return "soon"
     if topic is None or topic.explain is None:
         return "no_reference"
-    if not (row.total > 0 and row.closed >= row.total):
+    if not (row.total > 0 and passed):
         return "not_passed"
     return "ok"
+
+
+def _lesson_state(conn: sqlite3.Connection) -> SessionState:
+    session_id = repos.get_open_session(conn)
+    return repos.get_session_state(conn, session_id) if session_id else SessionState()
 
 
 def availability(conn: sqlite3.Connection, *, settings: Settings) -> list[ModuleAvailability]:
     """Модули курса: режим открыт, когда модуль пройден и у него есть эталон."""
     topics = {topic.number: topic for topic in repos.get_topics(conn)}
-    rows = overview.module_rows(conn, overview.topic_rows(conn, settings=settings))
+    topic_rows = overview.topic_rows(conn, settings=settings)
+    passed = passed_modules(topic_rows, _lesson_state(conn))
     result = []
-    for row in rows:
-        reason = module_reason(row, topics.get(row.number))
+    for row in overview.module_rows(conn, topic_rows):
+        reason = module_reason(row, topics.get(row.number), passed=row.number in passed)
         result.append(
             ModuleAvailability(
                 topic=row.number, title=row.title, available=reason == "ok", reason=reason
