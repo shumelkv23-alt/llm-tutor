@@ -5,11 +5,17 @@
  * только через textContent.
  */
 (() => {
-  const { $ } = window.App;
+  const { $, icon } = window.App;
   const log = $("#chat-log");
   const form = $("#chat-form");
   const input = $("#chat-input");
+  const mic = $("#chat-mic");
   const typingLine = $("#chat-typing");
+  // Идёт запись с микрофона: Enter и «Отправить» сначала останавливают её,
+  // а не отправляют недописанную реплику.
+  let listening = false;
+  const voice = window.Voice ? window.Voice.attach(mic, input, { label: "Сообщение тьютору" }) : null;
+  if ((!voice || voice.supported === false) && mic) mic.hidden = true;
   const lessonNext = $("#lesson-next");
   const quoteBox = $("#chat-quote");
   const quoteStatus = $("#chat-quote-status");
@@ -57,6 +63,32 @@
     return figure;
   }
 
+  /** Текст ответа без кода, таблиц и служебных плашек — для чтения вслух. */
+  function speechText(element) {
+    const copy = element.cloneNode(true);
+    copy.querySelectorAll(".msg-tools, .msg-quote, pre, code, table, .code-block").forEach((node) => {
+      node.remove();
+    });
+    return copy.textContent || "";
+  }
+
+  function speechButton(element) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn ghost icon-only speech-btn";
+    button.setAttribute("aria-label", "Прослушать ответ");
+    button.title = "Прослушать ответ";
+    button.setAttribute("aria-pressed", "false");
+    button.append(icon("speaker"));
+    button.addEventListener("click", () => {
+      window.Voice.speak(speechText(element), button);
+    });
+    const tools = document.createElement("div");
+    tools.className = "msg-tools";
+    tools.append(button);
+    return tools;
+  }
+
   function bubble(message) {
     const element = document.createElement("div");
     element.className = `msg ${message.role === "user" ? "user" : "assistant"}`;
@@ -67,6 +99,9 @@
       element.append(quoteFigure(message.quote), text);
     } else {
       element.innerHTML = message.html;
+    }
+    if (message.role === "assistant" && window.Voice?.ttsSupported) {
+      element.append(speechButton(element));
     }
     return element;
   }
@@ -89,6 +124,7 @@
   }
 
   function replace(messages) {
+    window.Voice?.stopSpeaking?.();
     log.replaceChildren();
     append(messages);
     scrollToEnd();
@@ -178,6 +214,12 @@
 
   /** Реплика из поля ввода вместе с прикреплённым фрагментом. */
   async function send(text) {
+    // Пока идёт запись, кнопка и Enter останавливают её: отправлять
+    // недослушанный текст нельзя.
+    if (listening) {
+      voice?.stop();
+      return;
+    }
     const clean = text.trim();
     if (!clean || locked()) return;
     const quote = attached;
@@ -222,6 +264,17 @@
   });
 
   input.addEventListener("input", autosize);
+  input.addEventListener("voice:start", () => {
+    listening = true;
+  });
+  input.addEventListener("voice:stop", () => {
+    listening = false;
+  });
+  // Начался ход (кнопка «Дальше», чип, ответ) — запись останавливаем:
+  // диктовать в поле, пока тьютор отвечает, незачем.
+  document.addEventListener("lesson:busy", (event) => {
+    if (event.detail) voice?.stop();
+  });
 
   $("#chat-chips").addEventListener("click", (event) => {
     const chip = event.target.closest(".chip");
@@ -272,7 +325,9 @@
     if (attached && (off || (attachedNode !== null && node !== attachedNode))) detach();
     attachedNode = node;
     input.disabled = off;
-    form.querySelector("button").disabled = off;
+    // Именно submit: первая кнопка формы — микрофон, её выключает Voice.
+    form.querySelector('button[type="submit"]').disabled = off;
+    voice?.setEnabled(!off);
     document.querySelectorAll("#chat-chips .chip").forEach((chip) => {
       chip.disabled = off;
     });

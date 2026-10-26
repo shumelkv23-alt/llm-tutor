@@ -12,7 +12,9 @@
     ["Объясни", "Объясни этот фрагмент подробнее."],
     ["Проще", "Объясни этот фрагмент проще."],
     ["Пример", "Приведи пример к этому фрагменту."],
+    ["В заметку", null, "note"],
     ["Спросить…", null],
+    ["Голосом…", null, "voice"],
   ];
   const MAX_CHARS = 1500;
   // Копия core.context.FOCUS_MAX_LINES (сверяет tests/test_web_fragment.py):
@@ -41,12 +43,14 @@
   bar.setAttribute("aria-label", "Спросить тьютора о выделенном");
   bar.setAttribute("aria-keyshortcuts", "Alt+F10");
   bar.hidden = true;
-  const buttons = QUESTIONS.map(([label, question]) => {
+  const buttons = QUESTIONS.map(([label, question, action]) => {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
     button.tabIndex = -1;
-    button.addEventListener("click", () => choose(question));
+    button.addEventListener("click", () => choose(question, action));
+    // Браузер без распознавания речи: не показываем нерабочий пункт.
+    if (action === "voice" && !window.Voice?.supported) button.hidden = true;
     return button;
   });
   // Кнопки — своим рядом, подсказка — под ним: панель не шире большего из
@@ -173,7 +177,7 @@
     if (restore || focused) selected.restore();
   }
 
-  function choose(question) {
+  function choose(question, action) {
     if (!current || locked() || tooLong()) return;
     const focus = { source: current.source, text: current.text };
     const fromKeyboard = bar.contains(document.activeElement);
@@ -182,6 +186,36 @@
     const viewSwitch = document.querySelector(".view-switch");
     const toChat = Boolean(viewSwitch && getComputedStyle(viewSwitch).display !== "none");
     if (toChat) window.Lesson.selectView("chat");
+    if (action === "voice") {
+      // Фрагмент прикрепляется к полю, дальше — тот же микрофон, что в чате:
+      // распознанный вопрос можно править перед отправкой.
+      window.Lesson.chat.attach(focus);
+      const mic = document.getElementById("chat-mic");
+      if (mic && !mic.hidden && !mic.disabled) mic.click();
+      else document.getElementById("chat-input")?.focus();
+      return;
+    }
+    if (action === "note") {
+      const course = document.getElementById("lesson")?.dataset.course;
+      if (!course) return;
+      const lesson = window.Lesson.state?.node?.lesson;
+      const sectionId =
+        lesson?.sections?.length && lesson.section_index
+          ? lesson.sections[lesson.section_index - 1]?.id || null
+          : null;
+      window.App.request(`/api/courses/${encodeURIComponent(course)}/notes`, {
+        method: "POST",
+        body: {
+          quote: focus.text,
+          source: focus.source,
+          node_id: window.Lesson.state?.node?.id || null,
+          section_id: sectionId,
+        },
+      })
+        .then(() => window.App.notify("Заметка сохранена."))
+        .catch((problem) => window.App.notify(problem.message, { error: true }));
+      return;
+    }
     if (question) window.Lesson.chat.ask(question, focus);
     else window.Lesson.chat.attach(focus);
     // С клавиатуры на телефоне ответ — в «Чате»: туда и фокус (I-3).

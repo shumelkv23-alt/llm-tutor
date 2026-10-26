@@ -272,6 +272,7 @@ def _remap_state(
         update={
             "current_node_id": current,
             "pending_item_id": pending,
+            "item_issued_at": None,
             "phase": "practice" if pending is not None else "explain",
             "mode": None,
             "verify_item_ids": [],

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block eyebrow %}Аккаунт{% endblock %}
 {% block description %}Данные аккаунта и прогресс по текущему курсу.{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script>{% if card and card.status != 'error' %}<script src="{{ static_url('js/knowledge-graph.js') }}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/profile.js') }}" defer></script><script src="{{ static_url('js/courses.js') }}" defer></script><script src="{{ static_url('js/notes.js') }}" defer></script>{% if card and card.status != 'error' %}<script src="{{ static_url('js/knowledge-graph.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <div class="profile-grid">
   <section class="panel" aria-labelledby="account-title">
@@ -55,6 +55,117 @@
     {% endif %}
   </section>
   {% if card.status != 'error' %}
+  {% set source_labels = {'theory': 'теория', 'task': 'задание', 'code': 'код'} %}
+{% macro note_row(note, course, labels) %}
+      <li class="note-row">
+        <blockquote>{{ note.quote }}</blockquote>
+        {% if note.comment %}<p class="note-comment">{{ note.comment }}</p>{% endif %}
+        <p class="note-meta muted">
+          {% if note.lesson %}
+          <a href="/lesson/{{ course.id }}{% if note.concept_id %}?node={{ note.concept_id | urlencode }}{% endif %}{% if note.section_id %}#section-{{ note.section_id | urlencode }}{% endif %}">{{ note.lesson }}</a> ·
+          {% endif %}
+          {{ format_time(note.created_at) }} · {{ labels.get(note.source, note.source) }}
+        </p>
+        <form class="note-comment-form" data-note="{{ note.id }}" data-course="{{ course.id }}">
+          <label class="visually-hidden" for="note-comment-{{ note.id }}">Комментарий к заметке</label>
+          <input id="note-comment-{{ note.id }}" name="comment" maxlength="2000" value="{{ note.comment or '' }}" placeholder="Комментарий к заметке">
+          <button class="btn ghost" type="submit">Сохранить</button>
+          <button class="btn ghost" type="button" data-delete-note="{{ note.id }}" data-course="{{ course.id }}">Удалить</button>
+        </form>
+      </li>
+{% endmacro %}
+  <section class="panel notes" aria-labelledby="notes-title">
+    <div class="panel-header">
+      <div><p class="eyebrow">Заметки и поиск</p><h2 id="notes-title">Мои заметки</h2></div>
+    </div>
+    <form class="search-form" method="get" action="/profile" role="search">
+      <label class="visually-hidden" for="course-search">Поиск по заметкам и конспектам</label>
+      <input id="course-search" name="q" type="search" maxlength="100" value="{{ query }}" placeholder="Найти в заметках и конспектах">
+      <button class="btn" type="submit">Найти</button>
+      {% if query %}<a class="btn ghost" href="/profile">Сбросить</a>{% endif %}
+    </form>
+    {% if notes_error %}
+    <p class="notice error">Заметки сейчас не открываются. Попробуйте позже.</p>
+    {% elif query %}
+    <h3>Заметки по запросу</h3>
+    {% if notes %}
+    <ul class="note-list">
+      {% for note in notes %}
+{{ note_row(note, card, source_labels) }}
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">В заметках совпадений нет.</p>
+    {% endif %}
+    <h3>В конспектах</h3>
+    {% if search %}
+    <ul class="search-results">
+      {% for hit in search %}
+      <li><a href="{{ hit.href }}">{{ hit.title }}</a><p>{{ hit.snippet }}</p></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">В конспектах совпадений нет.</p>
+    {% endif %}
+    {% else %}
+    {% if notes %}
+    <ul class="note-list">
+      {% for note in notes %}
+{{ note_row(note, card, source_labels) }}
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Выделите текст в конспекте или задании и выберите «В заметку» — она появится здесь.</p>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="plan-title">
+    <div class="panel-header">
+      <div><p class="eyebrow">План</p><h2 id="plan-title">На неделю</h2></div>
+    </div>
+    {% if plan.steps %}
+    <ol class="plan-list">
+      {% for step in plan.steps %}
+      <li class="plan-row{% if step.status == 'current' %} current{% endif %}">
+        <span class="plan-name">{{ step.name }}</span>
+        <span class="badge">{{ step.label }}</span>
+        <span class="muted">≈ {{ step.minutes }} мин</span>
+      </li>
+      {% endfor %}
+    </ol>
+    <p class="muted">Всего ≈ {{ plan.total_minutes }} мин. Оценка ориентировочная: в занятие входят конспект и практика.</p>
+    {% else %}
+    <p class="muted">Открытых шагов нет — курс пройден или ещё не начат.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel" aria-labelledby="calibration-title">
+    <div class="panel-header">
+      <div><p class="eyebrow">Метакогниция</p><h2 id="calibration-title">Калибровка</h2></div>
+    </div>
+    <p class="muted">Самооценка из анкеты против фактических ответов. «Стоит проверить» — уверенность выше практики, «можно быстрее» — наоборот.</p>
+    {% if calibration %}
+    <div class="table-wrap">
+      <table class="topics-table">
+        <thead><tr><th scope="col">Блок</th><th scope="col">Самооценка</th><th scope="col">Ответы</th><th scope="col">Вывод</th></tr></thead>
+        <tbody>
+          {% for item in calibration %}
+          <tr>
+            <th scope="row">{{ item.title }}</th>
+            <td>{{ item.self }}</td>
+            <td>{% if item.actual is none %}<span class="muted">нет данных</span>{% else %}{{ item.actual }}%{% endif %}</td>
+            <td><span class="badge{% if item.note == 'стоит проверить' %} accent{% elif item.note == 'можно быстрее' %} success{% endif %}">{{ item.note }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="muted">Пройдите анкету модуля — здесь появится сравнение.</p>
+    {% endif %}
+  </section>
+
   <section class="panel knowledge" id="knowledge" aria-labelledby="knowledge-title" data-course="{{ card.id }}" data-href="{{ card.href }}">
     <div class="panel-header">
       <div><p class="eyebrow">Карта знаний</p><h2 id="knowledge-title">Как связаны занятия</h2></div>

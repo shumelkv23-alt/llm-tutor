@@ -209,6 +209,8 @@ def plan_evidence(
     *,
     source: EventSource = "checked",
     weight_scale: float = 1.0,
+    hints_used: int = 0,
+    time_spent: float | None = None,
     now: float | None = None,
     settings: Settings | None = None,
 ) -> tuple[list[Event], list[beta.MasteryUpdate]]:
@@ -234,6 +236,8 @@ def plan_evidence(
                 concept_id=weight_concept,
                 item_id=item.id,
                 weight=scaled,
+                hints_used=hints_used,
+                time_spent=time_spent,
                 ts=stamp,
             )
         )

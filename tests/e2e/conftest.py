@@ -149,7 +149,12 @@ def _serve(tmp_path, mailer=None):
 async def browser():
     async with playwright_api.async_playwright() as p:
         options = {}
-        if _SANDBOX_CHROMIUM.exists() and not os.environ.get("E2E_DEFAULT_BROWSER"):
+        # На машине без Chromium для Playwright можно взять системный Edge:
+        # E2E_BROWSER_CHANNEL=msedge.
+        channel = os.environ.get("E2E_BROWSER_CHANNEL")
+        if channel:
+            options["channel"] = channel
+        elif _SANDBOX_CHROMIUM.exists() and not os.environ.get("E2E_DEFAULT_BROWSER"):
             options["executable_path"] = str(_SANDBOX_CHROMIUM)
         try:
             instance = await p.chromium.launch(**options)

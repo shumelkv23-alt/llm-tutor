@@ -128,6 +128,30 @@
     });
   }
 
+  /** Кнопки «Надиктовать…»: data-voice — имя поля в этой же форме.
+   *
+   * Возвращает контроллеры, чтобы submit формы мог дождаться финального
+   * распознанного текста, а не отправить промежуточный.
+   */
+  function attachFieldVoice(scope) {
+    const controllers = [];
+    if (!window.Voice?.supported) return controllers;
+    scope.querySelectorAll("[data-voice]").forEach((button) => {
+      const field = scope.querySelector(`[name="${button.dataset.voice}"]`);
+      if (!field) return;
+      const controller = window.Voice.attach(button, field, {
+        label: button.textContent.trim() || "Голосовой ввод",
+      });
+      if (!controller || controller.supported === false) {
+        button.hidden = true;
+        return;
+      }
+      button.hidden = false;
+      controllers.push(controller);
+    });
+    return controllers;
+  }
+
   function sizeOf(bytes) {
     return `${Math.round((Number(bytes || 0) / 1024) * 10) / 10} КБ`;
   }
@@ -157,27 +181,39 @@
     const form = node.querySelector("#create-course");
     const endpoint = node.dataset.create;
     if (!form) return;
-    form.addEventListener("submit", (event) => {
+    const voiceControllers = attachFieldVoice(form);
+    let submitting = false;
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      clearErrors(form);
-      const data = new FormData(form);
-      const body = {
-        title: String(data.get("title") || "").trim(),
-        course_id: String(data.get("course_id") || "").trim(),
-        subtitle: String(data.get("subtitle") || "").trim(),
-        description: String(data.get("description") || "").trim(),
-        source_url: String(data.get("source_url") || "").trim(),
-      };
-      const submit = form.querySelector('button[type="submit"]');
-      guard(submit, async () => {
-        try {
-          const { course } = await request(endpoint, { method: "POST", body });
-          notify(`Курс «${course.title}» создан.`);
-          location.assign(`/admin/courses/${encodeURIComponent(course.id)}`);
-        } catch (problem) {
-          showProblem(form, problem);
-        }
-      });
+      // Пока ждём финальный result, кнопка ещё активна: второй клик не должен
+      // создать второй курс.
+      if (submitting) return;
+      submitting = true;
+      try {
+        // Диктовка описания ещё идёт — сначала финальный текст, потом FormData.
+        await Promise.all(voiceControllers.map((controller) => controller.stop()));
+        clearErrors(form);
+        const data = new FormData(form);
+        const body = {
+          title: String(data.get("title") || "").trim(),
+          course_id: String(data.get("course_id") || "").trim(),
+          subtitle: String(data.get("subtitle") || "").trim(),
+          description: String(data.get("description") || "").trim(),
+          source_url: String(data.get("source_url") || "").trim(),
+        };
+        const submit = form.querySelector('button[type="submit"]');
+        await guard(submit, async () => {
+          try {
+            const { course } = await request(endpoint, { method: "POST", body });
+            notify(`Курс «${course.title}» создан.`);
+            location.assign(`/admin/courses/${encodeURIComponent(course.id)}`);
+          } catch (problem) {
+            showProblem(form, problem);
+          }
+        });
+      } finally {
+        submitting = false;
+      }
     });
   }
 
@@ -186,11 +222,18 @@
   function courseScreen(node) {
     const api = node.dataset.api;
     const form = node.querySelector("#course-meta");
+    const voiceControllers = attachFieldVoice(form);
     const errorBox = node.querySelector("#course-error");
     const list = node.querySelector("#source-list");
     const picker = node.querySelector("#source-file");
     const urlInput = node.querySelector("#source-url");
     const githubInput = node.querySelector("#source-github");
+    const brief = node.querySelector("#voice-brief");
+    const briefStart = node.querySelector("#voice-brief-start");
+    const briefText = node.querySelector("#voice-brief-text");
+    const briefSave = node.querySelector("#voice-brief-save");
+    const briefClear = node.querySelector("#voice-brief-clear");
+    let briefVoice = null;
     const genButton = node.querySelector('[data-action="generate"]');
     // «Перегенерировать» — та же генерация, но с data-force: показываем и прячем вместе.
     const regenButton = node.querySelector('[data-action="regenerate"]');
@@ -207,6 +250,9 @@
     const fill = node.querySelector("#gen-fill");
     const runError = node.querySelector("#gen-error");
     const runWarnings = node.querySelector("#gen-warnings");
+    const versionList = node.querySelector("#version-list");
+    const versionLabel = node.querySelector("#version-label");
+    const versionSave = node.querySelector("#version-save");
     let watching = false;
 
     function fail(problem) {
@@ -217,27 +263,37 @@
 
     /* метаданные */
 
-    form.addEventListener("submit", (event) => {
+    let savingMeta = false;
+    form.addEventListener("submit", async (event) => {
       event.preventDefault();
-      clearErrors(form);
-      const data = new FormData(form);
-      const body = {
-        title: String(data.get("title") || "").trim(),
-        subtitle: String(data.get("subtitle") || "").trim(),
-        description: String(data.get("description") || "").trim(),
-        source_url: String(data.get("source_url") || "").trim(),
-      };
-      guard(form.querySelector('button[type="submit"]'), async () => {
-        try {
-          await request(api, { method: "PUT", body });
-          const heading = document.querySelector(".page-heading h1");
-          if (heading) heading.textContent = body.title;
-          errorBox.hidden = true;
-          notify("Курс сохранён.");
-        } catch (problem) {
-          showProblem(form, problem);
-        }
-      });
+      if (savingMeta) return;
+      savingMeta = true;
+      try {
+        // Пока идёт диктовка, поле readOnly, а последний result может прийти
+        // после stop(): дожидаемся его, иначе сохраним середину фразы.
+        await Promise.all(voiceControllers.map((controller) => controller.stop()));
+        clearErrors(form);
+        const data = new FormData(form);
+        const body = {
+          title: String(data.get("title") || "").trim(),
+          subtitle: String(data.get("subtitle") || "").trim(),
+          description: String(data.get("description") || "").trim(),
+          source_url: String(data.get("source_url") || "").trim(),
+        };
+        await guard(form.querySelector('button[type="submit"]'), async () => {
+          try {
+            await request(api, { method: "PUT", body });
+            const heading = document.querySelector(".page-heading h1");
+            if (heading) heading.textContent = body.title;
+            errorBox.hidden = true;
+            notify("Курс сохранён.");
+          } catch (problem) {
+            showProblem(form, problem);
+          }
+        });
+      } finally {
+        savingMeta = false;
+      }
     });
 
     async function publish(button) {
@@ -311,6 +367,74 @@
       const data = await request(`${api}/sources`);
       renderSources(data.sources || []);
     }
+
+    /* версии содержания */
+
+    function renderVersions(items) {
+      if (!versionList) return;
+      versionList.replaceChildren();
+      if (!items.length) {
+        versionList.append(make("li", "muted", "Версий пока нет."));
+        return;
+      }
+      items.forEach((version) => {
+        const row = make("li", "source-row");
+        row.dataset.version = version.id;
+        const main = make("div", "source-main");
+        main.append(make("span", "source-title", version.label || version.id));
+        const when = new Date(version.created_at * 1000).toLocaleString("ru-RU");
+        main.append(make("span", "source-meta muted", `${when} · файлов ${version.files}`));
+        row.append(main, buttonNode("Вернуть", "ghost", "restore-version", { version: version.id }));
+        versionList.append(row);
+      });
+    }
+
+    async function loadVersions() {
+      if (!versionList) return;
+      try {
+        const data = await request(`${api}/versions`);
+        renderVersions(data.versions || []);
+      } catch (problem) {
+        versionList.replaceChildren(make("li", "muted", problem.message));
+      }
+    }
+
+    async function saveVersion() {
+      if (!versionSave) return;
+      await guard(versionSave, async () => {
+        try {
+          const data = await request(`${api}/versions`, {
+            method: "POST",
+            body: { label: versionLabel ? versionLabel.value.trim() : "" },
+          });
+          if (versionLabel) versionLabel.value = "";
+          await loadVersions();
+          notify(`Версия сохранена: ${data.version.label || data.version.id}.`);
+        } catch (problem) {
+          fail(problem);
+        }
+      });
+    }
+
+    async function restoreVersion(button) {
+      const id = button.dataset.version;
+      const confirmed = await window.App.confirm(
+        "Вернуть курс к версии?",
+        "Текущее содержание сначала сохранится отдельной версией. Источники и материалы не меняются, публикация и счётчики id остаются текущими.",
+        { label: "Вернуть", danger: true }
+      );
+      if (!confirmed) return;
+      await guard(button, async () => {
+        try {
+          await request(`${api}/versions/${encodeURIComponent(id)}/restore`, { method: "POST" });
+          location.reload();
+        } catch (problem) {
+          fail(problem);
+        }
+      });
+    }
+
+    if (versionSave) versionSave.addEventListener("click", saveVersion);
 
     async function addFiles() {
       const files = [...picker.files];
@@ -402,6 +526,62 @@
         }
       });
     }
+
+    /* голосовой бриф */
+
+    // Блок скрыт в шаблоне: показываем его только там, где браузер умеет
+    // распознавать речь. Текст уходит тем же путём, что и загруженный файл.
+    if (brief && briefStart && briefText && window.Voice?.supported) {
+      briefVoice = window.Voice.attach(briefStart, briefText, { label: "Голосовой бриф" });
+      if (briefVoice && briefVoice.supported !== false) brief.hidden = false;
+    }
+
+    let briefSaving = false;
+    async function saveBrief() {
+      if (briefSaving) return;
+      briefSaving = true;
+      try {
+        // stop() отдаёт Promise завершения сессии: финальный result должен
+        // попасть в текст до чтения — иначе последние слова потеряются.
+        await briefVoice?.stop();
+        const text = briefText.value.trim();
+        if (!text) {
+          notify("Сначала надиктуйте или впишите бриф.", { error: true });
+          briefText.focus();
+          return;
+        }
+        if (text.length > MAX_SOURCE_BYTES) {
+          notify("Бриф больше 512 КБ — сократите его.", { error: true });
+          return;
+        }
+        await guard(briefSave, async () => {
+          const day = new Date().toISOString().slice(0, 10);
+          try {
+            await request(`${api}/sources/file`, {
+              method: "POST",
+              body: { name: `Голосовой бриф ${day}.md`, text },
+            });
+            briefText.value = "";
+            await refreshSources();
+            notify("Бриф добавлен в материалы курса.");
+          } catch (problem) {
+            fail(problem);
+          }
+        });
+      } finally {
+        briefSaving = false;
+      }
+    }
+
+    async function clearBrief() {
+      // Ждём финальный result: иначе поздний onresult вернёт текст в поле.
+      await briefVoice?.stop();
+      briefText.value = "";
+      briefText.focus();
+    }
+
+    if (briefSave && briefText) briefSave.addEventListener("click", saveBrief);
+    if (briefClear && briefText) briefClear.addEventListener("click", clearBrief);
 
     /* структура курса */
 
@@ -730,6 +910,7 @@
       unpublish,
       delete: remove,
       "remove-source": removeSource,
+      "restore-version": restoreVersion,
       "add-url": addUrl,
       "add-github": addGithub,
       generate,
@@ -750,6 +931,7 @@
     picker.addEventListener("change", addFiles);
     initRun();
     loadStructure();
+    loadVersions();
   }
 
   /* --- редактор модуля --- */

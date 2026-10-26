@@ -13,7 +13,7 @@ import shutil
 import pytest
 
 from llm_tutor.course import store
-from llm_tutor.course.build import edit, sources, steps
+from llm_tutor.course.build import edit, sources, steps, versions
 from llm_tutor.web import accounts, courses
 from test_generation import ScriptedGenerator
 
@@ -384,6 +384,24 @@ async def test_unpublish_hides_the_course_and_keeps_progress(admin, web, web_app
     assert course_id in accounts.enrolled_courses(web_app.state.accounts, learner_user.id)
     assert (await admin.post(f"/api/admin/courses/{course_id}/publish", json={})).status_code == 200
     await learner.aclose()
+
+
+async def test_publish_and_unpublish_wait_for_generation(admin, web_app, monkeypatch) -> None:
+    """Пока идёт генерация, публикация не читает полуготовые файлы."""
+    course_id = await generated(admin)
+    monkeypatch.setattr(web_app.state.jobs, "running", lambda _course_id: object())
+
+    published = await admin.post(f"/api/admin/courses/{course_id}/publish", json={})
+    unpublished = await admin.post(f"/api/admin/courses/{course_id}/unpublish", json={})
+    saved = await admin.post(f"/api/admin/courses/{course_id}/versions", json={"label": "во время"})
+    restored = await admin.post(
+        f"/api/admin/courses/{course_id}/versions/nope/restore", json={}
+    )
+
+    assert published.status_code == 409
+    assert unpublished.status_code == 409
+    assert saved.status_code == 409
+    assert restored.status_code == 409
 
 
 async def test_published_course_cannot_be_deleted(admin) -> None:
@@ -824,3 +842,60 @@ async def test_survey_needs_exactly_three_level_options(admin) -> None:
     module["topic"]["survey"]["level_options"] = ["Раз", "Два"]
     response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
     assert response.status_code == 422
+
+
+async def test_regeneration_saves_version_before_overwriting(admin) -> None:
+    """Перегенерация затирает модуль — перед ней остаётся версия."""
+    course_id = await generated(admin)
+    root = courses.get_course(course_id).root
+    assert root is not None
+
+    await admin.post(
+        f"/api/admin/courses/{course_id}/generate",
+        json={"module": 1, "force": True},
+    )
+    run = await wait_run(admin, course_id)
+    assert run["status"] == "done", run.get("error")
+
+    labels = [item["label"] for item in versions.list_versions(root)]
+    assert "перед генерацией модуля 1" in labels
+
+
+async def test_module_delete_saves_version(admin) -> None:
+    """Удаление модуля необратимо — перед ним тоже остаётся версия."""
+    course_id = await generated(admin)
+    root = courses.get_course(course_id).root
+    assert root is not None
+
+    response = await admin.delete(f"/api/admin/courses/{course_id}/modules/1")
+    assert response.status_code == 204, response.text
+
+    labels = [item["label"] for item in versions.list_versions(root)]
+    assert "перед удалением модуля 1" in labels
+
+
+async def test_versions_snapshot_and_restore(admin, web_app) -> None:
+    course_id = await make(admin)
+    first = await admin.post(
+        f"/api/admin/courses/{course_id}/versions", json={"label": "до правки"}
+    )
+    assert first.status_code == 201, first.text
+    version_id = first.json()["version"]["id"]
+
+    updated = await admin.put(f"/api/admin/courses/{course_id}", json={"title": "Новое имя"})
+    assert updated.status_code == 200, updated.text
+    second = await admin.post(f"/api/admin/courses/{course_id}/versions", json={"label": "после"})
+    assert second.status_code == 201
+
+    listed = await admin.get(f"/api/admin/courses/{course_id}/versions")
+    assert listed.status_code == 200
+    assert [item["label"] for item in listed.json()["versions"]][:2] == ["после", "до правки"]
+
+    restored = await admin.post(
+        f"/api/admin/courses/{course_id}/versions/{version_id}/restore", json={}
+    )
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["course"]["title"] == "Основы Python"
+    # Перед откатом сохранена страховая версия.
+    after = (await admin.get(f"/api/admin/courses/{course_id}/versions")).json()["versions"]
+    assert any(item["label"].startswith("перед откатом к ") for item in after)

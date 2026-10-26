@@ -110,11 +110,39 @@ window.Lesson = (() => {
       const data = await request(`${base}/state`);
       setState(data.state);
       window.Lesson.chat?.replace(data.state.messages);
+      await openTarget();
     } catch (problem) {
       const error = $("#page-error");
       error.textContent = `${problem.message} Обновите страницу.`;
       error.hidden = false;
     }
+  }
+
+  /** Открыть занятие из ссылки: ?node= из заметки или поиска, затем #section-. */
+  async function openTarget() {
+    const target = root.dataset.targetNode;
+    root.dataset.targetNode = "";
+    if (target && state?.node?.id !== target) {
+      // Переход — обычный ход: он пишет реплику в чат и обновляет маршрут.
+      await act("switch", { node_id: target });
+    }
+    if (target) {
+      // Цель больше не нужна: перезагрузка не должна повторять переход.
+      history.replaceState(null, "", location.pathname + location.hash);
+    }
+    scrollToSection();
+  }
+
+  /** Прокрутка к разделу из адреса (ссылка на заметку). */
+  function scrollToSection() {
+    if (!location.hash) return;
+    let id = location.hash.slice(1);
+    try {
+      id = decodeURIComponent(id);
+    } catch {
+      return;
+    }
+    document.getElementById(id)?.scrollIntoView({ block: "start" });
   }
 
   function setBusy(value) {

@@ -375,6 +375,8 @@ def item_evidence(
     result: GradeResult,
     *,
     from_tests: bool,
+    hints_used: int = 0,
+    time_spent: float | None = None,
     now: float,
     settings: Settings,
 ) -> tuple[list[Event], list[beta.MasteryUpdate]]:
@@ -405,6 +407,8 @@ def item_evidence(
             if from_tests or item.answer_type in diagnostic.AUTO_CHECKABLE
             else settings.rubric_evidence_weight
         ),
+        hints_used=hints_used,
+        time_spent=time_spent,
         now=now,
         settings=settings,
     )
@@ -443,7 +447,7 @@ async def _answer_branch(
             STALE_ITEM_REPLY,
             [],
             [],
-            state.model_copy(update={"pending_item_id": None}),
+            state.model_copy(update={"pending_item_id": None, "item_issued_at": None}),
             None,
         )
 
@@ -457,7 +461,7 @@ async def _answer_branch(
             GRADING_FAILED_REPLY,
             [],
             [],
-            state.model_copy(update={"pending_item_id": None}),
+            state.model_copy(update={"pending_item_id": None, "item_issued_at": None}),
             None,
         )
     if result is None:
@@ -467,17 +471,35 @@ async def _answer_branch(
             STALE_ITEM_REPLY,
             [],
             [],
-            state.model_copy(update={"pending_item_id": None}),
+            state.model_copy(update={"pending_item_id": None, "item_issued_at": None}),
             None,
         )
 
     measured = state.current_node_id or next(iter(item.concept_weights), "")
+    # Подсказки: уровень лестницы; если помогали на нулевом уровне (чат), всё
+    # равно считаем помощь фактом. Время — от выдачи задания до ответа.
+    hints_used = state.hint_level or (1 if state.task_hinted else 0)
+    time_spent = (
+        max(0.0, now - state.item_issued_at)
+        if state.item_issued_at is not None
+        else None
+    )
     events, mastery = item_evidence(
-        conn, graph, item, measured, result, from_tests=grade is not None, now=now, settings=settings
+        conn,
+        graph,
+        item,
+        measured,
+        result,
+        from_tests=grade is not None,
+        hints_used=hints_used,
+        time_spent=time_spent,
+        now=now,
+        settings=settings,
     )
     new_state = state.model_copy(
         update={
             "pending_item_id": None,
+            "item_issued_at": None,
             "attempts": state.attempts + 1,
             "last_activity": now,
         }
@@ -495,6 +517,49 @@ async def _answer_branch(
         new_state, correct=passed, hinted=hinted, settings=settings
     )
     return _feedback(item, result.score), events, mastery, new_state, passed
+
+
+def _tutor_reply_from_text(text: str, *, hint_level: int = 0) -> TutorReply:
+    """Текстовый ответ провайдера → TutorReply.
+
+    Если модель всё-таки вернула JSON (в обёртке или как есть), берём из него
+    ``reply`` и известные флаги. Сырой JSON ученику не показываем: обрезанный
+    или не тот объект — это сбой, а не объяснение. Обычный текст оставляем как
+    есть, сохраняя текущий уровень подсказки (иначе фолбэк откатил бы его на 0).
+    """
+    clean = text.strip()
+    if not clean:
+        return TutorReply(reply=LLM_FAILURE_REPLY)
+    fenced = clean.startswith("```")
+    if fenced:
+        lines = clean.splitlines()
+        inner = lines[1:-1] if len(lines) > 1 and lines[-1].strip() == "```" else lines[1:]
+        clean = "\n".join(inner).strip()
+    looks_json = fenced or clean.startswith("{") or clean.startswith("[")
+    if looks_json:
+        candidates = [clean]
+        start, end = clean.find("{"), clean.rfind("}")
+        if start != -1 and end > start:
+            candidates.append(clean[start : end + 1])
+        for candidate in candidates:
+            try:
+                parsed = json.loads(candidate)
+            except ValueError:
+                continue
+            if not isinstance(parsed, dict):
+                return TutorReply(reply=LLM_FAILURE_REPLY)
+            reply = parsed.get("reply")
+            if not isinstance(reply, str) or not reply.strip():
+                return TutorReply(reply=LLM_FAILURE_REPLY)
+            data: dict = {"reply": reply, "hint_level": hint_level}
+            if isinstance(parsed.get("hint_level"), int):
+                data["hint_level"] = parsed["hint_level"]
+            for flag in ("student_stuck", "wants_close_topic"):
+                if isinstance(parsed.get(flag), bool):
+                    data[flag] = parsed[flag]
+            return TutorReply(**data)
+        return TutorReply(reply=LLM_FAILURE_REPLY)
+    return TutorReply(reply=clean, hint_level=hint_level)
 
 
 async def _tutor_branch(
@@ -541,8 +606,20 @@ async def _tutor_branch(
     except LLMError as exc:
         # Ученик видит только «не смог получить ответ», поэтому причина (сеть,
         # лимит, отвергнутый ключ) должна остаться хотя бы в логе сервера.
-        logger.warning("Тьютор не получил ответ модели: %s", exc)
-        return LLM_FAILURE_REPLY, [], [], idle_state, False
+        logger.warning("Тьютор не получил структурированный ответ: %s", exc)
+        if not exc.json_error:
+            return LLM_FAILURE_REPLY, [], [], idle_state, False
+        # Провайдер ответил, но проигнорировал JSON-режим. Ответ ученику важнее
+        # служебных флагов: берём обычный текст, флаги остаются по умолчанию.
+        # Явные «не понял»/«закрой тему» разобраны intents до этой ветки
+        # (force_stuck/verify), поэтому теряются только модельные оттенки —
+        # кнопки «Не понимаю» и «Закрыть занятие» остаются на месте.
+        try:
+            text = await client.chat(package.messages, model=model)
+        except LLMError as plain_exc:
+            logger.warning("Тьютор не получил и текстовый ответ: %s", plain_exc)
+            return LLM_FAILURE_REPLY, [], [], idle_state, False
+        answer = _tutor_reply_from_text(text, hint_level=state.hint_level)
     except Exception:  # noqa: BLE001 — бот не должен молчать на неожиданный сбой
         logger.exception("Неожиданный сбой тьюторского хода")
         return LLM_FAILURE_REPLY, [], [], idle_state, False
@@ -600,6 +677,7 @@ def reset_lesson(
                 "mode": None,
                 "hint_level": 0,
                 "pending_item_id": None,
+                "item_issued_at": None,
                 "route": route,
                 "phase": "explain",
                 "node_streak": 0,
@@ -681,6 +759,7 @@ def _checking(state: SessionState, node_id: str) -> SessionState:
             "hint_level": 0,
             "task_hinted": False,
             "pending_item_id": None,
+            "item_issued_at": None,
             "phase": "explain",
             "verify_item_ids": [],
             "lesson_item_ids": [],
@@ -1569,6 +1648,7 @@ def _issue_task(
     new_state = state.model_copy(
         update={
             "pending_item_id": question.item.id,
+            "item_issued_at": now,
             "current_node_id": question.concept_id,
             "section_id": section_id if sections and state.mode != "verify" else state.section_id,
             "hint_level": 0,
@@ -1784,7 +1864,12 @@ def _skip_turn(
         user_text=user_text,
         assistant_text=SKIP_REPLY,
         state=state.model_copy(
-            update={"pending_item_id": None, "phase": "explain", "last_activity": now}
+            update={
+                "pending_item_id": None,
+                "item_issued_at": None,
+                "phase": "explain",
+                "last_activity": now,
+            }
         ),
         now=now,
         focus=focus,

@@ -144,6 +144,11 @@ _MATERIAL_BASES: dict[str, str] = {
 }
 
 
+def tutor_turn_contract() -> str:
+    """Контракт JSON-ответа тьютора (ставится последним блоком промпта)."""
+    return _TUTOR_TURN_CONTRACT
+
+
 def tutor_system_prompt(
     hint_level: int,
     *,
@@ -151,8 +156,15 @@ def tutor_system_prompt(
     phase: GuidePhase | None = None,
     route_block: str | None = None,
     topic: Topic | None = None,
+    contract: bool = True,
 ) -> str:
-    """Системный промпт полного хода: модуль, правила, маршрут и фаза занятия."""
+    """Системный промпт полного хода: модуль, правила, маршрут и фаза занятия.
+
+    ``contract=False`` — контракт JSON не включается: вызывающий код добавит
+    его последним блоком, после конспекта и профиля. Иначе длинный материал,
+    дописанный ниже, перебивает инструкцию о формате (провайдеры вроде
+    DeepSeek/``Azati Fast`` тогда отвечают обычным текстом).
+    """
     base = _MATERIAL_BASES[material]
     level_name = HINT_LEVEL_NAMES.get(hint_level, "без подсказки")
     parts = [course_line(topic), base, _BREVITY_RULES, _TUTOR_TURN_RULES, _GUIDE_RULES]
@@ -161,7 +173,8 @@ def tutor_system_prompt(
     if phase is not None:
         parts.append(f"Фаза занятия: {phase}.")
     parts.append(f"Сейчас ты на уровне {hint_level} ({level_name}).")
-    parts.append(_TUTOR_TURN_CONTRACT)
+    if contract:
+        parts.append(_TUTOR_TURN_CONTRACT)
     return "\n\n".join(parts)
 
 

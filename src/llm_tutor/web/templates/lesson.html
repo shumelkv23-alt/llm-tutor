@@ -15,6 +15,7 @@
 <script src="{{ static_url('vendor/codemirror-5.65.20/matchbrackets.js') }}" defer></script>
 <script src="{{ static_url('vendor/codemirror-5.65.20/closebrackets.js') }}" defer></script>
 <script src="{{ static_url('js/lesson.js') }}" defer></script>
+<script src="{{ static_url('js/voice.js') }}" defer></script>
 <script src="{{ static_url('js/split.js') }}" defer></script>
 <script src="{{ static_url('js/chat.js') }}" defer></script>
 <script src="{{ static_url('js/theory.js') }}" defer></script>
@@ -44,7 +45,8 @@
 </section>
 {% elif course.enrolled %}
 <div class="lesson" id="lesson" data-course="{{ course.id }}" data-view="lesson" aria-busy="true"
-     data-pyodide="{{ pyodide_index_url }}" data-worker="{{ static_url('js/pyodide-worker.js') }}">
+     data-target-node="{{ target_node }}" data-pyodide="{{ pyodide_index_url }}"
+     data-worker="{{ static_url('js/pyodide-worker.js') }}">
   <header class="lesson-head">
     <div class="lesson-title">
       <p class="eyebrow">{{ course.subtitle }}</p>
@@ -106,6 +108,8 @@
       <form class="chat-form" id="chat-form">
         <label class="visually-hidden" for="chat-input">Сообщение тьютору</label>
         <textarea id="chat-input" name="text" rows="2" maxlength="8000" placeholder="Спросите тьютора… Enter — отправить, Shift+Enter — новая строка"></textarea>
+        <button class="btn ghost icon-only voice-btn" type="button" id="chat-mic" data-turn
+                aria-label="Голосовой ввод" aria-pressed="false" title="Голосовой ввод" hidden>{{ icon('mic') }}</button>
         <button class="btn primary icon-only" type="submit" aria-label="Отправить">{{ icon('send') }}</button>
       </form>
     </section>

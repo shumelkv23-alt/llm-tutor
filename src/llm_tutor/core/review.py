@@ -117,6 +117,7 @@ async def _advance(
     mastery: list | None = None,
     schedule: Sequence[review.ScheduleChange] = (),
     issued: tuple[SessionState, str | None, list[str] | None] | None = None,
+    review_answer: tuple[str | None, float | None, int | None, bool] | None = None,
 ) -> TurnReply:
     """Конец хода серии: следующее задание или итог — и запись хода одним коммитом.
 
@@ -140,6 +141,17 @@ async def _advance(
             )
             text = f"{text}\n\n{more}" if more else text
     assistant_text = f"{text}\n\n{tail}" if tail and text else (tail or text)
+    if review_answer is not None:
+        concept_id, due_at, step, passed = review_answer
+        repos.add_review_log(
+            conn,
+            concept_id,
+            due_at=due_at,
+            answered_at=now,
+            passed=passed,
+            step=step,
+            commit=False,
+        )
     post_turn(
         conn,
         session_id,
@@ -268,7 +280,15 @@ async def answer(
     # Засчитывается занятию задания, а не текущему занятию ученика.
     concept = main_concept(item) or node_id
     events, mastery = turn.item_evidence(
-        conn, graph, item, concept, result, from_tests=grade is not None, now=stamp, settings=s
+        conn,
+        graph,
+        item,
+        concept,
+        result,
+        from_tests=grade is not None,
+        hints_used=1 if series.hinted else 0,
+        now=stamp,
+        settings=s,
     )
     passed = result.score >= diagnostic.SUCCESS_SCORE
     row = repos.get_review_rows(conn).get(concept)
@@ -297,6 +317,12 @@ async def answer(
         conn, client, model, graph, session_id, updated, user_text=text, lead=lead,
         node_id=node_id, now=stamp, settings=s, events=events, mastery=mastery,
         schedule=[change] if change else (),
+        review_answer=(
+            concept,
+            row.due_at if row is not None else None,
+            row.step if row is not None else None,
+            passed,
+        ),
     )
 
 

@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="{{ static_url('css/app.css') }}">
   <script src="{{ static_url('js/app.js') }}" defer></script>
   <script src="{{ static_url('js/auth.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
 </head>
 <body class="auth-body">
   <main class="login-screen" id="main">

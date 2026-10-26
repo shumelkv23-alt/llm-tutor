@@ -111,6 +111,7 @@ def switch_node(
             "node_streak": state.node_streak,
             "hint_level": state.hint_level,
             "pending_item_id": state.pending_item_id,
+            "item_issued_at": state.item_issued_at,
             "lesson_item_ids": state.lesson_item_ids,
         }
     else:
@@ -119,6 +120,7 @@ def switch_node(
             "node_streak": 0,
             "hint_level": 0,
             "pending_item_id": None,
+            "item_issued_at": None,
             # Список выданного в уроке — про узел: на новой теме он начинает
             # заход заново (спека §5.3).
             "lesson_item_ids": [],
@@ -216,6 +218,7 @@ def enter_module(
             update={
                 "current_node_id": None,
                 "pending_item_id": None,
+                "item_issued_at": None,
                 "mode": None,
                 "phase": "explain",
                 "node_streak": 0,

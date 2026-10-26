@@ -36,6 +36,7 @@ from llm_tutor.schemas import CriterionResult, GradeResult, ReviewState, Session
 from llm_tutor.student import review, survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import accounts, views
+from llm_tutor.web.admin import update_progress
 from llm_tutor.web.accounts import User
 from llm_tutor.web.courses import RENAMED_COURSES, Course, published_courses, student_course
 from llm_tutor.web.security import accounts_db, optional_user, require_user
@@ -91,13 +92,14 @@ async def enroll(course_id: str, request: Request, user: User = Depends(require_
     async with pool.lock(user.id, course.id):
         # Сначала БД ученика: запись без БД оставила бы курс, который не открыть.
         try:
-            pool.open(user.id, course.id)
+            conn = pool.open(user.id, course.id)
         except (*views.COURSE_ERRORS, OSError) as exc:
             # Открыть БД курса нечем: нечитаемые модули — та же беда, что битая
             # БД ученика, и отвечать на неё пятисоткой нечего (аудит среза 1).
             logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
             raise HTTPException(status_code=503, detail={"message": COURSE_DB_BROKEN}) from exc
         accounts.enroll(accounts_db(request), user.id, course.id)
+        update_progress(request.app.state, course, conn, user.id)
     card = course_card(
         course, user_id=user.id, enrolled=True, pool=pool, settings=request.app.state.settings
     )
@@ -125,6 +127,7 @@ class LessonContext:
     lock: asyncio.Lock
     settings: Settings
     client: LLMClient
+    app_state: object
 
     @property
     def model(self) -> str:
@@ -152,6 +155,7 @@ async def lesson_context(
         lock=pool.lock(user.id, course.id),
         settings=request.app.state.settings,
         client=request.app.state.client,
+        app_state=request.app.state,
     )
 
 
@@ -179,7 +183,11 @@ def turn_response(
         text = reply.text if not reply.tail else f"{reply.text}\n\n{reply.tail}"
     if text:
         messages.append(views.message_view("assistant", text))
-    return {"messages": messages, "state": views.lesson_state(ctx.conn, settings=ctx.settings)}
+    state = views.lesson_state(ctx.conn, settings=ctx.settings)
+    # Материализованная сводка обновляется здесь, после коммита хода: админка
+    # не обходит все БД учеников на каждый запрос.
+    update_progress(ctx.app_state, ctx.course, ctx.conn, ctx.user.id)
+    return {"messages": messages, "state": state}
 
 
 def _require_survey(ctx: LessonContext) -> None:
@@ -256,6 +264,18 @@ class SurveyBody(BaseModel):
     answers: list[StrictInt] = Field(max_length=32)
 
 
+class NoteBody(BaseModel):
+    quote: str = Field(min_length=1, max_length=4000)
+    source: Literal["theory", "task", "code"] = "theory"
+    node_id: str | None = Field(default=None, max_length=200)
+    comment: str | None = Field(default=None, max_length=2000)
+    section_id: str | None = Field(default=None, max_length=80)
+
+
+class NoteCommentBody(BaseModel):
+    comment: str = Field(default="", max_length=2000)
+
+
 class QuoteBody(BaseModel):
     """Фрагмент страницы занятия, о котором спрашивает ученик (срез 76).
 
@@ -322,6 +342,53 @@ async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
 async def course_graph(ctx: LessonContext = Depends(lesson_context)) -> dict:
     """Карта знаний в профиле: занятия курса со статусами и связи (срез 74)."""
     return views.graph_view(ctx.conn, settings=ctx.settings)
+
+
+@router.post("/courses/{course_id}/notes", status_code=201)
+async def add_note(body: NoteBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Сохранить выделенный фрагмент в заметки ученика."""
+    _require_survey(ctx)
+    text = body.quote.strip()
+    if not text:
+        raise HTTPException(
+            status_code=422, detail={"field": "quote", "message": "Пустая заметка."}
+        )
+    graph = CourseGraph.load(ctx.conn)
+    state = _lesson_session_state(ctx)
+    node_id = body.node_id if body.node_id in graph.node_ids else state.current_node_id
+    if node_id is not None and not graph.has_node(node_id):
+        node_id = None
+    note_id = repos.add_note(
+        ctx.conn,
+        concept_id=node_id,
+        source=body.source,
+        quote=text[:4000],
+        comment=(body.comment or "").strip() or None,
+        section_id=body.section_id,
+    )
+    note = repos.get_note(ctx.conn, note_id)
+    return {"note": views.note_view(note, graph) if note is not None else {"id": note_id}}
+
+
+@router.put("/courses/{course_id}/notes/{note_id}")
+async def edit_note(
+    note_id: int, body: NoteCommentBody, ctx: LessonContext = Depends(lesson_context)
+) -> dict:
+    """Сохранить комментарий к заметке."""
+    note = repos.set_note_comment(ctx.conn, note_id, body.comment.strip())
+    if note is None:
+        raise HTTPException(status_code=404, detail={"message": "Заметки нет."})
+    return {"note": views.note_view(note, CourseGraph.load(ctx.conn))}
+
+
+@router.delete("/courses/{course_id}/notes/{note_id}")
+async def remove_note(
+    note_id: int, ctx: LessonContext = Depends(lesson_context)
+) -> dict:
+    """Удалить свою заметку."""
+    if not repos.delete_note(ctx.conn, note_id):
+        raise HTTPException(status_code=404, detail={"message": "Заметки нет."})
+    return {"ok": True}
 
 
 @router.post("/courses/{course_id}/lesson/survey/next")

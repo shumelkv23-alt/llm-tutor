@@ -135,6 +135,7 @@ def start_verification(
             "hint_level": 0,
             "task_hinted": False,
             "pending_item_id": None,
+            "item_issued_at": None,
             "phase": "explain",
             "verify_item_ids": [],
             # Список выданного в уроке про заход урока: у прохода свой.

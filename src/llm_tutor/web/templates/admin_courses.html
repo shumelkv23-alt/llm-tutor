@@ -3,7 +3,8 @@
 {% block heading %}Курсы{% endblock %}
 {% block description %}Свои курсы: материалы, генерация модулей и публикация. Ученикам виден только опубликованный курс.{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/voice.js') }}" defer></script>
+<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
 {% block content %}
 {% include "_admin_tabs.html" %}
 
@@ -57,7 +58,10 @@
       <label>Описание<textarea name="description" rows="3" maxlength="2000" placeholder="Для кого курс и что в нём"></textarea></label>
       <label>Ссылка на источник<input name="source_url" type="url" maxlength="500" autocomplete="off" placeholder="https://example.com/course"></label>
       <p class="form-error" role="alert" hidden></p>
-      <div><button class="btn primary" type="submit">Создать курс</button></div>
+      <div class="admin-actions">
+        <button class="btn primary" type="submit">Создать курс</button>
+        <button class="btn voice-btn" type="button" data-voice="description" hidden>{{ icon('mic') }} Надиктовать описание</button>
+      </div>
     </form>
   </section>
 

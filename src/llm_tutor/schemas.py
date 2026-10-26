@@ -86,6 +86,18 @@ class Message(BaseModel):
     meta: str | None = None  # JSON: вердикт грейдера, время шага
 
 
+class Note(BaseModel):
+    """Сохранённый учеником фрагмент: заметка в профиле и поиске."""
+
+    id: int
+    concept_id: str | None = None
+    source: str
+    quote: str
+    created_at: float
+    comment: str | None = None
+    section_id: str | None = None
+
+
 class Item(BaseModel):
     """Задание из банка: что спрашиваем, как проверяем и какой концепт меряем."""
 
@@ -398,6 +410,9 @@ class SessionState(BaseModel):
     # задания идут по второму кругу (повтор — слабым свидетельством).
     lesson_item_ids: list[int] = Field(default_factory=list)
     last_activity: float | None = None
+    # Когда выдано висящее задание: по нему считается ``time_spent`` события.
+    # Старые состояния без поля дают None — время просто не записывается.
+    item_issued_at: float | None = None
     # Урок за ручку (срез 28): части объяснения текущей темы и сколько из них
     # уже показано; ошибки на проверке темы (второй шанс, потом — дальше).
     lesson_parts: list[str] = Field(default_factory=list)

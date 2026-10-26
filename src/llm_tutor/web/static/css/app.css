@@ -1060,10 +1060,21 @@ dialog p {
   grid-column: 2;
 }
 
-/* С картой знаний «Аккаунт» тянется на две строки: иначе под карточкой курса
-   оставалась дыра высотой с левую панель (аудит 74–75). */
+/* С картой знаний «Аккаунт» тянется на две строки, а курс и карта идут
+   друг под другом в правой колонке: иначе карта уезжала под заметки и план,
+   а под карточкой курса оставалась дыра высотой с левую панель (аудит 74–75). */
 .profile-grid:has(> .knowledge) > .panel:first-child {
   grid-row: span 2;
+}
+
+.profile-grid:has(> .knowledge) > .learning {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.profile-grid:has(> .knowledge) > .knowledge {
+  grid-column: 2;
+  grid-row: 2;
 }
 
 .account-facts {
@@ -1207,6 +1218,12 @@ dialog p {
   }
 
   .profile-grid:has(> .knowledge) > .panel:first-child {
+    grid-row: auto;
+  }
+
+  .profile-grid:has(> .knowledge) > .learning,
+  .profile-grid:has(> .knowledge) > .knowledge {
+    grid-column: auto;
     grid-row: auto;
   }
 }
@@ -1913,5 +1930,122 @@ pre code .p {
 @media (max-width: 599px) {
   .kg-stage {
     height: 340px;
+  }
+}
+
+/* --- Заметки и поиск в профиле --- */
+
+.search-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+
+.search-form input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.note-list,
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.note-row {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.note-row blockquote {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-meta {
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.note-comment {
+  margin: 0 0 6px;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.note-comment-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.note-comment-form input {
+  flex: 1;
+  min-width: 160px;
+}
+
+.search-results li {
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+}
+
+.search-results p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.plan-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.plan-row.current {
+  border-color: var(--primary);
+}
+
+.plan-name {
+  font-weight: 600;
+}
+
+/* --- Голосовой ввод (Web Speech API) --- */
+
+.voice-btn.recording {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.voice-btn.recording .icon {
+  animation: voice-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-btn.recording .icon {
+    animation: none;
   }
 }

@@ -11,15 +11,19 @@
 """
 
 import argparse
+import asyncio
 import os
 import sqlite3
+import time
 from pathlib import Path
 
 from llm_tutor.config import Settings, get_settings
 from llm_tutor.db.connection import get_conn, migrate
-from llm_tutor.web import accounts, courses
+from llm_tutor.web import accounts, courses, ops
 from llm_tutor.web.app import _project_path
 from llm_tutor.web.courses import get_course, published_courses
+from llm_tutor.web.mailer import build_mailer
+from llm_tutor.web.reminders import send_reminders
 from llm_tutor.web.userdb import UserDBPool
 
 
@@ -104,12 +108,80 @@ def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> 
         ("revoke-admin", "снять с аккаунта роль админа"),
     ):
         commands.add_parser(name, help=help_text).add_argument("--email", required=True)
+    reminders = commands.add_parser(
+        "send-review-reminders", help="письма о занятиях, готовых к повторению"
+    )
+    reminders.add_argument("--dry-run", action="store_true", help="только показать, не отправлять")
+    reminders.add_argument("--base-url", default=None, help="внешний адрес в ссылке письма")
+
+    backup = commands.add_parser("backup", help="копия аккаунтов и БД учеников")
+    backup.add_argument("--out", default=None, help="каталог бэкапа")
+    backup.add_argument("--with-courses", action="store_true", help="включить курсы и материалы")
+    backup.add_argument("--force", action="store_true", help="писать в непустой каталог")
+    restore = commands.add_parser("restore", help="восстановить данные из бэкапа")
+    restore.add_argument("--from", dest="source", required=True, help="каталог бэкапа")
+    restore.add_argument("--yes", action="store_true", help="подтвердить перезапись")
+    restore.add_argument("--force", action="store_true", help="не проверять занятый порт")
+    export_account = commands.add_parser("export-account", help="экспорт данных ученика в JSON")
+    export_account.add_argument("--email", required=True)
+    export_account.add_argument("--out", default=None)
+    delete_account = commands.add_parser("delete-account", help="удалить аккаунт и его БД")
+    delete_account.add_argument("--email", required=True)
+    delete_account.add_argument("--yes", action="store_true")
+    delete_account.add_argument("--dry-run", action="store_true")
+    commands.add_parser("check-smtp", help="проверить вход в SMTP без отправки письма")
     args = parser.parse_args(argv)
 
     try:
         if args.command == "import-legacy":
             target = import_legacy(settings, args.email, args.db, args.course)
             print(f"Готово: {target}")
+        elif args.command == "send-review-reminders":
+            async def run():
+                post = build_mailer(settings)
+                try:
+                    return await send_reminders(
+                        settings, post, base_url=args.base_url, dry_run=args.dry_run
+                    )
+                finally:
+                    await post.aclose()
+
+            sent = asyncio.run(run())
+            suffix = " (dry-run)" if args.dry_run else ""
+            if not settings.smtp_configured:
+                print("SMTP не настроен: письма печатаются в журнал сервера.")
+            print(f"Готово: напоминаний — {len(sent)}{suffix}")
+            for reminder in sent:
+                course_lines = "; ".join(
+                    f"{entry.course_title}: {', '.join(entry.lessons)}"
+                    for entry in reminder.entries
+                )
+                print(f"  {reminder.email}: {course_lines}")
+        elif args.command == "backup":
+            out = args.out or (_project_path(ops.BACKUP_DIR) / time.strftime("%Y%m%d-%H%M%S"))
+            target = ops.backup(
+                settings, out, with_courses=args.with_courses, force=args.force
+            )
+            print(f"Готово: бэкап в {target}")
+        elif args.command == "restore":
+            safety = ops.restore(settings, args.source, yes=args.yes, force=args.force)
+            print(f"Готово: восстановлено; страховочная копия — {safety}")
+        elif args.command == "export-account":
+            target = ops.export_account(settings, args.email, args.out)
+            print(f"Готово: данные в {target}")
+        elif args.command == "delete-account":
+            result = ops.delete_account(
+                settings, args.email, yes=args.yes, dry_run=args.dry_run
+            )
+            suffix = " (dry-run)" if args.dry_run else ""
+            print(
+                f"Готово: {result['email']} — курсов {len(result['courses'])}, "
+                f"файлов {len(result['files'])}{suffix}"
+            )
+        elif args.command == "check-smtp":
+            ok, message = ops.check_smtp(settings)
+            print(message)
+            return 0 if ok else 1
         else:
             admin = args.command == "make-admin"
             who = set_admin_role(settings, args.email, admin=admin)

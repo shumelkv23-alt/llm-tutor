@@ -4,6 +4,8 @@
 раздел отвечает 404. Защита на роутере, чтобы новая страница её не забыла.
 """
 
+import csv
+import io
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -145,9 +147,162 @@ async def course_analytics(
         "admin",
         user=user,
         funnel=admin.funnel(snap, data) if data is not None else [],
+        analytics=admin.analytics(snap),
         broken=error,
         students=len(snap.rows),
         built_at=admin.format_time(snap.built_at),
+        format_time=admin.format_time,
         tab="course",
         **_tabs(request, chosen, "/admin/course"),
     )
+
+
+@router.get("/admin/course/export.csv")
+async def course_export(
+    request: Request, course: str = "", user: User = Depends(admin_page_user)
+) -> Response:
+    """CSV по занятиям и заданиям курса для таблицы преподавателя."""
+    chosen = _selected_course(course)
+    snap = admin.snapshot(request.app.state, chosen)
+    data, _ = courses.try_course_data(chosen)
+    blocks = admin.funnel(snap, data) if data is not None else []
+    stats = admin.analytics(snap)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "тип",
+            "модуль",
+            "занятие",
+            "задание",
+            "дошли",
+            "закрыли",
+            "слабо",
+            "ответов",
+            "верно",
+            "доля верных",
+            "сложность",
+            "подсказки",
+            "время",
+            "различает",
+        ]
+    )
+    for block in blocks:
+        for lesson in block.lessons:
+            writer.writerow(
+                [
+                    "занятие",
+                    f"Модуль {block.number} · {block.title}",
+                    lesson.name,
+                    "",
+                    lesson.reached,
+                    lesson.closed,
+                    lesson.weak,
+                    "",
+                    "",
+                    "" if lesson.rate is None else round(lesson.rate, 3),
+                    "" if lesson.rate is None else round(1 - lesson.rate, 3),
+                    "",
+                    "",
+                    "",
+                ]
+            )
+    for item in stats.items:
+        writer.writerow(
+            [
+                "задание",
+                "",
+                "",
+                f"#{item.item_id} {item.prompt}",
+                "",
+                "",
+                "",
+                item.attempts,
+                item.correct,
+                "" if item.correct_rate is None else round(item.correct_rate, 3),
+                "" if item.difficulty is None else round(item.difficulty, 3),
+                item.hints_label,
+                item.time_label,
+                item.discrimination_label,
+            ]
+        )
+    # Распределение подсказок: сколько ответов дано на каждом уровне.
+    if stats.hints:
+        writer.writerow([])
+        for hints_used, count in stats.hints:
+            writer.writerow(
+                [
+                    "подсказки",
+                    "",
+                    "Подсказки",
+                    f"уровень {hints_used}",
+                    "",
+                    "",
+                    "",
+                    count,
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+    # Выполнение повторений: те же колонки, чтобы таблица читалась одним листом.
+    if stats.review_total or stats.review_answered:
+        writer.writerow([])
+        for label, value in (
+            ("в расписании", stats.review_total),
+            ("готово сейчас", stats.review_due),
+            ("просрочено больше суток", stats.review_overdue),
+        ):
+            writer.writerow(
+                ["повторение", "", "Повторение", label, value, "", "", "", "", "", "", "", "", ""]
+            )
+        writer.writerow(
+            [
+                "повторение",
+                "",
+                "Повторение",
+                "отвечено",
+                "",
+                "",
+                "",
+                stats.review_answered,
+                stats.review_on_time,
+                "" if stats.review_adherence is None else round(stats.review_adherence, 3),
+                "",
+                "",
+                "",
+                "",
+            ]
+        )
+    # Сравнение групп: статус, размер и средний прогресс.
+    if stats.groups:
+        writer.writerow([])
+        for group in stats.groups:
+            writer.writerow(
+                [
+                    "группа",
+                    "",
+                    group.label,
+                    "учеников",
+                    group.count,
+                    round(group.avg_closed, 2),
+                    round(group.avg_weak, 2),
+                    "",
+                    "",
+                    round(group.avg_percent / 100, 3),
+                    "",
+                    "",
+                    "",
+                    "",
+                ]
+            )
+    response = Response(
+        "﻿" + buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="course.csv"'},
+    )
+    response.headers["Cache-Control"] = "no-store"
+    return response

@@ -176,6 +176,15 @@ class Settings(BaseSettings):
     password_reset_ttl_minutes: int = Field(default=60, ge=5, le=1440)
     # Запросов письма на один адрес в окне лимитера (security.LoginLimiter).
     password_reset_limit: int = Field(default=3, ge=1)
+    # Ключ подписи ссылок «отписаться от напоминаний». Не задан — берётся
+    # OPENROUTER_API_KEY: ссылка должна пережить перезапуск, а отдельного
+    # секрета у установки может не быть.
+    unsubscribe_secret: SecretStr | None = None
+
+    @property
+    def reminder_secret(self) -> str:
+        """Ключ HMAC для ссылок отписки (стабильный между перезапусками)."""
+        return secret_value(self.unsubscribe_secret) or self.openrouter_api_key.get_secret_value()
 
     # --- Сборка контекста, Срез 3 ---
     context_dialog_tail: int = DEFAULT_DIALOG_TAIL

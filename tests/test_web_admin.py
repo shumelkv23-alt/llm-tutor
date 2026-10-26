@@ -402,7 +402,7 @@ async def test_snapshot_broken_db_does_not_break_the_rest(web_app, monkeypatch, 
     monkeypatch.setattr(pool, "open", open_)
 
     with caplog.at_level(logging.ERROR):
-        snapshot = _snapshot(web_app)
+        snapshot = _snapshot(web_app, refresh=True)
 
     assert snapshot.rows[bob_user.id].status == "error"
     assert snapshot.rows[ann_user.id].status == "in_progress"
@@ -451,7 +451,7 @@ async def test_snapshot_is_cached_for_a_minute(web_app, monkeypatch) -> None:
     monkeypatch.setattr(web_app.state.userdbs, "open", lambda *a: calls.append(a) or real_open(*a))
     now = [1000.0]
 
-    first = _snapshot(web_app, clock=lambda: now[0])
+    first = _snapshot(web_app, refresh=True, clock=lambda: now[0])
     opened = len(calls)
     assert opened > 0
     now[0] += 59
@@ -465,6 +465,23 @@ async def test_snapshot_is_cached_for_a_minute(web_app, monkeypatch) -> None:
     now[0] += 61
     assert _snapshot(web_app, clock=lambda: now[0]).built_at == now[0]
     assert len(calls) > again
+    await client.aclose()
+
+
+async def test_snapshot_uses_materialized_summary_without_opening_dbs(web_app, monkeypatch) -> None:
+    """После прогрева снимок читает course_progress, а не БД всех учеников."""
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    _close_lesson(web_app, user, "pandas_structures")
+    _snapshot(web_app, refresh=True)  # прогрев: строка сводки записана
+    web_app.state.admin_cache.clear()
+
+    calls = []
+    real_open = web_app.state.userdbs.open
+    monkeypatch.setattr(web_app.state.userdbs, "open", lambda *a: calls.append(a) or real_open(*a))
+    snap = _snapshot(web_app, clock=lambda: time.time() + 120)
+
+    assert snap.rows[user.id].closed >= 1
+    assert calls == [], "снимок открыл БД ученика вместо материализованной сводки"
     await client.aclose()
 
 
@@ -1740,4 +1757,104 @@ async def test_card_shows_the_right_role_button(admin, web_app) -> None:
     assert 'data-action="grant-admin"' in plain and 'data-action="revoke-admin"' not in plain
     assert 'data-action="revoke-admin"' in promoted and 'data-action="grant-admin"' not in promoted
     assert 'data-action="grant-admin"' not in own and 'data-action="revoke-admin"' not in own
+    await client.aclose()
+
+
+async def test_analytics_counts_items_hints_and_time(web_app) -> None:
+    """Аналитика курса: попытки, подсказки, время и расписание повторений."""
+    client, user = await _learner(web_app, "Ann")
+    conn = _db(web_app, user)
+    now = time.time()
+    repos.add_event(
+        conn,
+        Event(source="checked", result=1.0, item_id=1, hints_used=2, time_spent=10.0, ts=now - 100),
+    )
+    repos.add_event(
+        conn,
+        Event(source="checked", result=0.0, item_id=1, hints_used=0, time_spent=30.0, ts=now - 50),
+    )
+    repos.upsert_review(conn, "pandas_structures", 1, now - 2 * 86400)
+    repos.add_review_log(
+        conn,
+        "pandas_structures",
+        due_at=now - 100,
+        answered_at=now - 200,
+        passed=True,
+        step=1,
+    )
+    conn.commit()
+
+    snap = admin_data.snapshot(web_app.state, COURSES[0])
+    data = admin_data.analytics(snap, now=now + 1)
+
+    item = next(stat for stat in data.items if stat.item_id == 1)
+    assert item.attempts == 2
+    assert item.correct == 1
+    assert item.difficulty == 0.5
+    assert item.avg_hints == 1.0
+    assert item.avg_time == 20.0
+    assert dict(data.hints) == {0: 1, 2: 1}
+    assert data.review_total >= 1
+    assert data.review_due >= 1
+    assert data.review_overdue >= 1
+    assert data.review_answered >= 1
+    assert data.review_on_time >= 1
+    await client.aclose()
+
+
+async def test_course_page_shows_item_analytics(admin, web_app) -> None:
+    """Страница аналитики рисует задания, подсказки и время из снимка."""
+    client, user = await _learner(web_app, "Ann")
+    conn = _db(web_app, user)
+    now = time.time()
+    repos.add_event(
+        conn,
+        Event(source="checked", result=1.0, item_id=1, hints_used=2, time_spent=20.0, ts=now - 10),
+    )
+    repos.upsert_review(conn, "pandas_structures", 1, now - 2 * 86400)
+    conn.commit()
+
+    html = (await admin.get("/admin/course?refresh=1")).text
+
+    assert "Задания" in html
+    assert "Подсказки и повторение" in html
+    assert "Сложность" in html
+    assert "#1" in html
+    assert "20 с" in html
+    assert "готово сейчас" in html
+    await client.aclose()
+
+
+async def test_course_csv_export(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    conn = _db(web_app, user)
+    now = time.time()
+    repos.add_event(
+        conn,
+        Event(source="checked", result=0.0, item_id=1, hints_used=1, time_spent=5.0, ts=now - 10),
+    )
+    repos.add_review_log(
+        conn,
+        "pandas_structures",
+        due_at=now - 100,
+        answered_at=now - 200,
+        passed=True,
+        step=1,
+    )
+    conn.commit()
+
+    response = await admin.get("/admin/course/export.csv")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert "attachment" in response.headers["content-disposition"]
+    assert "тип,модуль,занятие,задание" in response.text
+    assert "сложность" in response.text
+    assert "занятие" in response.text
+    # В выгрузке есть распределение подсказок, повторения и сравнение групп.
+    assert "подсказки" in response.text
+    assert "уровень 1" in response.text
+    assert "повторение" in response.text
+    assert "отвечено" in response.text
+    assert "группа" in response.text
     await client.aclose()

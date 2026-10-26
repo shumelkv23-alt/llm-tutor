@@ -21,6 +21,7 @@ from llm_tutor.schemas import (
     Event,
     Item,
     Message,
+    Note,
     ReviewRow,
     Role,
     Rubric,
@@ -229,6 +230,103 @@ def get_events(conn: sqlite3.Connection, concept_id: str | None = None) -> list[
         )
         for r in rows
     ]
+
+
+# --- заметки ученика (раздел 2: заметки/выделения/поиск) ---
+
+NOTE_LIMIT = 100
+
+
+def add_note(
+    conn: sqlite3.Connection,
+    *,
+    concept_id: str | None,
+    source: str,
+    quote: str,
+    comment: str | None = None,
+    section_id: str | None = None,
+    now: float | None = None,
+    commit: bool = True,
+) -> int:
+    """Сохраняет заметку и возвращает id."""
+    stamp = time.time() if now is None else now
+    cur = conn.execute(
+        "INSERT INTO notes (concept_id, source, quote, comment, section_id, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (concept_id, source, quote, comment, section_id, stamp),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def _note(row) -> Note:
+    return Note(
+        id=row["id"],
+        concept_id=row["concept_id"],
+        source=row["source"],
+        quote=row["quote"],
+        created_at=row["created_at"],
+        comment=row["comment"],
+        section_id=row["section_id"],
+    )
+
+
+def get_note(conn: sqlite3.Connection, note_id: int) -> Note | None:
+    row = conn.execute(
+        "SELECT id, concept_id, source, quote, created_at, comment, section_id"
+        " FROM notes WHERE id = ?",
+        (note_id,),
+    ).fetchone()
+    return _note(row) if row is not None else None
+
+
+def list_notes(conn: sqlite3.Connection, *, limit: int = NOTE_LIMIT) -> list[Note]:
+    """Заметки ученика, новые первыми."""
+    rows = conn.execute(
+        "SELECT id, concept_id, source, quote, created_at, comment, section_id"
+        " FROM notes ORDER BY created_at DESC, id DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [_note(row) for row in rows]
+
+
+def search_notes(
+    conn: sqlite3.Connection, query: str, *, limit: int = 20
+) -> list[Note]:
+    """Поиск по тексту заметок без учёта регистра (русский LIKE не умеет)."""
+    needle = query.strip().casefold()
+    if not needle:
+        return []
+    rows = conn.execute(
+        "SELECT id, concept_id, source, quote, created_at, comment, section_id"
+        " FROM notes ORDER BY created_at DESC, id DESC"
+    ).fetchall()
+    found = [
+        note
+        for note in (_note(row) for row in rows)
+        if needle in note.quote.casefold()
+        or (note.comment is not None and needle in note.comment.casefold())
+    ]
+    return found[:limit]
+
+
+def set_note_comment(
+    conn: sqlite3.Connection, note_id: int, comment: str, *, commit: bool = True
+) -> Note | None:
+    """Обновить комментарий заметки; ``None`` — заметки нет."""
+    cur = conn.execute("UPDATE notes SET comment = ? WHERE id = ?", (comment, note_id))
+    if commit:
+        conn.commit()
+    return get_note(conn, note_id) if cur.rowcount else None
+
+
+def delete_note(conn: sqlite3.Connection, note_id: int, *, commit: bool = True) -> bool:
+    """Удаляет заметку; ``False`` — её уже нет."""
+    cur = conn.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+    if commit:
+        conn.commit()
+    return cur.rowcount > 0
 
 
 # --- concepts / edges (граф курса, Срез 4) ---
@@ -661,6 +759,37 @@ def last_answer_ts(conn: sqlite3.Connection) -> dict[int, float]:
 
 
 # --- review_schedule (повторение по расписанию, срез 79) ---
+
+
+def add_review_log(
+    conn: sqlite3.Connection,
+    concept_id: str | None,
+    *,
+    due_at: float | None,
+    answered_at: float,
+    passed: bool,
+    step: int | None,
+    commit: bool = True,
+) -> int:
+    """Записать ответ серии повторения (для выполнения повторений в админке)."""
+    cur = conn.execute(
+        "INSERT INTO review_log (concept_id, due_at, answered_at, passed, step) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (concept_id, due_at, answered_at, 1 if passed else 0, step),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def review_stats(conn: sqlite3.Connection) -> tuple[int, int]:
+    """Сколько повторений отвечено и сколько из них — не позже срока."""
+    row = conn.execute(
+        "SELECT COUNT(*) AS answered,"
+        " SUM(CASE WHEN due_at IS NULL OR answered_at <= due_at THEN 1 ELSE 0 END) AS on_time"
+        " FROM review_log"
+    ).fetchone()
+    return int(row["answered"] or 0), int(row["on_time"] or 0)
 
 
 def get_review_rows(conn: sqlite3.Connection) -> dict[str, ReviewRow]:

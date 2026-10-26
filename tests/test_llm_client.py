@@ -83,6 +83,88 @@ async def test_chat_structured_retries_invalid_json() -> None:
     assert route.call_count == 2
 
 
+@respx.mock
+async def test_chat_structured_accepts_fenced_json() -> None:
+    """Markdown-обёртка вокруг JSON — частая привычка модели, а не ошибка."""
+    respx.post(CHAT_URL).mock(return_value=_ok_response('```json\n{"score": 0.9}\n```'))
+
+    result = await _client().chat_structured([ChatMessage(role="user", content="x")], _Grade)
+
+    assert result == _Grade(score=0.9)
+
+
+@respx.mock
+async def test_chat_structured_extracts_json_from_text() -> None:
+    """JSON внутри пояснения тоже разбираем."""
+    respx.post(CHAT_URL).mock(return_value=_ok_response('Вот ответ: {"score": 0.2}. Готово.'))
+
+    result = await _client().chat_structured([ChatMessage(role="user", content="x")], _Grade)
+
+    assert result == _Grade(score=0.2)
+
+
+def _content_response(content: str | None) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={"choices": [{"message": {"content": content}, "finish_reason": "length"}]},
+    )
+
+
+@respx.mock
+async def test_chat_structured_retries_empty_content() -> None:
+    """Пустой content в JSON-режиме — такой же отказ формата, как невалидный JSON."""
+    route = respx.post(CHAT_URL)
+    route.side_effect = [
+        _content_response(None),
+        _ok_response('{"score": 0.9}'),
+    ]
+
+    result = await _client().chat_structured([ChatMessage(role="user", content="x")], _Grade)
+
+    assert result == _Grade(score=0.9)
+    assert route.call_count == 2
+
+
+@respx.mock
+async def test_chat_structured_empty_content_marks_json_error() -> None:
+    """После ретраев пустой content помечается json_error: тьютор возьмёт текст."""
+    route = respx.post(CHAT_URL).mock(return_value=_content_response(None))
+
+    with pytest.raises(LLMError, match="пустой content") as caught:
+        await _client().chat_structured([ChatMessage(role="user", content="x")], _Grade)
+
+    assert route.call_count == 2  # max_retries(1) + 1
+    assert caught.value.json_error is True
+
+
+@respx.mock
+async def test_chat_structured_retry_reminds_about_json() -> None:
+    """Повтор несёт напоминание о формате: часть провайдеров иначе шлёт текст."""
+    route = respx.post(CHAT_URL)
+    route.side_effect = [
+        _ok_response("не json"),
+        _ok_response('{"score": 0.9}'),
+    ]
+
+    await _client().chat_structured(
+        [ChatMessage(role="system", content="правила"), ChatMessage(role="user", content="x")],
+        _Grade,
+    )
+
+    first = json.loads(route.calls[0].request.content)
+    second = json.loads(route.calls[1].request.content)
+    # Первая попытка: напоминание — последним user-сообщением.
+    assert first["messages"][-1]["role"] == "user"
+    assert "верни ТОЛЬКО один JSON" in first["messages"][-1]["content"]
+    # Генерация конспекта кладёт Markdown внутрь JSON-строки — это разрешено.
+    assert "Внутри строковых значений разметка разрешена" in first["messages"][-1]["content"]
+    # Повтор: к системному промпту дописано ещё одно напоминание.
+    assert "верни ТОЛЬКО один JSON" not in first["messages"][0]["content"]
+    assert "верни ТОЛЬКО один JSON" in second["messages"][0]["content"]
+    # Смысл системного промпта не потерян — напоминание дописано в конец.
+    assert second["messages"][0]["content"].startswith("правила")
+
+
 # --- клиент: ошибки и ретраи ---
 
 
@@ -153,9 +235,11 @@ async def test_chat_empty_content_raises() -> None:
 async def test_chat_structured_all_invalid_raises() -> None:
     """Все попытки невалидны — клиент падает после max_retries + 1."""
     route = respx.post(CHAT_URL).mock(return_value=_ok_response("не json"))
-    with pytest.raises(LLMError, match="валидный ответ"):
+    with pytest.raises(LLMError, match="валидный ответ") as caught:
         await _client().chat_structured([ChatMessage(role="user", content="x")], _Grade)
     assert route.call_count == 2  # max_retries(1) + 1
+    # Тьютор по этому флагу возьмёт обычный текст вместо «не смог ответить».
+    assert caught.value.json_error is True
 
 
 # --- ключ OpenRouter ---

@@ -30,7 +30,7 @@ from llm_tutor.course.seed import Course as CourseData
 from llm_tutor.course.seed import SeedError
 from llm_tutor.db import repos
 from llm_tutor.schemas import Item, SessionState, SurveyConfig, Topic
-from llm_tutor.student import diagnostic, guide, review, survey
+from llm_tutor.student import beta, diagnostic, guide, review, survey
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
@@ -243,6 +243,30 @@ def item_part(item: Item, graph: CourseGraph | None) -> str | None:
             if section.id == item.section:
                 return f"Раздел {number}: {section.title}"
     return None
+
+
+def note_view(note, graph: CourseGraph | None = None) -> dict:
+    """Заметка для профиля/API; занятие подписываем именем, а не id."""
+    if note is None:
+        return {"id": None}
+    lesson = None
+    concept_id = note.concept_id
+    if graph is not None and concept_id:
+        if graph.has_node(concept_id):
+            lesson = graph.concept(concept_id).name
+        else:
+            # Занятие убрали из курса: ссылка ведёт на текущее, а не в никуда.
+            concept_id = None
+    return {
+        "id": note.id,
+        "quote": note.quote,
+        "source": note.source,
+        "created_at": note.created_at,
+        "concept_id": concept_id,
+        "lesson": lesson,
+        "comment": note.comment,
+        "section_id": note.section_id,
+    }
 
 
 def item_view(item: Item, graph: CourseGraph | None = None) -> dict:
@@ -549,6 +573,100 @@ def next_steps(conn: sqlite3.Connection, *, settings: Settings) -> list[dict]:
         }
         for step in pending[:NEXT_STEPS]
     ]
+
+
+def calibration_view(conn: sqlite3.Connection, *, settings: Settings) -> list[dict]:
+    """Самооценка из анкеты против фактического владения по блокам.
+
+    Показываем только блоки, о которых ученик отвечал. «Факт» — среднее
+    владение концептов блока, по которым есть ответы; без ответов честно
+    пишем «нет данных», а не выдаём априор за знание.
+    """
+    now = time.time()
+    result: list[dict] = []
+    for topic in repos.get_topics(conn):
+        for block in topic.survey.blocks:
+            fact = repos.get_fact(conn, block.key)
+            if fact is None:
+                continue
+            try:
+                index = survey.SELF_LEVELS.index(fact)
+            except ValueError:
+                continue
+            answered = 0
+            total = 0.0
+            for concept_id in block.concepts:
+                if not repos.get_events(conn, concept_id):
+                    continue
+                answered += 1
+                total += beta.estimate(conn, concept_id, now=now, settings=settings).mean
+            actual = total / answered if answered else None
+            if actual is None:
+                note = "нет ответов"
+            elif index >= 2 and actual < 0.55:
+                note = "стоит проверить"
+            elif index <= 1 and actual > 0.8:
+                note = "можно быстрее"
+            else:
+                note = "совпадает"
+            result.append(
+                {
+                    "module": topic.number,
+                    "title": block.title,
+                    "self": fact,
+                    "actual": round(actual * 100) if actual is not None else None,
+                    "note": note,
+                }
+            )
+    return result
+
+
+def weekly_plan(conn: sqlite3.Connection, *, settings: Settings) -> dict:
+    """План на неделю: ближайшие шаги маршрута и грубая оценка времени.
+
+    Точного времени занятия до начала нет; 25 минут — ориентир на занятие с
+    конспектом и практикой, а не обещание.
+    """
+    steps = [
+        {**step, "minutes": 25}
+        for step in next_steps(conn, settings=settings)
+    ]
+    return {"steps": steps, "total_minutes": sum(step["minutes"] for step in steps)}
+
+
+def search_course(
+    conn: sqlite3.Connection, query: str, *, course_id: str, limit: int = 5
+) -> list[dict]:
+    """Поиск по конспектам занятий: занятие и фрагмент вокруг совпадения.
+
+    Конспекты лежат в БД ученика целиком; для небольшого курса честнее и
+    предсказуемее пройти их, чем зависеть от полноты RAG-индекса.
+    """
+    needle = query.strip().casefold()
+    if not needle:
+        return []
+    graph = CourseGraph.load(conn)
+    found: list[dict] = []
+    for node_id in graph.node_ids:
+        text = repos.get_theory(conn, node_id) or ""
+        index = text.casefold().find(needle)
+        if index < 0:
+            continue
+        start = max(0, index - 90)
+        end = min(len(text), index + len(needle) + 190)
+        snippet = " ".join(text[start:end].split())
+        found.append(
+            {
+                "node_id": node_id,
+                "title": graph.concept(node_id).name,
+                "snippet": ("…" if start else "") + snippet + ("…" if end < len(text) else ""),
+                # Ссылка открывает именно это занятие, а не текущее.
+                "href": f"/lesson/{course_id}?node={node_id}",
+            }
+        )
+        if len(found) >= limit:
+            break
+    return found
 
 
 def learning_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:

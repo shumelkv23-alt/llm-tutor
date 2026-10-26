@@ -671,3 +671,22 @@
   /* Выравнивание по базовой линии опускает подпись под галочку — центрируем. */
   align-items: center;
 }
+
+/* --- Голосовой бриф --- */
+
+.voice-brief {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.voice-brief[hidden] {
+  display: none;
+}
+
+.voice-brief-title {
+  margin: 0;
+  font-size: 15px;
+}

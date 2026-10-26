@@ -1,0 +1,18 @@
+{% extends "auth_base.html" %}
+{% block scripts %}<script src="{{ static_url('js/unsubscribe.js') }}" defer></script>{% endblock %}
+{% block card %}
+<p class="eyebrow">{{ brand_caption }}</p>
+<h1 id="auth-title">Отписка от напоминаний</h1>
+{% if valid %}
+<p class="login-lead">Письма о повторении можно выключить или включить снова. Повторение в курсе при этом останется.</p>
+<div class="admin-actions">
+  <button class="btn primary" type="button" data-token="{{ token }}" data-reminder-toggle="false">Отписаться</button>
+  <button class="btn" type="button" data-token="{{ token }}" data-reminder-toggle="true">Включить снова</button>
+</div>
+<p class="form-error" role="alert" id="unsubscribe-status" hidden></p>
+<p class="auth-switch"><a href="/">На главную</a></p>
+{% else %}
+<p class="login-lead">Ссылка недействительна или скопирована не полностью. Отписаться можно в занятии, на вкладке «Повторение».</p>
+<p class="auth-switch"><a href="/login">Войти</a> · <a href="/">На главную</a></p>
+{% endif %}
+{% endblock %}

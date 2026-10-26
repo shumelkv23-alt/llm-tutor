@@ -12,12 +12,22 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from llm_tutor.web import accounts
+from llm_tutor.course.graph import CourseGraph
+from llm_tutor.db import repos
+from llm_tutor.web import accounts, reminders
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
 from llm_tutor.web.courses import RENAMED_COURSES, published_courses, student_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
-from llm_tutor.web.views import course_card, learning_view
+from llm_tutor.web.views import (
+    COURSE_ERRORS,
+    calibration_view,
+    course_card,
+    learning_view,
+    note_view,
+    search_course,
+    weekly_plan,
+)
 
 router = APIRouter()
 
@@ -45,6 +55,7 @@ _TITLES = {item.key: item.label for item in (*NAV, ADMIN_NAV)} | {
     "register": "Регистрация",
     "forgot": "Восстановление пароля",
     "reset": "Новый пароль",
+    "unsubscribe": "Отписка от напоминаний",
 }
 
 
@@ -141,7 +152,7 @@ async def lesson(request: Request, user: User = Depends(page_user)) -> Response:
 
 @router.get("/lesson/{course_id}", response_class=HTMLResponse)
 async def lesson_page(
-    course_id: str, request: Request, user: User = Depends(page_user)
+    course_id: str, request: Request, node: str = "", user: User = Depends(page_user)
 ) -> Response:
     if course_id in RENAMED_COURSES:
         # Закладка на прежний адрес курса ведёт туда же (срез 52).
@@ -159,16 +170,75 @@ async def lesson_page(
         pool=request.app.state.userdbs,
         settings=request.app.state.settings,
     )
-    return render(request, "lesson.html", "lesson", user=user, course=card)
+    # Ссылка из заметки или поиска ведёт в своё занятие: страница запоминает
+    # цель, а браузер переходит к ней после загрузки состояния (lesson.js).
+    # Неизвестный id не ошибка — переход отклонит API или проигнорирует JS.
+    return render(
+        request,
+        "lesson.html",
+        "lesson",
+        user=user,
+        course=card,
+        target_node=node.strip()[:200],
+    )
+
+
+def _format_time(ts: float | None) -> str:
+    if ts is None:
+        return "—"
+    try:
+        return datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
+    except (OverflowError, OSError, ValueError):
+        return "—"
 
 
 @router.get("/profile", response_class=HTMLResponse)
-async def profile(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
+async def profile(
+    request: Request, q: str = "", user: User = Depends(page_user)
+) -> HTMLResponse:
     joined = datetime.fromtimestamp(user.created_at).strftime("%d.%m.%Y")
-    # Профиль — только краткая сводка по текущему курсу; подробности (занятия,
-    # анкета) — в маршруте на странице занятия.
+    card = _current_card(request, user)
+    query = q.strip()[:100]
+    notes: list[dict] = []
+    search: list[dict] = []
+    calibration: list[dict] = []
+    plan: dict = {"steps": [], "total_minutes": 0}
+    notes_error = False
+    if card is not None and card["status"] != "error":
+        pool = request.app.state.userdbs
+        course_id = card["id"]
+        if pool.exists(user.id, course_id):
+            try:
+                conn = pool.open(user.id, course_id)
+                graph = CourseGraph.load(conn)
+                calibration = calibration_view(conn, settings=request.app.state.settings)
+                plan = weekly_plan(conn, settings=request.app.state.settings)
+                if query:
+                    notes = [
+                        note_view(note, graph) for note in repos.search_notes(conn, query)
+                    ]
+                    search = search_course(conn, query, course_id=course_id)
+                else:
+                    notes = [note_view(note, graph) for note in repos.list_notes(conn)]
+            except COURSE_ERRORS + (ValueError,):
+                notes_error = True
+    # Профиль — краткая сводка по текущему курсу; подробности (занятия,
+    # анкета) — в маршруте на странице занятия. Заметки и поиск читаются из
+    # БД текущего курса, если она открывается.
     return render(
-        request, "profile.html", "profile", user=user, joined=joined, card=_current_card(request, user)
+        request,
+        "profile.html",
+        "profile",
+        user=user,
+        joined=joined,
+        card=card,
+        notes=notes,
+        search=search,
+        query=query,
+        notes_error=notes_error,
+        calibration=calibration,
+        plan=plan,
+        format_time=_format_time,
     )
 
 
@@ -220,6 +290,26 @@ async def forgot_password(request: Request) -> Response:
             # Срок жизни — из настроек, а не «час» в тексте: PASSWORD_RESET_TTL_MINUTES
             # меняется в .env, и обещание в шаблоне не должно разойтись с делом.
             ttl_minutes=request.app.state.settings.password_reset_ttl_minutes,
+        )
+    )
+
+
+@router.get("/unsubscribe", response_class=HTMLResponse)
+async def unsubscribe(request: Request, token: str = "") -> Response:
+    """Страница отписки; сама отписка — POST из ``unsubscribe.js``.
+
+    Ссылка из письма не должна отписывать при простом открытии: почтовые
+    клиенты иногда подгружают ссылки заранее.
+    """
+    valid = bool(token) and reminders.verify_token(request.app.state.settings, token) is not None
+    return _no_store(
+        render(
+            request,
+            "unsubscribe.html",
+            "unsubscribe",
+            user=None,
+            token=token,
+            valid=valid,
         )
     )
 
