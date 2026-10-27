@@ -51,6 +51,10 @@ class Course:
     # каталоге его нет. Курс ИСИТ показывается с первого дня — модуль 1
     # выходит по частям, и карточка честно говорит, что занятия готовятся.
     visible: bool = True
+    # Файл RAG-материалов встроенного курса; ``None`` — общий файл приложения.
+    # Курс со своим каталогом модулей не должен читать чужие материалы: номера
+    # модулей у курсов совпадают.
+    materials_path: Path | None = None
 
 
 COURSES: tuple[Course, ...] = (
@@ -76,6 +80,20 @@ COURSES: tuple[Course, ...] = (
         ),
         source_url="https://github.com/Eldervald/isit_ml_labs",
         data_dir=DATA_DIR / "isit",
+    ),
+    Course(
+        id="trees-demo",
+        title="Деревья решений и случайный лес",
+        subtitle="Демо-курс · один модуль · 5 занятий",
+        description=(
+            "Показательный мини-курс на один модуль: как дерево решений выбирает "
+            "вопросы по энтропии и Джини, как оно строится и почему переобучается, "
+            "а затем — как из многих деревьев получается случайный лес. Те же "
+            "занятия, задания с проверкой кода и тьютор, что в основном курсе."
+        ),
+        source_url="https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html",
+        data_dir=DATA_DIR / "demo",
+        materials_path=DATA_DIR / "demo" / "materials.sqlite3",
     ),
 )
 

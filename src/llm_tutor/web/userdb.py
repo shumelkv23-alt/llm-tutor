@@ -186,7 +186,7 @@ class UserDBPool:
         return conn
 
     def materials_path_for(self, course_id: str) -> Path:
-        """Файл RAG-материалов курса: у созданного курса — свой, у встроенного — общий.
+        """Файл RAG-материалов курса: у созданного и у демо-курса — свой, у остальных — общий.
 
         Общая БД материалов одна на приложение, а ``chunks.topic_id`` — это
         номер модуля **внутри** курса. У двух курсов номера модулей совпадут, и
@@ -198,6 +198,8 @@ class UserDBPool:
             raise KeyError(course_id)
         if course.root is not None:
             return course.root / "materials.sqlite3"
+        if course.materials_path is not None:
+            return course.materials_path
         return self._materials_path
 
     def lock(self, user_id: int, course_id: str) -> asyncio.Lock:
