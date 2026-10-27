@@ -22,6 +22,7 @@ from llm_tutor.course.legacy import remap_progress
 from llm_tutor.course.seed import apply_course
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
+from llm_tutor.student import explain as explain_logic
 from llm_tutor.student import review
 from llm_tutor.web.courses import RENAMED_COURSES, course_data, get_course
 
@@ -174,6 +175,8 @@ class UserDBPool:
             session_id = repos.get_open_session(conn)
             route = repos.get_session_state(conn, session_id).route if session_id else None
             review.backfill(conn, route, now=time.time())
+            # «Объясни новичку» (срез 93): ранее закрытые занятия заданий не дают.
+            explain_logic.mark_since(conn, time.time())
             if sync_materials(conn, self.materials_path_for(course_id)):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:

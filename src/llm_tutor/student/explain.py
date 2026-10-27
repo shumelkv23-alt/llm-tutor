@@ -6,10 +6,12 @@
 """
 
 import re
+import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+from llm_tutor.db import repos
 from llm_tutor.llm.prompt_config import ExplainLimits
 from llm_tutor.llm.schemas import ExplainObservation, IdeaVerdict
 from llm_tutor.schemas import (
@@ -24,6 +26,7 @@ from llm_tutor.schemas import (
     PitfallReport,
     PitfallUse,
     ReviewRow,
+    Route,
 )
 from llm_tutor.student import review
 from llm_tutor.student.review import ScheduleChange
@@ -39,6 +42,8 @@ ANSWER_REQUESTS_TO_MENTOR = 2
 # Идея, объяснённая после помощи наставника, весит столько от обычного.
 MENTOR_WEIGHT_SHARE = 0.5
 _DAY = 86_400.0
+# Факт: с какого момента закрытое важное занятие даёт обязательное объяснение (срез 93).
+SINCE_FACT = "explain_since"
 
 Directive = Literal["own_words", "confused", "offer_mentor", "wrap_up", "pitfall", "no_answer", "ask"]
 
@@ -373,3 +378,40 @@ def plan_schedule(
         row = rows.get(lesson)
         changes.append(ScheduleChange(lesson, row.step if row else 0, now + _DAY))
     return changes
+
+
+# --- Висящее обязательное объяснение (срез 93) ---
+
+
+def mark_since(conn: sqlite3.Connection, now: float) -> None:
+    """Пишет ``explain_since`` один раз: занятия, закрытые раньше, заданий не дают."""
+    if repos.get_fact(conn, SINCE_FACT) is None:
+        repos.set_fact(conn, SINCE_FACT, str(now), source="system")
+
+
+def pending_lesson(
+    conn: sqlite3.Connection, route: Route | None, order: Sequence[str]
+) -> str | None:
+    """Самое раннее по ``order`` важное занятие, которое ученик ещё не объяснил.
+
+    Задание не хранится флагом, а вычисляется: занятие закрыто в снимке маршрута
+    не раньше ``explain_since``, у него есть эталон и нет завершённой обязательной
+    сессии. Так оно появляется при любом пути закрытия и не теряется при сбое хода.
+    """
+    since_text = repos.get_fact(conn, SINCE_FACT)
+    if route is None or since_text is None:
+        return None
+    try:
+        since = float(since_text)
+    except ValueError:
+        return None
+    closed = {
+        step.concept_id: step.closed_at
+        for step in route.steps
+        if step.status == "closed" and step.closed_at is not None and step.closed_at >= since
+    }
+    if not closed:
+        return None
+    important = repos.get_explain_configs(conn).keys() & closed.keys()
+    done = repos.finished_required(conn)
+    return next((node for node in order if node in important and node not in done), None)
