@@ -21,6 +21,7 @@ from llm_tutor.core.lesson import (
     pending_survey_topic,
     survey_way_back,
 )
+from llm_tutor.core import project as core_project
 from llm_tutor.core.overview import (
     ModuleRow,
     course_progress,
@@ -38,12 +39,17 @@ from llm_tutor.schemas import (
     ExplainSession,
     ExplainTurn,
     Item,
+    Project,
+    ProjectBrief,
     SessionState,
     SurveyConfig,
     Topic,
 )
 from llm_tutor.student import diagnostic, guide, review, survey
 from llm_tutor.student import explain as student_explain
+from llm_tutor.student import project as student_project
+from llm_tutor.web import accounts as web_accounts
+from llm_tutor.web import courses as course_registry
 from llm_tutor.web import markdown
 
 logger = logging.getLogger(__name__)
@@ -796,3 +802,152 @@ def graph_view(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             {"from": src, "to": dst, "hard": hard} for src, dst, hard in graph.prerequisite_edges()
         ],
     }
+
+
+# --- Проект по курсу (срез 99) ---
+
+
+def brief_view(brief: ProjectBrief, names: Mapping[str, str]) -> dict:
+    """Описание проекта для экрана: занятия — названиями, ссылки — как есть (только http(s))."""
+    return {
+        "id": brief.id,
+        "title": brief.title,
+        "summary": brief.summary,
+        "result": brief.result,
+        "lessons": [names[node] for node in brief.lessons if node in names],
+        "datasets": [{"title": ds.title, "url": ds.url} for ds in brief.datasets],
+    }
+
+
+def _field_view(field: student_project.Field, values: Mapping[str, str]) -> dict:
+    """Поле формы: подпись, правила (для кнопок в браузере; решает всё равно сервер) и значение."""
+    minimum = student_project.TITLE_MIN if field.key == "title" else student_project.MIN_TEXT
+    return {
+        "key": field.key,
+        "label": field.label,
+        "required": field.required,
+        "min_chars": minimum if field.required else 0,
+        "max_chars": field.max_chars,
+        "value": values.get(field.key, ""),
+    }
+
+
+def project_title(project: Project) -> str:
+    return project.state.card.get("title") or project.brief.title
+
+
+def project_view(conn: sqlite3.Connection, project: Project, *, max_turns: int = 200) -> dict:
+    """Проект целиком: карточка, этапы с заметками, чат и что сейчас можно нажать.
+
+    Описание берётся из копии проекта (``projects.brief``): правка ``project.json``
+    начатый проект не меняет. Реплики наставника — HTML с сервера.
+    """
+    template = student_project.TEMPLATES[project.template]
+    state = project.state
+    graph = CourseGraph.load(conn)
+    names = {node: graph.concept(node).name for node in graph.topo_order()}
+    stages = []
+    for stage in template.stages:
+        notes = state.notes.get(stage.id, {})
+        if stage.id in state.done_stages:
+            status = "done"
+        elif stage.id == state.stage:
+            status = "current"
+        else:
+            status = "ahead"
+        stages.append(
+            {
+                "id": stage.id,
+                "title": stage.title,
+                "goal": stage.goal,
+                "checklist": list(stage.checklist),
+                "status": status,
+                "fields": [_field_view(field, notes) for field in stage.fields],
+            }
+        )
+    messages = []
+    for turn in repos.get_project_turns(conn, project.id)[-max_turns:]:
+        proposal = turn.meta.get("proposal") if turn.role == "mentor" else None
+        messages.append(
+            {
+                "id": turn.id,
+                "role": turn.role,
+                "html": str(markdown.render(turn.content)),
+                "ts": turn.ts,
+                "proposal": student_project.clean_proposal(template, proposal) or None,
+            }
+        )
+    current = next((stage for stage in template.stages if stage.id == state.stage), None)
+    return {
+        "id": project.id,
+        "status": project.status,
+        "title": project_title(project),
+        "template": template.title,
+        "brief": brief_view(project.brief, names),
+        "card": [_field_view(field, state.card) for field in template.card],
+        "stage": state.stage,
+        "stages": stages,
+        "messages": messages,
+        "can_approve": project.status == "idea"
+        and not student_project.card_missing(template, state.card),
+        "can_complete": project.status == "build"
+        and current is not None
+        and not student_project.notes_missing(current, state.notes.get(current.id, {})),
+        "done_at": project.done_at,
+    }
+
+
+def _project_summary(project: Project) -> dict:
+    template = student_project.TEMPLATES[project.template]
+    stage = next((s for s in template.stages if s.id == project.state.stage), None)
+    return {
+        "id": project.id,
+        "status": project.status,
+        "title": project_title(project),
+        "stage": stage.id if stage else None,
+        "stage_title": stage.title if stage else None,
+    }
+
+
+def projects_overview(app_state, user) -> list[dict]:
+    """Курсы с проектной работой и состояние проекта ученика по каждому.
+
+    ``not_enrolled`` — не записан; ``locked`` — курс не пройден; ``choose`` — можно
+    выбрать описание; ``active`` — проект идёт; ``done`` — последний проект готов;
+    ``error`` — БД ученика или курс не открываются.
+    """
+    enrolled = set(web_accounts.enrolled_courses(app_state.accounts, user.id))
+    rows = []
+    for course in course_registry.visible_courses():
+        project_file = course_registry.project_file(course)
+        if project_file is None:
+            continue
+        data, _ = try_course_data(course)
+        names = {node.id: node.name for node in data.nodes} if data is not None else {}
+        row = {
+            "id": course.id,
+            "title": course.title,
+            "state": "not_enrolled",
+            "progress": {"closed": 0, "total": 0},
+            "briefs": [brief_view(brief, names) for brief in project_file.briefs],
+            "project": None,
+        }
+        if course.id in enrolled:
+            try:
+                conn = app_state.userdbs.open(user.id, course.id)
+                closed, total, passed = core_project.course_passed(
+                    conn, settings=app_state.settings
+                )
+                project = repos.current_project(conn)
+            except (*COURSE_ERRORS, OSError):
+                logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
+                row["state"] = "error"
+            else:
+                row["progress"] = {"closed": closed, "total": total}
+                row["project"] = _project_summary(project) if project else None
+                if project is not None:
+                    row["state"] = "done" if project.status == "done" else "active"
+                else:
+                    row["state"] = "choose" if passed else "locked"
+        rows.append(row)
+    return rows
