@@ -162,3 +162,52 @@ def close_module(users_dir, topic_id: int) -> None:
         repos.update_session_state(conn, session_id, state.model_copy(update={"route": route}))
     finally:
         conn.close()
+
+
+def prepare_close(users_dir, node: str) -> str:
+    """Всё закрыто, кроме ``node``; остался верный ответ на итоговое задание.
+
+    Пишем в БД ученика напрямую, как ``close_module``. Возвращает верный ответ
+    итогового задания: ученик вводит его в «Практике», и занятие закрывается.
+    """
+    from llm_tutor.course.graph import CourseGraph
+    from llm_tutor.db import repos
+    from llm_tutor.db.connection import get_conn
+
+    conn = get_conn(str(next(users_dir.glob("*/mlcourse.sqlite3"))))
+    try:
+        graph = CourseGraph.load(conn)
+        order = graph.topo_order()
+        session_id = repos.get_open_session(conn)
+        state = repos.get_session_state(conn, session_id)
+        steps = []
+        for step in state.route.steps:
+            earlier = order.index(step.concept_id) < order.index(node)
+            if step.concept_id == node:
+                update = {"status": "current"}
+            elif earlier:
+                update = {"status": "closed", "closed_at": 1.0}
+            else:
+                update = {"status": "ahead", "closed_at": None}
+            steps.append(step.model_copy(update=update))
+        final = next(i for i in repos.get_items(conn) if i.final and node in i.concept_weights)
+        sections = [section.id for section in graph.concept(node).sections]
+        repos.update_session_state(
+            conn,
+            session_id,
+            state.model_copy(
+                update={
+                    "route": state.route.model_copy(update={"steps": steps}),
+                    "current_node_id": node,
+                    "pending_item_id": final.id,
+                    "passed_sections": sections,
+                    "section_id": None,
+                    "phase": "practice",
+                    "lesson_parts": [],
+                    "lesson_part": 0,
+                }
+            ),
+        )
+        return str(final.answer)
+    finally:
+        conn.close()

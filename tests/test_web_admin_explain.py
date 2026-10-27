@@ -131,3 +131,35 @@ async def test_non_admin_404(setup, web_app) -> None:
         web_app.state.accounts, accounts.find_user(web_app.state.accounts, ADMIN["email"]).id, False
     )
     assert (await setup["client"].get(_session_url(setup))).status_code == 404
+
+
+async def test_card_lists_lesson_sessions(setup) -> None:
+    _share(setup, "1")
+    conn = setup["conn"]
+    now = time.time()
+    required = repos.create_explain_session(
+        conn, 1, now=now + 1, concept_id="l1_group", kind="required"
+    )
+    repos.update_explain_session(
+        conn, required, state=ExplainState(student_turns=1), updated_at=now + 1,
+        status="finished", ended_at=now + 1, commit=True,
+    )
+    html = (await setup["client"].get(_card(setup))).text
+    assert "Группировка" in html and "обязательное" in html
+    assert "Выборка данных" in html and "добровольное" in html
+
+
+async def test_legacy_module_session_listed(setup) -> None:
+    _share(setup, "1")
+    legacy = repos.create_explain_session(setup["conn"], 1, now=time.time() + 5)
+    html = (await setup["client"].get(_card(setup))).text
+    assert "Модуль 1" in html
+    url = f"/admin/students/{setup['ann']}/explain/mlcourse/{legacy}"
+    assert url in html
+    assert (await setup["client"].get(url)).status_code == 200
+
+
+async def test_session_page_shows_both_threads_and_lesson(setup) -> None:
+    _share(setup, "1")
+    html = (await setup["client"].get(_session_url(setup))).text
+    assert "Выборка данных" in html and "добровольное" in html

@@ -345,6 +345,9 @@ def student_card(
     return StudentCard(state="ok", learning=learning, answers=answers, explain=sessions, **base)
 
 
+KIND_LABELS = {"required": "обязательное", "voluntary": "добровольное"}
+
+
 def explain_sessions_for(conn: sqlite3.Connection) -> list[dict] | None:
     """Сессии «Объясни новичку» для карточки; без согласия ученика — ``None``.
 
@@ -352,7 +355,7 @@ def explain_sessions_for(conn: sqlite3.Connection) -> list[dict] | None:
     """
     if not core_explain.share_enabled(conn):
         return None
-    titles = {topic.number: topic.title for topic in repos.get_topics(conn)}
+    names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
     rows = []
     for session in repos.list_explain_sessions(conn):
         report = session.report
@@ -360,7 +363,9 @@ def explain_sessions_for(conn: sqlite3.Connection) -> list[dict] | None:
             {
                 "id": session.id,
                 "topic": session.topic_id,
-                "title": titles.get(session.topic_id, ""),
+                # Занятие сессии; старая модульная сессия (срез 85) — «Модуль N».
+                "title": names.get(session.concept_id or "") or f"Модуль {session.topic_id}",
+                "kind": KIND_LABELS[session.kind],
                 "started_at": session.started_at,
                 "ended_at": session.ended_at,
                 "coverage": f"{report.required_done} из {report.required_total}" if report else "идёт",
@@ -388,13 +393,12 @@ def explain_session(state, course: Course, user_id: int, session_id: int) -> tup
     session = repos.get_explain_session(conn, session_id)
     if session is None:
         return "hidden", None
-    topic = repos.get_topic(conn, session.topic_id)
     names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
     view = views.explain_session_view(
         session,
         repos.get_explain_turns(conn, session.id),
         repos.get_explain_configs(conn).get(session.concept_id or ""),
-        title=names.get(session.concept_id or "") or (topic.title if topic else ""),
+        title=names.get(session.concept_id or "") or f"Модуль {session.topic_id}",
         max_turns=state.explain_prompts.limits.max_student_turns,
         lesson_names=names,
     )

@@ -633,12 +633,11 @@ def explain_session_for(
 ) -> dict:
     """Вид сессии для вкладки: ``messages`` — только разговор с новичком, ``mentor`` — наставник."""
     names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
-    topic = repos.get_topic(conn, session.topic_id)
     view = explain_session_view(
         session,
         repos.get_explain_turns(conn, session.id),
         repos.get_explain_configs(conn).get(session.concept_id or ""),
-        title=names.get(session.concept_id or "") or (topic.title if topic else ""),
+        title=names.get(session.concept_id or "") or f"Модуль {session.topic_id}",
         max_turns=max_turns,
         lesson_names=names if session.report else None,
     )

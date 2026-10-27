@@ -98,6 +98,23 @@ def lessons_server(monkeypatch, tmp_path):
 
 
 @pytest.fixture
+def explain_server(monkeypatch, tmp_path):
+    """Курс из занятий и промпты «Объясни новичку» с лимитом в две реплики (срез 96)."""
+    import shutil
+
+    from course_fixtures import use_lessons_course
+
+    use_lessons_course(monkeypatch)
+    prompts = tmp_path / "prompts"
+    shutil.copytree(Path(__file__).resolve().parents[2] / "data" / "prompts", prompts)
+    config = prompts / "explain.toml"
+    text = config.read_text(encoding="utf-8")
+    assert "max_student_turns = 10" in text
+    config.write_text(text.replace("max_student_turns = 10", "max_student_turns = 2"), encoding="utf-8")
+    yield from _serve(tmp_path, prompts_dir=prompts)
+
+
+@pytest.fixture
 def live_server(tmp_path):
     """URL приложения, запущенного uvicorn в отдельном потоке."""
     yield from _serve(tmp_path)
@@ -117,7 +134,7 @@ def mail_server(tmp_path):
         yield url, post
 
 
-def _serve(tmp_path, mailer=None):
+def _serve(tmp_path, mailer=None, prompts_dir=None):
     port = _free_port()
     settings = Settings(
         _env_file=None,
@@ -125,6 +142,7 @@ def _serve(tmp_path, mailer=None):
         accounts_db_path=str(tmp_path / "accounts.sqlite3"),
         users_dir=str(tmp_path / "users"),
         materials_db_path=str(tmp_path / "materials.sqlite3"),
+        **({"prompts_dir": str(prompts_dir)} if prompts_dir else {}),
         # Ссылка в письме — на этот же сервер: иначе PUBLIC_BASE_URL по
         # умолчанию (127.0.0.1:8000) увёл бы браузер на чужой порт.
         public_base_url=f"http://127.0.0.1:{port}",
