@@ -514,7 +514,6 @@ class PitfallUse(BaseModel):
 class ExplainState(BaseModel):
     """Живое состояние сессии (JSON в ``explain_sessions.state``)."""
 
-    mode: Literal["novice", "mentor"] = "novice"
     ideas: dict[str, IdeaProgress] = Field(default_factory=dict)
     pitfalls_used: list[PitfallUse] = Field(default_factory=list)
     # Загвоздки, которые ученик назвал сам, без подсказки новичка.
@@ -532,6 +531,8 @@ class ExplainState(BaseModel):
     wrap_up_offered: bool = False
     # Какой запасной вопрос новичка следующий (по кругу).
     fallback_index: int = 0
+    # Обязательное объяснение завершено и ученик нажал «Продолжить» (срез 93).
+    proceeded: bool = False
 
 
 class IdeaReport(BaseModel):

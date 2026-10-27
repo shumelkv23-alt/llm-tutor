@@ -11,7 +11,8 @@ from llm_tutor.student import explain
 
 CONFIG = load_course_data(LESSON_SEED_PATHS).topics[0].explain
 LESSONS = ["l1_frames", "l1_select", "l1_group"]
-LIMITS = ExplainLimits()
+# Пороги заданы явно: чистая логика не зависит от значений в data/prompts/explain.toml.
+LIMITS = ExplainLimits(wrap_up_share=0.8, pitfall_every=3, pitfall_max=3)
 REQUIRED = [idea.id for idea in CONFIG.ideas if idea.required]
 OPTIONAL = [idea.id for idea in CONFIG.ideas if not idea.required]
 
@@ -283,7 +284,7 @@ def test_pitfall_pacing() -> None:
 
 
 def test_pitfall_max_per_session() -> None:
-    limits = ExplainLimits(pitfall_max=1)
+    limits = ExplainLimits(pitfall_every=3, pitfall_max=1)
     state = _state(loc_vs_iloc="partial", split_apply_combine="correct").model_copy(
         update={
             "student_turns": 9,

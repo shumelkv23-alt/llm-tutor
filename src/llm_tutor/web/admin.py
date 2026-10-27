@@ -393,8 +393,8 @@ def explain_session(state, course: Course, user_id: int, session_id: int) -> tup
     view = views.explain_session_view(
         session,
         repos.get_explain_turns(conn, session.id),
-        topic.explain if topic else None,
-        title=topic.title if topic else "",
+        repos.get_explain_configs(conn).get(session.concept_id or ""),
+        title=names.get(session.concept_id or "") or (topic.title if topic else ""),
         max_turns=state.explain_prompts.limits.max_student_turns,
         lesson_names=names,
     )

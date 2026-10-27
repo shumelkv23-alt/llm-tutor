@@ -12,7 +12,6 @@ from collections.abc import Mapping, Sequence
 from markupsafe import escape
 
 from llm_tutor.config import Settings
-from llm_tutor.core import explain as core_explain
 from llm_tutor.core import guided
 from llm_tutor.core.context import Focus, FocusSource, fence, focus_from_meta
 from llm_tutor.core.lesson import (
@@ -493,7 +492,7 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             }
             for row in rows
         ],
-        "modules": explain_modules(conn, rows, state),
+        "modules": [module_view(module) for module in module_rows(conn, rows)],
         "messages": [
             message_view(
                 message.role,
@@ -525,8 +524,8 @@ TOPIC_STATUS_LABELS = {
 WEAK_LABEL = "Слабое место"
 
 
-def module_view(module: ModuleRow, *, explain: bool = False) -> dict:
-    """Модуль для маршрута и профиля; ``explain`` — открыт ли «Объясни новичку»."""
+def module_view(module: ModuleRow) -> dict:
+    """Модуль для маршрута и профиля."""
     return {
         "number": module.number,
         "title": module.title,
@@ -534,24 +533,7 @@ def module_view(module: ModuleRow, *, explain: bool = False) -> dict:
         "total": module.total,
         "survey_done": module.survey_done,
         "published": module.published,
-        "explain": explain,
     }
-
-
-def explain_modules(conn: sqlite3.Connection, rows, state: SessionState) -> list[dict]:
-    """Модули для маршрута с флагом «Объясни новичку» (правило — ``core.explain``)."""
-    topics = {topic.number: topic for topic in repos.get_topics(conn)}
-    passed = core_explain.passed_modules(rows, state)
-    return [
-        module_view(
-            module,
-            explain=core_explain.module_reason(
-                module, topics.get(module.number), passed=module.number in passed
-            )
-            == "ok",
-        )
-        for module in module_rows(conn, rows)
-    ]
 
 
 def explain_session_view(
@@ -575,7 +557,6 @@ def explain_session_view(
         "id": session.id,
         "topic": session.topic_id,
         "title": title,
-        "mode": session.state.mode,
         "status": session.status,
         "started_at": session.started_at,
         "messages": [

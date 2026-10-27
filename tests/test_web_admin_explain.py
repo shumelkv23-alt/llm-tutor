@@ -33,10 +33,13 @@ async def setup(web, web_app, monkeypatch, settings):
     conn = web_app.state.userdbs.open(ann.id, "mlcourse")
     enter_module(conn, 2)
     now = time.time()
-    session = explain.start(conn, PROMPTS, topic_id=1, now=now, settings=settings)
+    session_id = repos.create_explain_session(
+        conn, 1, now=now, concept_id="l1_select", kind="voluntary"
+    )
+    session = repos.get_explain_session(conn, session_id)
     repos.add_explain_turn(conn, session.id, "student", SECRET_LINE, ts=now, commit=True)
     state = ExplainState(
-        student_turns=1, ideas={"series_vs_frame": IdeaProgress(state="correct", quote="Series")}
+        student_turns=1, ideas={"loc_vs_iloc": IdeaProgress(state="correct", quote="loc")}
     )
     repos.update_explain_session(conn, session.id, state=state, updated_at=now, commit=True)
     explain.finish(conn, session_id=session.id, now=now, settings=settings)
@@ -73,7 +76,7 @@ async def test_card_lists_sessions_with_consent(setup) -> None:
     html = (await setup["client"].get(_card(setup))).text
     assert "Ученик не открыл доступ" not in html
     assert _session_url(setup) in html
-    assert "1 из 3" in html
+    assert "1 из 1" in html
 
 
 async def test_session_view_logs_without_text(setup, web_app) -> None:

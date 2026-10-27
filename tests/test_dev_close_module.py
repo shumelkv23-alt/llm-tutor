@@ -4,10 +4,11 @@ import importlib.util
 from pathlib import Path
 
 from course_fixtures import load_lessons
-from llm_tutor.core import explain
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.db.connection import MIGRATIONS_DIR, get_conn, migrate
 from llm_tutor.schemas import Route, RouteStep, SessionState
+from llm_tutor.student import explain as logic
 
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "dev_close_module.py"
 spec = importlib.util.spec_from_file_location("dev_close_module", SCRIPT)
@@ -29,15 +30,16 @@ def _student_db(path: Path):
     return conn
 
 
-def test_close_module_marks_only_that_module(tmp_path, settings) -> None:
+def test_close_module_marks_only_that_module(tmp_path) -> None:
     conn = _student_db(tmp_path / "mlcourse.sqlite3")
     assert dev.close_module(conn, 1) == 3
     route = repos.get_session_state(conn, repos.get_open_session(conn)).route
     status = {step.concept_id: step.status for step in route.steps}
     assert [status[n] for n in ("l1_frames", "l1_select", "l1_group")] == ["closed"] * 3
     assert [status[n] for n in ("l2_hist", "l2_box", "l2_corr")] == ["ahead"] * 3
-    rows = {row.topic: row.reason for row in explain.availability(conn, settings=settings)}
-    assert rows[1] == "ok"
+    # Важное занятие модуля сразу даёт обязательное объяснение новичку.
+    order = CourseGraph.load(conn).topo_order()
+    assert logic.pending_lesson(conn, route, order) == "l1_select"
 
 
 def test_close_module_without_route(tmp_path) -> None:

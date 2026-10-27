@@ -1,4 +1,4 @@
-"""Ход «Объясни новичку»: оценщик → новичок без эталона (срез 87)."""
+"""Ход «Объясни новичку»: оценщик → новичок без эталона (срезы 87, 93)."""
 
 from pathlib import Path
 
@@ -8,6 +8,7 @@ from course_fixtures import load_lessons
 from llm_tutor.core import explain
 from llm_tutor.core.explain import DATA_NOTE as DATA_NOTE_MARK
 from llm_tutor.core.context import fence
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.prompt_config import load_explain
 from llm_tutor.llm.schemas import ExplainObservation, IdeaVerdict
@@ -25,18 +26,18 @@ def db(conn):
 
 @pytest.fixture
 def config(db):
-    """Эталон модуля 1."""
-    return repos.get_topic(db, 1).explain
+    """Эталон занятия «Группировка» (l1_group)."""
+    return repos.get_explain_configs(db)["l1_group"]
 
 
 def _session(db) -> int:
-    return repos.create_explain_session(db, 1, now=100.0)
+    return repos.create_explain_session(db, 1, now=100.0, concept_id="l1_group", kind="required")
 
 
-async def _turn(db, llm, settings, text="Series — это столбец", *, session_id=None, prompts=PROMPTS):
+async def _turn(db, llm, settings, text="groupby делит строки на группы", *, session_id=None, prompts=PROMPTS):
     sid = session_id or _session(db)
     return await explain.turn(
-        db, llm, prompts, session_id=sid, text=text, now=200.0, settings=settings
+        db, llm, prompts, session_id=sid, text=text, to="novice", now=200.0, settings=settings
     )
 
 
@@ -53,15 +54,15 @@ def _reference(config) -> list[str]:
 
 
 async def test_turn_calls_evaluator_then_novice(db, settings) -> None:
-    llm = ExplainLLM(replies=["А что такое индекс?"])
+    llm = ExplainLLM(replies=["А что такое группа?"])
     session = await _turn(db, llm, settings)
     assert llm.order == ["evaluator", "novice"]
     assert llm.models["evaluator"] == [settings.explain_evaluator_model]
     assert llm.models["novice"] == [settings.tutor_model]
     turns = repos.get_explain_turns(db, session.id)
     assert [(t.role, t.content) for t in turns] == [
-        ("student", "Series — это столбец"),
-        ("novice", "А что такое индекс?"),
+        ("student", "groupby делит строки на группы"),
+        ("novice", "А что такое группа?"),
     ]
     assert session.state.student_turns == 1
     assert session.updated_at == 200.0
@@ -69,10 +70,10 @@ async def test_turn_calls_evaluator_then_novice(db, settings) -> None:
 
 async def test_coverage_applied(db, settings) -> None:
     obs = ExplainObservation(
-        ideas=[IdeaVerdict(id="series_vs_frame", verdict="correct", quote="Series — это столбец")]
+        ideas=[IdeaVerdict(id="split_apply_combine", verdict="correct", quote="groupby делит строки")]
     )
     session = await _turn(db, ExplainLLM(observations=[obs]), settings)
-    assert session.state.ideas["series_vs_frame"].state == "correct"
+    assert session.state.ideas["split_apply_combine"].state == "correct"
 
 
 @pytest.mark.parametrize(
@@ -141,7 +142,8 @@ async def test_evaluator_failure_keeps_turn(db, settings) -> None:
     session = await _turn(db, llm, settings)
     assert len(repos.get_explain_turns(db, session.id)) == 2
     assert session.state.ideas == {}
-    assert DIRECTIVES.ask.format(lesson="Series и DataFrame") in _last_user(llm.calls["novice"][0])
+    section = CourseGraph.load(db).concept("l1_group").sections[0].title
+    assert DIRECTIVES.ask.format(lesson=section) in _last_user(llm.calls["novice"][0])
 
 
 async def test_novice_failure_writes_nothing(db, settings) -> None:
@@ -240,3 +242,5 @@ async def test_unvoiced_wrap_up_not_recorded(db, config, settings) -> None:
     llm = ExplainLLM(observations=[obs], replies=["А" * 700])
     session = await _turn(db, llm, settings, text)
     assert session.state.wrap_up_offered is False
+    # Но задание выполнено: все обязательные идеи объяснены, сессия завершается сама.
+    assert (session.status, session.end_reason) == ("finished", "coverage")

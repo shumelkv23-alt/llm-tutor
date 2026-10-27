@@ -30,10 +30,10 @@ def test_shipped_config_loads() -> None:
     limits = prompts.limits
     assert limits.paste_min_chars == 600
     assert limits.paste_overlap == 0.5
-    assert limits.wrap_up_share == 0.8
-    assert limits.max_student_turns == 30
-    assert limits.pitfall_every == 3
-    assert limits.pitfall_max == 3
+    assert limits.wrap_up_share == 1.0
+    assert limits.max_student_turns == 10
+    assert limits.pitfall_every == 2
+    assert limits.pitfall_max == 1
     assert limits.novice_max_chars == 600
     assert limits.stale_hours == 24
     assert limits.tail_turns == 6

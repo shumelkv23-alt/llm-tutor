@@ -1,9 +1,10 @@
 """Только для ручного теста: отмечает модуль пройденным в БД учеников.
 
-«Объясни новичку» открывается для модуля, все занятия которого закрыты.
-Проходить ради проверки семь занятий долго — скрипт закрывает их в снимке
-маршрута (как это делает ход, когда занятие закрыто). Свидетельств в журнал
-``events`` не пишет: владение и задания не трогаются.
+Закрытое важное занятие даёт обязательное «Объясни новичку». Проходить ради
+проверки семь занятий долго — скрипт закрывает их в снимке маршрута «сейчас»
+(как это делает ход, когда занятие закрыто), и по важным занятиям модуля сразу
+появляются обязательные задания. Свидетельств в журнал ``events`` не пишет:
+владение и задания не трогаются.
 
 Запуск (из папки проекта, сервер можно не останавливать):
 
@@ -21,6 +22,7 @@ from pathlib import Path
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
+from llm_tutor.student import explain as explain_logic
 
 
 def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
@@ -34,12 +36,18 @@ def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
         return 0
     graph = CourseGraph.load(conn)
     stamp = time.time()
+    # БД, которую сервер ещё не открывал новой версией: занятия, закрытые скриптом
+    # «сейчас», должны давать задание, а прежние — нет.
+    explain_logic.mark_since(conn, stamp - 1.0)
     closed = 0
     steps = []
     for step in state.route.steps:
         if graph.has_node(step.concept_id) and graph.topic_of(step.concept_id) == topic_id:
             closed += 1
-            step = step.model_copy(update={"status": "closed", "closed_at": step.closed_at or stamp})
+            was_closed = step.status == "closed" and step.closed_at is not None
+            step = step.model_copy(
+                update={"status": "closed", "closed_at": step.closed_at if was_closed else stamp}
+            )
         steps.append(step)
     route = state.route.model_copy(update={"steps": steps})
     repos.update_session_state(conn, session_id, state.model_copy(update={"route": route}))

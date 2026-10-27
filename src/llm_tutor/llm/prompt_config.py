@@ -57,10 +57,10 @@ class ExplainLimits(_Strict):
 
     paste_min_chars: int = Field(default=600, ge=1)
     paste_overlap: float = Field(default=0.5, gt=0.0, le=1.0)
-    wrap_up_share: float = Field(default=0.8, gt=0.0, le=1.0)
-    max_student_turns: int = Field(default=30, ge=1)
-    pitfall_every: int = Field(default=3, ge=1)
-    pitfall_max: int = Field(default=3, ge=1)
+    wrap_up_share: float = Field(default=1.0, gt=0.0, le=1.0)
+    max_student_turns: int = Field(default=10, ge=1)
+    pitfall_every: int = Field(default=2, ge=1)
+    pitfall_max: int = Field(default=1, ge=1)
     novice_max_chars: int = Field(default=600, ge=1)
     stale_hours: float = Field(default=24.0, gt=0.0)
     tail_turns: int = Field(default=6, ge=1)
@@ -75,7 +75,7 @@ class ExplainPrompts(_Strict):
 
 # Какие подстановки принимает каждый текст (путь — как в TOML).
 ALLOWED_FIELDS: dict[str, frozenset[str]] = {
-    "novice.system": frozenset({"title", "known", "lessons"}),
+    "novice.system": frozenset({"title", "known"}),
     "novice.opening": frozenset({"title"}),
     "novice.directives.ask": frozenset({"lesson"}),
     "novice.directives.pitfall": frozenset({"lesson", "belief"}),

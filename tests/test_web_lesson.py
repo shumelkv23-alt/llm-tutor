@@ -101,8 +101,9 @@ async def test_survey_rejects_impossible_answers(enrolled, web_app, answers) -> 
 
     assert response.status_code == 422
     assert finish.status_code == 422
-    # Единственный факт — отметка переноса расписания повторений (срез 79).
-    assert repos.get_facts(_user_db(web_app)) == {"review_backfill": "1"}
+    # Только системные отметки открытия БД: перенос расписания (срез 79) и
+    # момент, с которого закрытые занятия дают «Объясни новичку» (срез 93).
+    assert set(repos.get_facts(_user_db(web_app))) == {"review_backfill", "explain_since"}
 
 
 async def test_survey_finish_requires_complete_answers(enrolled, web_app) -> None:
