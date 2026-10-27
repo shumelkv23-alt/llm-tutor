@@ -46,6 +46,54 @@ class Section(BaseModel):
     title: str = Field(min_length=1)
 
 
+class ExplainIdea(BaseModel):
+    """Ключевая идея занятия для «Объясни новичку» (срез 85, на занятие — срез 92).
+
+    ``text`` и ``expect`` видят оценщик и наставник, ученик — только в отчёте;
+    новичку они не передаются никогда.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    # Занятие проставляет загрузчик по месту эталона в seed (срез 92).
+    lesson: str = ""
+    text: str = Field(min_length=1)
+    required: bool = False
+    # Что должен сказать ученик, чтобы идея считалась объяснённой (для оценщика).
+    expect: str = Field(min_length=1)
+
+
+class ExplainPitfall(BaseModel):
+    """Типичная загвоздка занятия: новичок «понимает» с этой ошибкой.
+
+    ``belief`` — фраза новичка (её он и получает), ``fix`` — почему это неверно:
+    видят оценщик и наставник, ученик — в отчёте.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    # Занятие проставляет загрузчик по месту эталона в seed (срез 92).
+    lesson: str = ""
+    belief: str = Field(min_length=1)
+    fix: str = Field(min_length=1)
+
+
+class ExplainConfig(BaseModel):
+    """Эталон для «Объясни новичку»: идеи и загвоздки занятия (узла ``concepts.explain``).
+
+    Числа (2–4 идеи, обязательных ≥ 1, загвоздок 1–2) проверяет
+    ``course.seed._check_lesson_explain``. Модульный эталон (срез 85, 5–8 идей)
+    живёт в ``Topic.explain`` до среза 94.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ideas: list[ExplainIdea]
+    pitfalls: list[ExplainPitfall]
+
+
 class Concept(BaseModel):
     """Узел графа курса (концепт); с разделами — занятие."""
 
@@ -61,6 +109,9 @@ class Concept(BaseModel):
     active: bool = True
     # Разделы занятия по порядку; пусто — узел в старом формате (тема).
     sections: list[Section] = Field(default_factory=list)
+    # Эталон «Объясни новичку» (срез 92): есть — занятие важное, после его
+    # закрытия ученику даётся обязательное объяснение.
+    explain: ExplainConfig | None = None
 
 
 class Edge(BaseModel):
@@ -231,51 +282,6 @@ class SurveyConfig(BaseModel):
             if block.key == key:
                 return block
         raise KeyError(f"Нет блока анкеты с ключом {key!r}")
-
-
-class ExplainIdea(BaseModel):
-    """Ключевая идея модуля для «Объясни новичку» (срез 85).
-
-    ``text`` и ``expect`` видят оценщик и наставник, ученик — только в отчёте;
-    новичку они не передаются никогда.
-    """
-
-    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
-
-    id: str = Field(min_length=1)
-    lesson: str = Field(min_length=1)
-    text: str = Field(min_length=1)
-    required: bool = False
-    # Что должен сказать ученик, чтобы идея считалась объяснённой (для оценщика).
-    expect: str = Field(min_length=1)
-
-
-class ExplainPitfall(BaseModel):
-    """Типичная загвоздка модуля: новичок «понимает» с этой ошибкой.
-
-    ``belief`` — фраза новичка (её он и получает), ``fix`` — почему это неверно:
-    видят оценщик и наставник, ученик — в отчёте.
-    """
-
-    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
-
-    id: str = Field(min_length=1)
-    lesson: str = Field(min_length=1)
-    belief: str = Field(min_length=1)
-    fix: str = Field(min_length=1)
-
-
-class ExplainConfig(BaseModel):
-    """Эталон модуля для «Объясни новичку»: идеи и загвоздки.
-
-    Числа (5–8 идей, обязательных ≥ 3, загвоздок ≥ 2) и принадлежность занятий
-    модулю проверяет ``course.seed._check_explain``.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    ideas: list[ExplainIdea]
-    pitfalls: list[ExplainPitfall]
 
 
 class Topic(BaseModel):
@@ -578,6 +584,10 @@ class ExplainSession(BaseModel):
     end_reason: EndReason | None = None
     state: ExplainState = Field(default_factory=ExplainState)
     report: ExplainReport | None = None
+    # Занятие сессии (срез 92); ``None`` — старая модульная сессия.
+    concept_id: str | None = None
+    # ``required`` — обязательное задание после важного занятия.
+    kind: Literal["required", "voluntary"] = "voluntary"
 
 
 class ExplainTurn(BaseModel):

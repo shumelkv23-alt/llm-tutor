@@ -243,12 +243,13 @@ def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     """Upsert концепта без коммита (для вызова внутри чужой транзакции)."""
     conn.execute(
         "INSERT INTO concepts "
-        "(id, name, difficulty, description, source_url, topic_id, sections, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "(id, name, difficulty, description, source_url, topic_id, sections, explain, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "name = excluded.name, difficulty = excluded.difficulty, "
         "description = excluded.description, source_url = excluded.source_url, "
         "topic_id = excluded.topic_id, sections = excluded.sections, "
+        "explain = excluded.explain, "
         # Вернувшийся в seed узел снова активен.
         "active = 1",
         (
@@ -261,6 +262,7 @@ def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
             json.dumps(
                 [section.model_dump() for section in concept.sections], ensure_ascii=False
             ),
+            concept.explain.model_dump_json() if concept.explain is not None else None,
             int(concept.active),
         ),
     )
@@ -577,8 +579,8 @@ def get_concept_ids(conn: sqlite3.Connection) -> set[str]:
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
     """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(
-        "SELECT id, name, difficulty, description, source_url, topic_id, sections, active "
-        "FROM concepts WHERE active = 1 ORDER BY id"
+        "SELECT id, name, difficulty, description, source_url, topic_id, sections, explain, "
+        "active FROM concepts WHERE active = 1 ORDER BY id"
     ).fetchall()
     concepts: list[Concept] = []
     for r in rows:
@@ -592,6 +594,7 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
                     source_url=r["source_url"],
                     topic_id=r["topic_id"],
                     sections=json.loads(r["sections"]),
+                    explain=json.loads(r["explain"]) if r["explain"] else None,
                     active=bool(r["active"]),
                 )
             )
@@ -600,6 +603,22 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
             # целиком (аудит среза 53, L4). JSONDecodeError — подкласс ValueError.
             logger.warning("Узел %s повреждён и пропущен", r["id"])
     return concepts
+
+
+def get_explain_configs(conn: sqlite3.Connection) -> dict[str, ExplainConfig]:
+    """Эталоны «Объясни новичку» активных занятий: id узла → эталон (срез 92).
+
+    Битый эталон пропускается: занятие просто не считается важным.
+    """
+    configs: dict[str, ExplainConfig] = {}
+    for row in conn.execute(
+        "SELECT id, explain FROM concepts WHERE active = 1 AND explain IS NOT NULL ORDER BY id"
+    ).fetchall():
+        try:
+            configs[row["id"]] = ExplainConfig.model_validate_json(row["explain"])
+        except ValidationError:
+            logger.warning("Эталон занятия %s повреждён и пропущен", row["id"])
+    return configs
 
 
 def get_edges(conn: sqlite3.Connection) -> list[Edge]:
@@ -706,7 +725,8 @@ def delete_review(conn: sqlite3.Connection, concept_id: str, *, commit: bool = T
 # --- explain_sessions / explain_turns («Объясни новичку», срез 85) ---
 
 _EXPLAIN_SESSION_COLUMNS = (
-    "id, topic_id, started_at, updated_at, ended_at, status, end_reason, state, report"
+    "id, topic_id, started_at, updated_at, ended_at, status, end_reason, state, report,"
+    " concept_id, kind"
 )
 
 
@@ -721,17 +741,25 @@ def _row_to_explain_session(row: sqlite3.Row) -> ExplainSession:
         end_reason=row["end_reason"],
         state=ExplainState.model_validate_json(row["state"]),
         report=ExplainReport.model_validate_json(row["report"]) if row["report"] else None,
+        concept_id=row["concept_id"],
+        kind=row["kind"],
     )
 
 
 def create_explain_session(
-    conn: sqlite3.Connection, topic_id: int, *, now: float, commit: bool = True
+    conn: sqlite3.Connection,
+    topic_id: int,
+    *,
+    now: float,
+    concept_id: str | None = None,
+    kind: str = "voluntary",
+    commit: bool = True,
 ) -> int:
-    """Новая активная сессия по модулю ``topic_id``; возвращает id."""
+    """Новая активная сессия по занятию ``concept_id`` (модуль ``topic_id``); возвращает id."""
     cur = conn.execute(
-        "INSERT INTO explain_sessions (topic_id, started_at, updated_at, state) "
-        "VALUES (?, ?, ?, ?)",
-        (topic_id, now, now, ExplainState().model_dump_json()),
+        "INSERT INTO explain_sessions (topic_id, started_at, updated_at, state, concept_id, kind) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (topic_id, now, now, ExplainState().model_dump_json(), concept_id, kind),
     )
     if commit:
         conn.commit()
@@ -752,6 +780,15 @@ def active_explain_session(conn: sqlite3.Connection) -> ExplainSession | None:
         "WHERE status = 'active' ORDER BY id DESC LIMIT 1"
     ).fetchone()
     return _row_to_explain_session(row) if row else None
+
+
+def finished_required(conn: sqlite3.Connection) -> set[str]:
+    """Занятия, по которым обязательное объяснение уже выполнено (сессия завершена)."""
+    rows = conn.execute(
+        "SELECT DISTINCT concept_id FROM explain_sessions "
+        "WHERE kind = 'required' AND status = 'finished' AND concept_id IS NOT NULL"
+    ).fetchall()
+    return {row["concept_id"] for row in rows}
 
 
 def list_explain_sessions(conn: sqlite3.Connection) -> list[ExplainSession]:

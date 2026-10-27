@@ -94,12 +94,6 @@ def test_foreign_pitfall_lesson_is_error(tmp_path) -> None:
         _course_with(tmp_path, 1, patch)
 
 
-def test_missing_explain_is_warning(tmp_path) -> None:
-    course = _course_with(tmp_path, 2, lambda topic: topic.pop("explain"))
-    assert "У модуля 2 нет эталона «Объясни новичку»" in course.warnings
-    assert course.topics[1].explain is None
-
-
 def test_unpublished_without_explain_is_silent(tmp_path) -> None:
     def patch(topic: dict) -> None:
         topic.pop("explain")

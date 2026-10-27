@@ -155,7 +155,8 @@ def _add_lessons(seed: dict, count: int) -> None:
     next_id = max(item["id"] for item in seed["items"]) + 1
     for k in range(count):
         node_id = f"{template['id']}_x{k}"
-        seed["nodes"].append({**template, "id": node_id})
+        # Эталон «Объясни новичку» у копии не нужен: его id были бы дублями.
+        seed["nodes"].append({**{k: v for k, v in template.items() if k != "explain"}, "id": node_id})
         survey_block["concepts"].append(node_id)
         for item in [i for i in seed["items"] if template["id"] in i["concept_weights"]]:
             seed["items"].append({**item, "id": next_id, "concept_weights": {node_id: 1.0}})
