@@ -461,6 +461,8 @@ def lesson_state(
     state = repos.get_session_state(conn, session_id) if session_id else SessionState()
     limits = prompts.limits if prompts is not None else ExplainLimits()
     explain_block = explain_view(conn, graph, state, max_turns=limits.max_student_turns)
+    shown_session = explain_block["active"]
+    mentor_chat = held or (shown_session is not None and shown_session["status"] == "active")
     node = None
     if not held and state.current_node_id and graph.has_node(state.current_node_id):
         concept = graph.concept(state.current_node_id)
@@ -510,9 +512,10 @@ def lesson_state(
         ],
         "modules": [module_view(module) for module in module_rows(conn, rows)],
         "messages": (
-            # Пока висит задание, чат справа — ветка наставника, а не история урока.
+            # Пока идёт «Объясни новичку» (задание или добровольное), чат справа —
+            # ветка наставника, а не история урока.
             (explain_block["active"] or {}).get("mentor", [])
-            if held
+            if mentor_chat
             else [
                 message_view(
                     message.role,

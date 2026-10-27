@@ -13,6 +13,9 @@ window.Lesson = (() => {
   let state = null;
   let busy = false;
   let idleWaiters = [];
+  // Курс стоит, пока не выполнено «Объясни новичку» (срез 95): запоминаем прошлое
+  // значение, чтобы выбирать вкладку только в момент перехода.
+  let wasBlocked = false;
 
   const STATUS_LABELS = {
     closed: "закрыта",
@@ -32,7 +35,27 @@ window.Lesson = (() => {
     root.setAttribute("aria-busy", "false");
     root.classList.toggle("locked", Boolean(state.survey));
     renderHead();
+    applyLock();
     listeners.forEach((listener) => listener(state));
+  }
+
+  function isBlocked() {
+    return Boolean(state?.explain?.blocked);
+  }
+
+  /** Вкладки урока закрыты, пока висит «Объясни новичку»; открыта только она. */
+  function applyLock() {
+    const blocked = isBlocked();
+    document.querySelectorAll(".tabs [role=tab]").forEach((tab) => {
+      const locked = blocked && tab.id !== "tab-btn-explain";
+      if (locked) tab.setAttribute("aria-disabled", "true");
+      else tab.removeAttribute("aria-disabled");
+      tab.querySelector(".tab-lock")?.toggleAttribute("hidden", !locked);
+    });
+    if (blocked && !wasBlocked) selectTab("explain");
+    // Задание выполнено, курс пошёл дальше: к уроку или к заданию разминки.
+    else if (!blocked && wasBlocked) selectTab(state.item ? "practice" : "theory");
+    wasBlocked = blocked;
   }
 
   function renderHead() {
@@ -48,12 +71,18 @@ window.Lesson = (() => {
       badge.className = state.mode === "verify" ? "badge accent" : "badge primary";
       badge.textContent = state.mode === "verify" ? "Проверка занятия" : "Урок";
       meta.append(badge, place(state.node.lesson));
+    } else if (isBlocked() && state.explain.active) {
+      title.textContent = `Объясни новичку: «${state.explain.active.title}»`;
+      const badge = document.createElement("span");
+      badge.className = "badge accent";
+      badge.textContent = "Обязательное задание";
+      meta.append(badge, "Дальше — после объяснения.");
     } else {
       title.textContent = "Занятие не выбрано";
       meta.textContent = "Откройте маршрут и выберите занятие.";
     }
     renderSections(state);
-    $("#route-open").disabled = Boolean(state.survey);
+    $("#route-open").disabled = Boolean(state.survey) || isBlocked();
     // Во время хода кнопка не выключается (фокус ушёл бы на body): повтор
     // отсекает act(), а вид «занято» даёт aria-disabled у [data-turn].
     $("#verify-topic").disabled = Boolean(state.survey) || !state.node;
@@ -117,7 +146,7 @@ window.Lesson = (() => {
     }
   }
 
-  function setBusy(value) {
+  function setBusy(value, typing = true) {
     busy = value;
     if (!value) {
       const waiters = idleWaiters;
@@ -131,23 +160,25 @@ window.Lesson = (() => {
       element.setAttribute("aria-disabled", String(value));
     });
     if (state) renderHead();
-    window.Lesson.chat?.typing(value);
+    window.Lesson.chat?.typing(value && typing);
     document.dispatchEvent(new CustomEvent("lesson:busy", { detail: value }));
   }
 
   /**
    * Ход занятия: POST к API, реплики — в чат, состояние — во все панели.
    * `echo` — что показать в чате от ученика до ответа сервера, `quote` —
-   * фрагмент над ним (плашка, срез 77).
+   * фрагмент над ним (плашка, срез 77). `toChat: false` — реплики хода не для
+   * правого чата (вкладка «Объясни» рисует разговор с новичком сама),
+   * `typing: false` — «печатает…» в чате не показывать.
    */
-  async function act(path, body = {}, { echo = null, quote = null } = {}) {
+  async function act(path, body = {}, { echo = null, quote = null, toChat = true, typing = true } = {}) {
     if (busy) return null;
-    setBusy(true);
+    setBusy(true, typing);
     const pending = echo ? window.Lesson.chat?.pending(echo, quote) : null;
     try {
       const data = await request(`${base}/${path}`, { method: "POST", body });
       pending?.remove();
-      window.Lesson.chat?.append(data.messages);
+      if (toChat) window.Lesson.chat?.append(data.messages || []);
       setState(data.state);
       return data;
     } catch (problem) {
@@ -171,6 +202,8 @@ window.Lesson = (() => {
   /* --- Вкладки урока (роль tablist: стрелки двигают выбор) --- */
 
   function selectTab(name, { focus = false } = {}) {
+    // Пока висит «Объясни новичку», остальные вкладки закрыты.
+    if (isBlocked() && name !== "explain") return;
     document.querySelectorAll(".tabs [role=tab]").forEach((tab) => {
       const selected = tab.id === `tab-btn-${name}`;
       tab.setAttribute("aria-selected", String(selected));
@@ -208,7 +241,7 @@ window.Lesson = (() => {
     const tabList = $(".tabs");
     tabList.addEventListener("click", (event) => {
       const tab = event.target.closest("[role=tab]");
-      if (tab) selectTab(tab.id.replace("tab-btn-", ""));
+      if (tab && tab.getAttribute("aria-disabled") !== "true") selectTab(tab.id.replace("tab-btn-", ""));
     });
     tabList.addEventListener("keydown", (event) =>
       tabKeys(event, ".tabs [role=tab]", (tab) => selectTab(tab.id.replace("tab-btn-", ""), { focus: true }))
@@ -242,6 +275,7 @@ window.Lesson = (() => {
     onState,
     selectTab,
     selectView,
+    isBlocked,
     STATUS_LABELS,
     get state() {
       return state;

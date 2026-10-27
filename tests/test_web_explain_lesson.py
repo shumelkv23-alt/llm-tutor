@@ -268,6 +268,8 @@ async def test_voluntary_start_stop(held, web_llm, web_app) -> None:
     assert (active["kind"], active["node_id"]) == ("voluntary", "l1_select")
     # Ходы курса не блокируются: добровольное объяснение — не задание.
     assert started.json()["state"]["explain"]["blocked"] is False
+    # Но чат справа — наставник со своей (пока пустой) веткой, а не история урока.
+    assert started.json()["state"]["messages"] == []
     assert (await held.post(f"{BASE}/task", json={})).status_code == 200
 
     await held.post(f"{EXPLAIN}/turn", json={"text": "что-то про loc"})
