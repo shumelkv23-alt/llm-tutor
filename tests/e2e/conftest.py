@@ -32,9 +32,14 @@ class EchoTutor:
         self.delay = 0.3
 
     async def chat_structured(self, messages, schema, *, model=None, temperature=None):
-        from llm_tutor.llm.schemas import ExplainObservation
+        from llm_tutor.llm.schemas import ExplainObservation, ProjectMentorReply
 
         await asyncio.sleep(self.delay)
+        if schema is ProjectMentorReply:
+            # Наставник проекта (срез 101): подсказка с предложением названия для карточки.
+            return ProjectMentorReply(
+                reply="Хорошая тема. Какие данные у вас есть?", proposal={"title": "Отток клиентов"}
+            )
         if schema is ExplainObservation:
             # Скрытый оценщик «Объясни новичку»: ничего не заметил (срез 91).
             return ExplainObservation()

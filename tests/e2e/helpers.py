@@ -211,3 +211,28 @@ def prepare_close(users_dir, node: str) -> str:
         return str(final.answer)
     finally:
         conn.close()
+
+
+def pass_course(users_dir) -> None:
+    """Курс пройден: все занятия графа закрыты в маршруте ученика (срез 101).
+
+    Пишем в БД ученика напрямую, как ``close_module``: пройти 33 занятия ходами
+    нельзя. Проект открывается только после курса, и этого достаточно.
+    """
+    from llm_tutor.course.graph import CourseGraph
+    from llm_tutor.db import repos
+    from llm_tutor.db.connection import get_conn
+    from llm_tutor.schemas import Route, RouteStep, SessionState
+
+    conn = get_conn(str(next(users_dir.glob("*/mlcourse.sqlite3"))))
+    try:
+        graph = CourseGraph.load(conn)
+        steps = [
+            RouteStep(concept_id=node, mode="full", status="closed", closed_at=1.0)
+            for node in graph.topo_order()
+        ]
+        session_id = repos.ensure_open_session(conn, now=1.0)
+        state = repos.get_session_state(conn, session_id)
+        repos.update_session_state(conn, session_id, state.model_copy(update={"route": Route(steps=steps)}))
+    finally:
+        conn.close()
