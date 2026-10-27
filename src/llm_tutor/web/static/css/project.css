@@ -1,0 +1,545 @@
+/* Проект по курсу: список курсов и рабочая страница (срез 100).
+ *
+ * Рабочая страница устроена как занятие: проект слева, чат с наставником
+ * справа, доля левой панели — переменная --split (её двигает split.js). На
+ * узком экране вместо сплита — переключатель «Проект | Наставник». Цвета —
+ * только токены: тёмная тема меняет значения, а не правила.
+ */
+
+/* --- Список курсов --- */
+
+.projects {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.project-course {
+  padding: 20px;
+}
+
+.project-course .section-title {
+  margin-top: 0;
+}
+
+.project-locked {
+  color: var(--warning);
+  font-weight: 600;
+}
+
+.brief-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.brief-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+}
+
+.brief-card h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.brief-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.brief-body p {
+  margin: 0;
+}
+
+.brief-datasets {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.brief-datasets a {
+  color: var(--primary-text);
+  overflow-wrap: anywhere;
+}
+
+.brief-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 8px;
+}
+
+/* --- Рабочая страница --- */
+
+.project-body main {
+  max-width: none;
+  height: calc(100dvh - 64px);
+  flex: none;
+  min-height: 0;
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.project-body #page-error {
+  flex: none;
+}
+
+.project {
+  --split: 70%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.project-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex: none;
+}
+
+.project-title {
+  min-width: 0;
+}
+
+.project-title h1 {
+  font-size: 26px;
+  overflow-wrap: anywhere;
+}
+
+.project-meta {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project-meta .badge {
+  margin-right: 6px;
+}
+
+.project-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: none;
+}
+
+.project .view-switch {
+  display: none;
+}
+
+.project .split {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, var(--split)) 12px minmax(280px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.project .split.dragging {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.project .pane {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.project .pane-left {
+  overflow-y: auto;
+}
+
+.project .splitter {
+  position: relative;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.project .splitter::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+  z-index: 1;
+}
+
+.project .splitter-grip {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s, height 0.15s;
+}
+
+.project .splitter:hover .splitter-grip,
+.project .split.dragging .splitter-grip,
+.project .splitter:focus-visible .splitter-grip {
+  height: 72px;
+  background: var(--primary);
+}
+
+.project-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+  max-width: 820px;
+}
+
+.project-content h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.project-brief {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  background: var(--surface-2);
+}
+
+.project-brief summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.project-brief .brief-body {
+  margin-top: 10px;
+}
+
+.project-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.project-field textarea {
+  min-height: 72px;
+  resize: vertical;
+}
+
+.project-field .code-field,
+.project-facts .code-field {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+}
+
+.field-hint {
+  margin: 0;
+  font-size: 12px;
+}
+
+.project-field .field-error {
+  margin: 0;
+}
+
+.project-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.project-facts {
+  margin: 0;
+  display: grid;
+  gap: 4px 0;
+}
+
+.project-facts dt {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.project-facts dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.project-stage {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.project-stage[data-status="current"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.project-stage[data-status="ahead"] {
+  color: var(--muted);
+}
+
+.project-stage h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 16px;
+}
+
+.stage-body {
+  margin-top: 10px;
+}
+
+.stage-goal {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+
+.stage-checklist {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  font-size: 14px;
+}
+
+.project-stage[data-status="current"] textarea,
+.project-stage[data-status="current"] input {
+  background: var(--surface);
+}
+
+.project-choose h2 {
+  margin-top: 0;
+}
+
+/* --- Чат наставника --- */
+
+.project .chat-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex: none;
+}
+
+.project .chat-head strong,
+.project .chat-head span:not(.avatar) {
+  display: block;
+}
+
+.project .chat-head span:not(.avatar) {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.project .tutor-avatar {
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+.project .chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overscroll-behavior: contain;
+}
+
+.project .chat-empty {
+  margin: auto 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.project .chat-typing {
+  margin: 0;
+  padding: 0 16px 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.project .msg {
+  max-width: 92%;
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.project .msg.assistant {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border-top-left-radius: 4px;
+}
+
+.project .msg.user {
+  align-self: flex-end;
+  background: var(--primary);
+  color: var(--on-primary);
+  border-top-right-radius: 4px;
+}
+
+.project .msg.pending {
+  opacity: 0.7;
+}
+
+.project .msg.failed {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.project .msg p {
+  margin: 0;
+}
+
+.project .msg p + p,
+.project .msg ul,
+.project .msg ol,
+.project .msg pre {
+  margin-top: 8px;
+}
+
+.project .msg ul,
+.project .msg ol {
+  margin-bottom: 0;
+  padding-left: 20px;
+}
+
+.project .msg pre {
+  margin-bottom: 0;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  overflow-x: auto;
+  font-size: 13px;
+}
+
+.project .msg a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.msg-error {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.proposal {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.proposal .btn {
+  margin-top: 10px;
+}
+
+.project .chat-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--border);
+  flex: none;
+}
+
+.project .chat-form textarea {
+  min-height: 44px;
+  max-height: 180px;
+  resize: none;
+  line-height: 1.45;
+}
+
+/* --- Узкие экраны: вместо сплита — переключатель «Проект | Наставник» --- */
+
+@media (max-width: 1199px) {
+  .project-body main {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 899px) {
+  .project-body main {
+    height: auto;
+    min-height: calc(100dvh - 160px);
+  }
+
+  .project {
+    gap: 12px;
+  }
+
+  .project-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .project .view-switch {
+    display: flex;
+    align-self: stretch;
+  }
+
+  .project .view-switch button {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+  }
+
+  .project .split {
+    display: block;
+  }
+
+  .project .splitter {
+    display: none;
+  }
+
+  .project .pane {
+    height: calc(100dvh - 230px);
+    min-height: 420px;
+  }
+
+  .project[data-view="project"] .pane-chat,
+  .project[data-view="chat"] .pane-left {
+    display: none;
+  }
+}
+
+@media (max-width: 599px) {
+  .project-title h1 {
+    font-size: 22px;
+  }
+
+  .project-content {
+    padding: 16px;
+  }
+
+  .project .msg {
+    max-width: 100%;
+  }
+}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block eyebrow %}После курса{% endblock %}
+{% block description %}Применить знания к своей задаче: выберите проект, доведите идею вместе с наставником и пройдите четыре этапа.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/project.css') }}">{% endblock %}
+{% block scripts %}
+<script src="{{ static_url('js/project-common.js') }}" defer></script>
+<script src="{{ static_url('js/projects.js') }}" defer></script>
+{% endblock %}
+{% block content %}
+<div id="projects" class="projects" aria-busy="true" aria-live="polite">
+  <div class="skeleton"></div>
+</div>
+{% endblock %}

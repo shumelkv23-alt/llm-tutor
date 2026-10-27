@@ -14,7 +14,9 @@
   const HANDLE = 12;
 
   const split = document.getElementById("split");
-  const lesson = document.getElementById("lesson");
+  // Тот же ползунок работает на странице проекта (срез 100): контейнер зовётся #project.
+  const lesson = document.getElementById("lesson") || document.getElementById("project");
+  const left = lesson.id === "project" ? "Проект" : "Урок";
   const handle = document.getElementById("splitter");
   let value = DEFAULT;
   // Что выбрал ученик: узкое окно ограничивает долю, но выбор не забывается.
@@ -56,7 +58,7 @@
     const rounded = Math.min(Math.round(value), maxRounded);
     handle.setAttribute("aria-valuenow", String(rounded));
     handle.setAttribute("aria-valuemax", String(maxRounded));
-    handle.setAttribute("aria-valuetext", `Урок ${rounded}%, чат ${100 - rounded}%`);
+    handle.setAttribute("aria-valuetext", `${left} ${rounded}%, чат ${100 - rounded}%`);
   }
 
   function fromPointer(event) {
