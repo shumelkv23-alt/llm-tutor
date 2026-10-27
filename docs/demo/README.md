@@ -9,22 +9,22 @@
 ```bash
 uv sync
 # 1. Демо-ученики без ключа модели: Аня (3 занятия закрыты) и Борис (2, с ошибками)
-uv run python scripts/demo_students.py data/demo
+uv run python scripts/demo_students.py data/showcase
 
 # 2. Приложение с настоящей моделью поверх демо-данных
-ACCOUNTS_DB_PATH=data/demo/accounts.sqlite3 USERS_DIR=data/demo/users \
-  MATERIALS_DB_PATH=data/demo/materials.sqlite3 uv run python -m llm_tutor.web
+ACCOUNTS_DB_PATH=data/showcase/accounts.sqlite3 USERS_DIR=data/showcase/users \
+  uv run python -m llm_tutor.web
 
 # 3. Админ для раздела /admin
-ACCOUNTS_DB_PATH=data/demo/accounts.sqlite3 USERS_DIR=data/demo/users \
+ACCOUNTS_DB_PATH=data/showcase/accounts.sqlite3 USERS_DIR=data/showcase/users \
   uv run python -m llm_tutor.web.cli make-admin --email ann@example.com
 ```
 
 Пароль обоих демо-учеников — `секретный-пароль`. Для чистого ученика зарегистрируйся
 в браузере: живой ввод убедительнее готовых данных. Нужен ключ `OPENROUTER_API_KEY` в `.env`.
 
-База ученика: `data/demo/users/<id>/mlcourse.sqlite3`. Узнать `<id>`:
-`SELECT id, email FROM users;` в `data/demo/accounts.sqlite3`. В контейнере без
+База ученика: `data/showcase/users/<id>/mlcourse.sqlite3`. Узнать `<id>`:
+`SELECT id, email FROM users;` в `data/showcase/accounts.sqlite3`. В контейнере без
 консоли `sqlite3` открывай базу так: `uv run python -m sqlite3 <файл>`.
 
 ## Сценарий на 12 минут

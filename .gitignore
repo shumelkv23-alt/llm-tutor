@@ -67,4 +67,4 @@ data/courses/
 .claude/worktrees/
 
 # Демо-данные для показа (scripts/demo_students.py)
-data/demo/
+data/showcase/

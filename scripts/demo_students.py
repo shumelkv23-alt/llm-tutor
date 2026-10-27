@@ -4,9 +4,9 @@
 Всё остальное — настоящее: API, ядро хода, проверка ответов, запись в журнал
 ``events``, пересчёт оценок и расписание повторений.
 
-    uv run python scripts/demo_students.py data/demo
+    uv run python scripts/demo_students.py data/showcase
 
-Создаёт ``data/demo/accounts.sqlite3`` и ``data/demo/users/<id>/mlcourse.sqlite3``.
+Создаёт ``data/showcase/accounts.sqlite3`` и ``data/showcase/users/<id>/mlcourse.sqlite3``.
 Чтобы открыть их в приложении (с настоящей моделью), запусти его с путями из
 этого каталога — см. ``docs/demo/README.md``.
 
@@ -145,5 +145,5 @@ async def main(out: Path) -> None:
 
 
 if __name__ == "__main__":
-    target = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "data" / "demo"
+    target = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "data" / "showcase"
     asyncio.run(main(target))
