@@ -6,7 +6,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Role = Literal["system", "user", "assistant"]
 
@@ -595,5 +595,86 @@ class ExplainTurn(BaseModel):
     session_id: int
     ts: float
     role: Literal["student", "novice", "mentor"]
+    content: str
+    meta: dict = Field(default_factory=dict)
+
+
+# --- Проект по курсу (срез 97) ---
+
+ProjectStatus = Literal["idea", "build", "done", "archived"]
+
+
+class ProjectDataset(BaseModel):
+    """Пример открытых данных для проекта: название и ссылка."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=120)
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, value: str) -> str:
+        # Ссылка уходит в href страницы: только http(s), не ``javascript:``.
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("ссылка на данные должна начинаться с http:// или https://")
+        return value
+
+
+class ProjectBrief(BaseModel):
+    """Описание проекта курса (``project.json``): рамка, внутри которой ученик выбирает свою идею."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(pattern=r"^[a-z0-9_-]{1,40}$")
+    title: str = Field(min_length=3, max_length=80)
+    summary: str = Field(min_length=1)
+    result: str = Field(min_length=1)
+    # Занятия курса, которые пригодятся (id узлов).
+    lessons: list[str] = Field(default_factory=list, max_length=8)
+    datasets: list[ProjectDataset] = Field(default_factory=list, max_length=5)
+
+
+class ProjectFile(BaseModel):
+    """Файл ``project.json`` курса: шаблон этапов и 1–3 описания."""
+
+    model_config = ConfigDict(frozen=True)
+
+    template: str
+    briefs: list[ProjectBrief] = Field(min_length=1, max_length=3)
+
+
+class ProjectState(BaseModel):
+    """Состояние проекта (JSON в ``projects.state``): карточка, этап, заметки."""
+
+    card: dict[str, str] = Field(default_factory=dict)
+    # Текущий этап в статусе ``build``.
+    stage: str | None = None
+    notes: dict[str, dict[str, str]] = Field(default_factory=dict)
+    done_stages: list[str] = Field(default_factory=list)
+
+
+class Project(BaseModel):
+    """Строка ``projects``."""
+
+    id: int
+    brief_id: str
+    # Копия описания на момент выбора: правка ``project.json`` начатый проект не меняет.
+    brief: ProjectBrief
+    template: str
+    status: ProjectStatus = "idea"
+    state: ProjectState = Field(default_factory=ProjectState)
+    started_at: float
+    updated_at: float
+    done_at: float | None = None
+
+
+class ProjectTurn(BaseModel):
+    """Строка ``project_turns``: реплика чата с наставником."""
+
+    id: int
+    project_id: int
+    ts: float
+    role: Literal["student", "mentor"]
     content: str
     meta: dict = Field(default_factory=dict)

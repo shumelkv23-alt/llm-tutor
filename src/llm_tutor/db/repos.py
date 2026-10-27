@@ -24,6 +24,10 @@ from llm_tutor.schemas import (
     ExplainSession,
     ExplainState,
     ExplainTurn,
+    Project,
+    ProjectBrief,
+    ProjectState,
+    ProjectTurn,
     Item,
     Message,
     ReviewRow,
@@ -987,3 +991,128 @@ def get_theory(conn: sqlite3.Connection, concept_id: str) -> str | None:
         "SELECT theory FROM concepts WHERE id = ? AND active = 1", (concept_id,)
     ).fetchone()
     return None if row is None else row["theory"]
+
+
+# --- projects / project_turns (проект по курсу, срез 97) ---
+
+_PROJECT_COLUMNS = (
+    "id, brief_id, brief, template, status, state, started_at, updated_at, done_at"
+)
+
+
+def _row_to_project(row: sqlite3.Row) -> Project:
+    return Project(
+        id=row["id"],
+        brief_id=row["brief_id"],
+        brief=ProjectBrief.model_validate_json(row["brief"]),
+        template=row["template"],
+        status=row["status"],
+        state=ProjectState.model_validate_json(row["state"]),
+        started_at=row["started_at"],
+        updated_at=row["updated_at"],
+        done_at=row["done_at"],
+    )
+
+
+def create_project(
+    conn: sqlite3.Connection,
+    *,
+    brief: ProjectBrief,
+    template: str,
+    now: float,
+    commit: bool = False,
+) -> int:
+    """Новый проект в статусе ``idea`` с копией описания; возвращает id."""
+    cur = conn.execute(
+        "INSERT INTO projects (brief_id, brief, template, status, state, started_at, updated_at) "
+        "VALUES (?, ?, ?, 'idea', ?, ?, ?)",
+        (brief.id, brief.model_dump_json(), template, ProjectState().model_dump_json(), now, now),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def get_project(conn: sqlite3.Connection, project_id: int) -> Project | None:
+    row = conn.execute(
+        f"SELECT {_PROJECT_COLUMNS} FROM projects WHERE id = ?", (project_id,)
+    ).fetchone()
+    return _row_to_project(row) if row else None
+
+
+def current_project(conn: sqlite3.Connection) -> Project | None:
+    """Последний проект ученика по курсу, если он не в архиве."""
+    row = conn.execute(
+        f"SELECT {_PROJECT_COLUMNS} FROM projects ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if row is None or row["status"] == "archived":
+        return None
+    return _row_to_project(row)
+
+
+def update_project(
+    conn: sqlite3.Connection,
+    project_id: int,
+    *,
+    state: ProjectState,
+    updated_at: float,
+    status: str | None = None,
+    done_at: float | None = None,
+    commit: bool = False,
+) -> None:
+    """Пишет состояние проекта; ``None`` у статуса и ``done_at`` — оставить как было."""
+    conn.execute(
+        "UPDATE projects SET state = ?, updated_at = ?, status = COALESCE(?, status), "
+        "done_at = COALESCE(?, done_at) WHERE id = ?",
+        (state.model_dump_json(), updated_at, status, done_at, project_id),
+    )
+    if commit:
+        conn.commit()
+
+
+def add_project_turn(
+    conn: sqlite3.Connection,
+    project_id: int,
+    role: str,
+    content: str,
+    *,
+    ts: float,
+    meta: dict | None = None,
+    commit: bool = False,
+) -> int:
+    """Реплика чата проекта; ``meta`` — JSON (этап, предложение карточки)."""
+    cur = conn.execute(
+        "INSERT INTO project_turns (project_id, ts, role, content, meta) VALUES (?, ?, ?, ?, ?)",
+        (project_id, ts, role, content, json.dumps(meta, ensure_ascii=False) if meta else None),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def _row_to_project_turn(row: sqlite3.Row) -> ProjectTurn:
+    return ProjectTurn(
+        id=row["id"],
+        project_id=row["project_id"],
+        ts=row["ts"],
+        role=row["role"],
+        content=row["content"],
+        meta=json.loads(row["meta"]) if row["meta"] else {},
+    )
+
+
+def get_project_turns(conn: sqlite3.Connection, project_id: int) -> list[ProjectTurn]:
+    rows = conn.execute(
+        "SELECT id, project_id, ts, role, content, meta FROM project_turns "
+        "WHERE project_id = ? ORDER BY id",
+        (project_id,),
+    ).fetchall()
+    return [_row_to_project_turn(row) for row in rows]
+
+
+def get_project_turn(conn: sqlite3.Connection, turn_id: int) -> ProjectTurn | None:
+    row = conn.execute(
+        "SELECT id, project_id, ts, role, content, meta FROM project_turns WHERE id = ?",
+        (turn_id,),
+    ).fetchone()
+    return _row_to_project_turn(row) if row else None
