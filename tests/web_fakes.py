@@ -198,3 +198,42 @@ class ExplainLLM:
 
     async def aclose(self) -> None:
         self.closed = True
+
+
+class ProjectLLM:
+    """Наставник проекта по заготовкам ``ProjectMentorReply`` (срез 98).
+
+    Заготовки выдаются по очереди, последняя повторяется. Остальные схемы с
+    полем ``reply`` — по-тьюторски: рядом с проектом в вебе идёт и занятие.
+    ``fail`` — каждый вызов наставника бросает ``LLMError``. Сообщения вызовов
+    наставника — в ``calls``, модели — в ``models``.
+    """
+
+    def __init__(self, *, replies=(), fail: bool = False, tutor=("A\n---\nB",)) -> None:
+        self.replies = list(replies)
+        self.fail = fail
+        self.tutor = list(tutor)
+        self.calls: list[list] = []
+        self.models: list[str | None] = []
+        self.closed = False
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        from llm_tutor.llm.schemas import ProjectMentorReply
+
+        if schema is ProjectMentorReply:
+            self.calls.append(list(messages))
+            self.models.append(model)
+            if self.fail:
+                from llm_tutor.llm.client import LLMError
+
+                raise LLMError("наставник недоступен", retryable=True)
+            return ExplainLLM._next(self.replies, ProjectMentorReply(reply="Ответ наставника"))
+        if "reply" in schema.model_fields:
+            return schema(reply=ExplainLLM._next(self.tutor, "Ответ тьютора"))
+        raise AssertionError(f"Неожиданный структурный вызов: {schema.__name__}")
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        raise AssertionError("наставник проекта отвечает через chat_structured")
+
+    async def aclose(self) -> None:
+        self.closed = True

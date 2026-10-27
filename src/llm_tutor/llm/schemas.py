@@ -1,6 +1,6 @@
 """Модели сообщений для общения с LLM (OpenAI-совместимый формат OpenRouter)."""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -60,3 +60,17 @@ class NoviceReply(BaseModel):
     """Реплика новичка."""
 
     reply: str
+
+
+# --- Проект по курсу (срез 98) ---
+
+
+class ProjectMentorReply(BaseModel):
+    """Реплика наставника проекта и необязательное предложение полей карточки.
+
+    Предложение модели — сырые данные (значения не обязательно строки): в карточку и в ``meta`` его пускает только
+    ``student.project.clean_proposal``.
+    """
+
+    reply: str
+    proposal: dict[str, Any] | None = None

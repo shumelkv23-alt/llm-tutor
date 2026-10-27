@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 FILE_NAME = "explain.toml"
+PROJECT_FILE_NAME = "project.toml"
 
 
 class PromptConfigError(ValueError):
@@ -128,4 +129,57 @@ def load_explain(directory: Path) -> ExplainPrompts:
     except ValidationError as error:
         raise PromptConfigError(f"{path}: {error}") from error
     _check_fields(prompts)
+    return prompts
+
+
+# --- Наставник проекта по курсу (срез 98) ---
+
+
+class ProjectLimits(_Strict):
+    """Пределы наставника проекта; значения по умолчанию — из спеки."""
+
+    tail_turns: int = Field(default=8, ge=1)
+    max_code_lines: int = Field(default=8, ge=1)
+    max_reply_chars: int = Field(default=3000, ge=1)
+
+
+class ProjectPrompts(_Strict):
+    system: str = Field(min_length=1)
+    opening: str = Field(min_length=1)
+    strict: str = Field(min_length=1)
+    fallback: str = Field(min_length=1)
+    limits: ProjectLimits = Field(default_factory=ProjectLimits)
+
+
+def _check_project_fields(prompts: ProjectPrompts) -> None:
+    allowed = {"system": set(), "opening": {"title"}, "strict": set(), "fallback": set()}
+    for name, fields_allowed in allowed.items():
+        text = getattr(prompts, name)
+        try:
+            fields = {n for _, n, _, _ in string.Formatter().parse(text) if n is not None}
+        except ValueError as error:  # непарная фигурная скобка
+            raise PromptConfigError(f"{PROJECT_FILE_NAME}: {name}: {error}") from error
+        unknown = sorted(fields - fields_allowed)
+        if unknown:
+            raise PromptConfigError(
+                f"{PROJECT_FILE_NAME}: {name}: подстановки {unknown} не поддерживаются "
+                f"(можно: {sorted(fields_allowed) or 'никаких'})"
+            )
+
+
+def load_project(directory: Path) -> ProjectPrompts:
+    """Читает и проверяет ``<directory>/project.toml``."""
+    path = Path(directory) / PROJECT_FILE_NAME
+    try:
+        with path.open("rb") as handle:
+            raw = tomllib.load(handle)
+    except FileNotFoundError as error:
+        raise PromptConfigError(f"Нет файла промптов {path}") from error
+    except tomllib.TOMLDecodeError as error:
+        raise PromptConfigError(f"{path}: {error}") from error
+    try:
+        prompts = ProjectPrompts.model_validate(raw)
+    except ValidationError as error:
+        raise PromptConfigError(f"{path}: {error}") from error
+    _check_project_fields(prompts)
     return prompts
