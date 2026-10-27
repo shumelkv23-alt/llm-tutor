@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 from llm_tutor.course.seed import load_course_data
+from llm_tutor.schemas import Topic
 
 # Важные занятия: после их закрытия ученик объясняет их новичку (спека 2026-10-27).
 IMPORTANT = {
@@ -23,7 +24,8 @@ def test_exactly_important_lessons_have_explain() -> None:
 
 
 def test_no_module_level_explain() -> None:
-    assert all(topic.explain is None for topic in load_course_data().topics)
+    # Эталон живёт в занятиях; модульный эталон из схемы ушёл (срез 94).
+    assert "explain" not in Topic.model_fields
 
 
 def test_no_explain_warnings() -> None:

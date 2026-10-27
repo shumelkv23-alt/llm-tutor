@@ -12,9 +12,11 @@ from collections.abc import Mapping, Sequence
 from markupsafe import escape
 
 from llm_tutor.config import Settings
+from llm_tutor.core import explain as core_explain
 from llm_tutor.core import guided
 from llm_tutor.core.context import Focus, FocusSource, fence, focus_from_meta
 from llm_tutor.core.lesson import (
+    closed_from_route,
     course_survey_done,
     pending_survey_topic,
     survey_way_back,
@@ -30,6 +32,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import Course as CourseData
 from llm_tutor.course.seed import SeedError
 from llm_tutor.db import repos
+from llm_tutor.llm.prompt_config import ExplainLimits, ExplainPrompts
 from llm_tutor.schemas import (
     ExplainConfig,
     ExplainSession,
@@ -423,13 +426,22 @@ def review_view(
     return block, set(due)
 
 
-def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
+def lesson_state(
+    conn: sqlite3.Connection, *, settings: Settings, prompts: ExplainPrompts | None = None
+) -> dict:
     """Состояние занятия для страницы: всё, что рисуется слева и в чате.
 
-    Чтение, а не ход: сессию не заводим. Задание берётся из состояния сессии,
-    а не из текста ответа — это источник правды для «Практики».
+    Сессию занятия не заводим. Задание берётся из состояния сессии, а не из
+    текста ответа — это источник правды для «Практики». С ``prompts`` (под замком
+    ученика) висящее «Объясни новичку» превращается в сессию (``ensure_required``);
+    пока оно не выполнено, конспект и задание урока не отдаются: вместо них блок
+    ``explain``, а в чате справа — ветка наставника. Задание важнее анкеты
+    следующего модуля.
     """
-    pending_topic = pending_survey_topic(conn)
+    if prompts is not None:
+        core_explain.ensure_required(conn, prompts, now=time.time(), settings=settings)
+    held = core_explain.blocking(conn) is not None
+    pending_topic = None if held else pending_survey_topic(conn)
     if pending_topic is not None:
         back = survey_way_back(conn)
         return {
@@ -442,12 +454,15 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             "topics": [],
             "messages": [],
             "review": None,
+            "explain": None,
         }
     graph = CourseGraph.load(conn)
     session_id = repos.get_open_session(conn)
     state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    limits = prompts.limits if prompts is not None else ExplainLimits()
+    explain_block = explain_view(conn, graph, state, max_turns=limits.max_student_turns)
     node = None
-    if state.current_node_id and graph.has_node(state.current_node_id):
+    if not held and state.current_node_id and graph.has_node(state.current_node_id):
         concept = graph.concept(state.current_node_id)
         node = {
             "id": concept.id,
@@ -460,13 +475,14 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
     # Идущая серия повторения: в «Практике» её задание, а не урока.
     series = state.review
     shown_item = series.item_id if series is not None and series.item_id else state.pending_item_id
-    item = repos.get_item(conn, shown_item) if shown_item else None
+    item = repos.get_item(conn, shown_item) if shown_item and not held else None
     messages = repos.get_messages(conn, session_id)[-CHAT_HISTORY:] if session_id else []
     rows = topic_rows(conn, settings=settings)
     review_block, review_due = review_view(conn, graph, state, settings=settings)
     return {
         "survey": False,
         "review": review_block,
+        "explain": explain_block,
         "node": node,
         "item": item_view(item, graph) if item is not None else None,
         "mode": "verify" if state.mode == "verify" else "lesson",
@@ -493,16 +509,21 @@ def lesson_state(conn: sqlite3.Connection, *, settings: Settings) -> dict:
             for row in rows
         ],
         "modules": [module_view(module) for module in module_rows(conn, rows)],
-        "messages": [
-            message_view(
-                message.role,
-                _without_task(message.content, message.meta),
-                ts=message.ts,
-                quote=focus_from_meta(message.meta) if message.role == "user" else None,
-            )
-            for message in messages
-            if message.role in ("user", "assistant")
-        ],
+        "messages": (
+            # Пока висит задание, чат справа — ветка наставника, а не история урока.
+            (explain_block["active"] or {}).get("mentor", [])
+            if held
+            else [
+                message_view(
+                    message.role,
+                    _without_task(message.content, message.meta),
+                    ts=message.ts,
+                    quote=focus_from_meta(message.meta) if message.role == "user" else None,
+                )
+                for message in messages
+                if message.role in ("user", "assistant")
+            ]
+        ),
     }
 
 
@@ -545,27 +566,50 @@ def explain_session_view(
     max_turns: int,
     lesson_names: Mapping[str, str] | None = None,
 ) -> dict:
-    """Сессия для страницы режима: реплики, режим и полоска без названий идей.
+    """Сессия для вкладки «Объясни»: две ветки разговора и полоска без названий идей.
 
-    Эталон до конца сессии не уходит в браузер: только счёт обязательных идей.
-    Отчёт (после завершения) — целиком, эталон в нём уже открыт.
+    ``messages`` — разговор с новичком (реплики ``student`` и ``novice``) плюс, для
+    админки, всё остальное с пометкой ``thread``; ``mentor`` — ветка наставника
+    в формате чата занятия (``user``/``assistant``). Эталон до конца сессии не уходит
+    в браузер: только счёт обязательных идей. Отчёт (после завершения) — целиком,
+    эталон в нём уже открыт.
     """
     done, total = (
         student_explain.required_progress(session.state, config) if config else (0, 0)
     )
+    rows = [
+        {
+            "role": turn.role,
+            "html": str(markdown.render(turn.content)),
+            "ts": turn.ts,
+            "thread": (
+                "mentor" if turn.role == "mentor" or turn.meta.get("mentor") else "novice"
+            ),
+        }
+        for turn in turns
+    ]
     return {
         "id": session.id,
+        "kind": session.kind,
+        "node_id": session.concept_id,
         "topic": session.topic_id,
         "title": title,
         "status": session.status,
         "started_at": session.started_at,
-        "messages": [
-            {"role": turn.role, "html": str(markdown.render(turn.content)), "ts": turn.ts}
-            for turn in turns
+        "messages": rows,
+        "novice": [row for row in rows if row["thread"] == "novice"],
+        "mentor": [
+            {
+                "role": "assistant" if row["role"] == "mentor" else "user",
+                "html": row["html"],
+                "ts": row["ts"],
+                "quote": None,
+            }
+            for row in rows
+            if row["thread"] == "mentor"
         ],
         "progress": {"done": done, "total": total},
-        "wrap_up": session.state.wrap_up_offered and session.status == "active",
-        "limit_left": max(0, max_turns - session.state.student_turns),
+        "turns_left": max(0, max_turns - session.state.student_turns),
         "report": session.report.model_dump() if session.report else None,
         # Названия занятий из отчёта (до завершения — пусто: отчёта нет).
         "lessons": (
@@ -578,6 +622,74 @@ def explain_session_view(
             if session.report
             else {}
         ),
+    }
+
+
+def explain_session_for(
+    conn: sqlite3.Connection, session: ExplainSession, *, max_turns: int
+) -> dict:
+    """Вид сессии для вкладки: ``messages`` — только разговор с новичком, ``mentor`` — наставник."""
+    names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
+    topic = repos.get_topic(conn, session.topic_id)
+    view = explain_session_view(
+        session,
+        repos.get_explain_turns(conn, session.id),
+        repos.get_explain_configs(conn).get(session.concept_id or ""),
+        title=names.get(session.concept_id or "") or (topic.title if topic else ""),
+        max_turns=max_turns,
+        lesson_names=names if session.report else None,
+    )
+    view["messages"] = view.pop("novice")
+    return view
+
+
+def explain_view(
+    conn: sqlite3.Connection, graph: CourseGraph, state: SessionState, *, max_turns: int
+) -> dict:
+    """Блок ``explain`` состояния занятия (спека 2026-10-27).
+
+    ``active`` — идущая сессия, а когда задание выполнено, но «Продолжить» ещё не
+    нажато, — завершённая обязательная с отчётом (``ready``). ``blocked`` — курс
+    стоит: задание висит или ждёт «Продолжить».
+    """
+    active_session = repos.active_explain_session(conn)
+    waiting = core_explain.unproceeded(conn)
+    shown = active_session or waiting
+    pending = student_explain.pending_lesson(conn, state.route, graph.topo_order())
+    names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
+    important = repos.get_explain_configs(conn)
+    closed = closed_from_route(state)
+    history = []
+    for session in repos.list_explain_sessions(conn):
+        if session.status != "finished":
+            continue
+        report = session.report
+        history.append(
+            {
+                "id": session.id,
+                "kind": session.kind,
+                "node_id": session.concept_id,
+                "name": names.get(session.concept_id or "") or f"Модуль {session.topic_id}",
+                "started_at": session.started_at,
+                "coverage": (
+                    {"done": report.required_done, "total": report.required_total}
+                    if report
+                    else None
+                ),
+            }
+        )
+    return {
+        "active": explain_session_for(conn, shown, max_turns=max_turns) if shown else None,
+        "pending": pending,
+        "ready": waiting is not None and active_session is None,
+        "blocked": pending is not None or waiting is not None,
+        "lessons": [
+            {"node_id": node, "name": names[node]}
+            for node in graph.topo_order()
+            if node in important and node in closed
+        ],
+        "history": history,
+        "share": core_explain.share_enabled(conn),
     }
 
 

@@ -449,18 +449,16 @@ def get_item(conn: sqlite3.Connection, item_id: int) -> Item | None:
 def _write_topic(conn: sqlite3.Connection, topic: Topic) -> None:
     """Upsert модуля без коммита; анкета хранится JSON-ом."""
     conn.execute(
-        "INSERT INTO topics (id, title, intro, survey, published, explain, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, 1) "
+        "INSERT INTO topics (id, title, intro, survey, published, active) "
+        "VALUES (?, ?, ?, ?, ?, 1) "
         "ON CONFLICT(id) DO UPDATE SET title = excluded.title, intro = excluded.intro, "
-        "survey = excluded.survey, published = excluded.published, "
-        "explain = excluded.explain, active = 1",
+        "survey = excluded.survey, published = excluded.published, active = 1",
         (
             topic.number,
             topic.title,
             topic.intro,
             topic.survey.model_dump_json(),
             int(topic.published),
-            topic.explain.model_dump_json() if topic.explain is not None else None,
         ),
     )
 
@@ -473,14 +471,13 @@ def _row_to_topic(row: sqlite3.Row) -> Topic:
         survey=SurveyConfig.model_validate_json(row["survey"]),
         active=bool(row["active"]),
         published=bool(row["published"]),
-        explain=ExplainConfig.model_validate_json(row["explain"]) if row["explain"] else None,
     )
 
 
 def get_topics(conn: sqlite3.Connection) -> list[Topic]:
     """Активные модули курса по возрастанию номера."""
     rows = conn.execute(
-        "SELECT id, title, intro, survey, published, explain, active FROM topics WHERE active = 1 ORDER BY id"
+        "SELECT id, title, intro, survey, published, active FROM topics WHERE active = 1 ORDER BY id"
     ).fetchall()
     return [_row_to_topic(row) for row in rows]
 
@@ -488,7 +485,7 @@ def get_topics(conn: sqlite3.Connection) -> list[Topic]:
 def get_topic(conn: sqlite3.Connection, topic_id: int) -> Topic | None:
     """Активный модуль по номеру или ``None``."""
     row = conn.execute(
-        "SELECT id, title, intro, survey, published, explain, active FROM topics WHERE id = ? AND active = 1",
+        "SELECT id, title, intro, survey, published, active FROM topics WHERE id = ? AND active = 1",
         (topic_id,),
     ).fetchone()
     return _row_to_topic(row) if row else None

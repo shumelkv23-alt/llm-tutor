@@ -8,15 +8,16 @@
 import asyncio
 import logging
 import sqlite3
+import time
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
 from llm_tutor.config import Settings
-from llm_tutor.core import guided, lesson, turn, verify
+from llm_tutor.core import explain, guided, lesson, turn, verify
 from llm_tutor.core import review as core_review
 from llm_tutor.core.context import (
     FOCUS_MAX_CHARS,
@@ -183,7 +184,12 @@ def turn_response(
         text = reply.text if not reply.tail else f"{reply.text}\n\n{reply.tail}"
     if text:
         messages.append(views.message_view("assistant", text))
-    return {"messages": messages, "state": views.lesson_state(ctx.conn, settings=ctx.settings)}
+    return {"messages": messages, "state": _state_view(ctx)}
+
+
+def _state_view(ctx: LessonContext) -> dict:
+    """Свежее состояние занятия; висящее «Объясни новичку» становится сессией (под замком)."""
+    return views.lesson_state(ctx.conn, settings=ctx.settings, prompts=ctx.prompts)
 
 
 def _require_survey(ctx: LessonContext) -> None:
@@ -241,6 +247,52 @@ def _abort_review(ctx: LessonContext) -> None:
 def _lesson_session_state(ctx: LessonContext) -> SessionState:
     session_id = repos.get_open_session(ctx.conn)
     return repos.get_session_state(ctx.conn, session_id) if session_id else SessionState()
+
+
+EXPLAIN_ERRORS: dict[str, tuple[int, str]] = {
+    "not_available": (400, "Это занятие пока нельзя объяснять: сначала закройте его."),
+    "other_active": (409, "Сначала завершите начатое объяснение или выполните задание."),
+    "not_active": (409, "Сейчас нет объяснения, в которое можно ходить."),
+    "not_found": (404, "Такой сессии нет."),
+    "llm": (502, LLM_FAILURE_REPLY),
+    "required": (409, "Обязательное объяснение завершится само — кнопкой его не закончить."),
+    "not_done": (409, "Сначала выполни задание: объясни новичку занятие."),
+}
+EXPLAIN_PRESS_CONTINUE = "Задание выполнено — нажми «Продолжить» во вкладке «Объясни»."
+
+
+def _explain_fail(error: explain.ExplainError) -> HTTPException:
+    status, message = EXPLAIN_ERRORS[error.code]
+    return HTTPException(status_code=status, detail={"message": message})
+
+
+def _explain_session(ctx: LessonContext):
+    """Сессия «Объясни новичку», в которую идут ходы: обязательная или добровольная."""
+    session = explain.ensure_required(
+        ctx.conn, ctx.prompts, now=time.time(), settings=ctx.settings
+    )
+    return session or repos.active_explain_session(ctx.conn)
+
+
+async def _mentor_chat(ctx: LessonContext, session, text: str) -> dict:
+    """Вопрос наставнику: ветка сессии, а не история урока."""
+    try:
+        after = await explain.turn(
+            ctx.conn, ctx.client, ctx.prompts,
+            session_id=session.id, text=text, to="mentor", now=time.time(), settings=ctx.settings,
+        )
+    except explain.ExplainError as error:
+        raise _explain_fail(error) from error
+    return turn_response(ctx, text, repos.get_explain_turns(ctx.conn, after.id)[-1].content)
+
+
+def _require_no_explain(ctx: LessonContext) -> None:
+    """Пока висит обязательное «Объясни новичку», курс не двигается: 409 без записей."""
+    held = explain.blocking(ctx.conn)
+    if held is not None:
+        raise HTTPException(
+            status_code=409, detail={"message": f"Сначала объясни новичку «{held[1]}»."}
+        )
 
 
 def _awaiting_item(ctx: LessonContext, state: SessionState):
@@ -306,6 +358,26 @@ class ReviewSettingsBody(BaseModel):
     enabled: StrictBool
 
 
+class ExplainTurnBody(BaseModel):
+    text: str = Field(min_length=1, max_length=8000)
+
+    @field_validator("text")
+    @classmethod
+    def _not_blank(cls, value: str) -> str:
+        # Реплика из одних пробелов — не ход: два вызова модели впустую.
+        if not value.strip():
+            raise ValueError("пустая реплика")
+        return value
+
+
+class ExplainStartBody(BaseModel):
+    node_id: str = Field(min_length=1, max_length=200)
+
+
+class ExplainSettingsBody(BaseModel):
+    share: StrictBool
+
+
 class SwitchBody(BaseModel):
     node_id: str = Field(max_length=200)
 
@@ -319,7 +391,9 @@ class NextBody(BaseModel):
 
 @router.get("/courses/{course_id}/lesson/state")
 async def lesson_state(ctx: LessonContext = Depends(lesson_context)) -> dict:
-    return {"state": views.lesson_state(ctx.conn, settings=ctx.settings)}
+    # Под замком: состояние может завести обязательную сессию «Объясни новичку».
+    async with ctx.lock:
+        return {"state": _state_view(ctx)}
 
 
 @router.get("/courses/{course_id}/graph")
@@ -389,12 +463,18 @@ def _lesson_lead(conn: sqlite3.Connection, start: lesson.LessonStart) -> str | N
 
 @router.post("/courses/{course_id}/lesson/chat")
 async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     text = body.text.strip()
     if not text:
         raise HTTPException(status_code=422, detail={"field": "text", "message": "Пустое сообщение."})
     focus = _focus(body.quote) if body.quote else None
     async with ctx.lock:
+        session = _explain_session(ctx)
+        if session is not None:
+            # Идёт «Объясни новичку»: чат справа — наставник со своей веткой разговора.
+            return await _mentor_chat(ctx, session, text)
+        if explain.blocking(ctx.conn) is not None:
+            raise HTTPException(status_code=409, detail={"message": EXPLAIN_PRESS_CONTINUE})
+        _require_survey(ctx)
         if _review_series(ctx) is not None:
             # Вопрос по заданию повторения: контекст — по его занятию и разделу.
             call = core_review.chat(
@@ -463,8 +543,9 @@ def _focus(quote: QuoteBody) -> Focus:
 
 @router.post("/courses/{course_id}/lesson/answer")
 async def answer(body: AnswerBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         state = _lesson_session_state(ctx)
         item = _awaiting_item(ctx, state)
         if item is None or item.id != body.item_id:
@@ -523,8 +604,9 @@ def code_message(code: str, passed: bool, report: str) -> str:
 @router.post("/courses/{course_id}/lesson/code-result")
 async def code_result(body: CodeResultBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
     """Итог тестов задания с кодом, выполненных в браузере (Pyodide)."""
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         state = _lesson_session_state(ctx)
         item = _awaiting_item(ctx, state)
         if item is None or item.id != body.item_id:
@@ -569,8 +651,9 @@ async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_contex
     Без модели. Старая или повторная кнопка (тема или часть не совпали с
     состоянием) получает «Эта часть уже позади» и ничего не сдвигает.
     """
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         state = _lesson_session_state(ctx)
         series = state.review
         # Старая кнопка из другой вкладки (тема или часть не совпали с состоянием)
@@ -600,8 +683,9 @@ async def lesson_next(body: NextBody, ctx: LessonContext = Depends(lesson_contex
 
 @router.post("/courses/{course_id}/lesson/task")
 async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         _abort_review(ctx)
         reply = await _safe(
             _sync(turn.start_practice_reply, ctx.conn, settings=ctx.settings), FAILURE_REPLY
@@ -611,8 +695,9 @@ async def take_task(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/skip")
 async def skip(ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         if _review_series(ctx) is not None:
             reply = await _safe(
                 core_review.skip(ctx.conn, ctx.client, ctx.model, settings=ctx.settings),
@@ -629,8 +714,9 @@ async def skip(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/stuck")
 async def stuck(ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         if _review_series(ctx) is not None:
             call = core_review.chat(
                 ctx.conn, ctx.client, ctx.model, turn.STUCK_KICKOFF_TEXT, stuck=True,
@@ -644,8 +730,9 @@ async def stuck(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/resume")
 async def resume(ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         if _review_series(ctx) is not None:
             # Идёт повторение: задание уже в «Практике», возобновлять нечего.
             return turn_response(ctx, None, TurnReply(text=""))
@@ -658,8 +745,9 @@ async def resume(ctx: LessonContext = Depends(lesson_context)) -> dict:
 
 @router.post("/courses/{course_id}/lesson/verify")
 async def verify_topic(ctx: LessonContext = Depends(lesson_context)) -> dict:
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         _abort_review(ctx)
         reply = await _safe(
             _sync(verify.start_verification, ctx.conn, settings=ctx.settings), FAILURE_REPLY
@@ -670,6 +758,7 @@ async def verify_topic(ctx: LessonContext = Depends(lesson_context)) -> dict:
 @router.post("/courses/{course_id}/lesson/switch")
 async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
     async with ctx.lock:
+        _require_no_explain(ctx)
         graph = CourseGraph.load(ctx.conn)
         if not graph.has_node(body.node_id):
             raise HTTPException(status_code=404, detail={"message": "Такой темы нет."})
@@ -699,8 +788,9 @@ async def switch(body: SwitchBody, ctx: LessonContext = Depends(lesson_context))
 @router.post("/courses/{course_id}/lesson/review/start")
 async def review_start(body: ReviewStartBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
     """Начинает серию «Срочное» или «Освежить»; серия уже идёт — 409."""
-    _require_survey(ctx)
     async with ctx.lock:
+        _require_no_explain(ctx)
+        _require_survey(ctx)
         if _review_series(ctx) is not None:
             raise HTTPException(status_code=409, detail={"message": REVIEW_ACTIVE})
         try:
@@ -746,3 +836,102 @@ async def review_settings(
         review.set_enabled(ctx.conn, body.enabled)
         # Форма ответа — как у остальных ходов (браузер дописывает messages в чат).
         return turn_response(ctx, None, TurnReply(text=""))
+
+
+# --- «Объясни новичку» внутри занятия (срез 94) ---
+
+
+@router.post("/courses/{course_id}/lesson/explain/turn")
+async def explain_turn(body: ExplainTurnBody, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Реплика ученика новичку: его ответ и свежее состояние (сессия могла завершиться)."""
+    async with ctx.lock:
+        session = _explain_session(ctx)
+        if session is None:
+            raise _explain_fail(explain.ExplainError("not_active"))
+        try:
+            after = await explain.turn(
+                ctx.conn, ctx.client, ctx.prompts,
+                session_id=session.id, text=body.text, to="novice",
+                now=time.time(), settings=ctx.settings,
+            )
+        except explain.ExplainError as error:
+            raise _explain_fail(error) from error
+        view = views.explain_session_for(
+            ctx.conn, after, max_turns=ctx.prompts.limits.max_student_turns
+        )
+        return {
+            "messages": view["messages"][-2:],
+            "progress": view["progress"],
+            "state": _state_view(ctx),
+        }
+
+
+@router.post("/courses/{course_id}/lesson/explain/start")
+async def explain_start(
+    body: ExplainStartBody, ctx: LessonContext = Depends(lesson_context)
+) -> dict:
+    """«Объяснить ещё раз»: добровольная сессия по закрытому важному занятию."""
+    async with ctx.lock:
+        try:
+            explain.start_voluntary(
+                ctx.conn, ctx.prompts, node_id=body.node_id, now=time.time(), settings=ctx.settings
+            )
+        except explain.ExplainError as error:
+            raise _explain_fail(error) from error
+        return turn_response(ctx, None, TurnReply(text=""))
+
+
+@router.post("/courses/{course_id}/lesson/explain/stop")
+async def explain_stop(ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Закончить добровольную сессию: отчёт. Обязательную закончить нельзя — 409."""
+    async with ctx.lock:
+        session = repos.active_explain_session(ctx.conn)
+        if session is None:
+            raise _explain_fail(explain.ExplainError("not_active"))
+        try:
+            report = explain.stop(
+                ctx.conn, session_id=session.id, now=time.time(), settings=ctx.settings
+            )
+        except explain.ExplainError as error:
+            raise _explain_fail(error) from error
+        return {"report": report.model_dump() if report else None, "state": _state_view(ctx)}
+
+
+@router.post("/courses/{course_id}/lesson/explain/continue")
+async def explain_continue(ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """«Продолжить» после задания: следующее задание, разминка или занятие."""
+    async with ctx.lock:
+        try:
+            reply = await explain.proceed(
+                ctx.conn, ctx.client, ctx.prompts, now=time.time(), settings=ctx.settings
+            )
+        except explain.ExplainError as error:
+            raise _explain_fail(error) from error
+        except Exception:  # noqa: BLE001 — интерфейс не должен молчать; ход откатан целиком
+            logger.exception("Сбой «Продолжить»")
+            reply = TurnReply(text=FAILURE_REPLY)
+        return turn_response(ctx, explain.PROCEED_TEXT, reply)
+
+
+@router.get("/courses/{course_id}/lesson/explain/sessions/{session_id}")
+async def explain_session(session_id: int, ctx: LessonContext = Depends(lesson_context)) -> dict:
+    """Реплики и отчёт сессии (история)."""
+    async with ctx.lock:
+        session = repos.get_explain_session(ctx.conn, session_id)
+        if session is None:
+            raise _explain_fail(explain.ExplainError("not_found"))
+        return {
+            "session": views.explain_session_for(
+                ctx.conn, session, max_turns=ctx.prompts.limits.max_student_turns
+            )
+        }
+
+
+@router.post("/courses/{course_id}/lesson/explain/settings")
+async def explain_settings(
+    body: ExplainSettingsBody, ctx: LessonContext = Depends(lesson_context)
+) -> dict:
+    """«Показывать мои сессии преподавателю»: действует сразу."""
+    async with ctx.lock:
+        explain.set_share(ctx.conn, body.share)
+        return {"share": explain.share_enabled(ctx.conn)}

@@ -84,8 +84,7 @@ class ExplainConfig(BaseModel):
     """Эталон для «Объясни новичку»: идеи и загвоздки занятия (узла ``concepts.explain``).
 
     Числа (2–4 идеи, обязательных ≥ 1, загвоздок 1–2) проверяет
-    ``course.seed._check_lesson_explain``. Модульный эталон (срез 85, 5–8 идей)
-    живёт в ``Topic.explain`` до среза 94.
+    ``course.seed._check_lesson_explain``.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -297,8 +296,6 @@ class Topic(BaseModel):
     # Модуль открыт ученикам (срез 53): неопубликованный виден в маршруте как
     # «скоро», но войти в него нельзя.
     published: bool = True
-    # Эталон «Объясни новичку» (срез 85); ``None`` — режим для модуля недоступен.
-    explain: ExplainConfig | None = None
 
 
 class Event(BaseModel):

@@ -146,13 +146,19 @@ class ExplainLLM:
         replies=("Понятно, а почему так?",),
         mentor=("Смотри: это делается так.",),
         fail=frozenset(),
+        tutor=("A\n---\nB",),
     ) -> None:
+        # ``tutor`` — ответы тьютора занятия (схема с полем ``reply``): в вебе рядом с
+        # режимом идёт и обычное занятие, на одной подставной модели.
+        self.tutor = list(tutor)
         self.observations = list(observations)
         self.replies = list(replies)
         self.mentor = list(mentor)
         self.fail = set(fail)
-        self.calls: dict[str, list[list]] = {"evaluator": [], "novice": [], "mentor": []}
-        self.models: dict[str, list[str | None]] = {"evaluator": [], "novice": [], "mentor": []}
+        self.calls: dict[str, list[list]] = {"evaluator": [], "novice": [], "mentor": [], "tutor": []}
+        self.models: dict[str, list[str | None]] = {
+            "evaluator": [], "novice": [], "mentor": [], "tutor": []
+        }
         # Порядок вызовов по ролям: оценщик зовётся раньше новичка.
         self.order: list[str] = []
         self.closed = False
@@ -181,6 +187,9 @@ class ExplainLLM:
         if schema is NoviceReply:
             self._record("novice", messages, model)
             return NoviceReply(reply=self._next(self.replies, "А почему?"))
+        if "reply" in schema.model_fields:
+            self._record("tutor", messages, model)
+            return schema(reply=self._next(self.tutor, "Ответ тьютора"))
         raise AssertionError(f"Неожиданный структурный вызов: {schema.__name__}")
 
     async def chat(self, messages, *, model=None, temperature=None) -> str:

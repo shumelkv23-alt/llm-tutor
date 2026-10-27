@@ -2,14 +2,12 @@
 
 import pytest
 
-from course_fixtures import LESSON_SEED_PATHS
-from llm_tutor.course.seed import load_course_data
+from explain_config import CONFIG
 from llm_tutor.llm.prompt_config import ExplainLimits
 from llm_tutor.llm.schemas import ExplainObservation, IdeaVerdict
 from llm_tutor.schemas import ExplainState, IdeaProgress, PitfallUse
 from llm_tutor.student import explain
 
-CONFIG = load_course_data(LESSON_SEED_PATHS).topics[0].explain
 LESSONS = ["l1_frames", "l1_select", "l1_group"]
 # Пороги заданы явно: чистая логика не зависит от значений в data/prompts/explain.toml.
 LIMITS = ExplainLimits(wrap_up_share=0.8, pitfall_every=3, pitfall_max=3)

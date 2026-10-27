@@ -210,50 +210,6 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
     return warnings
 
 
-# Эталон «Объясни новичку» (срез 85): столько идей и загвоздок на модуль.
-EXPLAIN_MIN_IDEAS = 5
-EXPLAIN_MAX_IDEAS = 8
-EXPLAIN_MIN_REQUIRED = 3
-EXPLAIN_MIN_PITFALLS = 2
-
-
-def _check_explain(seeds: Sequence[Seed]) -> list[str]:
-    """Эталон «Объясни новичку»: формат — ошибка, отсутствие — предупреждение.
-
-    Как с недописанным содержанием: опубликованный модуль без эталона валиден,
-    режим для него просто недоступен.
-    """
-    warnings: list[str] = []
-    for seed in seeds:
-        number = seed.topic.number
-        explain = seed.topic.explain
-        if explain is None:
-            continue
-        ideas, pitfalls = explain.ideas, explain.pitfalls
-        if not EXPLAIN_MIN_IDEAS <= len(ideas) <= EXPLAIN_MAX_IDEAS:
-            raise SeedError(
-                f"В эталоне модуля {number} {len(ideas)} идей, нужно "
-                f"{EXPLAIN_MIN_IDEAS}–{EXPLAIN_MAX_IDEAS}"
-            )
-        required = sum(1 for idea in ideas if idea.required)
-        if required < EXPLAIN_MIN_REQUIRED:
-            raise SeedError(
-                f"В эталоне модуля {number} {required} обязательных идей, нужно "
-                f"не меньше {EXPLAIN_MIN_REQUIRED}"
-            )
-        if len(pitfalls) < EXPLAIN_MIN_PITFALLS:
-            raise SeedError(
-                f"В эталоне модуля {number} {len(pitfalls)} загвоздок, нужно "
-                f"не меньше {EXPLAIN_MIN_PITFALLS}"
-            )
-        _check_unique(f"эталона модуля {number}", [entry.id for entry in [*ideas, *pitfalls]])
-        own = {node.id for node in seed.nodes}
-        foreign = sorted({entry.lesson for entry in [*ideas, *pitfalls]} - own)
-        if foreign:
-            raise SeedError(f"Эталон модуля {number} ссылается на чужие занятия: {foreign}")
-    return warnings
-
-
 # Эталон «Объясни новичку» на занятие (срез 92).
 LESSON_MIN_IDEAS = 2
 LESSON_MAX_IDEAS = 4
@@ -266,13 +222,13 @@ def _check_lesson_explain(seeds: Sequence[Seed]) -> list[str]:
     """Эталоны занятий: формат — ошибка, модуль без важных занятий — предупреждение.
 
     Опубликованный модуль без эталонов валиден: заданий «Объясни новичку» в нём
-    просто не будет. Модульный эталон (срез 85) пока считается за «есть».
+    просто не будет.
     """
     warnings: list[str] = []
     for seed in seeds:
         number = seed.topic.number
         important = [node for node in seed.nodes if node.explain is not None]
-        if not important and seed.topic.explain is None and seed.topic.published:
+        if not important and seed.topic.published:
             warnings.append(f"В модуле {number} нет важных занятий («Объясни новичку»)")
         ids: list[str] = []
         for node in important:
@@ -575,7 +531,6 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
     warnings = _check_topics(ordered)
     warnings.extend(_check_lessons(ordered, items))
-    warnings.extend(_check_explain(ordered))
     warnings.extend(_check_lesson_explain(ordered))
     legacy = _merge_legacy(ordered, nodes)
     return Course(

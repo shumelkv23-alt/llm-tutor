@@ -1,8 +1,8 @@
 """Отчёт, свидетельства и повторения «Объясни новичку» (срез 86)."""
 
-from course_fixtures import LESSON_SEED_PATHS, finish_all_but, load_lessons
+from course_fixtures import finish_all_but, load_lessons
+from explain_config import CONFIG
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import load_course_data
 from llm_tutor.db import repos
 from llm_tutor.schemas import (
     Event,
@@ -16,7 +16,6 @@ from llm_tutor.schemas import (
 from llm_tutor.student import explain
 from llm_tutor.student import route as route_mod
 
-CONFIG = load_course_data(LESSON_SEED_PATHS).topics[0].explain
 DAY = 86_400.0
 NOW = 1_000_000.0
 

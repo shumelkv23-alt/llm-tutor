@@ -461,7 +461,7 @@ async def _mentor_turn(
 # --- Висящее задание, старт, продолжение, завершение ---
 
 
-def _unproceeded(conn: sqlite3.Connection) -> ExplainSession | None:
+def unproceeded(conn: sqlite3.Connection) -> ExplainSession | None:
     """Завершённая обязательная сессия, по которой ученик ещё не нажал «Продолжить»."""
     return next(
         (
@@ -488,7 +488,7 @@ def blocking(conn: sqlite3.Connection) -> tuple[str, str] | None:
     graph = _graph(conn)
     node_id = _pending(conn, graph)
     if node_id is None:
-        waiting = _unproceeded(conn)
+        waiting = unproceeded(conn)
         node_id = waiting.concept_id if waiting is not None else None
     if node_id is None:
         return None
@@ -546,7 +546,7 @@ def ensure_required(
             return active
         finish(conn, session_id=active.id, now=now, settings=settings, end_reason="stale")
         return None
-    if node_id is None or _unproceeded(conn) is not None:
+    if node_id is None or unproceeded(conn) is not None:
         return None
     if active is not None:
         finish(conn, session_id=active.id, now=now, settings=settings, end_reason="button")
@@ -607,7 +607,7 @@ async def proceed(
     Отметка ``proceeded`` и запись хода — одним коммитом: сбой не оставит ученика
     разблокированным без начатого занятия.
     """
-    done = _unproceeded(conn)
+    done = unproceeded(conn)
     if done is None:
         raise ExplainError("not_done")
     session_id = repos.ensure_open_session(conn, now)
