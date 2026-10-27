@@ -1,0 +1,162 @@
+/* «Объясни новичку» (срезы 88, 95): вкладка занятия поверх стилей чата. */
+
+.explain-panel {
+  padding: 16px 20px;
+}
+
+.explain {
+  display: grid;
+  gap: var(--space-4, 1rem);
+  max-width: 52rem;
+}
+
+.explain h2,
+.explain h3 {
+  margin: 0;
+}
+
+.explain-head {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.explain-head p {
+  margin: 0;
+}
+
+.explain-progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.explain-bar {
+  flex: 1;
+  min-width: 8rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-2, #e5e7eb);
+  overflow: hidden;
+}
+
+.explain-bar-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--accent, #2563eb);
+}
+
+/* Большой чат с новичком: занимает всё свободное место вкладки. */
+.explain-log {
+  min-height: 16rem;
+  max-height: calc(100dvh - 24rem);
+  overflow-y: auto;
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+}
+
+.explain-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+}
+
+.explain-form textarea {
+  flex: 1;
+  min-height: 3.5rem;
+  resize: vertical;
+}
+
+.explain-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.explain-lessons,
+.explain-history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.explain-lessons li,
+.explain-history li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.explain-section {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.msg-who {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  opacity: 0.8;
+}
+
+.explain-report {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.explain-report h3 {
+  margin: 0.75rem 0 0.25rem;
+}
+
+.explain-report ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.explain-report .reference {
+  display: block;
+  opacity: 0.85;
+}
+
+.explain-share {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.explain-saved summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Вкладки урока закрыты, пока висит задание (срез 95). */
+.tabs [role="tab"][aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Подпись под названием вкладки: узкая, в две строки — иначе закрытые вкладки
+   вытесняли бы «Объясни» за край полосы. */
+.tabs [role="tab"]:has(.tab-lock:not([hidden])) {
+  flex-wrap: wrap;
+  row-gap: 0;
+  padding-block: 6px;
+}
+
+.tab-lock {
+  flex-basis: 100%;
+  max-width: 8rem;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: left;
+}

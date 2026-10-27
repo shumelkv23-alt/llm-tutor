@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка · «Объясни новичку»{% endblock %}
+{% block heading %}{{ account.name }}{% endblock %}
+{% block description %}{% if view %}{{ view.title }} · {{ 'обязательное' if view.kind == 'required' else 'добровольное' }} · {{ format_time(view.started_at) }}{% endif %}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}"><link rel="stylesheet" href="{{ static_url('css/lesson.css') }}"><link rel="stylesheet" href="{{ static_url('css/explain.css') }}">{% endblock %}
+{% block actions %}<a class="btn" href="/admin/students/{{ account.id }}?course={{ course.id }}">Карточка ученика</a>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+{% if view is none %}
+<div class="notice" role="status">Ученик сейчас отвечает — обновите страницу через несколько секунд.</div>
+{% else %}
+<section class="panel" aria-labelledby="explain-title">
+  <h2 id="explain-title" class="section-title">Диалог</h2>
+  <div class="chat-log explain-log">
+    {% for message in view.messages %}
+    <div class="msg {% if message.role == 'student' %}user{% else %}assistant{% endif %}">
+      <span class="msg-who">{% if message.role == 'student' %}Ученик{% elif message.role == 'mentor' %}🧑‍🏫 Наставник{% else %}🐣 Новичок{% endif %}{% if message.thread == 'mentor' and message.role == 'student' %} → наставнику{% endif %}</span>
+      <div>{{ message.html | safe }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% set report = view.report %}
+<section class="panel explain-report" aria-labelledby="report-title">
+  <h2 id="report-title" class="section-title">Отчёт</h2>
+  {% if report %}
+  <p>Обязательных идей объяснено верно: {{ report.required_done }} из {{ report.required_total }}; всего — {{ report.ideas_done }} из {{ report.ideas_total }}.</p>
+  <ul>
+    {% for idea in report.ideas %}
+    <li><strong>{{ view.lessons.get(idea.lesson, idea.lesson) }}</strong> · {{ idea.id }} · {{ {'correct': 'верно', 'partial': 'не до конца', 'wrong': 'неверно', 'missing': 'не прозвучало'}[idea.state] }}{% if idea.mentor %} (после наставника){% endif %}{% if idea.quote %} — «{{ idea.quote }}»{% endif %}{% if idea.reference %}<span class="reference">Эталон: {{ idea.reference }}</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  <p class="muted">Реплик: {{ report.student_turns }}{% if report.mentor_used %} · звал наставника{% endif %}{% if report.pasted_turns %} · похоже на вставку: {{ report.pasted_turns }}{% endif %}</p>
+  {% else %}
+  <p class="muted">Сессия ещё идёт — отчёта нет.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

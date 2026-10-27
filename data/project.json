@@ -1,0 +1,63 @@
+{
+  "template": "ml",
+  "briefs": [
+    {
+      "id": "churn",
+      "title": "Прогноз оттока клиентов",
+      "summary": "Предскажи, какие клиенты уйдут от компании, и разберись, что связано с уходом.",
+      "result": "Модель, которая предсказывает отток лучше базовой, и список признаков, связанных с уходом.",
+      "lessons": [
+        "eda_case",
+        "tree_criteria",
+        "validation",
+        "forest"
+      ],
+      "datasets": [
+        {
+          "title": "Telco Customer Churn (Kaggle)",
+          "url": "https://www.kaggle.com/datasets/blastchar/telco-customer-churn"
+        }
+      ]
+    },
+    {
+      "id": "bikes",
+      "title": "Прогноз числа прокатов велосипедов",
+      "summary": "Предскажи, сколько велосипедов возьмут в прокат, по погоде, дню недели и времени года.",
+      "result": "Регрессионная модель с понятной ошибкой прогноза и выводом, что сильнее всего влияет на спрос.",
+      "lessons": [
+        "linreg",
+        "validation",
+        "forest",
+        "feature_importance"
+      ],
+      "datasets": [
+        {
+          "title": "UCI Bike Sharing",
+          "url": "https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset"
+        }
+      ]
+    },
+    {
+      "id": "own",
+      "title": "Своя задача на табличных данных",
+      "summary": "Возьми открытые табличные данные по интересной тебе теме и поставь свою задачу классификации или регрессии.",
+      "result": "Проект от постановки задачи до выводов: данные, базовая модель, улучшения и честная оценка.",
+      "lessons": [
+        "eda_case",
+        "validation",
+        "logreg",
+        "forest"
+      ],
+      "datasets": [
+        {
+          "title": "UCI Adult (доход)",
+          "url": "https://archive.ics.uci.edu/dataset/2/adult"
+        },
+        {
+          "title": "Titanic (Kaggle)",
+          "url": "https://www.kaggle.com/c/titanic"
+        }
+      ]
+    }
+  ]
+}

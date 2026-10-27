@@ -99,6 +99,19 @@
   {% else %}
   <p class="muted">Ответов на задания пока нет.</p>
   {% endif %}
+
+  <h3>Объясни новичку</h3>
+  {% if card.explain is none %}
+  <p class="muted">Ученик не открыл доступ к своим сессиям.</p>
+  {% elif card.explain %}
+  <ul class="admin-log">
+    {% for row in card.explain %}
+    <li class="log-row"><span>{{ format_time(row.started_at) }}</span><a href="/admin/students/{{ account.id }}/explain/{{ admin_course.id }}/{{ row.id }}">{{ row.title }}</a><span class="muted">{{ row.kind }} · {{ row.coverage }}</span></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Сессий пока не было.</p>
+  {% endif %}
   {% endif %}
 </section>
 

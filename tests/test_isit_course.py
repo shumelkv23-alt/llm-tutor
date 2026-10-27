@@ -37,6 +37,7 @@ from llm_tutor.web.courses import (
 )
 
 ISIT = "isit-ml"
+DEMO = "trees-demo"
 MLCOURSE = "mlcourse"
 LESSONS = 9
 SECTIONS = 23
@@ -106,12 +107,12 @@ def test_course_is_registered() -> None:
     assert course.seed_paths is None
 
 
-def test_registry_keeps_both_courses() -> None:
-    assert {course.id for course in COURSES} == {MLCOURSE, ISIT}
+def test_registry_keeps_all_builtin_courses() -> None:
+    assert {course.id for course in COURSES} == {MLCOURSE, ISIT, DEMO}
 
 
-def test_both_courses_are_visible() -> None:
-    assert {course.id for course in visible_courses()} == {MLCOURSE, ISIT}
+def test_all_builtin_courses_are_visible() -> None:
+    assert {course.id for course in visible_courses()} == {MLCOURSE, ISIT, DEMO}
 
 
 def test_hidden_course_is_not_offered_to_students(monkeypatch) -> None:
@@ -302,7 +303,7 @@ async def test_the_new_course_is_in_the_catalog(student) -> None:
     """Курс ИСИТ виден с первого дня; карточка считает занятия открытых модулей."""
     cards = {card["id"]: card for card in (await student.get("/api/courses")).json()["courses"]}
 
-    assert set(cards) == {MLCOURSE, ISIT}
+    assert set(cards) == {MLCOURSE, ISIT, DEMO}
     assert cards[ISIT]["enrolled"] is False
     assert cards[ISIT]["topics"] == PUBLISHED_LESSONS
 
@@ -346,7 +347,7 @@ async def test_empty_course_does_not_displace_the_real_one(monkeypatch, student)
     assert (await student.get("/lesson")).headers["location"] == f"/lesson/{MLCOURSE}"
     assert (await student.get("/profile")).text.count(draft.title) == 0
     cards = (await student.get("/api/courses")).json()["courses"]
-    assert {card["id"] for card in cards} == {MLCOURSE}
+    assert {card["id"] for card in cards} == {MLCOURSE, DEMO}
 
 
 async def test_unreadable_course_modules_do_not_break_the_pages(

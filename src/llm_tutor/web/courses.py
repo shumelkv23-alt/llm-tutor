@@ -11,6 +11,7 @@
 пока курс в статусе ``draft``, ученики его не видят.
 """
 
+import logging
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -19,8 +20,12 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from llm_tutor.course import store
+from llm_tutor.course.project_file import PROJECT_FILE, ProjectFileError, load_project_file
 from llm_tutor.course.seed import DATA_DIR, SeedError, course_paths, load_course_data
 from llm_tutor.course.seed import Course as CourseData
+from llm_tutor.schemas import ProjectFile
+
+logger = logging.getLogger(__name__)
 
 # Курс, который нельзя завести заново: он описан кодом.
 BUILTIN_COURSE = "mlcourse"
@@ -51,6 +56,10 @@ class Course:
     # каталоге его нет. Курс ИСИТ показывается с первого дня — модуль 1
     # выходит по частям, и карточка честно говорит, что занятия готовятся.
     visible: bool = True
+    # Файл RAG-материалов встроенного курса; ``None`` — общий файл приложения.
+    # Курс со своим каталогом модулей не должен читать чужие материалы: номера
+    # модулей у курсов совпадают.
+    materials_path: Path | None = None
 
 
 COURSES: tuple[Course, ...] = (
@@ -76,6 +85,20 @@ COURSES: tuple[Course, ...] = (
         ),
         source_url="https://github.com/Eldervald/isit_ml_labs",
         data_dir=DATA_DIR / "isit",
+    ),
+    Course(
+        id="trees-demo",
+        title="Деревья решений и случайный лес",
+        subtitle="Демо-курс · один модуль · 5 занятий",
+        description=(
+            "Показательный мини-курс на один модуль: как дерево решений выбирает "
+            "вопросы по энтропии и Джини, как оно строится и почему переобучается, "
+            "а затем — как из многих деревьев получается случайный лес. Те же "
+            "занятия, задания с проверкой кода и тьютор, что в основном курсе."
+        ),
+        source_url="https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html",
+        data_dir=DATA_DIR / "demo",
+        materials_path=DATA_DIR / "demo" / "materials.sqlite3",
     ),
 )
 
@@ -226,6 +249,25 @@ def course_data(course: Course) -> CourseData:
     return load_course_data()
 
 
+@lru_cache(maxsize=None)
+def project_file(course: Course) -> ProjectFile | None:
+    """Описания проектов курса (срез 99); ``None`` — у курса нет проекта.
+
+    Файл ``project.json`` лежит рядом с модулями: в папке созданного курса, в
+    ``data_dir`` встроенного или в общем ``data/``. Нечитаемый файл или курс не
+    роняют сайт: проекта у такого курса просто нет, причина — в логе.
+    """
+    directory = course.root or course.data_dir or DATA_DIR
+    if not (directory / PROJECT_FILE).is_file():
+        return None
+    try:
+        nodes = {node.id for node in course_data(course).nodes}
+        return load_project_file(directory, nodes)
+    except (ProjectFileError, SeedError, FileNotFoundError):
+        logger.exception("Описания проектов курса %s не читаются", course.id)
+        return None
+
+
 def try_course_data(course: Course) -> tuple[CourseData | None, str | None]:
     """Модули курса без падения: ``(данные, беда)``.
 
@@ -247,6 +289,7 @@ def invalidate_course(course_id: str | None = None) -> None:
     стоит миллисекунды, а выборка по ключу потребовала бы своего кэша).
     """
     course_data.cache_clear()
+    project_file.cache_clear()
     refresh_courses()
 
 

@@ -1,6 +1,8 @@
 """Модели сообщений для общения с LLM (OpenAI-совместимый формат OpenRouter)."""
 
-from pydantic import BaseModel
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 from llm_tutor.schemas import Role
 
@@ -28,3 +30,47 @@ class TutorReply(BaseModel):
     # Модель заметила просьбу закрыть текущую тему: код входит в проверочный
     # проход. Само заявление узел не закрывает — нужны свидетельства.
     wants_close_topic: bool = False
+
+
+# --- «Объясни новичку» (срез 86) ---
+
+
+class IdeaVerdict(BaseModel):
+    """Вердикт оценщика по одной идее эталона в реплике ученика."""
+
+    id: str
+    verdict: Literal["correct", "partial", "wrong"]
+    # Дословный кусок реплики — основание вердикта; без него «correct» не засчитывается.
+    quote: str | None = None
+
+
+class ExplainObservation(BaseModel):
+    """Что скрытый оценщик увидел в одной реплике. Решения по нему принимает код."""
+
+    ideas: list[IdeaVerdict] = Field(default_factory=list)
+    pitfalls_named: list[str] = Field(default_factory=list)
+    pitfall_fixed: bool | None = None
+    pasted: bool = False
+    contradiction: str | None = None
+    asks_for_answer: bool = False
+    frustrated: bool = False
+
+
+class NoviceReply(BaseModel):
+    """Реплика новичка."""
+
+    reply: str
+
+
+# --- Проект по курсу (срез 98) ---
+
+
+class ProjectMentorReply(BaseModel):
+    """Реплика наставника проекта и необязательное предложение полей карточки.
+
+    Предложение модели — сырые данные (значения не обязательно строки): в карточку и в ``meta`` его пускает только
+    ``student.project.clean_proposal``.
+    """
+
+    reply: str
+    proposal: dict[str, Any] | None = None

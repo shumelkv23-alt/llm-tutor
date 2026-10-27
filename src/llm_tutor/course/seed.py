@@ -210,6 +210,57 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
     return warnings
 
 
+# Эталон «Объясни новичку» на занятие (срез 92).
+LESSON_MIN_IDEAS = 2
+LESSON_MAX_IDEAS = 4
+LESSON_MIN_REQUIRED = 1
+LESSON_MIN_PITFALLS = 1
+LESSON_MAX_PITFALLS = 2
+
+
+def _check_lesson_explain(seeds: Sequence[Seed]) -> list[str]:
+    """Эталоны занятий: формат — ошибка, модуль без важных занятий — предупреждение.
+
+    Опубликованный модуль без эталонов валиден: заданий «Объясни новичку» в нём
+    просто не будет.
+    """
+    warnings: list[str] = []
+    for seed in seeds:
+        number = seed.topic.number
+        important = [node for node in seed.nodes if node.explain is not None]
+        if not important and seed.topic.published:
+            warnings.append(f"В модуле {number} нет важных занятий («Объясни новичку»)")
+        ids: list[str] = []
+        for node in important:
+            explain = node.explain
+            ideas, pitfalls = explain.ideas, explain.pitfalls
+            if not LESSON_MIN_IDEAS <= len(ideas) <= LESSON_MAX_IDEAS:
+                raise SeedError(
+                    f"В эталоне занятия {node.id} {len(ideas)} идей, нужно "
+                    f"{LESSON_MIN_IDEAS}–{LESSON_MAX_IDEAS}"
+                )
+            required = sum(1 for idea in ideas if idea.required)
+            if required < LESSON_MIN_REQUIRED:
+                raise SeedError(
+                    f"В эталоне занятия {node.id} {required} обязательных идей, нужно "
+                    f"не меньше {LESSON_MIN_REQUIRED}"
+                )
+            if not LESSON_MIN_PITFALLS <= len(pitfalls) <= LESSON_MAX_PITFALLS:
+                raise SeedError(
+                    f"В эталоне занятия {node.id} {len(pitfalls)} загвоздок, нужно "
+                    f"{LESSON_MIN_PITFALLS}–{LESSON_MAX_PITFALLS}"
+                )
+            for pitfall in pitfalls:
+                if not pitfall.belief.rstrip().endswith("?"):
+                    raise SeedError(
+                        f"Загвоздка {pitfall.id} занятия {node.id}: belief — вопрос новичка, "
+                        f"он должен кончаться на «?»"
+                    )
+            ids.extend(entry.id for entry in [*ideas, *pitfalls])
+        _check_unique(f"эталонов занятий модуля {number}", ids)
+    return warnings
+
+
 def main_concept(item: Item) -> str | None:
     """Главный концепт задания — с наибольшим весом (при равенстве — первый).
 
@@ -436,8 +487,34 @@ def _stamp_topic(seed: Seed) -> Seed:
     """Модуль темы задаёт файл, а не поле темы: тема не «уедет» в чужой модуль."""
     number = seed.topic.number
     return seed.model_copy(
-        update={"nodes": [node.model_copy(update={"topic_id": number}) for node in seed.nodes]}
+        update={
+            "nodes": [
+                _stamp_lesson(node.model_copy(update={"topic_id": number})) for node in seed.nodes
+            ]
+        }
     )
+
+
+def _stamp_lesson(node: Concept) -> Concept:
+    """Занятие идей и загвоздок задаёт место эталона в файле, а не их поле ``lesson``."""
+    if node.explain is None:
+        return node
+    entries = [*node.explain.ideas, *node.explain.pitfalls]
+    foreign = sorted({entry.lesson for entry in entries if entry.lesson not in ("", node.id)})
+    if foreign:
+        raise SeedError(
+            f"Эталон занятия {node.id} называет другое занятие: {foreign}; "
+            f"поле lesson ставит загрузчик"
+        )
+    config = node.explain.model_copy(
+        update={
+            "ideas": [idea.model_copy(update={"lesson": node.id}) for idea in node.explain.ideas],
+            "pitfalls": [
+                pitfall.model_copy(update={"lesson": node.id}) for pitfall in node.explain.pitfalls
+            ],
+        }
+    )
+    return node.model_copy(update={"explain": config})
 
 
 def build_course(seeds: Sequence[Seed]) -> Course:
@@ -454,6 +531,7 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
     warnings = _check_topics(ordered)
     warnings.extend(_check_lessons(ordered, items))
+    warnings.extend(_check_lesson_explain(ordered))
     legacy = _merge_legacy(ordered, nodes)
     return Course(
         topics=tuple(seed.topic for seed in ordered),

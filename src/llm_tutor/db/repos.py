@@ -19,6 +19,15 @@ from llm_tutor.schemas import (
     Criterion,
     Edge,
     Event,
+    ExplainConfig,
+    ExplainReport,
+    ExplainSession,
+    ExplainState,
+    ExplainTurn,
+    Project,
+    ProjectBrief,
+    ProjectState,
+    ProjectTurn,
     Item,
     Message,
     ReviewRow,
@@ -238,12 +247,13 @@ def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
     """Upsert концепта без коммита (для вызова внутри чужой транзакции)."""
     conn.execute(
         "INSERT INTO concepts "
-        "(id, name, difficulty, description, source_url, topic_id, sections, active) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+        "(id, name, difficulty, description, source_url, topic_id, sections, explain, active) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(id) DO UPDATE SET "
         "name = excluded.name, difficulty = excluded.difficulty, "
         "description = excluded.description, source_url = excluded.source_url, "
         "topic_id = excluded.topic_id, sections = excluded.sections, "
+        "explain = excluded.explain, "
         # Вернувшийся в seed узел снова активен.
         "active = 1",
         (
@@ -256,6 +266,7 @@ def _write_concept(conn: sqlite3.Connection, concept: Concept) -> None:
             json.dumps(
                 [section.model_dump() for section in concept.sections], ensure_ascii=False
             ),
+            concept.explain.model_dump_json() if concept.explain is not None else None,
             int(concept.active),
         ),
     )
@@ -569,8 +580,8 @@ def get_concept_ids(conn: sqlite3.Connection) -> set[str]:
 def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
     """Активные концепты графа (порядок — по id, детерминированный)."""
     rows = conn.execute(
-        "SELECT id, name, difficulty, description, source_url, topic_id, sections, active "
-        "FROM concepts WHERE active = 1 ORDER BY id"
+        "SELECT id, name, difficulty, description, source_url, topic_id, sections, explain, "
+        "active FROM concepts WHERE active = 1 ORDER BY id"
     ).fetchall()
     concepts: list[Concept] = []
     for r in rows:
@@ -584,6 +595,7 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
                     source_url=r["source_url"],
                     topic_id=r["topic_id"],
                     sections=json.loads(r["sections"]),
+                    explain=json.loads(r["explain"]) if r["explain"] else None,
                     active=bool(r["active"]),
                 )
             )
@@ -592,6 +604,22 @@ def get_concepts(conn: sqlite3.Connection) -> list[Concept]:
             # целиком (аудит среза 53, L4). JSONDecodeError — подкласс ValueError.
             logger.warning("Узел %s повреждён и пропущен", r["id"])
     return concepts
+
+
+def get_explain_configs(conn: sqlite3.Connection) -> dict[str, ExplainConfig]:
+    """Эталоны «Объясни новичку» активных занятий: id узла → эталон (срез 92).
+
+    Битый эталон пропускается: занятие просто не считается важным.
+    """
+    configs: dict[str, ExplainConfig] = {}
+    for row in conn.execute(
+        "SELECT id, explain FROM concepts WHERE active = 1 AND explain IS NOT NULL ORDER BY id"
+    ).fetchall():
+        try:
+            configs[row["id"]] = ExplainConfig.model_validate_json(row["explain"])
+        except ValidationError:
+            logger.warning("Эталон занятия %s повреждён и пропущен", row["id"])
+    return configs
 
 
 def get_edges(conn: sqlite3.Connection) -> list[Edge]:
@@ -693,6 +721,162 @@ def delete_review(conn: sqlite3.Connection, concept_id: str, *, commit: bool = T
     conn.execute("DELETE FROM review_schedule WHERE concept_id = ?", (concept_id,))
     if commit:
         conn.commit()
+
+
+# --- explain_sessions / explain_turns («Объясни новичку», срез 85) ---
+
+_EXPLAIN_SESSION_COLUMNS = (
+    "id, topic_id, started_at, updated_at, ended_at, status, end_reason, state, report,"
+    " concept_id, kind"
+)
+
+
+def _row_to_explain_session(row: sqlite3.Row) -> ExplainSession:
+    return ExplainSession(
+        id=row["id"],
+        topic_id=row["topic_id"],
+        started_at=row["started_at"],
+        updated_at=row["updated_at"],
+        ended_at=row["ended_at"],
+        status=row["status"],
+        end_reason=row["end_reason"],
+        state=ExplainState.model_validate_json(row["state"]),
+        report=ExplainReport.model_validate_json(row["report"]) if row["report"] else None,
+        concept_id=row["concept_id"],
+        kind=row["kind"],
+    )
+
+
+def create_explain_session(
+    conn: sqlite3.Connection,
+    topic_id: int,
+    *,
+    now: float,
+    concept_id: str | None = None,
+    kind: str = "voluntary",
+    commit: bool = True,
+) -> int:
+    """Новая активная сессия по занятию ``concept_id`` (модуль ``topic_id``); возвращает id."""
+    cur = conn.execute(
+        "INSERT INTO explain_sessions (topic_id, started_at, updated_at, state, concept_id, kind) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (topic_id, now, now, ExplainState().model_dump_json(), concept_id, kind),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def get_explain_session(conn: sqlite3.Connection, session_id: int) -> ExplainSession | None:
+    row = conn.execute(
+        f"SELECT {_EXPLAIN_SESSION_COLUMNS} FROM explain_sessions WHERE id = ?", (session_id,)
+    ).fetchone()
+    return _row_to_explain_session(row) if row else None
+
+
+def active_explain_session(conn: sqlite3.Connection) -> ExplainSession | None:
+    """Активная сессия ученика (по правилам режима она одна)."""
+    row = conn.execute(
+        f"SELECT {_EXPLAIN_SESSION_COLUMNS} FROM explain_sessions "
+        "WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    return _row_to_explain_session(row) if row else None
+
+
+def finished_required(conn: sqlite3.Connection) -> set[str]:
+    """Занятия, по которым обязательное объяснение уже выполнено (сессия завершена)."""
+    rows = conn.execute(
+        "SELECT DISTINCT concept_id FROM explain_sessions "
+        "WHERE kind = 'required' AND status = 'finished' AND concept_id IS NOT NULL"
+    ).fetchall()
+    return {row["concept_id"] for row in rows}
+
+
+def list_explain_sessions(conn: sqlite3.Connection) -> list[ExplainSession]:
+    """Все сессии, новые сверху."""
+    rows = conn.execute(
+        f"SELECT {_EXPLAIN_SESSION_COLUMNS} FROM explain_sessions ORDER BY started_at DESC, id DESC"
+    ).fetchall()
+    return [_row_to_explain_session(row) for row in rows]
+
+
+def update_explain_session(
+    conn: sqlite3.Connection,
+    session_id: int,
+    *,
+    state: ExplainState,
+    updated_at: float,
+    status: str | None = None,
+    ended_at: float | None = None,
+    end_reason: str | None = None,
+    report: ExplainReport | None = None,
+    commit: bool = False,
+) -> None:
+    """Пишет состояние сессии; ``None`` у остальных полей — оставить как было."""
+    conn.execute(
+        "UPDATE explain_sessions SET state = ?, updated_at = ?, "
+        "status = COALESCE(?, status), ended_at = COALESCE(?, ended_at), "
+        "end_reason = COALESCE(?, end_reason), report = COALESCE(?, report) WHERE id = ?",
+        (
+            state.model_dump_json(),
+            updated_at,
+            status,
+            ended_at,
+            end_reason,
+            report.model_dump_json() if report is not None else None,
+            session_id,
+        ),
+    )
+    if commit:
+        conn.commit()
+
+
+def delete_explain_session(
+    conn: sqlite3.Connection, session_id: int, *, commit: bool = False
+) -> None:
+    """Удаляет сессию вместе с репликами (внешний ключ с каскадом)."""
+    conn.execute("DELETE FROM explain_sessions WHERE id = ?", (session_id,))
+    if commit:
+        conn.commit()
+
+
+def add_explain_turn(
+    conn: sqlite3.Connection,
+    session_id: int,
+    role: str,
+    content: str,
+    *,
+    ts: float,
+    meta: dict | None = None,
+    commit: bool = False,
+) -> int:
+    """Реплика сессии; ``meta`` — JSON (вставка, установка хода, загвоздка, занятие)."""
+    cur = conn.execute(
+        "INSERT INTO explain_turns (session_id, ts, role, content, meta) VALUES (?, ?, ?, ?, ?)",
+        (session_id, ts, role, content, json.dumps(meta, ensure_ascii=False) if meta else None),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def get_explain_turns(conn: sqlite3.Connection, session_id: int) -> list[ExplainTurn]:
+    rows = conn.execute(
+        "SELECT id, session_id, ts, role, content, meta FROM explain_turns "
+        "WHERE session_id = ? ORDER BY id",
+        (session_id,),
+    ).fetchall()
+    return [
+        ExplainTurn(
+            id=row["id"],
+            session_id=row["session_id"],
+            ts=row["ts"],
+            role=row["role"],
+            content=row["content"],
+            meta=json.loads(row["meta"]) if row["meta"] else {},
+        )
+        for row in rows
+    ]
 
 
 # --- facts (профиль/предпочтения, Срез 4.5) ---
@@ -807,3 +991,128 @@ def get_theory(conn: sqlite3.Connection, concept_id: str) -> str | None:
         "SELECT theory FROM concepts WHERE id = ? AND active = 1", (concept_id,)
     ).fetchone()
     return None if row is None else row["theory"]
+
+
+# --- projects / project_turns (проект по курсу, срез 97) ---
+
+_PROJECT_COLUMNS = (
+    "id, brief_id, brief, template, status, state, started_at, updated_at, done_at"
+)
+
+
+def _row_to_project(row: sqlite3.Row) -> Project:
+    return Project(
+        id=row["id"],
+        brief_id=row["brief_id"],
+        brief=ProjectBrief.model_validate_json(row["brief"]),
+        template=row["template"],
+        status=row["status"],
+        state=ProjectState.model_validate_json(row["state"]),
+        started_at=row["started_at"],
+        updated_at=row["updated_at"],
+        done_at=row["done_at"],
+    )
+
+
+def create_project(
+    conn: sqlite3.Connection,
+    *,
+    brief: ProjectBrief,
+    template: str,
+    now: float,
+    commit: bool = False,
+) -> int:
+    """Новый проект в статусе ``idea`` с копией описания; возвращает id."""
+    cur = conn.execute(
+        "INSERT INTO projects (brief_id, brief, template, status, state, started_at, updated_at) "
+        "VALUES (?, ?, ?, 'idea', ?, ?, ?)",
+        (brief.id, brief.model_dump_json(), template, ProjectState().model_dump_json(), now, now),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def get_project(conn: sqlite3.Connection, project_id: int) -> Project | None:
+    row = conn.execute(
+        f"SELECT {_PROJECT_COLUMNS} FROM projects WHERE id = ?", (project_id,)
+    ).fetchone()
+    return _row_to_project(row) if row else None
+
+
+def current_project(conn: sqlite3.Connection) -> Project | None:
+    """Последний проект ученика по курсу, если он не в архиве."""
+    row = conn.execute(
+        f"SELECT {_PROJECT_COLUMNS} FROM projects ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    if row is None or row["status"] == "archived":
+        return None
+    return _row_to_project(row)
+
+
+def update_project(
+    conn: sqlite3.Connection,
+    project_id: int,
+    *,
+    state: ProjectState,
+    updated_at: float,
+    status: str | None = None,
+    done_at: float | None = None,
+    commit: bool = False,
+) -> None:
+    """Пишет состояние проекта; ``None`` у статуса и ``done_at`` — оставить как было."""
+    conn.execute(
+        "UPDATE projects SET state = ?, updated_at = ?, status = COALESCE(?, status), "
+        "done_at = COALESCE(?, done_at) WHERE id = ?",
+        (state.model_dump_json(), updated_at, status, done_at, project_id),
+    )
+    if commit:
+        conn.commit()
+
+
+def add_project_turn(
+    conn: sqlite3.Connection,
+    project_id: int,
+    role: str,
+    content: str,
+    *,
+    ts: float,
+    meta: dict | None = None,
+    commit: bool = False,
+) -> int:
+    """Реплика чата проекта; ``meta`` — JSON (этап, предложение карточки)."""
+    cur = conn.execute(
+        "INSERT INTO project_turns (project_id, ts, role, content, meta) VALUES (?, ?, ?, ?, ?)",
+        (project_id, ts, role, content, json.dumps(meta, ensure_ascii=False) if meta else None),
+    )
+    if commit:
+        conn.commit()
+    return int(cur.lastrowid)
+
+
+def _row_to_project_turn(row: sqlite3.Row) -> ProjectTurn:
+    return ProjectTurn(
+        id=row["id"],
+        project_id=row["project_id"],
+        ts=row["ts"],
+        role=row["role"],
+        content=row["content"],
+        meta=json.loads(row["meta"]) if row["meta"] else {},
+    )
+
+
+def get_project_turns(conn: sqlite3.Connection, project_id: int) -> list[ProjectTurn]:
+    rows = conn.execute(
+        "SELECT id, project_id, ts, role, content, meta FROM project_turns "
+        "WHERE project_id = ? ORDER BY id",
+        (project_id,),
+    ).fetchall()
+    return [_row_to_project_turn(row) for row in rows]
+
+
+def get_project_turn(conn: sqlite3.Connection, turn_id: int) -> ProjectTurn | None:
+    row = conn.execute(
+        "SELECT id, project_id, ts, role, content, meta FROM project_turns WHERE id = ?",
+        (turn_id,),
+    ).fetchone()
+    return _row_to_project_turn(row) if row else None

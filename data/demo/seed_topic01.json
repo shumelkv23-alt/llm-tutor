@@ -1,0 +1,1428 @@
+{
+  "course": "demo/trees",
+  "comment": "Демонстрационный мини-курс trees-demo: копии занятий деревьев (модуль 3) и ансамблей (модуль 5) основного курса mlcourse в одном модуле. Правки заданий — в исходных seed.",
+  "topic": {
+    "number": 1,
+    "title": "Деревья решений и случайный лес",
+    "intro": "Мини-курс на один модуль: как дерево решений выбирает вопросы по энтропии и Джини, как оно строится и почему переобучается, а потом — как из многих деревьев получается случайный лес. Показательный курс: занятия, задания и проверка те же, что в основном курсе.",
+    "survey": {
+      "level_key": "demo_level",
+      "level_question": "Как у тебя с деревьями решений и случайным лесом?",
+      "level_options": [
+        "С нуля",
+        "Немного обучал модели",
+        "Уверенно работаю со sklearn"
+      ],
+      "blocks": [
+        {
+          "key": "demo_trees",
+          "title": "Деревья решений",
+          "question": "Знаешь, как строится дерево решений?",
+          "example": "жадное построение дерева, энтропия, прирост информации, критерий Джини, пороги",
+          "concepts": [
+            "tree_criteria",
+            "tree_building"
+          ]
+        },
+        {
+          "key": "demo_tuning",
+          "title": "Переобучение и настройка дерева",
+          "question": "Знаешь, почему глубокое дерево переобучается?",
+          "example": "переобучение, max_depth, min_samples_leaf, плюсы и минусы дерева",
+          "concepts": [
+            "tree_tuning"
+          ]
+        },
+        {
+          "key": "demo_forest",
+          "title": "Бэггинг и случайный лес",
+          "question": "Работал с ансамблями деревьев?",
+          "example": "бутстрэп, бэггинг, случайные подпространства, out-of-bag, RandomForest",
+          "concepts": [
+            "bagging_basics",
+            "forest"
+          ]
+        }
+      ],
+      "assumed_by_confident": [],
+      "foundation": [
+        "demo_trees"
+      ]
+    },
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "tree_criteria",
+      "name": "Дерево решений и критерии разбиения",
+      "difficulty": 0.47,
+      "description": "Дерево как цепочка правил, энтропия и прирост информации, критерий Джини.",
+      "source_url": "https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html",
+      "sections": [
+        {
+          "id": "idea",
+          "title": "Дерево как цепочка правил"
+        },
+        {
+          "id": "entropy",
+          "title": "Энтропия и прирост информации"
+        },
+        {
+          "id": "gini",
+          "title": "Критерий Джини"
+        }
+      ],
+      "explain": {
+        "ideas": [
+          {
+            "id": "tree_rules",
+            "text": "Дерево решений — цепочка вопросов-порогов по признакам: вопрос задаётся в узле, ответ даётся в листе, объект спускается от корня к листу",
+            "required": true,
+            "expect": "ученик говорит, что это цепочка вопросов, и различает узел и лист"
+          },
+          {
+            "id": "split_criterion",
+            "text": "Разбиение выбирают с наибольшим приростом информации: неоднородность (энтропия или Джини) дочерних узлов, взвешенная по их размеру, падает по сравнению с родителем сильнее всего",
+            "required": true,
+            "expect": "ученик говорит, что выбирают разбиение, после которого энтропия или Джини падает сильнее всего"
+          },
+          {
+            "id": "gini_entropy",
+            "text": "Энтропия и Джини — две меры неоднородности группы: обе равны нулю у чистой группы и максимальны при смеси поровну; на качество дерева выбор между ними обычно влияет мало",
+            "required": false,
+            "expect": "ученик называет обе меры и говорит, что у чистой группы они равны нулю"
+          }
+        ],
+        "pitfalls": [
+          {
+            "id": "leaf_not_pure",
+            "belief": "Раз в листе дерева ответ «ушёл», значит все объекты этого листа ушли?",
+            "fix": "Лист не обязан быть чистым: внутри может быть смесь классов, и дерево выдаёт самый частый из них (predict_proba даёт доли классов в листе)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tree_building",
+      "name": "Как строится дерево",
+      "difficulty": 0.53,
+      "description": "Жадное построение, пороги по количественному признаку, дерево для регрессии.",
+      "source_url": "https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html",
+      "sections": [
+        {
+          "id": "greedy",
+          "title": "Жадное построение"
+        },
+        {
+          "id": "thresholds",
+          "title": "Пороги по количественному признаку"
+        },
+        {
+          "id": "regression",
+          "title": "Дерево для регрессии"
+        }
+      ]
+    },
+    {
+      "id": "tree_tuning",
+      "name": "Переобучение и параметры дерева",
+      "difficulty": 0.52,
+      "description": "Переобучение дерева, параметры DecisionTreeClassifier, плюсы и минусы деревьев.",
+      "source_url": "https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html",
+      "sections": [
+        {
+          "id": "overfitting",
+          "title": "Переобучение"
+        },
+        {
+          "id": "params",
+          "title": "Параметры DecisionTreeClassifier"
+        },
+        {
+          "id": "pros_cons",
+          "title": "Плюсы и минусы деревьев"
+        }
+      ]
+    },
+    {
+      "id": "bagging_basics",
+      "name": "Ансамбли и бэггинг",
+      "difficulty": 0.44,
+      "description": "Мудрость толпы, бутстрэп, бэггинг и почему у него падает разброс.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part1_bagging.html",
+      "sections": [
+        {
+          "id": "crowd",
+          "title": "Мудрость толпы"
+        },
+        {
+          "id": "bootstrap",
+          "title": "Бутстрэп"
+        },
+        {
+          "id": "bagging",
+          "title": "Бэггинг"
+        },
+        {
+          "id": "variance",
+          "title": "Почему падает разброс"
+        }
+      ],
+      "explain": {
+        "ideas": [
+          {
+            "id": "bootstrap",
+            "text": "Бутстрэп-выборка — n объектов, выбранных с возвращением из n: часть объектов повторяется, а примерно 37% не попадает в выборку вовсе",
+            "required": true,
+            "expect": "ученик объясняет выбор с возвращением и что часть объектов не попадает"
+          },
+          {
+            "id": "bagging_average",
+            "text": "Бэггинг обучает много моделей на разных бутстрэп-выборках и усредняет (для классов — голосует) их ответы",
+            "required": true,
+            "expect": "ученик объясняет, что модели обучают на разных выборках и усредняют"
+          },
+          {
+            "id": "variance_drops",
+            "text": "Усреднение снижает разброс модели, но не смещение; чем меньше модели скоррелированы между собой, тем сильнее падает разброс",
+            "required": false,
+            "expect": "ученик говорит, что ансамбль снижает разброс, и связывает это с непохожестью моделей"
+          }
+        ],
+        "pitfalls": [
+          {
+            "id": "bootstrap_is_shuffle",
+            "belief": "Бутстрэп-выборка — это просто перемешанная исходная выборка, где каждый объект по одному разу?",
+            "fix": "Это выборка с возвращением того же размера: часть объектов повторяется, а около 37% не попадает вовсе"
+          },
+          {
+            "id": "identical_copies",
+            "belief": "Если обучить десять одинаковых деревьев на одних и тех же данных, получится «толпа» и ансамбль станет лучше?",
+            "fix": "Одинаковые модели ошибаются одинаково, усреднять нечего: нужны разные бутстрэп-выборки, чтобы ответы моделей различались"
+          }
+        ]
+      }
+    },
+    {
+      "id": "forest",
+      "name": "Случайный лес",
+      "difficulty": 0.48,
+      "description": "Случайные подпространства, алгоритм случайного леса и оценка out-of-bag.",
+      "source_url": "https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html",
+      "sections": [
+        {
+          "id": "subspace",
+          "title": "Случайные подпространства"
+        },
+        {
+          "id": "algorithm",
+          "title": "Алгоритм леса"
+        },
+        {
+          "id": "oob",
+          "title": "Оценка out-of-bag"
+        }
+      ],
+      "explain": {
+        "ideas": [
+          {
+            "id": "random_subspaces",
+            "text": "Случайный лес — бэггинг глубоких деревьев, где в каждом разбиении перебирают только случайное подмножество признаков (max_features)",
+            "required": true,
+            "expect": "ученик называет обе случайности леса: объекты и признаки"
+          },
+          {
+            "id": "max_features_rule",
+            "text": "Для классификации обычно берут max_features ≈ √d, для регрессии — d/3; если взять все признаки, лес вырождается в обычный бэггинг",
+            "required": false,
+            "expect": "ученик называет, как выбирают max_features, и что будет при всех признаках"
+          },
+          {
+            "id": "oob_score",
+            "text": "Каждое дерево не видело около трети объектов (out-of-bag); на них оценивают качество леса без отдельной выборки",
+            "required": false,
+            "expect": "ученик объясняет, откуда берутся out-of-bag объекты"
+          }
+        ],
+        "pitfalls": [
+          {
+            "id": "many_trees_overfit",
+            "belief": "Если поставить очень много деревьев, лес переобучится?",
+            "fix": "Нет: с ростом n_estimators качество выходит на плато; переобучение лес получает от слишком глубоких деревьев, а не от их числа"
+          },
+          {
+            "id": "oob_not_train",
+            "belief": "OOB-оценка леса — это просто точность на обучающей выборке?",
+            "fix": "Нет: каждый объект оценивают только деревья, которые его не видели, поэтому OOB честная и близка к тесту, а точность на обучении у леса почти всегда около 100%"
+          }
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "tree_criteria",
+      "to_id": "tree_building",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "tree_criteria",
+      "to_id": "tree_tuning",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "tree_building",
+      "to_id": "tree_tuning",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "tree_tuning",
+      "to_id": "bagging_basics",
+      "type": "requires",
+      "hard": false,
+      "weight": 1.0
+    },
+    {
+      "from_id": "tree_criteria",
+      "to_id": "forest",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    },
+    {
+      "from_id": "bagging_basics",
+      "to_id": "forest",
+      "type": "requires",
+      "hard": true,
+      "weight": 1.0
+    }
+  ],
+  "items": [
+    {
+      "id": 3008,
+      "prompt": "Как выглядят правила, которые выучивает дерево решений?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Взвешенная сумма значений всех признаков",
+        "Расстояния до нескольких ближайших объектов выборки",
+        "Случайный выбор класса среди классов объекта",
+        "«Если признак a ≤ x и признак b ≤ y — класс 1»"
+      ],
+      "answer": "3",
+      "section": "idea"
+    },
+    {
+      "id": 3009,
+      "prompt": "Какое главное преимущество дерева решений подчёркивает статья модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.35,
+      "options": [
+        "Интерпретируемость: решение легко объяснить",
+        "Лучшая точность на любых данных без настройки",
+        "Дерево никогда не переобучается на шуме",
+        "Дерево умеет экстраполировать за пределы данных"
+      ],
+      "answer": "0",
+      "section": "idea"
+    },
+    {
+      "id": 3010,
+      "prompt": "Что дерево классификации предсказывает в листе?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Среднее значение признаков объектов в листе",
+        "Случайный класс из числа классов листа",
+        "Самый частый класс среди обучающих объектов листа",
+        "Класс самого ближайшего соседа в пространстве признаков"
+      ],
+      "answer": "2",
+      "section": "idea"
+    },
+    {
+      "id": 3011,
+      "prompt": "Чему равна энтропия Шеннона (по log₂) для выборки, где половина объектов одного класса, а половина — другого? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "1",
+      "section": "entropy"
+    },
+    {
+      "id": 3012,
+      "prompt": "Чему равна энтропия группы, в которой все объекты одного класса? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "0",
+      "section": "entropy"
+    },
+    {
+      "id": 3013,
+      "prompt": "Как энтропия связана с порядком в группе объектов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Чем выше энтропия, тем более упорядоченной становится группа",
+        "Энтропия не зависит от долей классов в группе",
+        "Энтропия всегда равна единице для любых групп",
+        "Чем выше энтропия, тем больше хаоса и неопределённости"
+      ],
+      "answer": "3",
+      "section": "entropy"
+    },
+    {
+      "id": 3014,
+      "prompt": "Что такое прирост информации (information gain) при разбиении?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Число листьев, которое добавило разбиение в дерево",
+        "Энтропия до разбиения минус взвешенная энтропия групп после",
+        "Доля верных ответов модели на тестовой выборке",
+        "Разница в размерах двух групп, на которые делит выборку разбиение"
+      ],
+      "answer": "1",
+      "section": "entropy"
+    },
+    {
+      "id": 3015,
+      "prompt": "Дерево выбирает разбиение из нескольких вариантов. Какое оно возьмёт?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "С наименьшим приростом информации",
+        "С наибольшим приростом информации",
+        "Первое по порядку признаков",
+        "Случайное"
+      ],
+      "answer": "1",
+      "section": "entropy"
+    },
+    {
+      "id": 3016,
+      "prompt": "Зачем в формуле прироста информации энтропия каждой группы умножается на Nᵢ/N?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Чтобы энтропия группы не превышала единицу",
+        "Чтобы учесть число признаков в разбиении",
+        "Чтобы большая группа весила больше маленькой",
+        "Чтобы перевести результат в проценты от нуля до ста"
+      ],
+      "answer": "2",
+      "section": "entropy"
+    },
+    {
+      "id": 3017,
+      "prompt": "Неопределённость Джини для двух классов равна 2·p·(1 − p). Чему она равна при p = 0.5? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "0.5",
+      "section": "gini"
+    },
+    {
+      "id": 3018,
+      "prompt": "Как на практике соотносятся критерий Джини и энтропийный критерий?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Джини всегда заметно лучше",
+        "Работают почти одинаково",
+        "Энтропия годится только для регрессии",
+        "Джини нельзя выбрать в sklearn"
+      ],
+      "answer": "1",
+      "section": "gini"
+    },
+    {
+      "id": 3019,
+      "prompt": "Какой критерий разбиения, по статье модуля, на практике почти не используют?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Энтропию Шеннона как критерий разбиения",
+        "Неопределённость Джини, индекс Джини",
+        "Дисперсию для дерева регрессии",
+        "Ошибку классификации 1 − max pₖ"
+      ],
+      "answer": "3",
+      "section": "gini"
+    },
+    {
+      "id": 3020,
+      "prompt": "Как алгоритмы ID3 и C4.5 строят дерево решений?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Перебирают все возможные деревья и выбирают лучшее из них",
+        "Случайно выбирают признак для разбиения на каждом шаге",
+        "Жадно: на каждом шаге берут разбиение с наибольшим приростом информации",
+        "Строят дерево снизу вверх: сначала листья, потом корень"
+      ],
+      "answer": "2",
+      "section": "greedy"
+    },
+    {
+      "id": 3021,
+      "prompt": "Гарантирует ли жадное построение глобально оптимальное дерево?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Нет: поиск оптимального дерева NP-полон, жадный алгоритм — эвристика",
+        "Да, жадный алгоритм всегда даёт оптимальное дерево",
+        "Да, если все признаки бинарные и нет пропусков",
+        "Да, но только в задаче регрессии, а не классификации"
+      ],
+      "answer": "0",
+      "section": "greedy"
+    },
+    {
+      "id": 3022,
+      "prompt": "В отсортированных значениях возраста подряд идут 38 (класс 1) и 49 (класс 0). Какой порог между ними проверит дерево? Ответ — число.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": "43.5",
+      "section": "thresholds"
+    },
+    {
+      "id": 3023,
+      "prompt": "Какие пороги проверяет дерево для количественного признака, по статье модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Каждое уникальное значение признака, встречающееся в данных",
+        "Только среднее значение признака по всей выборке",
+        "Только квартили распределения признака в данных",
+        "Середины между соседними значениями, где меняется класс"
+      ],
+      "answer": "3",
+      "section": "thresholds"
+    },
+    {
+      "id": 3024,
+      "prompt": "Почему дерево, выросшее до одного объекта в каждом листе, плохо работает на новых данных?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Оно переобучено: запомнило шум и частные правила",
+        "В дереве слишком мало листьев для обучающей выборки",
+        "Дерево недообучено: оно слишком простое",
+        "Оно вообще не умеет предсказывать классы"
+      ],
+      "answer": "0",
+      "section": "overfitting"
+    },
+    {
+      "id": 3025,
+      "prompt": "Что из этого НЕ помогает бороться с переобучением дерева?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Ограничить глубину дерева",
+        "Задать минимальное число объектов в листе",
+        "Подрезать (pruning) готовое дерево",
+        "Растить дерево до листьев с одним классом"
+      ],
+      "answer": "3",
+      "section": "overfitting"
+    },
+    {
+      "id": 3026,
+      "prompt": "Какой параметр DecisionTreeClassifier ограничивает глубину дерева? Напиши только имя параметра.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": "max_depth",
+      "section": "params"
+    },
+    {
+      "id": 3027,
+      "prompt": "Какой параметр DecisionTreeClassifier задаёт минимальное число объектов в листе? Напиши только имя параметра.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "min_samples_leaf",
+      "section": "params"
+    },
+    {
+      "id": 3028,
+      "prompt": "За что отвечает параметр max_features у DecisionTreeClassifier?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Сколько признаков должно быть в данных для обучения модели",
+        "Сколько листьев может быть в готовом дереве",
+        "Сколько признаков перебирать при поиске лучшего разбиения",
+        "Какой может быть максимальная глубина дерева"
+      ],
+      "answer": "2",
+      "section": "params"
+    },
+    {
+      "id": 3029,
+      "prompt": "Какой критерий качества разбиения используют в дереве для регрессии, по статье модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Энтропию Шеннона, как в классификации",
+        "Неопределённость Джини, индекс Джини",
+        "Accuracy — долю верных ответов",
+        "Дисперсию целевой переменной в листе"
+      ],
+      "answer": "3",
+      "section": "regression"
+    },
+    {
+      "id": 3030,
+      "prompt": "Как выглядит прогноз дерева регрессии как функция признака?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Кусочно-постоянная функция — ступеньки",
+        "Гладкая кривая, как у линейной регрессии",
+        "Одна прямая линия на всей области",
+        "Парабола, как у квадратичной регрессии"
+      ],
+      "answer": "0",
+      "section": "regression"
+    },
+    {
+      "id": 3031,
+      "prompt": "Как называется класс sklearn для дерева решений в задаче регрессии? Напиши только имя класса.",
+      "answer_type": "short",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "DecisionTreeRegressor",
+      "section": "regression"
+    },
+    {
+      "id": 3046,
+      "prompt": "Какой недостаток дерева решений отмечает статья модуля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Его невозможно визуализировать и объяснить",
+        "Неустойчивость: небольшое изменение данных сильно меняет дерево",
+        "Дерево решений не подходит для задач регрессии, только для классификации",
+        "Оно обучается заметно дольше, чем нейросеть"
+      ],
+      "answer": "1",
+      "section": "pros_cons"
+    },
+    {
+      "id": 3047,
+      "prompt": "Что предскажет дерево для объекта далеко за пределами области обучающих данных?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Продолжит тренд и экстраполирует его дальше",
+        "Ошибку вместо прогноза значения",
+        "Случайное значение из диапазона",
+        "Константу, как в ближайшей крайней области"
+      ],
+      "answer": "3",
+      "section": "pros_cons"
+    },
+    {
+      "id": 3048,
+      "prompt": "Из чего состоит граница между классами, которую строит дерево решений?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Из отрезков, перпендикулярных осям признаков",
+        "Из одной прямой под произвольным углом",
+        "Из окружностей, описанных вокруг каждого класса",
+        "Из плавной гладкой кривой без изломов"
+      ],
+      "answer": "0",
+      "section": "pros_cons"
+    },
+    {
+      "id": 3112,
+      "prompt": "Напиши код: определи функцию `entropy(labels)` — энтропию Шеннона списка меток по логарифму с основанием 2. Сохрани в result энтропию списка `y`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 303,
+      "starter": "import numpy as np\n\n\ndef entropy(labels):\n    ...\n\n\nresult = None\n",
+      "setup": "y = [0, 0, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0]\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert abs(entropy([0, 0, 0, 0])) < 1e-9, \"Энтропия группы одного класса равна 0.\"\nassert abs(entropy([0, 1, 0, 1]) - 1) < 1e-9, \"Два класса поровну: энтропия 1 (логарифм по основанию 2).\"\nassert abs(entropy([0, 0, 1, 1, 2, 2]) - np.log2(3)) < 1e-9, \"Классов может быть больше двух: суммируйте по всем.\"\np = np.bincount(y) / len(y)\nassert abs(float(result) - float(-(p * np.log2(p)).sum())) < 1e-9, \"result = entropy(y).\"\n",
+      "section": "entropy"
+    },
+    {
+      "id": 3113,
+      "prompt": "Напиши код: `ages` и `churn` — возраст клиентов и признак ухода (порядок произвольный). Найди все пороги-кандидаты, которые проверит дерево: середины между соседними (по возрасту) значениями, у которых метки различаются. Сохрани список порогов по возрастанию в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 304,
+      "starter": "# Пороги-кандидаты по возрасту\nresult = None\n",
+      "setup": "import numpy as np\n\nages = np.array([51, 27, 33, 45, 29, 62, 40, 37])\nchurn = np.array([1, 0, 0, 1, 0, 1, 0, 1])\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert [round(float(v), 6) for v in result] == [35.0, 38.5, 42.5], \"Сначала отсортируйте по возрасту, затем берите середины только там, где меняется метка.\"\n",
+      "section": "thresholds"
+    },
+    {
+      "id": 3114,
+      "prompt": "Напиши код: обучи на `X_train`, `y_train` дерево `DecisionTreeClassifier` с глубиной не больше 3 и не менее чем 5 объектами в каждом листе (`random_state=17`). Сохрани обученную модель в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 305,
+      "starter": "from sklearn.tree import DecisionTreeClassifier\n\n# Ограниченное дерево\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n\nfrom sklearn.model_selection import train_test_split\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "from sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and result is not None, \"Сохраните модель в переменную result.\"\nassert isinstance(result, DecisionTreeClassifier), \"Ожидается DecisionTreeClassifier.\"\nassert hasattr(result, \"tree_\"), \"Модель нужно обучить: fit(X_train, y_train).\"\nparams = result.get_params()\nassert params[\"max_depth\"] == 3, \"Глубину ограничивает max_depth=3.\"\nassert params[\"min_samples_leaf\"] == 5, \"Минимум объектов в листе задаёт min_samples_leaf=5.\"\ntree = result.tree_\nassert tree.n_node_samples[0] == len(X_train), \"Модель обучается на X_train, y_train.\"\nleaves = tree.children_left == -1\nassert (tree.n_node_samples[leaves] >= 5).all(), \"В каждом листе должно быть не меньше 5 объектов.\"\n",
+      "section": "params"
+    },
+    {
+      "id": 3122,
+      "prompt": "Итоговое задание. Определи `entropy(labels)` и `information_gain(parent, groups)` — прирост информации от разбиения `parent` на список групп `groups` (энтропия по основанию 2, группы взвешиваются по размеру). В `features` три бинарных признака клиентов, в `y` — уход. Сохрани в result название признака, разбиение по которому даёт наибольший прирост.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_criteria": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": null,
+      "rubric_id": 310,
+      "starter": "import numpy as np\n\n\ndef entropy(labels):\n    ...\n\n\ndef information_gain(parent, groups):\n    ...\n\n\nresult = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nfeatures = pd.DataFrame({\n    \"intl_plan\":  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],\n    \"many_calls\": [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],\n    \"vmail\":      [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0],\n})\ny = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1])\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert abs(entropy([0, 0, 0, 0])) < 1e-9 and abs(entropy([0, 1, 0, 1]) - 1) < 1e-9, \"entropy: 0 для чистой группы и 1 для двух классов поровну.\"\nparent = [0, 0, 1, 1]\nassert abs(information_gain(parent, [[0, 0], [1, 1]]) - 1) < 1e-9, \"Идеальное разбиение даёт прирост, равный энтропии родителя.\"\nassert abs(information_gain(parent, [[0, 1], [0, 1]])) < 1e-9, \"Разбиение, не меняющее доли классов, не даёт прироста.\"\ndef _h(v):\n    v = np.asarray(v)\n    q = np.bincount(v, minlength=2) / len(v)\n    q = q[q > 0]\n    return float((q * np.log2(1 / q)).sum())\n\n\nuneven = np.array([0, 0, 0, 0, 0, 0, 1, 0])\ngot = information_gain(list(uneven), [list(uneven[:6]), list(uneven[6:])])\nwant = _h(uneven) - 6 / 8 * _h(uneven[:6]) - 2 / 8 * _h(uneven[6:])\nassert abs(got - want) < 1e-9, \"Энтропия групп взвешивается по размеру группы: Nᵢ / N.\"\ngains = {\n    name: _h(y) - sum((features[name] == v).sum() / len(y) * _h(y[(features[name] == v).values]) for v in (0, 1))\n    for name in features.columns\n}\nbest = max(gains, key=gains.get)\nassert result == best, \"Для каждого признака разбейте y на группы по значению 0/1 и сравните приросты информации.\"\n",
+      "final": true
+    },
+    {
+      "id": 3123,
+      "prompt": "Итоговое задание. Определи функцию `best_threshold(x, y)`: среди порогов-кандидатов (середины между соседними по `x` значениями с разными метками) она возвращает тот, при котором прирост информации (энтропия по основанию 2, группы `x ≤ порог` и `x > порог`) наибольший. Сохрани в result `best_threshold(ages, churn)`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_building": 1.0
+      },
+      "difficulty": 0.75,
+      "options": [],
+      "answer": null,
+      "rubric_id": 311,
+      "starter": "import numpy as np\n\n\ndef best_threshold(x, y):\n    ...\n\n\nresult = None\n",
+      "setup": "import numpy as np\n\nages = np.array([22, 25, 31, 38, 41, 49, 53, 60, 64])\nchurn = np.array([0, 0, 0, 1, 1, 0, 1, 1, 1])\n",
+      "tests": "import numpy as np\nassert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\n\n\ndef _h(v):\n    v = np.asarray(v)\n    if len(v) == 0:\n        return 0.0\n    q = np.bincount(v) / len(v)\n    q = q[q > 0]\n    return float((q * np.log2(1 / q)).sum())\n\n\ndef _best(x, y):\n    x, y = np.asarray(x), np.asarray(y)\n    order = np.argsort(x, kind=\"stable\")\n    x, y = x[order], y[order]\n    best, best_gain = None, -1.0\n    for i in range(len(x) - 1):\n        if y[i] == y[i + 1]:\n            continue\n        t = (x[i] + x[i + 1]) / 2\n        left, right = y[x <= t], y[x > t]\n        gain = _h(y) - len(left) / len(y) * _h(left) - len(right) / len(y) * _h(right)\n        if gain > best_gain:\n            best, best_gain = t, gain\n    return best\n\n\ncases = [\n    (ages, churn),\n    ([10, 20, 30, 40, 50, 60], [0, 0, 0, 1, 1, 1]),\n    ([5, 1, 9, 3, 7, 2, 8], [1, 0, 1, 0, 1, 0, 1]),\n    ([1, 2, 3, 4, 5, 6, 7, 8], [0, 1, 0, 0, 0, 0, 1, 1]),\n    ([4, 2, 0, 3, 5, 1, 9, 10, 11, 7, 6, 8], [0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]),\n]\nfor x, y in cases:\n    assert abs(best_threshold(x, y) - _best(x, y)) < 1e-9, f\"best_threshold({list(x)}, {list(y)}) должен вернуть {_best(x, y)}.\"\nassert abs(float(result) - _best(ages, churn)) < 1e-9, \"result = best_threshold(ages, churn).\"\n",
+      "final": true
+    },
+    {
+      "id": 3124,
+      "prompt": "Итоговое задание. Для глубин `max_depth` от 1 до 8 включительно обучи `DecisionTreeClassifier(max_depth=…, random_state=17)` на `X_train`, `y_train`. Сохрани в result таблицу из 8 строк со столбцами `depth`, `train` и `test` (точность на обучающей и тестовой частях), а в `best` — глубину с наибольшей точностью на тесте (при равенстве — меньшую).",
+      "answer_type": "code",
+      "concept_weights": {
+        "tree_tuning": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 312,
+      "starter": "import pandas as pd\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Кривая «глубина — точность»\nresult = None\nbest = None\n",
+      "setup": "import numpy as np\nimport pandas as pd\n\nrng = np.random.default_rng(3)\nn = 120\ncalls = rng.poisson(1.8, n)\nplan = (rng.random(n) < 0.2).astype(int)\nminutes = rng.normal(180, 50, n).round(1)\ny = ((calls + 2 * plan + rng.normal(0, 1.2, n)) > 3.5).astype(int)\nX = np.column_stack([calls, plan, minutes])\n\nfrom sklearn.model_selection import train_test_split\n\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "import numpy as np\nimport pandas as pd\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, pd.DataFrame), \"result — таблица (DataFrame).\"\nassert {\"depth\", \"train\", \"test\"} <= set(result.columns), \"Нужны столбцы depth, train и test.\"\nassert result[\"depth\"].tolist() == list(range(1, 9)), \"Глубины от 1 до 8 включительно, по порядку.\"\nrows = []\nfor depth in range(1, 9):\n    model = DecisionTreeClassifier(max_depth=depth, random_state=17).fit(X_train, y_train)\n    rows.append((model.score(X_train, y_train), model.score(X_test, y_test)))\ntrain = np.array([r[0] for r in rows])\ntest = np.array([r[1] for r in rows])\nassert np.allclose(result[\"train\"].astype(float).values, train), \"train — точность на обучающей части.\"\nassert np.allclose(result[\"test\"].astype(float).values, test), \"test — точность на тестовой части.\"\nassert best == int(np.argmax(test)) + 1, \"best — глубина с наибольшей точностью на тесте (при равенстве — меньшая).\"\n",
+      "final": true
+    },
+    {
+      "id": 5001,
+      "prompt": "Что такое ансамбль в машинном обучении?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Одна очень сложная модель с большим числом параметров",
+        "Набор метрик, по которым сравнивают модели между собой",
+        "Набор моделей, чьи ответы объединяют в один общий",
+        "Набор признаков, отобранных для обучения модели"
+      ],
+      "answer": "2",
+      "section": "crowd"
+    },
+    {
+      "id": 5002,
+      "prompt": "Что утверждает теорема Кондорсе о присяжных?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Вероятность верного коллективного решения не зависит от числа судей",
+        "Если каждый прав чаще половины раза, толпа права реже",
+        "Если каждый прав чаще половины раза, толпа права ещё чаще",
+        "Коллективное решение всегда точнее самого точного из участников"
+      ],
+      "answer": "2",
+      "section": "crowd"
+    },
+    {
+      "id": 5003,
+      "prompt": "Как устроена бутстрэп-выборка?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Столько же объектов, сколько в исходной, но с возвращением",
+        "Половина объектов исходной выборки, взятая без возвращения",
+        "Все объекты исходной выборки в случайном порядке следования",
+        "Столько же объектов, сколько в исходной, но без повторений вовсе"
+      ],
+      "answer": "0",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5004,
+      "prompt": "Какая доля объектов исходной выборки обычно попадает в бутстрэп-выборку?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Ровно половина объектов исходной выборки",
+        "Около 63 процентов объектов исходной выборки",
+        "Все объекты исходной выборки, но с разными весами",
+        "Около 37 процентов объектов исходной выборки"
+      ],
+      "answer": "1",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5005,
+      "prompt": "Кто предложил метод бэггинга?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Лео Брейман, и это произошло в 1994 году",
+        "Фрэнсис Гальтон, и это произошло в 1906 году",
+        "Николас Кондорсе, и это произошло в 1784 году",
+        "Коррадо Джени, и это произошло в 1947 году"
+      ],
+      "answer": "0",
+      "section": "bagging"
+    },
+    {
+      "id": 5006,
+      "prompt": "Как ансамбль объединяет ответы базовых моделей в классификации?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Взвешиванием по числу параметров каждой модели",
+        "Голосованием: побеждает самый частый ответ моделей",
+        "Усреднением всех числовых меток классов моделей",
+        "Выбором ответа самой точной модели ансамбля"
+      ],
+      "answer": "1",
+      "section": "bagging"
+    },
+    {
+      "id": 5007,
+      "prompt": "Что такое bagging как расшифровка метода?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Binary aggregation — объединение двоичных ответов моделей",
+        "Bootstrap aggregation — бутстрэп и объединение ответов",
+        "Bagging adaptation — адаптация моделей под выборку",
+        "Batch averaging — усреднение ответов по всей выборке"
+      ],
+      "answer": "1",
+      "section": "bagging"
+    },
+    {
+      "id": 5008,
+      "prompt": "Почему усреднение ответов снижает среднюю квадратичную ошибку?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Усреднение ускоряет обучение каждой базовой модели",
+        "Усреднение уменьшает смещение каждой отдельной модели",
+        "Усреднение убирает неустранимую ошибку шума в данных",
+        "Ошибки разных моделей гасят друг друга при усреднении"
+      ],
+      "answer": "3",
+      "section": "variance"
+    },
+    {
+      "id": 5009,
+      "prompt": "На каких данных бэггинг даёт наибольший эффект?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "На разреженных текстовых данных с огромным словарём",
+        "На малых выборках: базовые модели выходят очень разными",
+        "На очень больших выборках: базовых моделей становится много",
+        "На данных, где все признаки сильно коррелируют между собой"
+      ],
+      "answer": "1",
+      "section": "variance"
+    },
+    {
+      "id": 5010,
+      "prompt": "Зачем нужна оценка out-of-bag?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Она отбирает признаки, которые не нужны для обучения",
+        "Она балансирует классы, подтягивая редкий класс к частому",
+        "Она ускоряет обучение, отбрасывая лишние деревья леса",
+        "Она даёт оценку качества без отдельной проверочной выборки"
+      ],
+      "answer": "3",
+      "section": "oob"
+    },
+    {
+      "id": 5011,
+      "prompt": "По каким объектам считают ошибку out-of-bag?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "По тем, что попали в бутстрэп-выборку повторно дважды",
+        "По всем объектам исходной выборки без всяких исключений",
+        "По объектам, которые модель классифицировала неверно",
+        "По тем, что не попали в бутстрэп-выборку этого дерева"
+      ],
+      "answer": "3",
+      "section": "oob"
+    },
+    {
+      "id": 5012,
+      "prompt": "Почему около трети объектов остаётся вне бутстрэп-выборки?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Потому что размер выборки намеренно сокращают на треть",
+        "Потому что объекты отбирают без возвращения и без повторов",
+        "Потому что треть объектов отбрасывают как выбросы в данных",
+        "Потому что вероятность не быть вытянутым стремится к 1/e"
+      ],
+      "answer": "3",
+      "section": "oob"
+    },
+    {
+      "id": 5013,
+      "prompt": "Зачем в случайном лесе берут случайное подмножество признаков?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Чтобы деревья меньше походили друг на друга при обучении",
+        "Чтобы каждое дерево обучалось на меньшем числе объектов",
+        "Чтобы отобрать самые важные признаки для всей задачи",
+        "Чтобы избавиться от мультиколлинеарности между признаками"
+      ],
+      "answer": "0",
+      "section": "subspace"
+    },
+    {
+      "id": 5014,
+      "prompt": "Что даёт снижение корреляции между деревьями ансамбля?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Каждое отдельное дерево становится точнее на обучении",
+        "Разброс ансамбля падает сильнее, чем у похожих деревьев",
+        "Смещение ансамбля падает вместе с корреляцией деревьев",
+        "Ансамбль начинает лучше экстраполировать за пределы данных"
+      ],
+      "answer": "1",
+      "section": "subspace"
+    },
+    {
+      "id": 5015,
+      "prompt": "Чем случайный лес отличается от бэггинга деревьев?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0,
+        "tree_criteria": 0.5
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Лес ищет разбиение среди случайных подмножеств признаков",
+        "Лес использует не деревья, а линейные модели как основу",
+        "Лес обучает деревья на всей выборке без бутстрэпа вовсе",
+        "Лес объединяет ответы голосованием, а бэггинг усредняет их"
+      ],
+      "answer": "0",
+      "section": "algorithm"
+    },
+    {
+      "id": 5016,
+      "prompt": "Как лес объединяет ответы деревьев в задаче регрессии?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [
+        "Усредняет числовые ответы всех деревьев ансамбля",
+        "Берёт медиану числовых ответов всех деревьев ансамбля",
+        "Голосует: побеждает самый частый числовой ответ деревьев",
+        "Выбирает ответ дерева с наименьшей ошибкой на обучении"
+      ],
+      "answer": "0",
+      "section": "algorithm"
+    },
+    {
+      "id": 5017,
+      "prompt": "До какого момента растят деревья в случайном лесе?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [
+        "Пока число листьев не сравняется с числом признаков данных",
+        "Пока все деревья ансамбля не станут одинаковыми по структуре",
+        "Пока в листьях не останется заданное число объектов",
+        "Пока ошибка на out-of-bag объектах не перестанет падать"
+      ],
+      "answer": "2",
+      "section": "algorithm"
+    },
+    {
+      "id": 5048,
+      "prompt": "Опиши, как ты оценишь качество случайного леса, не откладывая отдельную проверочную выборку, и как поймёшь, какие признаки важнее.",
+      "answer_type": "open",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 501,
+      "section": "oob"
+    },
+    {
+      "id": 5111,
+      "prompt": "Напиши код: с помощью генератора `rng` сделай 200 бутстрэп-выборок индексов объектов размера `n` (с возвращением) и найди среднюю долю различных объектов в выборке. Сохрани число в result.",
+      "answer_type": "code",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 502,
+      "starter": "# Средняя доля уникальных объектов в бутстрэп-выборке\nresult = None\n",
+      "setup": "import numpy as np\n\nrng = np.random.default_rng(7)\nn = 500\n_state0 = rng.bit_generator.state\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nassert rng.bit_generator.state != _state0, \"Выборки нужно получать из генератора rng (rng.choice).\"\nshare = float(result)\nassert share < 0.665, \"Доля слишком велика: бутстрэп-выборка берётся с возвращением (replace=True), поэтому часть объектов повторяется.\"\nassert share > 0.60, \"Доля слишком мала: размер выборки должен быть равен n.\"\n",
+      "section": "bootstrap"
+    },
+    {
+      "id": 5112,
+      "prompt": "Напиши код: обучи `RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17)` на `X_train`, `y_train`. Сохрани в result кортеж `(oob, test)`: оценку out-of-bag и точность на `X_test`, `y_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 503,
+      "starter": "from sklearn.ensemble import RandomForestClassifier\n\n# OOB-оценка и точность на тесте\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "assert \"result\" in globals() and result is not None, \"Сохраните ответ в переменную result.\"\nfrom sklearn.ensemble import RandomForestClassifier\nforest = RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)\noob, test = result\nassert abs(float(oob) - forest.oob_score_) < 1e-9, \"oob — атрибут oob_score_ леса с oob_score=True, n_estimators=50, random_state=17.\"\nassert abs(float(test) - forest.score(X_test, y_test)) < 1e-9, \"test — точность обученного леса на X_test, y_test.\"\n",
+      "section": "oob"
+    },
+    {
+      "id": 5121,
+      "prompt": "Итоговое задание. `boot` — индексы 25 бутстрэп-выборок (массив 25 × n) для `X_train`. На каждой выборке обучи `DecisionTreeClassifier(random_state=17)`. Ответ ансамбля для `X_test` — голосование большинством (метки 0/1, моделей нечётное число). Сохрани в result словарь: `single` — точность одного дерева, обученного на всём `X_train`, `bagging` — точность ансамбля на `X_test`.",
+      "answer_type": "code",
+      "concept_weights": {
+        "bagging_basics": 1.0
+      },
+      "difficulty": 0.65,
+      "options": [],
+      "answer": null,
+      "rubric_id": 508,
+      "starter": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier\n\n# Бэггинг руками\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n\nboot = np.array([np.random.default_rng(s).choice(len(X_train), size=len(X_train), replace=True)\n                 for s in range(25)])\n",
+      "tests": "import numpy as np\nfrom sklearn.tree import DecisionTreeClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами single и bagging.\"\nassert {\"single\", \"bagging\"} <= set(result), \"Нужны ключи single и bagging.\"\nsingle = DecisionTreeClassifier(random_state=17).fit(X_train, y_train).score(X_test, y_test)\nvotes = np.array([\n    DecisionTreeClassifier(random_state=17).fit(X_train[i], y_train[i]).predict(X_test) for i in boot\n])\nbagging = float(((votes.mean(axis=0) > 0.5).astype(int) == y_test).mean())\nassert abs(float(result[\"single\"]) - single) < 1e-9, \"single: одно дерево, обученное на всём X_train, точность на X_test.\"\nassert abs(float(result[\"bagging\"]) - bagging) < 1e-9, \"bagging: 25 деревьев на выборках X_train[idx], голосование большинством, точность на X_test.\"\nassert bagging > single, \"внутренняя ошибка задания\"\n",
+      "final": true
+    },
+    {
+      "id": 5122,
+      "prompt": "Итоговое задание. Обучи на `X_train`, `y_train` `RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)`. Сохрани в result словарь: `oob` — оценка out-of-bag, `test` — точность на `X_test`, `m` — сколько признаков перебирает каждое дерево при разбиении (`max_features_` первого дерева), `rule` — число признаков по правилу √d (целое, `int(np.sqrt(d))`).",
+      "answer_type": "code",
+      "concept_weights": {
+        "forest": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": null,
+      "rubric_id": 509,
+      "starter": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\n\n# Лес, OOB и правило √d\nresult = None\n",
+      "setup": "import numpy as np\nfrom sklearn.model_selection import train_test_split\n\nrng = np.random.default_rng(6)\nn, d = 300, 8\nX = rng.normal(size=(n, d))\ny = ((X[:, 0] + X[:, 1] - X[:, 2] + rng.normal(0, 0.8, n)) > 0).astype(int)\nX_train, X_test, y_train, y_test = train_test_split(\n    X, y, test_size=0.3, random_state=17, stratify=y\n)\n",
+      "tests": "import numpy as np\nfrom sklearn.ensemble import RandomForestClassifier\nassert \"result\" in globals() and isinstance(result, dict), \"result — словарь с ключами oob, test, m и rule.\"\nassert {\"oob\", \"test\", \"m\", \"rule\"} <= set(result), \"Нужны ключи oob, test, m и rule.\"\nforest = RandomForestClassifier(n_estimators=60, max_features=\"sqrt\", oob_score=True, random_state=17).fit(X_train, y_train)\nassert abs(float(result[\"oob\"]) - forest.oob_score_) < 1e-9, \"oob — oob_score_ леса.\"\nassert abs(float(result[\"test\"]) - forest.score(X_test, y_test)) < 1e-9, \"test — точность на X_test.\"\nassert int(result[\"m\"]) == forest.estimators_[0].max_features_, \"m — forest.estimators_[0].max_features_.\"\nassert int(result[\"rule\"]) == int(np.sqrt(X_train.shape[1])), \"rule = int(np.sqrt(d)), где d — число признаков.\"\n",
+      "final": true
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 303,
+      "name": "Код: функция энтропии"
+    },
+    {
+      "id": 304,
+      "name": "Код: пороги-кандидаты"
+    },
+    {
+      "id": 305,
+      "name": "Код: ограничение дерева"
+    },
+    {
+      "id": 310,
+      "name": "Итог: прирост информации"
+    },
+    {
+      "id": 311,
+      "name": "Итог: лучший порог"
+    },
+    {
+      "id": 312,
+      "name": "Итог: кривая глубины"
+    },
+    {
+      "id": 501,
+      "name": "Оценка леса по out-of-bag и важность признаков"
+    },
+    {
+      "id": 502,
+      "name": "Код: бутстрэп"
+    },
+    {
+      "id": 503,
+      "name": "Код: оценка out-of-bag"
+    },
+    {
+      "id": 508,
+      "name": "Итог: бэггинг руками"
+    },
+    {
+      "id": 509,
+      "name": "Итог: лес и правило √d"
+    }
+  ],
+  "criteria": [
+    {
+      "id": 306,
+      "rubric_id": 303,
+      "criterion": "Доли классов считаются по списку меток",
+      "weight": 1.0,
+      "positive_example": "p = counts / counts.sum()",
+      "negative_example": "частоты без деления на длину"
+    },
+    {
+      "id": 307,
+      "rubric_id": 303,
+      "criterion": "Энтропия — минус сумма p·log2(p) по классам",
+      "weight": 1.0,
+      "positive_example": "-(p * np.log2(p)).sum()",
+      "negative_example": "np.log (натуральный) или сумма p²"
+    },
+    {
+      "id": 308,
+      "rubric_id": 304,
+      "criterion": "Значения сортируются по признаку вместе с метками",
+      "weight": 1.0,
+      "positive_example": "order = np.argsort(ages)",
+      "negative_example": "соседи берутся в исходном порядке"
+    },
+    {
+      "id": 309,
+      "rubric_id": 304,
+      "criterion": "Порог — середина соседей с разными метками",
+      "weight": 1.0,
+      "positive_example": "(a[i] + a[i+1]) / 2 при y[i] != y[i+1]",
+      "negative_example": "середины между всеми соседями"
+    },
+    {
+      "id": 310,
+      "rubric_id": 305,
+      "criterion": "Глубина ограничена max_depth=3",
+      "weight": 1.0,
+      "positive_example": "DecisionTreeClassifier(max_depth=3, ...)",
+      "negative_example": "глубина не ограничена"
+    },
+    {
+      "id": 311,
+      "rubric_id": 305,
+      "criterion": "Размер листа ограничен min_samples_leaf=5, модель обучена на обучающей части",
+      "weight": 1.0,
+      "positive_example": "min_samples_leaf=5; fit(X_train, y_train)",
+      "negative_example": "min_samples_split вместо min_samples_leaf"
+    },
+    {
+      "id": 320,
+      "rubric_id": 310,
+      "criterion": "Энтропия считается по долям классов с логарифмом по основанию 2",
+      "weight": 1.0,
+      "positive_example": "-(p * np.log2(p)).sum()",
+      "negative_example": "np.log или сумма p²"
+    },
+    {
+      "id": 321,
+      "rubric_id": 310,
+      "criterion": "Прирост — энтропия родителя минус взвешенная энтропия групп; выбран признак с максимальным приростом",
+      "weight": 1.0,
+      "positive_example": "H(parent) - sum(len(g)/N * H(g)); max по признакам",
+      "negative_example": "невзвешенное среднее энтропий групп"
+    },
+    {
+      "id": 322,
+      "rubric_id": 311,
+      "criterion": "Кандидаты — середины между соседними по x значениями с разными метками, данные предварительно отсортированы",
+      "weight": 1.0,
+      "positive_example": "np.argsort(x); (x[i] + x[i+1]) / 2 если y[i] != y[i+1]",
+      "negative_example": "середины между всеми соседями"
+    },
+    {
+      "id": 323,
+      "rubric_id": 311,
+      "criterion": "Для каждого кандидата считается прирост информации; возвращается порог с максимальным приростом",
+      "weight": 1.0,
+      "positive_example": "gain = H(y) - weighted H(left, right); max",
+      "negative_example": "первый кандидат без сравнения приростов"
+    },
+    {
+      "id": 324,
+      "rubric_id": 312,
+      "criterion": "Для каждой глубины 1–8 обучено дерево на обучающей части и посчитаны две точности",
+      "weight": 1.0,
+      "positive_example": "for depth in range(1, 9): fit(X_train, y_train); score(X_train), score(X_test)",
+      "negative_example": "обе точности на тесте"
+    },
+    {
+      "id": 325,
+      "rubric_id": 312,
+      "criterion": "best — глубина с максимальной точностью на тесте, при равенстве меньшая",
+      "weight": 1.0,
+      "positive_example": "argmax по test + 1",
+      "negative_example": "глубина с максимальной точностью на обучении"
+    },
+    {
+      "id": 501,
+      "rubric_id": 501,
+      "criterion": "Называет оценку out-of-bag: около трети объектов не попадает в бутстрэп-выборку, по ним и считается ошибка",
+      "weight": 1.0,
+      "positive_example": "включу oob_score и посмотрю ошибку по объектам, которых не было у каждого дерева",
+      "negative_example": "разобью данные пополам и посчитаю точность на второй половине"
+    },
+    {
+      "id": 502,
+      "rubric_id": 501,
+      "criterion": "Называет способ измерения важности: перестановочная важность по out-of-bag или уменьшение неоднородности (Джини/MSE)",
+      "weight": 1.0,
+      "positive_example": "перемешаю признак и посмотрю, насколько упадёт точность на out-of-bag",
+      "negative_example": "посмотрю на названия столбцов и решу, что важнее"
+    },
+    {
+      "id": 503,
+      "rubric_id": 501,
+      "criterion": "Оговаривает ограничение важности: признаки с большим числом уровней и коррелированные группы получают завышенную оценку",
+      "weight": 1.0,
+      "positive_example": "учту, что признаки с многими уровнями и коррелированные группы получат лишний вес",
+      "negative_example": "просто возьму топ-3 признака и выброшу остальные"
+    },
+    {
+      "id": 504,
+      "rubric_id": 502,
+      "criterion": "Выборка индексов берётся с возвращением, размером n",
+      "weight": 1.0,
+      "positive_example": "rng.choice(n, size=n, replace=True)",
+      "negative_example": "rng.choice(n, size=n, replace=False)"
+    },
+    {
+      "id": 505,
+      "rubric_id": 502,
+      "criterion": "Доля различных объектов считается через np.unique и усредняется по 200 выборкам",
+      "weight": 1.0,
+      "positive_example": "len(np.unique(idx)) / n; mean по 200 повторам",
+      "negative_example": "жёстко записанное число 0.632"
+    },
+    {
+      "id": 506,
+      "rubric_id": 503,
+      "criterion": "Лес обучен с oob_score=True и n_estimators=50 на обучающей части",
+      "weight": 1.0,
+      "positive_example": "RandomForestClassifier(n_estimators=50, oob_score=True, random_state=17).fit(X_train, y_train)",
+      "negative_example": "oob_score по умолчанию (False)"
+    },
+    {
+      "id": 507,
+      "rubric_id": 503,
+      "criterion": "OOB берётся из oob_score_, тестовая точность — на X_test",
+      "weight": 1.0,
+      "positive_example": "forest.oob_score_, forest.score(X_test, y_test)",
+      "negative_example": "точность на обучении вместо OOB"
+    },
+    {
+      "id": 516,
+      "rubric_id": 508,
+      "criterion": "Каждое дерево обучается на своей бутстрэп-выборке X_train[idx], y_train[idx]",
+      "weight": 1.0,
+      "positive_example": "for idx in boot: tree.fit(X_train[idx], y_train[idx])",
+      "negative_example": "все деревья на одних и тех же данных"
+    },
+    {
+      "id": 517,
+      "rubric_id": 508,
+      "criterion": "Ответ — голосование большинством по 25 деревьям, точность на тесте",
+      "weight": 1.0,
+      "positive_example": "(votes.mean(axis=0) > 0.5)",
+      "negative_example": "ответ одного дерева"
+    },
+    {
+      "id": 518,
+      "rubric_id": 509,
+      "criterion": "Лес обучен с заданными параметрами на обучающей части",
+      "weight": 1.0,
+      "positive_example": "RandomForestClassifier(n_estimators=60, max_features='sqrt', oob_score=True, random_state=17)",
+      "negative_example": "max_features=None"
+    },
+    {
+      "id": 519,
+      "rubric_id": 509,
+      "criterion": "OOB, точность на тесте, число признаков на разбиение и правило √d посчитаны",
+      "weight": 1.0,
+      "positive_example": "forest.oob_score_; forest.estimators_[0].max_features_; int(np.sqrt(d))",
+      "negative_example": "rule записан числом, не вычислен"
+    }
+  ],
+  "legacy": {}
+}

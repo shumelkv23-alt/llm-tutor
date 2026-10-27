@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.prompt_config import load_explain, load_project
 from llm_tutor.web import accounts, courses, jobs, security
 from llm_tutor.web.mailer import MAIL_HELP, Mailer, build_mailer
 from llm_tutor.web.userdb import UserDBPool
@@ -198,6 +199,10 @@ def create_app(
     берётся ``client``: в тестах это подставной клиент, и лишних вызовов сети
     не будет.
     """
+    # Промпты «Объясни новичку» — первыми: битый файл останавливает запуск
+    # раньше, чем открыты БД и клиенты.
+    explain_prompts = load_explain(_project_path(settings.prompts_dir))
+    project_prompts = load_project(_project_path(settings.prompts_dir))
     owns_client = client is None
     owns_mailer = mailer is None
     llm = _llm_client(settings) if client is None else client
@@ -260,6 +265,8 @@ def create_app(
     # «Забыли пароль?» закрыли бы вход честному ученику (и наоборот).
     app.state.reset_limiter = security.LoginLimiter(limit=settings.password_reset_limit)
     app.state.userdbs = userdbs
+    app.state.explain_prompts = explain_prompts
+    app.state.project_prompts = project_prompts
     app.state.generator = gen
     # Прогоны генерации курса: свои у каждого приложения (web/jobs.py).
     app.state.jobs = jobs.JobRegistry()
@@ -317,6 +324,7 @@ def create_app(
         api_admin_courses,
         api_auth,
         api_lesson,
+        api_project,
         pages,
         pages_admin,
         pages_admin_courses,
@@ -324,6 +332,7 @@ def create_app(
 
     app.include_router(api_auth.router)
     app.include_router(api_lesson.router)
+    app.include_router(api_project.router)
     app.include_router(api_admin.router)
     app.include_router(api_admin_courses.router)
     app.include_router(pages_admin.router)

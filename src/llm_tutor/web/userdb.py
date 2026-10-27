@@ -22,6 +22,7 @@ from llm_tutor.course.legacy import remap_progress
 from llm_tutor.course.seed import apply_course
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
+from llm_tutor.student import explain as explain_logic
 from llm_tutor.student import review
 from llm_tutor.web.courses import RENAMED_COURSES, course_data, get_course
 
@@ -174,6 +175,8 @@ class UserDBPool:
             session_id = repos.get_open_session(conn)
             route = repos.get_session_state(conn, session_id).route if session_id else None
             review.backfill(conn, route, now=time.time())
+            # «Объясни новичку» (срез 93): ранее закрытые занятия заданий не дают.
+            explain_logic.mark_since(conn, time.time())
             if sync_materials(conn, self.materials_path_for(course_id)):
                 logger.info("Материалы обновлены у ученика %s (%s)", user_id, course_id)
         except Exception:
@@ -183,7 +186,7 @@ class UserDBPool:
         return conn
 
     def materials_path_for(self, course_id: str) -> Path:
-        """Файл RAG-материалов курса: у созданного курса — свой, у встроенного — общий.
+        """Файл RAG-материалов курса: у созданного и у демо-курса — свой, у остальных — общий.
 
         Общая БД материалов одна на приложение, а ``chunks.topic_id`` — это
         номер модуля **внутри** курса. У двух курсов номера модулей совпадут, и
@@ -195,6 +198,8 @@ class UserDBPool:
             raise KeyError(course_id)
         if course.root is not None:
             return course.root / "materials.sqlite3"
+        if course.materials_path is not None:
+            return course.materials_path
         return self._materials_path
 
     def lock(self, user_id: int, course_id: str) -> asyncio.Lock:

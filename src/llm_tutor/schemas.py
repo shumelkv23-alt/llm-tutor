@@ -6,12 +6,14 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 Role = Literal["system", "user", "assistant"]
 
 # Откуда пришло свидетельство об ученике (по убыванию надёжности).
-EventSource = Literal["autotest", "checked", "rubric", "dialogue", "self"]
+# ``explain`` — объяснение модуля новичку (срез 85): слабое, закрытые занятия не
+# переоткрывает (``student/route._failures_since``).
+EventSource = Literal["autotest", "checked", "rubric", "dialogue", "self", "explain"]
 
 # Режим прохода узла (см. student/planner.py).
 NodeMode = Literal["skip", "verify", "compressed", "full", "reinforce", "revisit", "review"]
@@ -44,6 +46,53 @@ class Section(BaseModel):
     title: str = Field(min_length=1)
 
 
+class ExplainIdea(BaseModel):
+    """Ключевая идея занятия для «Объясни новичку» (срез 85, на занятие — срез 92).
+
+    ``text`` и ``expect`` видят оценщик и наставник, ученик — только в отчёте;
+    новичку они не передаются никогда.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    # Занятие проставляет загрузчик по месту эталона в seed (срез 92).
+    lesson: str = ""
+    text: str = Field(min_length=1)
+    required: bool = False
+    # Что должен сказать ученик, чтобы идея считалась объяснённой (для оценщика).
+    expect: str = Field(min_length=1)
+
+
+class ExplainPitfall(BaseModel):
+    """Типичная загвоздка занятия: новичок «понимает» с этой ошибкой.
+
+    ``belief`` — фраза новичка (её он и получает), ``fix`` — почему это неверно:
+    видят оценщик и наставник, ученик — в отчёте.
+    """
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(min_length=1)
+    # Занятие проставляет загрузчик по месту эталона в seed (срез 92).
+    lesson: str = ""
+    belief: str = Field(min_length=1)
+    fix: str = Field(min_length=1)
+
+
+class ExplainConfig(BaseModel):
+    """Эталон для «Объясни новичку»: идеи и загвоздки занятия (узла ``concepts.explain``).
+
+    Числа (2–4 идеи, обязательных ≥ 1, загвоздок 1–2) проверяет
+    ``course.seed._check_lesson_explain``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    ideas: list[ExplainIdea]
+    pitfalls: list[ExplainPitfall]
+
+
 class Concept(BaseModel):
     """Узел графа курса (концепт); с разделами — занятие."""
 
@@ -59,6 +108,9 @@ class Concept(BaseModel):
     active: bool = True
     # Разделы занятия по порядку; пусто — узел в старом формате (тема).
     sections: list[Section] = Field(default_factory=list)
+    # Эталон «Объясни новичку» (срез 92): есть — занятие важное, после его
+    # закрытия ученику даётся обязательное объяснение.
+    explain: ExplainConfig | None = None
 
 
 class Edge(BaseModel):
@@ -426,3 +478,203 @@ class SessionState(BaseModel):
     final_weak: bool = False
     # Идущая серия повторения (срез 80); ``None`` — серии нет.
     review: ReviewState | None = None
+
+
+# --- «Объясни новичку» (срез 85): состояние и итог сессии ---
+
+IdeaState = Literal["missing", "partial", "correct", "wrong"]
+
+# Почему сессия закончилась: кнопкой, после «кажется, понял», по лимиту реплик
+# или брошенной (долго без ходов).
+EndReason = Literal["button", "coverage", "limit", "stale"]
+
+
+class IdeaProgress(BaseModel):
+    """Где ученик сейчас с одной идеей эталона."""
+
+    state: IdeaState = "missing"
+    # Дословная цитата ученика, на которой оценщик основал вердикт.
+    quote: str | None = None
+    # Идея стала верной после того, как её затронул наставник: вес вдвое меньше.
+    mentor: bool = False
+
+
+class PitfallUse(BaseModel):
+    """Загвоздка, которую новичок подбросил на ходу ``turn``."""
+
+    id: str
+    turn: int
+    # Исправил ли ученик ошибку новичка (``None`` — ещё не ясно).
+    fixed: bool | None = None
+
+
+class ExplainState(BaseModel):
+    """Живое состояние сессии (JSON в ``explain_sessions.state``)."""
+
+    ideas: dict[str, IdeaProgress] = Field(default_factory=dict)
+    pitfalls_used: list[PitfallUse] = Field(default_factory=list)
+    # Загвоздки, которые ученик назвал сам, без подсказки новичка.
+    pitfalls_named: list[str] = Field(default_factory=list)
+    # Идеи, которые затронул наставник.
+    mentor_ideas: list[str] = Field(default_factory=list)
+    student_turns: int = 0
+    mentor_turns: int = 0
+    pasted_turns: int = 0
+    # Сколько раз ученик просил «просто дай ответ».
+    answer_requests: int = 0
+    # Ходов подряд без изменения покрытия.
+    stalled_turns: int = 0
+    last_pitfall_turn: int | None = None
+    wrap_up_offered: bool = False
+    # Какой запасной вопрос новичка следующий (по кругу).
+    fallback_index: int = 0
+    # Обязательное объяснение завершено и ученик нажал «Продолжить» (срез 93).
+    proceeded: bool = False
+
+
+class IdeaReport(BaseModel):
+    """Идея в отчёте: состояние и — если не верно — эталон."""
+
+    id: str
+    lesson: str
+    state: IdeaState
+    quote: str | None = None
+    mentor: bool = False
+    reference: str | None = None
+
+
+class PitfallReport(BaseModel):
+    """Загвоздка в отчёте; ``fix`` — у пропущенной и у неразобранной (``unclear``)."""
+
+    id: str
+    lesson: str
+    outcome: Literal["named", "fixed", "missed", "unclear"]
+    fix: str | None = None
+
+
+class ExplainReport(BaseModel):
+    """Отчёт сессии (JSON в ``explain_sessions.report``); собирает код."""
+
+    topic_id: int
+    required_done: int
+    required_total: int
+    ideas_done: int
+    ideas_total: int
+    ideas: list[IdeaReport] = Field(default_factory=list)
+    pitfalls: list[PitfallReport] = Field(default_factory=list)
+    # Занятия «повторить»: сначала с ошибками, потом с пробелами.
+    review_lessons: list[str] = Field(default_factory=list)
+    student_turns: int = 0
+    mentor_used: bool = False
+    pasted_turns: int = 0
+    end_reason: EndReason
+
+
+class ExplainSession(BaseModel):
+    """Строка ``explain_sessions``."""
+
+    id: int
+    topic_id: int
+    started_at: float
+    updated_at: float
+    ended_at: float | None = None
+    status: Literal["active", "finished"] = "active"
+    end_reason: EndReason | None = None
+    state: ExplainState = Field(default_factory=ExplainState)
+    report: ExplainReport | None = None
+    # Занятие сессии (срез 92); ``None`` — старая модульная сессия.
+    concept_id: str | None = None
+    # ``required`` — обязательное задание после важного занятия.
+    kind: Literal["required", "voluntary"] = "voluntary"
+
+
+class ExplainTurn(BaseModel):
+    """Строка ``explain_turns``: реплика сессии."""
+
+    id: int
+    session_id: int
+    ts: float
+    role: Literal["student", "novice", "mentor"]
+    content: str
+    meta: dict = Field(default_factory=dict)
+
+
+# --- Проект по курсу (срез 97) ---
+
+ProjectStatus = Literal["idea", "build", "done", "archived"]
+
+
+class ProjectDataset(BaseModel):
+    """Пример открытых данных для проекта: название и ссылка."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    title: str = Field(min_length=1, max_length=120)
+    url: str
+
+    @field_validator("url")
+    @classmethod
+    def _http_only(cls, value: str) -> str:
+        # Ссылка уходит в href страницы: только http(s), не ``javascript:``.
+        if not value.startswith(("http://", "https://")):
+            raise ValueError("ссылка на данные должна начинаться с http:// или https://")
+        return value
+
+
+class ProjectBrief(BaseModel):
+    """Описание проекта курса (``project.json``): рамка, внутри которой ученик выбирает свою идею."""
+
+    model_config = ConfigDict(frozen=True, str_strip_whitespace=True)
+
+    id: str = Field(pattern=r"^[a-z0-9_-]{1,40}$")
+    title: str = Field(min_length=3, max_length=80)
+    summary: str = Field(min_length=1)
+    result: str = Field(min_length=1)
+    # Занятия курса, которые пригодятся (id узлов).
+    lessons: list[str] = Field(default_factory=list, max_length=8)
+    datasets: list[ProjectDataset] = Field(default_factory=list, max_length=5)
+
+
+class ProjectFile(BaseModel):
+    """Файл ``project.json`` курса: шаблон этапов и 1–3 описания."""
+
+    model_config = ConfigDict(frozen=True)
+
+    template: str
+    briefs: list[ProjectBrief] = Field(min_length=1, max_length=3)
+
+
+class ProjectState(BaseModel):
+    """Состояние проекта (JSON в ``projects.state``): карточка, этап, заметки."""
+
+    card: dict[str, str] = Field(default_factory=dict)
+    # Текущий этап в статусе ``build``.
+    stage: str | None = None
+    notes: dict[str, dict[str, str]] = Field(default_factory=dict)
+    done_stages: list[str] = Field(default_factory=list)
+
+
+class Project(BaseModel):
+    """Строка ``projects``."""
+
+    id: int
+    brief_id: str
+    # Копия описания на момент выбора: правка ``project.json`` начатый проект не меняет.
+    brief: ProjectBrief
+    template: str
+    status: ProjectStatus = "idea"
+    state: ProjectState = Field(default_factory=ProjectState)
+    started_at: float
+    updated_at: float
+    done_at: float | None = None
+
+
+class ProjectTurn(BaseModel):
+    """Строка ``project_turns``: реплика чата с наставником."""
+
+    id: int
+    project_id: int
+    ts: float
+    role: Literal["student", "mentor"]
+    content: str
+    meta: dict = Field(default_factory=dict)

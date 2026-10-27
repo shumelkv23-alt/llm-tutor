@@ -29,6 +29,7 @@ from llm_tutor.llm.prompts import EMPTY_GRAPH_REPLY, LLM_FAILURE_REPLY
 from llm_tutor.llm.schemas import TutorReply
 from llm_tutor.schemas import Event, GradeResult, Item, ReviewState, Route, SessionState
 from llm_tutor.student import beta, diagnostic, guide, hints, review, survey
+from llm_tutor.student import explain as explain_logic
 from llm_tutor.student import route as route_mod
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,10 @@ RESUME_KICKOFF_TEXT = "Продолжаем занятие."
 VERIFY_STEP_TEMPLATE = "🔎 Проверка «{name}» — шаг {step}"
 # Рубричные задания просим объяснить словами — это и есть суть проверки.
 VERIFY_EXPLAIN_PREFIX = "Объясни своими словами:"
+# Закрыто важное занятие (срез 93): дальше курс стоит, пока ученик не объяснит его новичку.
+EXPLAIN_NOTE = (
+    "Перед тем как идти дальше — объясни новичку «{name}» своими словами: вкладка «Объясни»."
+)
 # Проход исчерпал задания узла, а серия ещё не набрана.
 VERIFY_EXHAUSTED_REPLY = (
     "Проверить нечем: по этому занятию мало заданий, и мы их уже прошли. "
@@ -879,19 +884,35 @@ async def handle_turn(
                 )
             else:
                 new_state = new_state.model_copy(update={"check_misses": 1})
+        # Занятие ждёт объяснения новичку: урок, разминка и задание — после него.
+        held = False
         if closed_note:
             reply = f"{reply}\n\n{closed_note}"
-            # Граница занятий (срез 81): перед новым занятием — разминка по
-            # просроченному пройденному. Урок или проход начнёт `core/review`,
-            # когда разминка кончится или будет пропущена.
-            warmup = _warmup(conn, graph, new_state, previous=state.route, now=stamp, settings=s)
+            # Граница занятий (срез 93): сначала «Объясни новичку», если закрыто
+            # важное занятие; урок и разминку начнёт `core/explain.proceed`.
+            waiting = explain_logic.pending_lesson(conn, new_state.route, graph.topo_order())
+            warmup = None
+            if waiting is not None:
+                reply = f"{reply}\n\n{EXPLAIN_NOTE.format(name=graph.concept(waiting).name)}"
+                held = True
+            else:
+                # Граница занятий (срез 81): перед новым занятием — разминка по
+                # просроченному пройденному. Урок или проход начнёт `core/review`,
+                # когда разминка кончится или будет пропущена.
+                warmup = _warmup(
+                    conn, graph, new_state, previous=state.route, now=stamp, settings=s
+                )
             if warmup is not None:
                 new_state, warm_note, tail, options = warmup
                 reply = f"{reply}\n\n{warm_note}"
                 warmed = True
             # Следующая тема — урок частями; заявленную (проход) не объясняем,
             # её вопрос выдаст общий `_issue_task` ниже.
-            elif new_state.current_node_id is not None and new_state.mode != "verify":
+            elif (
+                not held
+                and new_state.current_node_id is not None
+                and new_state.mode != "verify"
+            ):
                 explanation, new_state = await _start_lesson(
                     conn, client, model, session_id, new_state, graph, now=stamp, settings=s
                 )
@@ -920,6 +941,7 @@ async def handle_turn(
         if (
             button is None
             and not warmed
+            and not held
             and not (closed_note and new_state.current_node_id is None)
         ):
             new_state, task_text, options = _issue_task(
@@ -1555,6 +1577,9 @@ def _issue_task(
             conn, graph, state, now=now, settings=settings
         )
         if closed_note:
+            waiting = explain_logic.pending_lesson(conn, closed_state.route, graph.topo_order())
+            if waiting is not None:
+                closed_note = f"{closed_note}\n\n{EXPLAIN_NOTE.format(name=graph.concept(waiting).name)}"
             return (
                 closed_state,
                 f"{NO_TASK_FOR_NODE_REPLY}\n\n{closed_note}",

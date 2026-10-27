@@ -154,6 +154,15 @@ class Settings(BaseSettings):
     # прибавиться, поэтому свидетельство слабее.
     repeat_evidence_weight: float = Field(default=0.3, ge=0.0, le=1.0)
 
+    # --- «Объясни новичку», срез 85 ---
+    # Каталог промптов (data/prompts/explain.toml): правятся без кода.
+    prompts_dir: str = "data/prompts"
+    # Скрытый оценщик зовётся каждым ходом — модель дешевле тьюторской.
+    explain_evaluator_model: str = "anthropic/claude-haiku-4.5"
+    # Вес объяснения новичку в модели ученика — как у самооценки: закрепление,
+    # а не проверка.
+    explain_evidence_weight: float = Field(default=0.3, ge=0.0, le=1.0)
+
     # --- Почта: восстановление пароля по ссылке, Срез 71 ---
     # У всех полей есть дефолт: старый .env (без почтовых строк) запускается
     # как раньше — extra="forbid" ловит опечатки в именах, а не отсутствие.

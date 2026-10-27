@@ -23,6 +23,7 @@ from datetime import datetime
 from llm_tutor.config import Settings
 from llm_tutor.course.seed import Course as CourseData
 from llm_tutor.course.seed import main_concept
+from llm_tutor.core import explain as core_explain
 from llm_tutor.core.lesson import course_survey_done, is_closed
 from llm_tutor.core.overview import topic_rows
 from llm_tutor.course.graph import CourseGraph
@@ -235,6 +236,7 @@ ACTION_LABELS = {
     "close_sessions": "Закрытие сессий",
     "grant_admin": "Выдана роль админа",
     "revoke_admin": "Снята роль админа",
+    "view_explain": "Просмотр сессии «Объясни новичку»",
     # Действия над курсами (преподаватель создаёт курс): в журнале видно, что
     # именно делали с курсом, — подробности в поле details.
     "create_course": "Создание курса",
@@ -264,6 +266,8 @@ class StudentCard:
     learning: dict | None = None
     answers: list[dict] = field(default_factory=list)
     log: list[dict] = field(default_factory=list)
+    # Сессии «Объясни новичку» (срез 89); ``None`` — ученик не открыл доступ.
+    explain: list[dict] | None = None
 
 
 def _preview(text: str) -> str:
@@ -334,10 +338,71 @@ def student_card(
         conn = pool.open(account.id, course.id)
         learning = views.learning_view(conn, settings=state.settings)
         answers = _recent_answers(conn)
+        sessions = explain_sessions_for(conn)
     except UNREADABLE:
         logger.exception("БД ученика %s по курсу %s не открывается", account.id, course.id)
         return StudentCard(state="error", **base)
-    return StudentCard(state="ok", learning=learning, answers=answers, **base)
+    return StudentCard(state="ok", learning=learning, answers=answers, explain=sessions, **base)
+
+
+KIND_LABELS = {"required": "обязательное", "voluntary": "добровольное"}
+
+
+def explain_sessions_for(conn: sqlite3.Connection) -> list[dict] | None:
+    """Сессии «Объясни новичку» для карточки; без согласия ученика — ``None``.
+
+    Читается синхронно, в той же ветке, что и остальная карточка (ход не идёт).
+    """
+    if not core_explain.share_enabled(conn):
+        return None
+    names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
+    rows = []
+    for session in repos.list_explain_sessions(conn):
+        report = session.report
+        rows.append(
+            {
+                "id": session.id,
+                "topic": session.topic_id,
+                # Занятие сессии; старая модульная сессия (срез 85) — «Модуль N».
+                "title": names.get(session.concept_id or "") or f"Модуль {session.topic_id}",
+                "kind": KIND_LABELS[session.kind],
+                "started_at": session.started_at,
+                "ended_at": session.ended_at,
+                "coverage": f"{report.required_done} из {report.required_total}" if report else "идёт",
+            }
+        )
+    return rows
+
+
+def explain_session(state, course: Course, user_id: int, session_id: int) -> tuple[str, dict | None]:
+    """Сессия ученика для админа: ``("ok", вид)``, ``("busy", None)`` или ``("hidden", None)``.
+
+    ``hidden`` — нет записи, БД, согласия или такой сессии: для админа это 404,
+    как и несуществующая страница. Ученика с идущим ходом не читаем.
+    """
+    if course.id not in accounts.enrolled_courses(state.accounts, user_id):
+        return "hidden", None
+    pool = state.userdbs
+    if not pool.exists(user_id, course.id):
+        return "hidden", None
+    if pool.lock(user_id, course.id).locked():
+        return "busy", None
+    conn = pool.open(user_id, course.id)
+    if not core_explain.share_enabled(conn):
+        return "hidden", None
+    session = repos.get_explain_session(conn, session_id)
+    if session is None:
+        return "hidden", None
+    names = {concept.id: concept.name for concept in repos.get_concepts(conn)}
+    view = views.explain_session_view(
+        session,
+        repos.get_explain_turns(conn, session.id),
+        repos.get_explain_configs(conn).get(session.concept_id or ""),
+        title=names.get(session.concept_id or "") or f"Модуль {session.topic_id}",
+        max_turns=state.explain_prompts.limits.max_student_turns,
+        lesson_names=names,
+    )
+    return "ok", view
 
 
 # --- Аналитика курса ---

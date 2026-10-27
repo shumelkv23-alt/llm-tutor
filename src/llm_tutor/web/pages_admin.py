@@ -132,6 +132,44 @@ async def student_card_page(
     )
 
 
+@router.get(
+    "/admin/students/{user_id}/explain/{course_id}/{session_id}", response_class=HTMLResponse
+)
+async def explain_session_page(
+    request: Request,
+    user_id: int,
+    course_id: str,
+    session_id: int,
+    user: User = Depends(admin_page_user),
+) -> HTMLResponse:
+    """Сессия «Объясни новичку» — только с согласия ученика; просмотр — в журнал."""
+    account = accounts.get_account(accounts_db(request), user_id)
+    course = courses.get_course(course_id)
+    if account is None or course is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    status, view = admin.explain_session(request.app.state, course, user_id, session_id)
+    if status == "hidden":
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    if status == "ok":
+        # В журнале — кто и чью сессию смотрел, без текста реплик.
+        accounts.log_admin(
+            accounts_db(request), user.id, "view_explain", user_id,
+            {"course": course.id, "session": session_id},
+        )
+    return render(
+        request,
+        "admin_explain.html",
+        "admin",
+        user=user,
+        account=account,
+        course=course,
+        view=view,
+        format_time=admin.format_time,
+        tab="students",
+        **_tabs(request, course, f"/admin/students/{user_id}"),
+    )
+
+
 @router.get("/admin/course", response_class=HTMLResponse)
 async def course_analytics(
     request: Request, refresh: str = "", course: str = "", user: User = Depends(admin_page_user)

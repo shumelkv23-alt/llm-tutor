@@ -5,6 +5,7 @@
 Главная открыта гостю, остальные разделы — только вошедшему (``page_user``).
 """
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -12,14 +13,17 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from llm_tutor.web import accounts
+from llm_tutor.core import project as core_project
+from llm_tutor.db import repos
+from llm_tutor.web import accounts, courses as course_registry
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
 from llm_tutor.web.courses import RENAMED_COURSES, published_courses, student_course
 from llm_tutor.web.security import accounts_db, optional_user, page_user, safe_next
-from llm_tutor.web.views import course_card, learning_view
+from llm_tutor.web.views import COURSE_ERRORS, course_card, learning_view
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,7 @@ NAV: tuple[NavItem, ...] = (
     NavItem("home", "/", "Главная", "home"),
     NavItem("courses", "/courses", "Мои курсы", "book"),
     NavItem("lesson", "/lesson", "Занятие", "lesson"),
+    NavItem("project", "/project", "Проект", "spark"),
     NavItem("profile", "/profile", "Профиль", "user"),
 )
 
@@ -160,6 +165,46 @@ async def lesson_page(
         settings=request.app.state.settings,
     )
     return render(request, "lesson.html", "lesson", user=user, course=card)
+
+
+# «Объясни новичку» переехало во вкладку занятия (срез 94): старые адреса ведут на занятие.
+@router.get("/lesson/{course_id}/explain")
+@router.get("/lesson/{course_id}/explain/{session_id}")
+async def explain_moved(
+    course_id: str, session_id: int | None = None, user: User = Depends(page_user)
+) -> Response:
+    return RedirectResponse(f"/lesson/{course_id}", status_code=303)
+
+
+@router.get("/project", response_class=HTMLResponse)
+async def projects(request: Request, user: User = Depends(page_user)) -> HTMLResponse:
+    """Курсы с проектной работой; данные страница берёт у ``/api/projects``."""
+    return render(request, "projects.html", "project", user=user)
+
+
+@router.get("/project/{course_id}", response_class=HTMLResponse)
+async def project_page(
+    course_id: str, request: Request, user: User = Depends(page_user)
+) -> Response:
+    """Рабочая страница проекта; у курса без проекта её нет, без записи и пока рано — на список."""
+    course = student_course(course_id, include_drafts=user.is_admin)
+    if course is None or course_registry.project_file(course) is None:
+        raise HTTPException(status_code=404, detail="У этого курса нет проекта.")
+    if course_id not in accounts.enrolled_courses(accounts_db(request), user.id):
+        return RedirectResponse("/project", status_code=303)
+    try:
+        conn = request.app.state.userdbs.open(user.id, course.id)
+        started = repos.current_project(conn) is not None
+        passed = started or core_project.course_passed(
+            conn, settings=request.app.state.settings
+        )[2]
+    except (*COURSE_ERRORS, OSError):
+        logger.exception("БД ученика %s по курсу %s не открывается", user.id, course.id)
+        return RedirectResponse("/project", status_code=303)
+    if not passed:
+        return RedirectResponse("/project", status_code=303)
+    card = {"id": course.id, "title": course.title, "published": course.status == "published"}
+    return render(request, "project.html", "project", user=user, course=card)
 
 
 @router.get("/profile", response_class=HTMLResponse)

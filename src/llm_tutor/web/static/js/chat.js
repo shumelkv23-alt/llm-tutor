@@ -18,6 +18,19 @@
 
   const EMPTY_TEXT = "Здесь можно спросить тьютора о теме, попросить пример или подсказку.";
   const SURVEY_TEXT = "Чат откроется после анкеты — она слева.";
+  // «Объясни новичку» (срез 95): пока идёт объяснение, правый чат — наставник
+  // со своей веткой разговора; история урока в нём не показывается.
+  const MENTOR_EMPTY_TEXT = "Застрял? Спроси наставника — он подскажет, но объяснять новичку придётся тебе.";
+  const MENTOR_DONE_TEXT = "Задание выполнено — нажми «Продолжить» во вкладке «Объясни».";
+  const TUTOR_PLACEHOLDER = "Спросите тьютора… Enter — отправить, Shift+Enter — новая строка";
+  const MENTOR_PLACEHOLDER = "Спроси наставника… Enter — отправить, Shift+Enter — новая строка";
+  // Какая ветка сейчас в правом чате: "tutor" или "mentor:<id сессии>".
+  let branch = null;
+  // Режим чата: "tutor" | "mentor" | "done" (задание выполнено, ждём «Продолжить»).
+  let mode = "tutor";
+  // Выбранная вкладка урока: добровольная сессия отдаёт чат наставнику, только пока
+  // открыта вкладка «Объясни»; на остальных чат — по-прежнему тьютор урока.
+  let tab = "theory";
   // Подписи плашки фрагмента (срез 77); в истории их присылает сервер.
   const QUOTE_LABELS = { theory: "Из теории", task: "Из задания", code: "Из моего кода" };
   // Фрагмент, прикреплённый «Спросить…» к полю ввода: {source, text} или null.
@@ -76,7 +89,13 @@
     if (log.children.length) return;
     const empty = document.createElement("p");
     empty.className = "chat-empty";
-    empty.textContent = window.Lesson.state?.survey ? SURVEY_TEXT : EMPTY_TEXT;
+    empty.textContent = window.Lesson.state?.survey
+      ? SURVEY_TEXT
+      : mode === "tutor"
+        ? EMPTY_TEXT
+        : mode === "done"
+          ? MENTOR_DONE_TEXT
+          : MENTOR_EMPTY_TEXT;
     log.append(empty);
   }
 
@@ -124,7 +143,7 @@
   }
 
   function locked() {
-    return Boolean(window.Lesson.state?.survey) || window.Lesson.busy;
+    return Boolean(window.Lesson.state?.survey) || mode === "done" || window.Lesson.busy;
   }
 
   /* --- Фрагмент над полем ввода («Спросить…», срез 77) --- */
@@ -164,7 +183,8 @@
 
   /** Время последней реплики ученика в истории (null — реплик нет). */
   function lastUserTs() {
-    const users = (window.Lesson.state?.messages || []).filter((message) => message.role === "user");
+    const shown = mode === "tutor" ? window.Lesson.state?.messages : window.Lesson.state?.explain?.active?.mentor;
+    const users = (shown || []).filter((message) => message.role === "user");
     return users.length ? users[users.length - 1].ts : null;
   }
 
@@ -173,6 +193,7 @@
     if (window.Lesson.state?.survey) return Promise.resolve(null);
     const quote = focus ? { source: focus.source, text: focus.text } : null;
     const body = quote ? { text: question, quote } : { text: question };
+    if (mode === "mentor") body.to = "mentor";
     return window.Lesson.act("chat", body, { echo: question, quote });
   }
 
@@ -263,9 +284,43 @@
 
   window.Lesson.chat = { append, replace, pending, typing, scrollToEnd, attach, ask, QUOTE_LABELS };
 
+  /** Ветка правого чата по состоянию: тьютор урока или наставник «Объясни новичку». */
+  function branchOf(state) {
+    const active = state.explain?.active;
+    if (active && state.explain.blocked) {
+      return { key: `mentor:${active.id}`, mode: active.status === "active" ? "mentor" : "done" };
+    }
+    if (active && active.status === "active" && tab === "explain") {
+      return { key: `mentor:${active.id}`, mode: "mentor" };
+    }
+    return { key: "tutor", mode: "tutor" };
+  }
+
+  function renderBranch(state) {
+    const next = branchOf(state);
+    mode = next.mode;
+    const mentor = mode !== "tutor";
+    $("#chat-title").textContent = mentor ? "Наставник" : "Тьютор";
+    $("#chat-subtitle").textContent = mentor
+      ? "Помогает тебе объяснить, но не объясняет за тебя"
+      : "Объясняет, подсказывает, проверяет";
+    $("#view-chat-label").textContent = mentor ? "Наставник" : "Чат";
+    typingLine.lastChild.textContent = mentor ? "Наставник печатает…" : "Тьютор печатает…";
+    $("#chat-chips").hidden = mentor;
+    form.setAttribute("aria-label", mentor ? "Вопрос наставнику" : "Сообщение тьютору");
+    $("#chat-log").setAttribute("aria-label", mentor ? "Переписка с наставником" : "Переписка с тьютором");
+    if (next.key !== branch) {
+      // Ветка сменилась (задание началось или закончилось): история — с сервера.
+      const first = branch === null;
+      branch = next.key;
+      if (!first) replace(next.mode === "tutor" ? state.messages : state.explain.active.mentor);
+    }
+  }
+
   let attachedNode = null;
-  window.Lesson.onState((state) => {
-    const off = Boolean(state.survey);
+  function apply(state) {
+    renderBranch(state);
+    const off = Boolean(state.survey) || mode === "done";
     // Фрагмент — про занятие, на котором его выделили: смена занятия или
     // анкета модуля снимают его, иначе вопрос ушёл бы с чужой цитатой (M-2).
     const node = state.node?.id ?? null;
@@ -276,8 +331,20 @@
     document.querySelectorAll("#chat-chips .chip").forEach((chip) => {
       chip.disabled = off;
     });
-    input.placeholder = off ? SURVEY_TEXT : "Спросите тьютора… Enter — отправить, Shift+Enter — новая строка";
+    input.placeholder = state.survey
+      ? SURVEY_TEXT
+      : mode === "done"
+        ? MENTOR_DONE_TEXT
+        : mode === "mentor"
+          ? MENTOR_PLACEHOLDER
+          : TUTOR_PLACEHOLDER;
     renderLessonButton(state);
     placeholder();
+  }
+
+  window.Lesson.onState(apply);
+  document.addEventListener("lesson:tab", (event) => {
+    tab = event.detail;
+    if (window.Lesson.state) apply(window.Lesson.state);
   });
 })();
