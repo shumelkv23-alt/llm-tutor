@@ -18,9 +18,9 @@ import pandas as pd  # noqa: E402
 from pandas.core.groupby import DataFrameGroupBy  # noqa: E402
 from sklearn.datasets import make_classification  # noqa: E402
 from sklearn.ensemble import RandomForestClassifier  # noqa: E402
-from sklearn.linear_model import Lasso, LogisticRegression, Ridge  # noqa: E402
+from sklearn.linear_model import LinearRegression, LogisticRegression  # noqa: E402
 from sklearn.model_selection import train_test_split  # noqa: E402
-from sklearn.neighbors import NearestNeighbors  # noqa: E402
+from sklearn.neighbors import KNeighborsClassifier, NearestNeighbors  # noqa: E402
 from sklearn.preprocessing import StandardScaler  # noqa: E402
 from sklearn.tree import DecisionTreeClassifier  # noqa: E402
 
@@ -62,13 +62,6 @@ def _() -> None:
     assert list(df.iloc[0:2].index) == [0, 1]
 
 
-@check("describe_all_columns")
-def _() -> None:
-    df = pd.DataFrame({"age": [20, 30, 40], "city": ["a", "b", "a"]})
-    assert list(df.describe().columns) == ["age"]
-    assert "city" in df.describe(include="object").columns
-
-
 # --- Модуль 2: визуализация ---
 
 
@@ -92,15 +85,6 @@ def _() -> None:
 # --- Модуль 3: деревья и kNN ---
 
 
-@check("perfect_train_is_best")
-def _() -> None:
-    X, y = make_classification(n_samples=600, n_features=10, flip_y=0.2, random_state=0)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
-    tree = DecisionTreeClassifier(random_state=0).fit(X_train, y_train)
-    assert tree.score(X_train, y_train) == 1.0
-    assert tree.score(X_test, y_test) < 0.9
-
-
 @check("knn_scale_irrelevant")
 def _() -> None:
     rng = np.random.default_rng(0)
@@ -113,7 +97,42 @@ def _() -> None:
     assert set(raw[0]) != set(scaled[0])
 
 
+@check("leaf_not_pure")
+def _() -> None:
+    X, y = make_classification(n_samples=400, n_features=6, flip_y=0.2, random_state=0)
+    tree = DecisionTreeClassifier(max_depth=2, random_state=0).fit(X, y)
+    leaves = tree.apply(X)
+    proba = tree.predict_proba(X)
+    # Хотя бы в одном листе смесь классов: ответ — самый частый, но не единственный.
+    assert any(0 < proba[leaves == leaf][0].min() < 0.5 for leaf in np.unique(leaves))
+    assert all(tree.predict(X[leaves == leaf])[0] == proba[leaves == leaf][0].argmax()
+               for leaf in np.unique(leaves))
+
+
+@check("knn_k1_best")
+def _() -> None:
+    X, y = make_classification(n_samples=400, n_features=6, flip_y=0.2, random_state=0)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+    knn = KNeighborsClassifier(n_neighbors=1).fit(X_train, y_train)
+    assert knn.score(X_train, y_train) == 1.0  # объект — сам себе сосед
+    assert knn.score(X_test, y_test) < 0.9
+    best = KNeighborsClassifier(n_neighbors=15).fit(X_train, y_train)
+    assert best.score(X_test, y_test) > knn.score(X_test, y_test)
+
+
 # --- Модуль 4: линейные модели ---
+
+
+@check("weight_is_importance")
+def _() -> None:
+    rng = np.random.default_rng(0)
+    meters = rng.uniform(0, 1000, size=(200, 1))
+    y = 3.0 * meters[:, 0] / 1000 + rng.normal(0, 0.1, 200)
+    in_m = LinearRegression().fit(meters, y)
+    in_km = LinearRegression().fit(meters / 1000, y)
+    # Тот же признак, те же предсказания — а вес в тысячу раз разный.
+    assert np.allclose(in_m.predict(meters), in_km.predict(meters / 1000))
+    assert abs(in_km.coef_[0] / in_m.coef_[0] - 1000) < 1e-6
 
 
 @check("bigger_c_stronger_reg")
@@ -131,15 +150,6 @@ def _() -> None:
     assert set(np.unique(model.predict(X))) <= {0, 1}
     proba = model.predict_proba(X[:5])
     assert np.allclose(proba.sum(axis=1), 1.0)
-
-
-@check("ridge_zeroes_weights")
-def _() -> None:
-    rng = np.random.default_rng(0)
-    X = rng.normal(size=(200, 10))
-    y = X[:, 0] * 3 + rng.normal(size=200)
-    assert np.count_nonzero(Ridge(alpha=10.0).fit(X, y).coef_ == 0) == 0
-    assert np.count_nonzero(Lasso(alpha=0.5).fit(X, y).coef_ == 0) > 0
 
 
 # --- Модуль 5: бэггинг и лес ---
@@ -163,13 +173,40 @@ def _() -> None:
     assert abs(share - (1 - np.exp(-1))) < 0.01  # ≈ 63% уникальных, ≈ 37% не попали
 
 
-@check("forest_needs_scaling")
+@check("identical_copies")
 def _() -> None:
     X, y = make_classification(n_samples=300, n_features=6, random_state=0)
-    scaled = StandardScaler().fit_transform(X)
-    raw = RandomForestClassifier(n_estimators=50, random_state=0).fit(X, y).predict(X)
-    after = RandomForestClassifier(n_estimators=50, random_state=0).fit(scaled, y).predict(scaled)
-    assert np.mean(raw == after) > 0.99
+    trees = [DecisionTreeClassifier(random_state=0).fit(X, y) for _ in range(10)]
+    votes = np.array([tree.predict(X) for tree in trees])
+    # Копии на одних данных ошибаются одинаково: «толпа» равна одному дереву.
+    assert (votes == votes[0]).all()
+
+
+@check("oob_not_train")
+def _() -> None:
+    X, y = make_classification(n_samples=800, n_features=10, flip_y=0.15, random_state=0)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
+    forest = RandomForestClassifier(n_estimators=300, oob_score=True, random_state=0)
+    forest.fit(X_train, y_train)
+    assert forest.score(X_train, y_train) > 0.99  # на обучающей лес почти идеален
+    assert forest.oob_score_ < 0.95  # OOB — честная оценка, а не точность на обучении
+    assert abs(forest.oob_score_ - forest.score(X_test, y_test)) < 0.06
+
+
+@check("correlated_share")
+def _() -> None:
+    rng = np.random.default_rng(0)
+    signal = rng.normal(size=1000)
+    y = (signal > 0).astype(int)
+    noise = rng.normal(size=(1000, 3))
+    single = np.column_stack([signal, noise])
+    twins = np.column_stack([signal, signal + rng.normal(0, 0.01, 1000), noise])
+    alone = RandomForestClassifier(n_estimators=200, random_state=0).fit(single, y)
+    shared = RandomForestClassifier(n_estimators=200, random_state=0).fit(twins, y)
+    # Важность делится между двойниками: у каждого заметно меньше, чем у одиночки.
+    assert shared.feature_importances_[0] < 0.75 * alone.feature_importances_[0]
+    assert shared.feature_importances_[1] < 0.75 * alone.feature_importances_[0]
+    assert shared.feature_importances_[:2].sum() > 0.8 * alone.feature_importances_[0]
 
 
 def main() -> None:
