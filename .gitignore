@@ -65,3 +65,6 @@ data/courses/
 .superpowers/
 # Рабочие копии агентов-ревьюеров
 .claude/worktrees/
+
+# Демо-данные для показа (scripts/demo_students.py)
+data/demo/
