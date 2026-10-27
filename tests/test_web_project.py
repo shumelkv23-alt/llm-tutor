@@ -349,3 +349,32 @@ async def test_chat_runs_under_student_lock(ready, web_app) -> None:
         await asyncio.sleep(0.1)
         assert not task.done()
     assert (await task).status_code == 200
+
+
+async def test_done_project_kept_while_course_reopened(ready, web_app) -> None:
+    """Аудит среза 101: готовый проект не уходит в архив, пока новый выбрать нельзя."""
+
+    _pass_course(web_app)
+    await _start(ready)
+    await _to_build(ready)
+    for stage, fields in NOTES.items():
+        await ready.put(f"{BASE}/notes", json={"stage": stage, "fields": fields})
+        await ready.post(f"{BASE}/complete", json={"stage": stage})
+    assert (await ready.get(BASE)).json()["project"]["status"] == "done"
+
+    _set_route(web_app, "ahead")  # провалы переоткрыли занятия
+    response = await ready.post(f"{BASE}/archive", json={})
+    assert response.status_code == 409
+    body = (await ready.get(BASE)).json()
+    assert body["project"]["status"] == "done" and body["unlocked"] is False
+
+    _pass_course(web_app)
+    assert (await ready.post(f"{BASE}/archive", json={})).status_code == 200
+
+
+async def test_unfinished_project_can_be_dropped_while_course_reopened(ready, web_app) -> None:
+    """Проект в работе можно бросить и на переоткрытом курсе: ученик сам выбрал это в диалоге."""
+    _pass_course(web_app)
+    await _start(ready)
+    _set_route(web_app, "ahead")
+    assert (await ready.post(f"{BASE}/archive", json={})).status_code == 200

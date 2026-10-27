@@ -36,9 +36,15 @@ class EchoTutor:
 
         await asyncio.sleep(self.delay)
         if schema is ProjectMentorReply:
-            # Наставник проекта (срез 101): подсказка с предложением названия для карточки.
+            # Наставник проекта (срез 101): подсказка с предложением всех полей карточки.
             return ProjectMentorReply(
-                reply="Хорошая тема. Какие данные у вас есть?", proposal={"title": "Отток клиентов"}
+                reply="Хорошая тема. Какие данные у вас есть?",
+                proposal={
+                    "title": "Отток клиентов",
+                    "problem": "Предсказать, уйдёт ли клиент в следующем месяце",
+                    "data": "Telco Customer Churn, около семи тысяч клиентов",
+                    "success": "ROC AUC выше, чем у логистической регрессии",
+                },
             )
         if schema is ExplainObservation:
             # Скрытый оценщик «Объясни новичку»: ничего не заметил (срез 91).

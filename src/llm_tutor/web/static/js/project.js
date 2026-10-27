@@ -162,7 +162,7 @@
     const save = el("button", { class: "btn", type: "button" }, "Сохранить карточку");
     const approve = el("button", { class: "btn primary", type: "button" }, "Утвердить идею");
     const refresh = () => {
-      approve.disabled = busy || !fieldsOk("card", project.card);
+      approve.disabled = !fieldsOk("card", project.card);
     };
     for (const field of project.card) formNode.append(fieldControl("card", field, refresh));
     refresh();
@@ -224,7 +224,7 @@
     const save = el("button", { class: "btn", type: "button" }, "Сохранить");
     const complete = el("button", { class: "btn primary", type: "button" }, "Этап выполнен");
     const refresh = () => {
-      complete.disabled = busy || !fieldsOk(scope, stage.fields);
+      complete.disabled = !fieldsOk(scope, stage.fields);
     };
     for (const field of stage.fields) formNode.append(fieldControl(scope, field, refresh));
     refresh();
@@ -302,7 +302,8 @@
         el("span", { class: `badge${project.status === "done" ? " success" : " primary"}`, text: STATUS[project.status] }),
         project.stage ? ` Этап: ${project.stages.find((s) => s.id === project.stage).title}` : ""
       );
-      restart.hidden = false;
+      // Готовый проект на непройденном курсе остаётся: новый выбрать нельзя, сервер архив не даст.
+      restart.hidden = project.status === "done" && !unlocked;
       restart.querySelector("span").textContent = project.status === "done" ? "Начать новый проект" : "Начать заново";
       content.append(briefSection(), cardSection());
       for (const stage of project.stages) {
@@ -414,7 +415,9 @@
       done ? "Начать новый проект?" : "Начать проект заново?",
       done
         ? "Готовый проект уйдёт в архив, а вы выберете описание заново."
-        : "Текущий проект уйдёт в архив: карточка и заметки не сохранятся на странице.",
+        : unlocked
+          ? "Текущий проект уйдёт в архив: карточка и заметки не сохранятся на странице."
+          : "Текущий проект уйдёт в архив, а новый можно будет выбрать только после прохождения курса.",
       { label: done ? "Начать новый" : "Начать заново", danger: !done }
     );
     if (!ok) return;

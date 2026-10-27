@@ -37,6 +37,10 @@ PROJECT_ERRORS: dict[str, tuple[int, str]] = {
     "missing": (422, "Заполните обязательные поля."),
     "invalid": (422, "Поля заполнены неверно: проверьте названия и длину."),
     "llm": (502, LLM_FAILURE_REPLY),
+    "keep_done": (
+        409,
+        "Готовый проект останется, пока курс не пройден снова: новый выбрать пока нельзя.",
+    ),
 }
 
 
@@ -234,7 +238,7 @@ async def project_complete(
 async def project_archive(ctx: ProjectContext = Depends(project_context)) -> dict:
     async with ctx.lesson.lock:
         try:
-            core.archive(ctx.lesson.conn, now=time.time())
+            core.archive(ctx.lesson.conn, now=time.time(), settings=ctx.lesson.settings)
         except core.ProjectError as error:
             raise _fail(error) from error
         return {"project": None, "briefs": _briefs(ctx)}

@@ -5,9 +5,10 @@
 можно показать ученику, решает этот модуль, а не модель.
 """
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+
+from markdown_it import MarkdownIt
 
 # Обязательный текст карточки и заметок — не короче (после обрезки пробелов).
 MIN_TEXT = 10
@@ -178,18 +179,36 @@ def clean_proposal(template: ProjectTemplate, proposal: Mapping | None) -> dict[
     return cleaned
 
 
-_CODE_BLOCK = re.compile(r"```[^\n]*\n?(.*?)(?:```|\Z)", re.DOTALL)
+# Весь ответ может нести кода не больше, чем в TOTAL_CODE_FACTOR блоках предельной длины:
+# иначе решение «по шагам» — пять блоков по 8 строк — проходило бы проверку.
+TOTAL_CODE_FACTOR = 2
+_MARKDOWN = MarkdownIt("commonmark")
+
+
+def code_lines(text: str) -> tuple[int, int]:
+    """``(самый длинный блок, всего строк)`` кода в ответе, как их нарисует markdown.
+
+    Кодом считаются все блоки commonmark: ограждения из обратных кавычек и ``~~~``
+    (незакрытое тянется до конца) и блоки с отступом в четыре пробела. Тройные
+    кавычки внутри строки блоком не считаются. Пустые строки не в счёт.
+    """
+    longest = total = 0
+    for token in _MARKDOWN.parse(text):
+        if token.type in ("fence", "code_block"):
+            lines = sum(1 for line in token.content.split("\n") if line.strip())
+            longest, total = max(longest, lines), total + lines
+    return longest, total
 
 
 def reply_ok(text: str, *, max_code_lines: int, max_chars: int) -> bool:
-    """Реплику наставника можно показать: не пустая, не длинная, без большого блока кода."""
+    """Реплику наставника можно показать: не пустая, не длинная, без решения кодом.
+
+    Проверка эвристическая: код в прозе без блоков она не ловит.
+    """
     if not text.strip() or len(text) > max_chars:
         return False
-    for match in _CODE_BLOCK.finditer(text):
-        lines = [line for line in match.group(1).split("\n") if line.strip()]
-        if len(lines) > max_code_lines:
-            return False
-    return True
+    longest, total = code_lines(text)
+    return longest <= max_code_lines and total <= max_code_lines * TOTAL_CODE_FACTOR
 
 
 def stage_of(template: ProjectTemplate, stage_id: str) -> Stage:

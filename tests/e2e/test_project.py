@@ -48,10 +48,18 @@ async def test_project_flow(course_passed, live_server) -> None:
         await page.get_by_role("button", name="Взять в карточку").click()
     await expect(page.locator("#f-card-title")).to_have_value("Отток клиентов")
 
+    # Аудит среза 101: после «Взять в карточку» с полным предложением «Утвердить» сразу активна.
     approve = page.get_by_role("button", name="Утвердить идею")
+    await expect(page.locator("#f-card-problem")).to_have_value(CARD["problem"])
+    await expect(approve).to_be_enabled()
+    # Поле, испорченное руками, гасит кнопку, исправленное — возвращает.
+    await page.fill("#f-card-problem", "коротко")
     await expect(approve).to_be_disabled()
-    for key, text in CARD.items():
-        await page.fill(f"#f-card-{key}", text)
+    await page.fill("#f-card-problem", CARD["problem"])
+    await expect(approve).to_be_enabled()
+    # «Сохранить карточку» перерисовывает форму, кнопка остаётся активной.
+    async with page.expect_response("**/project/card"):
+        await page.get_by_role("button", name="Сохранить карточку").click()
     await expect(approve).to_be_enabled()
     async with page.expect_response("**/project/approve"):
         await approve.click()

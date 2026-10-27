@@ -68,6 +68,13 @@ def _block(lines: int) -> str:
         ("а" * 3001, False),
         ("а" * 3000, True),
         (f"Ровно предел:\n{_block(8)}", True),
+        # Аудит среза 101: обходы проверки (markdown рисует кодом не только ```).
+        ("Вот:\n~~~python\n" + "\n".join(f"a{i} = {i}" for i in range(9)) + "\n~~~", False),
+        ("Вот:\n\n" + "\n".join(f"    b{i} = {i}" for i in range(20)), False),
+        ("\n\n".join(_block(8) for _ in range(5)), False),
+        ("\n\n".join(_block(6) for _ in range(3)), False),
+        ("\n\n".join(_block(8) for _ in range(2)), True),
+        ("Вызови ```df.head()``` и посмотри, потом ```df.info()``` тоже.", True),
     ],
 )
 def test_reply_ok(text: str, ok: bool) -> None:
