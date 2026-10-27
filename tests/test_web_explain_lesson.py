@@ -268,8 +268,8 @@ async def test_voluntary_start_stop(held, web_llm, web_app) -> None:
     assert (active["kind"], active["node_id"]) == ("voluntary", "l1_select")
     # Ходы курса не блокируются: добровольное объяснение — не задание.
     assert started.json()["state"]["explain"]["blocked"] is False
-    # Но чат справа — наставник со своей (пока пустой) веткой, а не история урока.
-    assert started.json()["state"]["messages"] == []
+    # Чат справа остаётся историей урока: наставник — только по явной просьбе (to="mentor").
+    assert started.json()["state"]["messages"] != []
     assert (await held.post(f"{BASE}/task", json={})).status_code == 200
 
     await held.post(f"{EXPLAIN}/turn", json={"text": "что-то про loc"})
@@ -301,3 +301,63 @@ async def test_old_explain_pages_redirect(lessons_student) -> None:
         response = await lessons_student.get(path, follow_redirects=False)
         assert response.status_code == 303
         assert response.headers["location"] == f"/lesson/{COURSE}"
+
+
+# --- Аудит среза 96 ---
+
+
+async def test_continue_never_locks_out_when_next_lesson_vanished(held, web_llm, web_app) -> None:
+    """Следующее занятие ушло из графа, пока шло задание: «Продолжить» всё равно разблокирует."""
+    conn = _user_db(web_app)
+    conn.execute("UPDATE concepts SET active = 0 WHERE id = 'l1_group'")
+    conn.commit()
+    _cover(web_llm)
+    await held.post(f"{EXPLAIN}/turn", json={"text": QUOTE})
+
+    response = await held.post(f"{EXPLAIN}/continue", json={})
+
+    assert response.status_code == 200
+    state = response.json()["state"]
+    assert state["explain"]["blocked"] is False
+    assert (await held.post(f"{BASE}/resume", json={})).status_code == 200
+
+
+async def test_continue_failure_still_unblocks(held, web_llm, monkeypatch) -> None:
+    """Любой сбой начала следующего занятия не оставляет ученика заблокированным."""
+    from llm_tutor.core import review as core_review
+
+    async def boom(*args, **kwargs):
+        raise RuntimeError("сбой начала занятия")
+
+    monkeypatch.setattr(core_review, "_begin_lesson", boom)
+    _cover(web_llm)
+    await held.post(f"{EXPLAIN}/turn", json={"text": QUOTE})
+
+    response = await held.post(f"{EXPLAIN}/continue", json={})
+
+    assert response.status_code == 200
+    assert response.json()["state"]["explain"]["blocked"] is False
+
+
+async def test_voluntary_chat_goes_to_tutor_unless_asked(held, web_llm) -> None:
+    _cover(web_llm)
+    await held.post(f"{EXPLAIN}/turn", json={"text": QUOTE})
+    await held.post(f"{EXPLAIN}/continue", json={})
+    await held.post(f"{EXPLAIN}/start", json={"node_id": "l1_select"})
+    tutor, mentor = len(web_llm.calls["tutor"]), len(web_llm.calls["mentor"])
+
+    plain = await held.post(f"{BASE}/chat", json={"text": "Что такое группа?"})
+    assert plain.status_code == 200
+    assert len(web_llm.calls["tutor"]) == tutor + 1 and len(web_llm.calls["mentor"]) == mentor
+
+    asked = await held.post(f"{BASE}/chat", json={"text": "Подскажи про loc", "to": "mentor"})
+    assert asked.status_code == 200
+    assert len(web_llm.calls["mentor"]) == mentor + 1
+    state = await _state(held)
+    assert [m["role"] for m in state["explain"]["active"]["mentor"]] == ["user", "assistant"]
+
+
+async def test_required_chat_ignores_to_and_stays_mentor(held, web_llm) -> None:
+    response = await held.post(f"{BASE}/chat", json={"text": "Не понимаю loc", "to": "tutor"})
+    assert response.status_code == 200
+    assert len(web_llm.calls["mentor"]) == 1

@@ -62,6 +62,10 @@ SHARE_FACT = "explain_share"
 # Реплика ученика в журнале занятия, когда он нажал «Продолжить».
 PROCEED_TEXT = "Продолжить."
 PROCEED_DONE_NOTE = "Отлично, объяснение засчитано. Идём дальше."
+PROCEED_FAILED_NOTE = (
+    "Объяснение засчитано, но следующее занятие не удалось начать. "
+    "Открой его через «Маршрут» или нажми «Продолжить» в уроке."
+)
 
 
 class ExplainError(Exception):
@@ -604,8 +608,10 @@ async def proceed(
 ) -> core_turn.TurnReply:
     """«Продолжить» после выполненного задания: следующее задание, разминка или занятие.
 
-    Отметка ``proceeded`` и запись хода — одним коммитом: сбой не оставит ученика
-    разблокированным без начатого занятия.
+    Отметка ``proceeded`` и запись хода — одним коммитом. Но выполненное задание
+    не должно запирать ученика: если следующее занятие начать не удалось (ушло из
+    графа, сбой записи), ход откатывается, а ученик разблокируется одной отметкой —
+    урок он откроет из «Маршрута».
     """
     done = unproceeded(conn)
     if done is None:
@@ -613,6 +619,10 @@ async def proceed(
     session_id = repos.ensure_open_session(conn, now)
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
+    if state.current_node_id is not None and not graph.has_node(state.current_node_id):
+        # Занятие, к которому вело задание, ушло из курса: идти некуда, ученика не держим.
+        logger.warning("Узел %s больше не в графе, снимаю", state.current_node_id)
+        state = state.model_copy(update={"current_node_id": None, "mode": None})
     text, tail, options, button, warmed = "", None, None, None, False
     waiting = logic.pending_lesson(conn, state.route, graph.topo_order())
     try:
@@ -656,7 +666,15 @@ async def proceed(
         )
     except Exception:
         conn.rollback()
-        raise
+        logger.exception("Не удалось начать занятие после задания «Объясни новичку»")
+        repos.update_explain_session(
+            conn,
+            done.id,
+            state=done.state.model_copy(update={"proceeded": True}),
+            updated_at=now,
+            commit=True,
+        )
+        return core_turn.TurnReply(text=PROCEED_FAILED_NOTE)
     shown = new_state.review.item_id if warmed and new_state.review else new_state.pending_item_id
     return core_turn.TurnReply(
         text=text, options=options, tail=tail, item_id=shown if tail else None, button=button

@@ -29,6 +29,9 @@
   let sending = null;
   // Сессия из истории, открытая для чтения (null — обычный вид вкладки).
   let viewing = null;
+  // Реплика ушла из поля ввода: после ответа возвращаем туда фокус (поле на время
+  // хода выключено, и браузер его теряет).
+  let refocus = false;
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -163,12 +166,15 @@
     if (!clean || window.Lesson.busy) return;
     draft = "";
     sending = clean;
+    refocus = true;
     render(window.Lesson.state);
     const data = await window.Lesson.act("explain/turn", { text: clean }, { toChat: false, typing: false });
     sending = null;
     // Реплика не принята сервером — возвращаем её в поле, чтобы отправить снова.
     if (!data) draft = clean;
     render(window.Lesson.state);
+    if (refocus) panel.querySelector("#explain-input")?.focus();
+    refocus = false;
   }
 
   async function finishVoluntary(session) {

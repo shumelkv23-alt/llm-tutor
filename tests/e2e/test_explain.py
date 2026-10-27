@@ -54,6 +54,8 @@ async def test_required_task_flow(page, explain_server, tmp_path) -> None:
     # Первая реплика новичку — до вопроса наставнику.
     await _say(page, "loc выбирает по меткам индекса, а iloc — по номерам позиций.", 3)
     assert "осталось 1 реплика" in await page.inner_text("#tab-explain .explain-progress")
+    # Фокус остаётся в поле: следующую реплику можно печатать сразу.
+    assert await page.evaluate("document.activeElement.id") == "explain-input"
 
     # Вопрос наставнику — в правый чат, ветка новичка не растёт.
     await show_view(page, "chat")
@@ -92,4 +94,33 @@ async def test_required_task_flow(page, explain_server, tmp_path) -> None:
     await page.click("#tab-btn-explain")
     assert await page.locator("#tab-explain .explain-history li").count() == 1
     assert "Выборка данных" in await page.inner_text("#tab-explain .explain-lessons")
+    assert page.errors == []
+
+
+async def test_voluntary_session_keeps_lesson_chat(page, explain_server, tmp_path) -> None:
+    """Добровольная сессия не отбирает у урока правый чат: наставник — только на вкладке «Объясни»."""
+    await sign_up(page, explain_server)
+    await enroll(page, explain_server)
+    await finish_survey_via_api(page)
+    # Закрыто всё, кроме l1_select; важное занятие l1_select закрыто раньше «сейчас» —
+    # задания нет, а «Объяснить ещё раз» доступно.
+    from helpers import close_module
+
+    close_module(tmp_path / "users", 1)
+    await page.reload()
+    await page.wait_for_selector("#lesson[aria-busy=false]")
+    await page.click("#tab-btn-explain")
+    await page.click("#tab-explain .explain-lessons button >> nth=0")
+    await page.wait_for_selector("#tab-explain .explain-form")
+
+    await show_view(page, "chat")
+    assert await page.inner_text("#chat-title") == "Наставник"
+    await show_view(page, "lesson")
+    await page.click("#tab-btn-theory")
+    await show_view(page, "chat")
+    assert await page.inner_text("#chat-title") == "Тьютор"
+    await show_view(page, "lesson")
+    await page.click("#tab-btn-explain")
+    await show_view(page, "chat")
+    assert await page.inner_text("#chat-title") == "Наставник"
     assert page.errors == []

@@ -28,6 +28,9 @@
   let branch = null;
   // Режим чата: "tutor" | "mentor" | "done" (задание выполнено, ждём «Продолжить»).
   let mode = "tutor";
+  // Выбранная вкладка урока: добровольная сессия отдаёт чат наставнику, только пока
+  // открыта вкладка «Объясни»; на остальных чат — по-прежнему тьютор урока.
+  let tab = "theory";
   // Подписи плашки фрагмента (срез 77); в истории их присылает сервер.
   const QUOTE_LABELS = { theory: "Из теории", task: "Из задания", code: "Из моего кода" };
   // Фрагмент, прикреплённый «Спросить…» к полю ввода: {source, text} или null.
@@ -180,7 +183,8 @@
 
   /** Время последней реплики ученика в истории (null — реплик нет). */
   function lastUserTs() {
-    const users = (window.Lesson.state?.messages || []).filter((message) => message.role === "user");
+    const shown = mode === "tutor" ? window.Lesson.state?.messages : window.Lesson.state?.explain?.active?.mentor;
+    const users = (shown || []).filter((message) => message.role === "user");
     return users.length ? users[users.length - 1].ts : null;
   }
 
@@ -189,6 +193,7 @@
     if (window.Lesson.state?.survey) return Promise.resolve(null);
     const quote = focus ? { source: focus.source, text: focus.text } : null;
     const body = quote ? { text: question, quote } : { text: question };
+    if (mode === "mentor") body.to = "mentor";
     return window.Lesson.act("chat", body, { echo: question, quote });
   }
 
@@ -282,8 +287,11 @@
   /** Ветка правого чата по состоянию: тьютор урока или наставник «Объясни новичку». */
   function branchOf(state) {
     const active = state.explain?.active;
-    if (active && (state.explain.blocked || active.status === "active")) {
+    if (active && state.explain.blocked) {
       return { key: `mentor:${active.id}`, mode: active.status === "active" ? "mentor" : "done" };
+    }
+    if (active && active.status === "active" && tab === "explain") {
+      return { key: `mentor:${active.id}`, mode: "mentor" };
     }
     return { key: "tutor", mode: "tutor" };
   }
@@ -305,12 +313,12 @@
       // Ветка сменилась (задание началось или закончилось): история — с сервера.
       const first = branch === null;
       branch = next.key;
-      if (!first) replace(state.messages);
+      if (!first) replace(next.mode === "tutor" ? state.messages : state.explain.active.mentor);
     }
   }
 
   let attachedNode = null;
-  window.Lesson.onState((state) => {
+  function apply(state) {
     renderBranch(state);
     const off = Boolean(state.survey) || mode === "done";
     // Фрагмент — про занятие, на котором его выделили: смена занятия или
@@ -332,5 +340,11 @@
           : TUTOR_PLACEHOLDER;
     renderLessonButton(state);
     placeholder();
+  }
+
+  window.Lesson.onState(apply);
+  document.addEventListener("lesson:tab", (event) => {
+    tab = event.detail;
+    if (window.Lesson.state) apply(window.Lesson.state);
   });
 })();

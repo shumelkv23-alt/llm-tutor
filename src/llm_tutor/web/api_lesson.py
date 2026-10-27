@@ -329,6 +329,9 @@ class QuoteBody(BaseModel):
 class ChatBody(BaseModel):
     text: str = Field(min_length=1, max_length=8000)
     quote: QuoteBody | None = None
+    # Кому вопрос, пока идёт добровольное «Объясни новичку»: ``mentor`` — наставнику
+    # сессии, иначе тьютору урока. Обязательное задание всегда отвечает наставник.
+    to: Literal["tutor", "mentor"] | None = None
 
 
 class AnswerBody(BaseModel):
@@ -469,8 +472,9 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
     focus = _focus(body.quote) if body.quote else None
     async with ctx.lock:
         session = _explain_session(ctx)
-        if session is not None:
-            # Идёт «Объясни новичку»: чат справа — наставник со своей веткой разговора.
+        if session is not None and (session.kind == "required" or body.to == "mentor"):
+            # Задание «Объясни новичку» (или явная просьба в добровольной сессии):
+            # чат справа — наставник со своей веткой разговора.
             return await _mentor_chat(ctx, session, text)
         if explain.blocking(ctx.conn) is not None:
             raise HTTPException(status_code=409, detail={"message": EXPLAIN_PRESS_CONTINUE})
