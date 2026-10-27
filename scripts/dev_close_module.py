@@ -20,7 +20,7 @@ from pathlib import Path
 
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.db.connection import get_conn
+from llm_tutor.db.connection import get_conn, migrate
 
 
 def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
@@ -59,6 +59,9 @@ def main(argv: list[str] | None = None) -> None:
     for path in paths:
         conn = get_conn(str(path))
         try:
+            # БД могла остаться от прошлой версии приложения: сервер мигрирует её
+            # при открытии, а скрипт открывает файл сам.
+            migrate(conn)
             closed = close_module(conn, args.topic)
         finally:
             conn.close()
