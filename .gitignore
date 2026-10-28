@@ -68,3 +68,5 @@ data/courses/
 
 # Демо-данные для показа (scripts/demo_students.py)
 data/showcase/
+# Материалы RAG демо-курса собираются локально (docs/demo/SHOWCASE.md)
+data/demo/*.sqlite3

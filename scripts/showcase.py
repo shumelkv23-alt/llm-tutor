@@ -17,18 +17,18 @@
     uv run python scripts/showcase.py time-travel --days 3   # сдвинуть сроки повторения
     uv run python scripts/showcase.py close-module 1 2       # «пройти» модули (только для показа)
 
-Ученик — ``--email`` (если учеников один — не нужен), курс — ``--course``.
+Ученик — ``--email`` (если учеников один — не нужен), курс — ``--course``
+(по умолчанию демо-курс ``trees-demo``).
 Команды, которые пишут в БД (``time-travel``, ``close-module``), — только для показа.
 """
 
 import argparse
 import json
-import math
 import os
 import sqlite3
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -90,7 +90,7 @@ def when(ts: float | None, now: float) -> str:
     if ts is None:
         return "—"
     days = (ts - now) / DAY
-    stamp = datetime.fromtimestamp(ts, timezone.utc).strftime("%d.%m %H:%M")
+    stamp = datetime.fromtimestamp(ts, UTC).strftime("%d.%m %H:%M")
     if days >= 0:
         return f"{stamp} UTC (через {days:.1f} дн)"
     return c(f"{stamp} UTC (просрочено {-days:.1f} дн)", "yellow")
@@ -367,7 +367,7 @@ def _mastery_history(conn, graph, node_id: str, s: Settings) -> None:
         last = e["ts"]
         mean = alpha / (alpha + beta_)
         verdict = c("верно", "green") if e["result"] >= 0.5 else c("неверно", "red")
-        rows.append([e["id"], datetime.fromtimestamp(e["ts"], timezone.utc).strftime("%d.%m %H:%M"),
+        rows.append([e["id"], datetime.fromtimestamp(e["ts"], UTC).strftime("%d.%m %H:%M"),
                      e["source"], e["item_id"] or "", verdict, f"{e['weight']:.2f}",
                      f"{alpha:.2f}/{beta_:.2f}", f"{bar(mean, 14)} {mean:.2f}"])
     table(["event", "время UTC", "источник", "задание", "ответ", "вес", "α/β", "оценка"], rows)
@@ -512,7 +512,14 @@ def cmd_explain(s: Settings, args) -> None:
 def cmd_project(s: Settings, args) -> None:
     from llm_tutor.core.overview import course_progress
     from llm_tutor.student import project as project_logic
+    from llm_tutor.web import courses
 
+    course = courses.get_course(args.course)
+    if course is not None and courses.project_file(course) is None:
+        header("Проект по курсу")
+        print(c(f"У курса {args.course} нет project.json — страница «Проект» его не показывает.", "yellow"))
+        print("Проект есть у курса, в каталоге модулей которого лежит project.json (сейчас — mlcourse).")
+        return
     _, path = student_db(s, args.email, args.course)
     conn = open_db(path)
     progress = course_progress(conn, settings=s)
@@ -525,7 +532,7 @@ def cmd_project(s: Settings, args) -> None:
         print(c("Проектов ещё нет.", "dim"))
         return
     table(["id", "описание", "статус", "начат"],
-          [[r["id"], r["brief_id"], r["status"], datetime.fromtimestamp(r["started_at"], timezone.utc).strftime("%d.%m %H:%M")]
+          [[r["id"], r["brief_id"], r["status"], datetime.fromtimestamp(r["started_at"], UTC).strftime("%d.%m %H:%M")]
            for r in rows])
     project = repos.current_project(conn) or repos.get_project(conn, rows[-1]["id"])
     template = project_logic.TEMPLATES[project.template]
@@ -567,10 +574,9 @@ def _snapshot(conn: sqlite3.Connection) -> dict:
     keys = ("current_node_id", "section_id", "mode", "phase", "hint_level", "pending_item_id",
             "check_misses", "passed_sections", "weak_sections", "final_passed", "lesson_part", "task_hinted")
     st = {k: getattr(state, k) for k in keys} if state else {}
-    if state and state.review:
-        st["review"] = f"{state.review.kind}: {state.review.node_id} ({state.review.answered} отвечено)"
-    else:
-        st["review"] = None
+    if state is not None:
+        review = state.review
+        st["review"] = f"{review.kind}: {review.node_id} ({review.answered} отвечено)" if review else None
     steps = {x.concept_id: x.status for x in (state.route.steps if state and state.route else [])}
     one = lambda sql: conn.execute(sql).fetchone()[0]
     return {
@@ -588,7 +594,7 @@ def _snapshot(conn: sqlite3.Connection) -> dict:
 
 
 def _print_changes(conn, graph, old: dict, new: dict) -> None:
-    stamp = c(datetime.now().strftime("%H:%M:%S"), "dim")
+    stamp = c(datetime.now().astimezone().strftime("%H:%M:%S"), "dim")
     out: list[str] = []
     for m in conn.execute("SELECT id, role, content, meta FROM messages WHERE id > ? ORDER BY id", (old["message_id"],)):
         who = c("ученик ", "blue") if m["role"] == "user" else c("тьютор ", "green")
@@ -607,7 +613,12 @@ def _print_changes(conn, graph, old: dict, new: dict) -> None:
         arrow = c("▲", "green") if m1 > m0 else c("▼", "red") if m1 < m0 else "="
         out.append(f"📈 {c('mastery', 'bold')} {name_of(graph, cid)}: α {a0:.2f}→{a:.2f}, β {b0:.2f}→{b:.2f}, "
                    f"оценка {m0:.2f} {arrow} {m1:.2f} {bar(m1, 12)}")
+    if old["state"].get("current_node_id") is None and new["state"].get("current_node_id"):
+        out.append(f"🧭 {c('state', 'bold')} создано: занятие {new['state'].get('current_node_id')}, "
+                   f"раздел {new['state'].get('section_id')}, фаза {new['state'].get('phase')}")
     for key, value in new["state"].items():
+        if old["state"].get("current_node_id") is None:
+            break
         if old["state"].get(key) != value:
             out.append(f"🧭 {c('state', 'bold')}.{key}: {old['state'].get(key)!r} → {c(repr(value), 'yellow')}")
     for cid, status in new["steps"].items():
@@ -684,7 +695,7 @@ def cmd_close_module(s: Settings, args) -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Показ llm_tutor: каждое действие ядра наглядно.")
     parser.add_argument("--email", help="ученик (по умолчанию — единственный записанный)")
-    parser.add_argument("--course", default="mlcourse")
+    parser.add_argument("--course", default="trees-demo", help="id курса (по умолчанию демо-курс)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("students", help="ученики и их базы")
     p = sub.add_parser("context", help="из чего собирается контекст модели")

@@ -8,8 +8,8 @@
 
 ```bash
 uv sync
-# 1. Демо-ученики без ключа модели: Аня (3 занятия закрыты) и Борис (2, с ошибками)
-uv run python scripts/demo_students.py data/showcase
+# 1. Демо-ученики без ключа модели (по умолчанию на демо-курсе trees-demo): Аня и Борис
+uv run python scripts/demo_students.py              # демо-курс trees-demo; --course mlcourse — основной
 
 # 2. Приложение с настоящей моделью поверх демо-данных
 ACCOUNTS_DB_PATH=data/showcase/accounts.sqlite3 USERS_DIR=data/showcase/users \
@@ -23,7 +23,7 @@ ACCOUNTS_DB_PATH=data/showcase/accounts.sqlite3 USERS_DIR=data/showcase/users \
 Пароль обоих демо-учеников — `секретный-пароль`. Для чистого ученика зарегистрируйся
 в браузере: живой ввод убедительнее готовых данных. Нужен ключ `OPENROUTER_API_KEY` в `.env`.
 
-База ученика: `data/showcase/users/<id>/mlcourse.sqlite3`. Узнать `<id>`:
+База ученика: `data/showcase/users/<id>/trees-demo.sqlite3`. Узнать `<id>`:
 `SELECT id, email FROM users;` в `data/showcase/accounts.sqlite3`. В контейнере без
 консоли `sqlite3` открывай базу так: `uv run python -m sqlite3 <файл>`.
 
