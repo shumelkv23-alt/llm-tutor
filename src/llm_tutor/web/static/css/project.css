@@ -1,8 +1,8 @@
 /* Проект по курсу: список курсов и рабочая страница (срез 100).
  *
- * Рабочая страница устроена как занятие: проект слева, чат с наставником
- * справа, доля левой панели — переменная --split (её двигает split.js). На
- * узком экране вместо сплита — переключатель «Проект | Наставник». Цвета —
+ * Рабочая страница (срез 104): слева разговор с наставником, справа сводка
+ * проекта, доля левой панели — переменная --split (её двигает split.js). На
+ * узком экране вместо сплита — переключатель «Наставник | Проект». Цвета —
  * только токены: тёмная тема меняет значения, а не правила.
  */
 
@@ -93,7 +93,7 @@
 }
 
 .project {
-  --split: 70%;
+  --split: 62%;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -164,7 +164,7 @@
   overflow: hidden;
 }
 
-.project .pane-left {
+.project .pane-summary {
   overflow-y: auto;
 }
 
@@ -204,9 +204,12 @@
 .project-content {
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  padding: 20px;
-  max-width: 820px;
+  gap: 18px;
+  padding: 18px 20px;
+}
+
+.project[data-mode="choose"] .project-content {
+  max-width: 980px;
 }
 
 .project-content h2 {
@@ -279,50 +282,152 @@
   margin: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  font-size: 14px;
 }
 
-.project-stage {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px 16px;
+.project-card .project-facts {
+  gap: 2px 0;
+}
+
+.summary-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.summary-block h2 {
+  margin: 0;
 }
 
 .project-stage[data-status="current"] {
-  border-color: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius);
   background: var(--primary-soft);
-}
-
-.project-stage[data-status="ahead"] {
-  color: var(--muted);
-}
-
-.project-stage h3 {
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 16px;
-}
-
-.stage-body {
-  margin-top: 10px;
+  padding: 14px 16px;
 }
 
 .stage-goal {
-  margin: 0 0 6px;
+  margin: 0;
   font-weight: 600;
 }
 
 .stage-checklist {
-  margin: 0 0 14px;
+  margin: 0;
   padding-left: 20px;
   font-size: 14px;
 }
 
-.project-stage[data-status="current"] textarea,
-.project-stage[data-status="current"] input {
+.stage-hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.project-stages {
+  gap: 6px;
+}
+
+.stage-done {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.stage-done summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.stage-mark {
+  color: var(--success, var(--primary));
+}
+
+.stage-ahead {
+  margin: 0;
+  padding: 2px 12px;
+}
+
+/* --- Полоса этапов --- */
+
+.project-steps {
+  display: flex;
+  flex: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+}
+
+.project-steps[hidden] {
+  display: none;
+}
+
+.project-step {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
   background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.step-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-dot {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+
+.project-step[data-status="done"] {
+  color: var(--text);
+}
+
+.project-step[data-status="done"] .step-dot {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.project-step[data-status="current"] {
+  color: var(--text);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  font-weight: 600;
+}
+
+.project-step[data-status="current"] .step-dot {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--surface);
+  background: var(--primary);
+}
+
+/* --- Окна правки --- */
+
+.project-dialog {
+  width: min(560px, calc(100% - 32px));
+  overflow-y: auto;
+}
+
+.project-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.dialog-fields {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
 }
 
 .project-choose h2 {
@@ -454,8 +559,21 @@
   border-top: 1px solid var(--border);
 }
 
-.proposal .btn {
+.proposal-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-top: 10px;
+}
+
+.proposal-stale {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.chat-quick {
+  flex: none;
+  padding: 8px 16px 0;
 }
 
 .project .chat-form {
@@ -525,8 +643,16 @@
   }
 
   .project[data-view="project"] .pane-chat,
-  .project[data-view="chat"] .pane-left {
+  .project[data-view="chat"] .pane-summary {
     display: none;
+  }
+
+  .project-steps {
+    overflow-x: auto;
+  }
+
+  .project-step {
+    flex: none;
   }
 }
 
@@ -542,4 +668,19 @@
   .project .msg {
     max-width: 100%;
   }
+}
+
+/* Выбор описания: чат ещё не нужен, сводка на всю ширину. */
+.project[data-mode="choose"] .pane-chat,
+.project[data-mode="choose"] .splitter,
+.project[data-mode="choose"] .view-switch {
+  display: none;
+}
+
+.project[data-mode="choose"] .split {
+  display: block;
+}
+
+.project[data-mode="choose"][data-view] .pane-summary {
+  display: flex;
 }

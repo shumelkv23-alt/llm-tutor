@@ -99,3 +99,33 @@ def test_projects_js_has_no_inner_html() -> None:
 def test_project_css_has_no_external_urls() -> None:
     css = (Path(STATIC_DIR) / "css" / "project.css").read_text(encoding="utf-8")
     assert "http://" not in css and "https://" not in css and "@import" not in css
+
+
+# --- Разговор вместо форм (срез 104) ---
+
+
+async def test_project_page_layout(ready, web_app) -> None:
+    """Чат слева, сводка справа, полоса этапов, окна правки и быстрая кнопка."""
+    _pass_course(web_app)
+    await _start(ready)
+    html = (await ready.get("/project/mlcourse")).text
+    for marker in (
+        'id="project-steps"', 'id="pane-chat"', 'id="pane-summary"',
+        'id="card-dialog"', 'id="stage-dialog"', 'id="quick-reply"',
+    ):
+        assert marker in html, marker
+    assert html.index('id="pane-chat"') < html.index('id="splitter"') < html.index('id="pane-summary"')
+    assert 'data-split-default="62"' in html
+    assert html.count('class="project-dialog"') == 2
+
+
+def test_project_js_uses_new_actions() -> None:
+    code = _source("project.js")
+    for action in ("`${api}/accept`", '"data-action": "take"', '"data-action": "accept"', '"data-action": "edit"'):
+        assert action in code, action
+    assert "quick_reply" in code
+
+
+def test_split_js_has_project_default_and_own_key() -> None:
+    code = _source("split.js")
+    assert "splitDefault" in code and "llmTutor.splitProject" in code and '"llmTutor.split"' in code

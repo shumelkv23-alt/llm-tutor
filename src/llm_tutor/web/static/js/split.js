@@ -1,14 +1,13 @@
 /* Ползунок между уроком и чатом: доля левой панели 45–80 %, по умолчанию 70 %.
+ * На странице проекта левая панель — чат, по умолчанию 62 % (data-split-default).
  *
  * Мышь и палец (pointer events), клавиатура (←/→ шаг 2 %, Home/End — пределы),
  * двойной клик — снова 70/30. Чат не уже 280 px. Доля запоминается в
  * localStorage; без хранилища страница просто начинает с 70/30.
  */
 (() => {
-  const KEY = "llmTutor.split";
   const MIN = 45;
   const MAX = 80;
-  const DEFAULT = 70;
   const STEP = 2;
   const CHAT_MIN = 280;
   const HANDLE = 12;
@@ -16,7 +15,12 @@
   const split = document.getElementById("split");
   // Тот же ползунок работает на странице проекта (срез 100): контейнер зовётся #project.
   const lesson = document.getElementById("lesson") || document.getElementById("project");
-  const left = lesson.id === "project" ? "Проект" : "Урок";
+  const onProject = lesson.id === "project";
+  // На странице проекта своя доля: слева чат с наставником (срез 104).
+  const KEY = onProject ? "llmTutor.splitProject" : "llmTutor.split";
+  const DEFAULT = Number(lesson.dataset.splitDefault) || 70;
+  const left = onProject ? "Наставник" : "Урок";
+  const right = onProject ? "проект" : "чат";
   const handle = document.getElementById("splitter");
   let value = DEFAULT;
   // Что выбрал ученик: узкое окно ограничивает долю, но выбор не забывается.
@@ -58,7 +62,7 @@
     const rounded = Math.min(Math.round(value), maxRounded);
     handle.setAttribute("aria-valuenow", String(rounded));
     handle.setAttribute("aria-valuemax", String(maxRounded));
-    handle.setAttribute("aria-valuetext", `${left} ${rounded}%, чат ${100 - rounded}%`);
+    handle.setAttribute("aria-valuetext", `${left} ${rounded}%, ${right} ${100 - rounded}%`);
   }
 
   function fromPointer(event) {
