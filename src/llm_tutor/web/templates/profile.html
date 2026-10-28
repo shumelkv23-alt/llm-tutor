@@ -57,9 +57,8 @@
   {% if card.status != 'error' %}
   <section class="panel knowledge" id="knowledge" aria-labelledby="knowledge-title" data-course="{{ card.id }}" data-href="{{ card.href }}">
     <div class="panel-header">
-      <div><p class="eyebrow">Карта знаний</p><h2 id="knowledge-title">Как связаны занятия</h2></div>
+      <div><p class="eyebrow" id="knowledge-title">Карта знаний</p></div>
     </div>
-    <p class="muted kg-lead">Точка — занятие, линия — «нужно до». Чем крупнее точка, тем больше занятий от неё зависит. Нажмите на занятие, чтобы открыть его карточку.</p>
     <div class="kg-stage" id="kg-stage">
       <canvas id="kg-canvas" aria-hidden="true"></canvas>
       <div class="kg-tip" id="kg-tip" hidden></div>
