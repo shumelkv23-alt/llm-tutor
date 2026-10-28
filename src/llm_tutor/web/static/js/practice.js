@@ -11,6 +11,7 @@
     choice: "Выбор ответа",
     short: "Короткий ответ",
     open: "Ответ своими словами",
+    spoken: "Голосовой ответ",
     code: "Код",
   };
   // Живут до следующего состояния: вердикт ответа и «тема закрыта».
@@ -18,6 +19,8 @@
   let closedNote = null;
   let previous = null;
   let selected = null;
+  // Запись голоса живёт до перерисовки панели (js/voice.js).
+  let voice = null;
   // Недописанные ответы по заданиям: панель перерисовывается на каждом ходу,
   // и без этого текст пропал бы от любого вопроса в чат или сбоя сети.
   const drafts = new Map();
@@ -93,6 +96,54 @@
     return wrap;
   }
 
+  /**
+   * Кнопка «сказать ответ» у текстового поля. У голосового задания панель
+   * заметная и стоит над полем; у открытого — компактная, под полем.
+   * Расшифровка вставляется в поле и не отправляется сама: её можно поправить.
+   */
+  function voicePanel(item, field) {
+    const spoken = item.type === "spoken";
+    const box = el("div", spoken ? "voice-panel" : "voice-bar");
+    if (!window.Voice || !window.Voice.available()) {
+      if (spoken) {
+        box.append(
+          el("p", "form-hint", "Голосовой ввод в этом браузере недоступен — ответьте текстом.")
+        );
+        return box;
+      }
+      box.hidden = true;
+      return box;
+    }
+    const micButton = el("button", `btn ${spoken ? "primary" : "ghost"} voice-btn`);
+    micButton.type = "button";
+    micButton.dataset.turn = "";
+    micButton.append(icon("mic"), el("span", "voice-label", spoken ? "Записать ответ" : "Наговорить"));
+    const status = el("p", "voice-status");
+    status.hidden = true;
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    box.append(micButton, status);
+    if (spoken) {
+      box.append(
+        el("p", "form-hint", "Скажите ответ вслух — расшифровка появится в поле ниже, её можно поправить перед отправкой.")
+      );
+    }
+    voice = window.Voice.create({
+      button: micButton,
+      status,
+      label: spoken ? "Записать ответ" : "Наговорить",
+      onText(text) {
+        const clean = text.trim();
+        if (!clean) return;
+        const current = field.value.trimEnd();
+        field.value = current ? `${current} ${clean}` : clean;
+        field.dispatchEvent(new Event("input"));
+        field.focus();
+      },
+    });
+    return box;
+  }
+
   function answerForm(item) {
     if (item.runnable) return codeActions();
     const form = el("form", "practice-answer");
@@ -142,11 +193,18 @@
         field.autocomplete = "off";
         field.spellcheck = false;
       } else {
-        field.rows = item.type === "code" ? 8 : 5;
-        field.placeholder = item.type === "code" ? "# Ваш код на Python" : "Объясните своими словами";
+        field.rows = item.type === "code" ? 8 : item.type === "spoken" ? 4 : 5;
+        field.placeholder =
+          item.type === "code"
+            ? "# Ваш код на Python"
+            : item.type === "spoken"
+              ? "Ответ голосом или текстом"
+              : "Объясните своими словами";
         if (item.type === "code") field.classList.add("mono");
       }
+      if (item.type === "spoken") form.append(voicePanel(item, field));
       form.append(field);
+      if (item.type === "open") form.append(voicePanel(item, field));
       if (item.type === "code") {
         form.append(el("p", "form-hint", "Скоро код можно будет запустить и проверить тестами во вкладке «Код»."));
       }
@@ -191,6 +249,11 @@
   }
 
   function render(state) {
+    // Панель перерисовывается — старая запись уже некуда вставит текст.
+    if (voice) {
+      voice.destroy();
+      voice = null;
+    }
     if (!state || state.survey) return;
     panel.replaceChildren();
     const wrap = el("div", "practice");

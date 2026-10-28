@@ -1,0 +1,533 @@
+{
+  "course": "Теоретический минимум по Big Data",
+  "topic": {
+    "number": 2,
+    "title": "Кластеризация и снижение размерности",
+    "intro": "Научимся находить группы в данных без меток и сжимать десятки признаков до нескольких осмысленных направлений.",
+    "survey": {
+      "level_key": "t02_level",
+      "level_question": "Насколько ты знаком с темой «Кластеризация и снижение размерности»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t02_b1",
+          "title": "Кластеризация k-средних",
+          "question": "Насколько уверенно ты разбираешься в теме «кластеризация k-средних»?",
+          "example": "Центры, назначение объектов и масштабирование признаков.",
+          "concepts": [
+            "t02_lesson4"
+          ]
+        },
+        {
+          "key": "t02_b2",
+          "title": "Сколько кластеров и чего ждать от метода",
+          "question": "Насколько уверенно ты разбираешься в теме «сколько кластеров и чего ждать от метода»?",
+          "example": "Метод локтя, силуэт и ограничения k-средних.",
+          "concepts": [
+            "t02_lesson5"
+          ]
+        },
+        {
+          "key": "t02_b3",
+          "title": "Метод главных компонент",
+          "question": "Насколько уверенно ты разбираешься в теме «метод главных компонент»?",
+          "example": "PCA: новые оси, объяснённая дисперсия и интерпретация.",
+          "concepts": [
+            "t02_lesson6"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t02_b1",
+        "t02_b2"
+      ],
+      "foundation": [
+        "t02_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t02_lesson4",
+      "name": "Кластеризация k-средних",
+      "difficulty": 0.4,
+      "description": "Центры, назначение объектов и масштабирование признаков.",
+      "source_url": null,
+      "topic_id": 2,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Как работает k-средних"
+        },
+        {
+          "id": "sec2",
+          "title": "Пример и интерпретация"
+        }
+      ]
+    },
+    {
+      "id": "t02_lesson5",
+      "name": "Сколько кластеров и чего ждать от метода",
+      "difficulty": 0.4,
+      "description": "Метод локтя, силуэт и ограничения k-средних.",
+      "source_url": null,
+      "topic_id": 2,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Сколько кластеров"
+        },
+        {
+          "id": "sec2",
+          "title": "Ограничения"
+        }
+      ]
+    },
+    {
+      "id": "t02_lesson6",
+      "name": "Метод главных компонент",
+      "difficulty": 0.4,
+      "description": "PCA: новые оси, объяснённая дисперсия и интерпретация.",
+      "source_url": null,
+      "topic_id": 2,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Снижение размерности"
+        },
+        {
+          "id": "sec2",
+          "title": "Компоненты и интерпретация"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t02_lesson4",
+      "to_id": "t02_lesson5",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t02_lesson5",
+      "to_id": "t02_lesson6",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 16,
+      "prompt": "Какие два шага повторяет k-средних?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Назначение объектов ближайшему центру и пересчёт центров",
+        "Сортировка объектов и выбор медианы",
+        "Построение дерева и обрезка",
+        "Вычисление корреляции и отбор признаков"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 17,
+      "prompt": "Зачем масштабировать признаки перед k-средних?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Чтобы алгоритм работал без k",
+        "Чтобы кластеры стали упорядоченными",
+        "Чтобы удалить выбросы",
+        "Иначе признак с большим разбросом доминирует в расстоянии"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 18,
+      "prompt": "Почему запускают алгоритм несколько раз?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Иначе не считается расстояние",
+        "Чтобы увеличить k",
+        "Результат зависит от начальных центров",
+        "Каждый запуск даёт новый набор данных"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 19,
+      "prompt": "Что обычно вычисляют как среднее объектов кластера? Напишите одно слово.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "центр",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 20,
+      "prompt": "После k-средних кластеры получились вытянутыми и пересекающимися. Что это значит?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Допущение алгоритма о сферических кластерах нарушено",
+        "Нужно уменьшить k до 1",
+        "Данные обязательно содержат ошибки",
+        "Признаки не нужно масштабировать"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 21,
+      "prompt": "Что показывает метод локтя?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Точное оптимальное k",
+        "Число выбросов",
+        "Важность признаков",
+        "Перелом в зависимости внутрикластерной суммы квадратов от k"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 22,
+      "prompt": "Что означает значение силуэта, близкое к 1?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Все объекты в одном кластере",
+        "Признаки не масштабированы",
+        "Кластер хорошо отделён от соседних",
+        "Кластер переполнен"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 23,
+      "prompt": "Почему выбросы сдвигают кластеры k-средних?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Выбросы увеличивают k",
+        "Центр считается как среднее и тянется к выбросу",
+        "Выбросы удаляются автоматически",
+        "Алгоритм считает медиану"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 24,
+      "prompt": "Какой алгоритм ищет кластеры произвольной формы, не задавая k заранее? Напишите аббревиатуру.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "DBSCAN",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 25,
+      "prompt": "Метод локтя не дал явного перелома. Что разумно сделать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Всегда брать k=2",
+        "Отказаться от кластеризации",
+        "Увеличить число признаков в десять раз",
+        "Проверить несколько k и их устойчивость, опираясь на смысл задачи"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 26,
+      "prompt": "Что максимизирует первая главная компонента?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Корреляцию с целевой переменной",
+        "Количество кластеров",
+        "Объяснённую дисперсию данных",
+        "Число признаков"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 27,
+      "prompt": "Почему перед PCA важно масштабировать признаки?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Это ускоряет только визуализацию",
+        "Иначе компоненты определятся единицами измерения",
+        "PCA не работает с числами",
+        "Иначе данные станут категориальными"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 28,
+      "prompt": "Что означает, что компоненты ортогональны?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Их направления не коррелируют друг с другом",
+        "Они всегда имеют равную дисперсию",
+        "Они совпадают с исходными признаками",
+        "Их нельзя изобразить на графике"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 29,
+      "prompt": "Как называется доля разброса, которую объясняет компонента? Напишите слово после «объяснённая».",
+      "answer_type": "short",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "дисперсия",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 30,
+      "prompt": "Для чего PCA подходит меньше всего?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Для сжатия признаков",
+        "Для борьбы с мультиколлинеарностью",
+        "Для поиска нелинейных структур в данных",
+        "Для визуализации многомерных данных"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 92,
+      "prompt": "Объясни вслух, как k-средних разбивает точки на кластеры. Почему результат зависит от начальных центроидов и что на самом деле означает номер кластера, который получила точка?",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 2,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 2,
+      "name": "Голосом: k-средних",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 4,
+      "rubric_id": 2,
+      "criterion": "Описано, что точки относят к ближайшему центроиду, а центроиды пересчитываются как средние и процесс повторяется до сходимости",
+      "weight": 1.0,
+      "positive_example": "«Каждую точку отдаём ближайшему центру, потом центры сдвигаем в среднее»",
+      "negative_example": "«Алгоритм просто делит точки пополам по порядку»",
+      "active": true
+    },
+    {
+      "id": 5,
+      "rubric_id": 2,
+      "criterion": "Сказано, что от инициализации зависит локальный оптимум: разные старты могут дать разные разбиения",
+      "weight": 1.0,
+      "positive_example": "«С неудачных центров алгоритм застрянет в плохом локальном минимуме»",
+      "negative_example": "«Результат всегда один и тот же при любом старте»",
+      "active": true
+    },
+    {
+      "id": 6,
+      "rubric_id": 2,
+      "criterion": "Объяснено, что метка кластера произвольна и не имеет смысла без интерпретации центров/состава",
+      "weight": 1.0,
+      "positive_example": "«Кластер 0 — это не „худший“, просто номер; смысл даёт профиль центра»",
+      "negative_example": "«Номер кластера показывает качество точки»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

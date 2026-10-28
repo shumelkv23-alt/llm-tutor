@@ -19,7 +19,7 @@ from llm_tutor.config import Settings, get_settings
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.web import accounts, courses
 from llm_tutor.web.app import _project_path
-from llm_tutor.web.courses import get_course, published_courses
+from llm_tutor.web.courses import BUILTIN_COURSE, get_course
 from llm_tutor.web.userdb import UserDBPool
 
 
@@ -98,7 +98,9 @@ def main(argv: list[str] | None = None, *, settings: Settings | None = None) -> 
     legacy = commands.add_parser("import-legacy", help="перенести БД Telegram-бота в аккаунт")
     legacy.add_argument("--email", required=True)
     legacy.add_argument("--db", default="data/llm_tutor.sqlite3")
-    legacy.add_argument("--course", default=published_courses()[0].id)
+    # Старую БД Telegram-бота переносим на прежний встроенный курс: из каталога
+    # он скрыт, но по прямому id открывается — там же лежит его прогресс.
+    legacy.add_argument("--course", default=BUILTIN_COURSE)
     for name, help_text in (
         ("make-admin", "выдать аккаунту роль админа"),
         ("revoke-admin", "снять с аккаунта роль админа"),

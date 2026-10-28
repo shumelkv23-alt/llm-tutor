@@ -1526,10 +1526,13 @@ dialog p {
     gap: 8px;
   }
 
+  /* У админа пунктов шесть, и с прежними зазорами и боковыми отступами они не
+     влезали в 320px, растягивая страницу («Редактор курсов» шире соседей). */
   .main-nav {
     order: 3;
     width: 100%;
     margin: 0;
+    gap: 2px;
     justify-content: space-between;
   }
 
@@ -1538,7 +1541,7 @@ dialog p {
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    padding: 6px 2px;
+    padding: 6px 0;
     font-size: 11px;
     text-align: center;
   }

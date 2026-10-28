@@ -428,6 +428,75 @@
   line-height: 1.45;
 }
 
+/* --- Голосовой ввод (js/voice.js) --- */
+
+.voice-btn {
+  flex: none;
+}
+
+.voice-btn.recording {
+  color: var(--danger);
+  border-color: var(--danger);
+  background: var(--danger-soft);
+  animation: voice-pulse 1.6s ease-in-out infinite;
+}
+
+/* Пульс — единственный признак записи, кроме подписи «Стоп». */
+@keyframes voice-pulse {
+  50% {
+    box-shadow: 0 0 0 4px var(--danger-soft);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-btn.recording {
+    animation: none;
+  }
+}
+
+.voice-status {
+  margin: 0 16px 8px;
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.voice-status[hidden] {
+  display: none;
+}
+
+.voice-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.voice-panel .voice-status,
+.voice-bar .voice-status {
+  margin: 0;
+}
+
+.voice-panel .form-hint,
+.voice-panel .voice-btn {
+  justify-self: start;
+}
+
+.voice-panel .form-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.voice-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 /* --- Фрагмент, о котором спрашивает ученик (срез 77) --- */
 
 .chat-quote {

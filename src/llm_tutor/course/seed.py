@@ -21,7 +21,7 @@ from pathlib import Path
 from markdown_it import MarkdownIt
 from pydantic import BaseModel, Field, ValidationError
 
-from llm_tutor.course.graph import CourseGraph
+from llm_tutor.course.graph import CourseGraph, CourseGraphError
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Criterion, Edge, Item, Rubric, Topic
 
@@ -451,7 +451,12 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     rubrics = [rubric for seed in ordered for rubric in seed.rubrics]
     criteria = [criterion for seed in ordered for criterion in seed.criteria]
     _check_references(nodes, items, rubrics, criteria)
-    CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
+    try:
+        CourseGraph(nodes, edges)  # цикл, битое ребро, ребро вперёд между модулями
+    except CourseGraphError as error:
+        # Обещание докстроки — SeedError: иначе админка отдала бы 500 вместо
+        # понятного «курс не соберётся» (цикл после правки рёбер руками).
+        raise SeedError(str(error)) from error
     warnings = _check_topics(ordered)
     warnings.extend(_check_lessons(ordered, items))
     legacy = _merge_legacy(ordered, nodes)
@@ -535,7 +540,7 @@ def nodes_without_theory(seed: Seed | Course) -> list[str]:
 
 
 def items_without_rubric(seed: Seed | Course) -> list[int]:
-    """Открытые и код-задания без рубрики: проверить их нечем, но они грузятся.
+    """Открытые, голосовые и код-задания без рубрики: проверить их нечем, но они грузятся.
 
     Задание не выдаётся (рубрики нет), но автору об этом надо сказать вслух —
     иначе вопрос просто пропадёт из практики.
@@ -543,7 +548,7 @@ def items_without_rubric(seed: Seed | Course) -> list[int]:
     return sorted(
         item.id
         for item in seed.items
-        if item.answer_type in ("open", "code") and item.rubric_id is None
+        if item.answer_type in ("open", "code", "spoken") and item.rubric_id is None
     )
 
 

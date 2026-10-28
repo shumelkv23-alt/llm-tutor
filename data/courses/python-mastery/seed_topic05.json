@@ -1,0 +1,533 @@
+{
+  "course": "Python: к вершинам мастерства",
+  "topic": {
+    "number": 5,
+    "title": "Классы данных и модель объектов",
+    "intro": "Соберём классы данных без шаблонного кода и разберёмся, чем ссылка отличается от значения.",
+    "survey": {
+      "level_key": "t05_level",
+      "level_question": "Насколько ты знаком с темой «Классы данных и модель объектов»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t05_b1",
+          "title": "NamedTuple и @dataclass",
+          "question": "Насколько уверенно ты разбираешься в теме «namedtuple и @dataclass»?",
+          "example": "Два способа описать запись: неизменяемый кортеж и сгенерированный класс.",
+          "concepts": [
+            "t05_lesson13"
+          ]
+        },
+        {
+          "key": "t05_b2",
+          "title": "Опции полей и пост-инициализация",
+          "question": "Насколько уверенно ты разбираешься в теме «опции полей и пост-инициализация»?",
+          "example": "default_factory, init=False, ClassVar и __post_init__.",
+          "concepts": [
+            "t05_lesson14"
+          ]
+        },
+        {
+          "key": "t05_b3",
+          "title": "Ссылки, изменяемость и копирование",
+          "question": "Насколько уверенно ты разбираешься в теме «ссылки, изменяемость и копирование»?",
+          "example": "Алиасы, is и ==, поверхностная и глубокая копия, время жизни объектов.",
+          "concepts": [
+            "t05_lesson15"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t05_b1",
+        "t05_b2"
+      ],
+      "foundation": [
+        "t05_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t05_lesson13",
+      "name": "NamedTuple и @dataclass",
+      "difficulty": 0.7,
+      "description": "Два способа описать запись: неизменяемый кортеж и сгенерированный класс.",
+      "source_url": null,
+      "topic_id": 5,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Именованные кортежи"
+        },
+        {
+          "id": "sec2",
+          "title": "@dataclass"
+        }
+      ]
+    },
+    {
+      "id": "t05_lesson14",
+      "name": "Опции полей и пост-инициализация",
+      "difficulty": 0.7,
+      "description": "default_factory, init=False, ClassVar и __post_init__.",
+      "source_url": null,
+      "topic_id": 5,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Поля и значения по умолчанию"
+        },
+        {
+          "id": "sec2",
+          "title": "__post_init__"
+        }
+      ]
+    },
+    {
+      "id": "t05_lesson15",
+      "name": "Ссылки, изменяемость и копирование",
+      "difficulty": 0.7,
+      "description": "Алиасы, is и ==, поверхностная и глубокая копия, время жизни объектов.",
+      "source_url": null,
+      "topic_id": 5,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Ссылки и алиасы"
+        },
+        {
+          "id": "sec2",
+          "title": "Копирование и время жизни"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t05_lesson13",
+      "to_id": "t05_lesson14",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t05_lesson14",
+      "to_id": "t05_lesson15",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 61,
+      "prompt": "Чем namedtuple отличается от обычного класса с полями?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Он всегда изменяемый",
+        "Он не поддерживает распаковку",
+        "Он хранит поля в словаре",
+        "Это неизменяемый подкласс tuple"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 62,
+      "prompt": "Что генерирует @dataclass?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "__iter__ и __getitem__",
+        "Ничего, это просто маркер",
+        "__init__, __repr__ и __eq__",
+        "Только __init__"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 63,
+      "prompt": "Что даёт @dataclass(frozen=True)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Запрет сравнения",
+        "Запрет присваивания полей и хешируемость",
+        "Ускорение всех методов",
+        "Автоматическое наследование от tuple"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 64,
+      "prompt": "Какая аннотация из typing создаёт именованный кортеж? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "NamedTuple",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 65,
+      "prompt": "Нужна неизменяемая запись из двух чисел, которую можно использовать как ключ dict. Что выбрать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "@dataclass без frozen",
+        "Обычный список",
+        "dict",
+        "NamedTuple"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 66,
+      "prompt": "Почему items: list = [] в dataclass — ошибка?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Список нельзя сериализовать",
+        "dataclass не поддерживает list",
+        "Все экземпляры получат один и тот же список",
+        "Python запрещает аннотацию list"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 67,
+      "prompt": "Что делает field(default_factory=list)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Делает поле обязательным",
+        "Создаёт новый список для каждого экземпляра",
+        "Копирует список из класса",
+        "Запрещает изменение списка"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 68,
+      "prompt": "Когда вызывается __post_init__?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "После сгенерированного __init__",
+        "До создания экземпляра",
+        "Только при сравнении",
+        "При каждом обращении к полю"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 69,
+      "prompt": "Какая опция field исключает поле из __init__? Напишите имя опции.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "init=False",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 70,
+      "prompt": "В frozen dataclass нужно вычислить поле в __post_init__. Как его записать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Через field(default=...)",
+        "Это невозможно",
+        "object.__setattr__(self, 'поле', значение)",
+        "self.поле = значение"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 71,
+      "prompt": "Что сравнивает оператор is?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Длину объектов",
+        "Идентичность объектов",
+        "Значения объектов",
+        "Типы объектов"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 72,
+      "prompt": "Что скопирует copy.copy для вложенного списка?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Только внешний контейнер, вложенные объекты останутся общими",
+        "Все уровни вложенности",
+        "Только неизменяемые части",
+        "Ничего, вернёт тот же объект"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 73,
+      "prompt": "Почему def f(x, bucket=[]) опасна?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Python не поддерживает списки в аргументах",
+        "Функция не сможет изменить список",
+        "Список будет скопирован при каждом вызове",
+        "Список по умолчанию создаётся один раз и живёт между вызовами"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 74,
+      "prompt": "Что делает del x в Python? Напишите одно слово: имя или объект.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "имя",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 75,
+      "prompt": "После b = a и изменения a через append, что увидит код, читающий b?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Копию списка",
+        "То же изменение: b и a ссылаются на один список",
+        "Старое значение",
+        "Ошибку AttributeError"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 95,
+      "prompt": "Сравни вслух `namedtuple` и `@dataclass`: что у них общего, чем отличаются изменяемость, значения по умолчанию и набор готовых методов. Приведи по одному примеру, где выберешь каждый из них.",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 5,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 5,
+      "name": "Голосом: запись из полей",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 13,
+      "rubric_id": 5,
+      "criterion": "Сказано, что оба дают запись с именованными полями и готовые `__init__`, `__repr__`, `__eq__`",
+      "weight": 1.0,
+      "positive_example": "«Оба убирают ручной __init__ и сравнение, поля читаются по имени»",
+      "negative_example": "«Это одно и то же, только синтаксис разный»",
+      "active": true
+    },
+    {
+      "id": 14,
+      "rubric_id": 5,
+      "criterion": "Различена изменяемость: namedtuple неизменяем, обычный dataclass — нет (frozen делает его неизменяемым)",
+      "weight": 1.0,
+      "positive_example": "«namedtuple как кортеж: после создания поле не поменять, а dataclass можно»",
+      "negative_example": "«dataclass всегда неизменяемый»",
+      "active": true
+    },
+    {
+      "id": 15,
+      "rubric_id": 5,
+      "criterion": "Названы практические различия: значения по умолчанию и `field`, методы, наследование/типизация — и примеры выбора",
+      "weight": 1.0,
+      "positive_example": "«Для координаты возьму namedtuple, для заказа с изменяемым статусом — dataclass»",
+      "negative_example": "Примеры не опираются на различия или их нет",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

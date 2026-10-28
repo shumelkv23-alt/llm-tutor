@@ -41,7 +41,10 @@ async def test_draft_is_hidden_from_student_catalog(student, make_course) -> Non
     make_course()
     response = await student.get("/api/courses")
     assert response.status_code == 200
-    assert _titles(response.json()["courses"]) == [course.title for course in courses.COURSES]
+    # Прежние встроенные курсы скрыты: каталог пуст, пока нет опубликованных.
+    assert _titles(response.json()["courses"]) == [
+        course.title for course in courses.visible_courses()
+    ]
 
 
 async def test_published_course_joins_student_catalog(student, make_course) -> None:
@@ -96,9 +99,12 @@ async def test_admin_pages_are_scoped_to_selected_course(admin, make_course) -> 
 
 
 async def test_unknown_course_falls_back_to_first_published(admin, make_course) -> None:
+    make_course(status="published")
     page = await admin.get("/admin/course?course=no-such-course")
     assert page.status_code == 200
-    assert 'value="mlcourse" selected' in page.text
+    assert 'value="python-basics" selected' in page.text
+    # Скрытый прежний курс в выборе не появляется.
+    assert 'value="mlcourse"' not in page.text
 
 
 async def test_admin_analytics_survives_broken_draft(admin, make_course) -> None:
@@ -152,9 +158,8 @@ async def test_broken_published_course_is_marked_unavailable(student, make_cours
     cards = (await student.get("/api/courses")).json()["courses"]
     broken = next(card for card in cards if card["id"] == "python-basics")
     assert broken["status"] == "error"
-    # Соседний курс не пострадал.
-    mlcourse = next(card for card in cards if card["id"] == "mlcourse")
-    assert mlcourse["status"] == "available"
+    # Скрытый прежний курс в каталог не подмешивается.
+    assert "mlcourse" not in {card["id"] for card in cards}
 
 
 async def test_enrolling_a_broken_course_does_not_500(student, make_course) -> None:
@@ -183,7 +188,9 @@ async def test_deleted_course_leaves_the_registry(student, make_course, courses_
     shutil.rmtree(courses_home / "python-basics")
 
     assert courses.get_course("python-basics") is None
-    assert [card["id"] for card in (await student.get("/api/courses")).json()["courses"]] == BUILTIN_IDS
+    assert [
+        card["id"] for card in (await student.get("/api/courses")).json()["courses"]
+    ] == [course.id for course in courses.visible_courses()]
     # id освободился: курс можно завести заново, не перезапуская сервер.
     courses.create_course(title="Основы Python", course_id="python-basics")
 

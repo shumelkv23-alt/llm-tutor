@@ -93,8 +93,15 @@ def lessons_server(monkeypatch, tmp_path):
 
 
 @pytest.fixture
-def live_server(tmp_path):
-    """URL приложения, запущенного uvicorn в отдельном потоке."""
+def live_server(monkeypatch, tmp_path):
+    """URL приложения, запущенного uvicorn в отдельном потоке.
+
+    Встроенный ``mlcourse`` показан в каталоге: сценарии записываются на него,
+    а в бою он скрыт вместе с ``isit-ml``.
+    """
+    from course_fixtures import show_builtin_course
+
+    show_builtin_course(monkeypatch)
     yield from _serve(tmp_path)
 
 

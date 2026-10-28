@@ -1,0 +1,15 @@
+{
+  "id": "big-data-minimum",
+  "title": "Теоретический минимум по Big Data",
+  "subtitle": "Основные алгоритмы анализа данных",
+  "description": "Кластеризация, снижение размерности, ассоциативные правила, графы, регрессия, классификация, нейронные сети и A/B-тестирование — без тяжёлой математики, но с пониманием, как каждый метод устроен и когда его применять.",
+  "source_url": "https://www.piter.com/product/teoreticheskiy-minimum-po-big-data",
+  "status": "published",
+  "origin": "manual",
+  "created_at": 1793144834.315528,
+  "updated_at": 1793147470.7533221,
+  "next_item_id": 97,
+  "next_rubric_id": 7,
+  "next_criterion_id": 19,
+  "next_lesson_id": 19
+}

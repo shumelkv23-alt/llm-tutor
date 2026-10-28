@@ -11,6 +11,8 @@
 пока курс в статусе ``draft``, ученики его не видят.
 """
 
+import re
+import shutil
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -19,7 +21,13 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from llm_tutor.course import store
-from llm_tutor.course.seed import DATA_DIR, SeedError, course_paths, load_course_data
+from llm_tutor.course.seed import (
+    DATA_DIR,
+    SeedError,
+    course_paths,
+    load_course_data,
+    theory_dir_for,
+)
 from llm_tutor.course.seed import Course as CourseData
 
 # Курс, который нельзя завести заново: он описан кодом.
@@ -54,6 +62,10 @@ class Course:
 
 
 COURSES: tuple[Course, ...] = (
+    # Оба прежних курса скрыты из каталога и списков админки: их место заняли
+    # два новых курса. Файлы, конспекты и прогресс учеников остаются на месте,
+    # и курс по-прежнему открывается по прямому id (на нём лежат тесты движка).
+    # Вернуть курс в списки — убрать ``visible=False``.
     Course(
         id=BUILTIN_COURSE,
         title="Машинное обучение: mlcourse.ai",
@@ -64,6 +76,7 @@ COURSES: tuple[Course, ...] = (
             "Тьютор объясняет, даёт задания и проверяет код."
         ),
         source_url="https://mlcourse.ai/book/index.html",
+        visible=False,
     ),
     Course(
         id="isit-ml",
@@ -76,6 +89,7 @@ COURSES: tuple[Course, ...] = (
         ),
         source_url="https://github.com/Eldervald/isit_ml_labs",
         data_dir=DATA_DIR / "isit",
+        visible=False,
     ),
 )
 
@@ -145,6 +159,16 @@ def generated_courses() -> tuple[Course, ...]:
 def all_courses() -> tuple[Course, ...]:
     """Все курсы: встроенные, затем созданные."""
     return (*COURSES, *_GENERATED)
+
+
+def manageable_courses() -> tuple[Course, ...]:
+    """Курсы в списках админки и в выборе курса для аналитики.
+
+    Скрытый курс (``visible=False``) остаётся в реестре и открывается по
+    прямому id — на нём лежат прогресс учеников и тесты движка, — но в списках
+    его нет, как и у ученика.
+    """
+    return tuple(course for course in all_courses() if course.visible)
 
 
 def published_courses() -> tuple[Course, ...]:
@@ -258,6 +282,128 @@ def meta_for(course: Course) -> store.CourseMeta | None:
         return store.read_meta(course.root)
     except store.StoreError:
         return None
+
+
+# Занятия, заведённые редактором: ``t01_lesson3``. Номер выдаёт счётчик курса.
+_LESSON_ID_RE = re.compile(r"t\d{2}_lesson(\d+)$")
+
+
+def _seed_sources(course: Course) -> list[Path]:
+    """Seed-файлы курса: у созданного — свои, у встроенного — из его каталога."""
+    if course.seed_paths is not None:
+        return list(course.seed_paths)
+    folder = course.data_dir if course.data_dir is not None else DATA_DIR
+    return sorted(course_paths(folder))
+
+
+def _max_id(seed: dict, key: str) -> int:
+    """Наибольший числовой id в списке ``items``/``rubrics``/``criteria``."""
+    best = 0
+    for entry in seed.get(key) or []:
+        ident = entry.get("id") if isinstance(entry, dict) else None
+        if isinstance(ident, int) and ident > best:
+            best = ident
+    return best
+
+
+def _copied_counters(seeds: list[Path], source: store.CourseMeta | None) -> dict[str, int]:
+    """Счётчики копии начинаются за пределами скопированных id.
+
+    Повтор id переписал бы журнал ученика (``repos.replace_seed`` — upsert по
+    id), поэтому первая же правка копии не должна выдать id из оригинала.
+    """
+    limits = {
+        "next_item_id": 1,
+        "next_rubric_id": 1,
+        "next_criterion_id": 1,
+        "next_lesson_id": 1,
+    }
+    pairs = (
+        ("items", "next_item_id"),
+        ("rubrics", "next_rubric_id"),
+        ("criteria", "next_criterion_id"),
+    )
+    for path in seeds:
+        data = store.read_json(path)
+        for key, field in pairs:
+            limits[field] = max(limits[field], _max_id(data, key) + 1)
+        for node in data.get("nodes") or []:
+            match = _LESSON_ID_RE.fullmatch(str(node.get("id", ""))) if isinstance(node, dict) else None
+            if match is not None:
+                limits["next_lesson_id"] = max(limits["next_lesson_id"], int(match.group(1)) + 1)
+    if source is not None:
+        for field in limits:
+            limits[field] = max(limits[field], getattr(source, field))
+    return limits
+
+
+def _copy_identity(source: Course) -> tuple[str, str]:
+    """Название и свободный id для копии: «… — копия», «… — копия 2» и т. д."""
+    base = f"{source.title} — копия"
+    for index in range(1, 100):
+        title = base if index == 1 else f"{base} {index}"
+        slug = store.slugify(title)
+        if index > 1:
+            # slugify обрезает до 40 символов, и суффикс « 2» в названии срезался
+            # бы вместе с хвостом: дописываем номер к id явно.
+            suffix = f"-{index}"
+            slug = f"{slug[: 40 - len(suffix)].rstrip('-')}{suffix}"
+        root = store.course_dir(_COURSES_DIR, slug)
+        if get_course(slug) is None and not (root.exists() and any(root.iterdir())):
+            return title, slug
+    raise store.StoreError("У курса уже слишком много копий — выберите название вручную")
+
+
+def copy_course(course_id: str, *, now: float | None = None) -> store.CourseMeta:
+    """Копия курса для правки; встроенный курс правится только так.
+
+    Копия — обычный созданный курс-черновик: те же модули и конспекты, но
+    отдельная папка, счётчики id выше скопированных и своя БД у учеников.
+    """
+    if _COURSES_DIR is None:
+        raise store.StoreError("Каталог курсов не настроен")
+    source = get_course(course_id)
+    if source is None:
+        raise store.StoreError(f"Нет курса {course_id!r}")
+    seeds = _seed_sources(source)
+    if not seeds:
+        raise store.StoreError("У курса нет модулей — копировать нечего")
+    title, new_id = _copy_identity(source)
+    root = store.course_dir(_COURSES_DIR, new_id)
+    moment = time.time() if now is None else now
+    meta = store.CourseMeta(
+        id=new_id,
+        title=title,
+        subtitle=source.subtitle,
+        description=source.description,
+        source_url=source.source_url,
+        status="draft",
+        origin="manual",
+        created_at=moment,
+        updated_at=moment,
+        **_copied_counters(seeds, meta_for(source)),
+    )
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        for path in seeds:
+            shutil.copy2(path, root / path.name)
+            theory = theory_dir_for(path)
+            if theory.is_dir():
+                shutil.copytree(theory, root / "theory" / path.stem.removeprefix("seed_"))
+        if source.root is not None:
+            # Материалы и артефакты прогонов — часть курса; БД материалов не
+            # копируем: индексы привязаны к каталогу, его соберут заново.
+            for name in ("sources", "generation"):
+                if (source.root / name).is_dir():
+                    shutil.copytree(source.root / name, root / name)
+    except OSError as error:
+        # Метаданные пишутся последними, поэтому полукопию реестр не увидит;
+        # папку всё равно убираем, чтобы не заняла id.
+        shutil.rmtree(root, ignore_errors=True)
+        raise store.StoreError(f"Не удалось скопировать курс: {error}") from error
+    store.write_meta(root, meta)
+    refresh_courses()
+    return meta
 
 
 def create_course(

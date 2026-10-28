@@ -5,7 +5,9 @@
 ни ключа тестам не нужно.
 """
 
+import asyncio
 import json
+import re
 
 import pytest
 
@@ -16,12 +18,12 @@ from llm_tutor.course.build.schemas import (
     CoursePlan,
     ModuleOutline,
     CriterionPlan,
-    FinalItem,
     ItemPlan,
+    LessonItems,
     LessonPlan,
     ModulePlan,
     ModuleSurvey,
-    SectionItems,
+    SectionItemsPlan,
     SectionPlan,
     TheoryDoc,
 )
@@ -67,6 +69,12 @@ def _item(index: int, kind: str) -> ItemPlan:
         solution="result = sum(data)",
         criteria=[CriterionPlan(criterion="Результат посчитан верно", weight=1.0)],
     )
+
+
+def _asked_sections(request: str) -> list[str]:
+    """Ключи разделов, которые промпт занятия перечислил перед материалом."""
+    head = request.split("Материал курса", 1)[0]
+    return re.findall(r"^- ([A-Za-z0-9_.-]+):", head, re.MULTILINE)
 
 
 def _asked_headings(request: str) -> list[str]:
@@ -126,10 +134,22 @@ class ScriptedGenerator:
             body = "\n\n".join(f"## {title}\n\nПонемногу про {title}.\n\n```python\nx = 1\n```" for title in titles)
             first = titles[0] if titles else "Занятие"
             return TheoryDoc(markdown=f"# Занятие про {first}\n\n{body}")
-        if name == "SectionItems":
-            return SectionItems(items=[_item(index, "choice" if index == 1 else "code") for index in range(1, self.items + 1)])
-        if name == "FinalItem":
-            return FinalItem(item=_item(99, "code"))
+        if name == "LessonItems":
+            keys = _asked_sections(request)
+            assert keys, "промпт занятия обязан перечислить ключи разделов"
+            return LessonItems(
+                sections=[
+                    SectionItemsPlan(
+                        key=key,
+                        items=[
+                            _item(index, "choice" if index == 1 else "code")
+                            for index in range(1, self.items + 1)
+                        ],
+                    )
+                    for key in keys
+                ],
+                final=_item(99, "code"),
+            )
         if name == "CoursePlan":
             return CoursePlan(
                 title="Основы Python",
@@ -152,6 +172,10 @@ def course_root(courses_home):
 
 
 async def generate(root, generator, **kwargs):
+    # По умолчанию шаги идут по одному: так порядок вызовов предсказуем и
+    # проверки «сбой на N-м вызове» остаются осмысленными. Параллельность
+    # проверяется отдельным тестом с явным concurrency.
+    kwargs.setdefault("concurrency", 1)
     return await steps.generate_module(
         root,
         module=kwargs.pop("module", 1),
@@ -220,11 +244,13 @@ async def test_failed_step_keeps_artifacts_and_resumes(course_root):
     healthy = ScriptedGenerator()
     resumed = await generate(course_root, healthy)
     assert resumed.status == "done", resumed.error
-    # Возобновление с упавшего шага: конспект первого занятия — первый же
-    # вызов, а план и анкета взяты готовыми артефактами (три шага из общего
-    # списка модель вообще не зовут: план, анкета и сборка).
+    # Возобновление с упавшего шага: модель спрашивают заново только про
+    # недостающее, а готовые артефакты берутся с диска. Параллельная отмена
+    # могла дать соседним шагам дописать артефакт — это нормально; важно, что
+    # первый вызов — упавший конспект, а не план с анкетой.
     assert healthy.calls[0][0] == "TheoryDoc"
-    assert len(healthy.calls) == resumed.total - 3
+    assert resumed.done == resumed.total
+    assert len(healthy.calls) < resumed.total
 
 
 async def test_theory_headings_are_repaired_once(course_root):
@@ -274,10 +300,21 @@ async def test_plan_with_too_many_lessons_is_rejected(course_root):
 async def test_broken_item_does_not_reach_the_course(course_root):
     class BadItems(ScriptedGenerator):
         def _answer(self, schema, request):
-            if schema.__name__ == "SectionItems":
+            if schema.__name__ == "LessonItems":
+                keys = _asked_sections(request)
                 # choice без вариантов: задание не соберётся, и в курс не попадёт.
-                return SectionItems(
-                    items=[ItemPlan(prompt="Что-то", answer_type="choice"), _item(2, "code")]
+                return LessonItems(
+                    sections=[
+                        SectionItemsPlan(
+                            key=key,
+                            items=[
+                                ItemPlan(prompt="Что-то", answer_type="choice"),
+                                _item(2, "code"),
+                            ],
+                        )
+                        for key in keys
+                    ],
+                    final=_item(99, "code"),
                 )
             return super()._answer(schema, request)
 
@@ -400,6 +437,88 @@ async def test_unexpected_error_of_the_model_is_reported(course_root):
 
     state = await generate(course_root, Exploding())
     assert state.status == "failed" and "провайдер упал" in (state.error or "")
+
+
+# --- батчи, параллель и порядок вариантов (2026-10-28) ---
+
+
+async def test_items_and_final_come_in_one_call_per_lesson(course_root):
+    """Задания всех разделов и итоговое — один вызов на занятие, а не три."""
+    generator = ScriptedGenerator()
+    state = await generate(course_root, generator)
+    assert state.status == "done", state.error
+    names = [name for name, _ in generator.calls]
+    assert names == ["ModulePlan", "ModuleSurvey", "TheoryDoc", "TheoryDoc", "LessonItems", "LessonItems"]
+    # Восемь шагов модуля из двух занятий: план, анкета, 2 конспекта,
+    # 2 блока заданий, сборка — прогресс считает именно их.
+    assert state.total == 7
+
+
+async def test_independent_steps_run_in_parallel(course_root):
+    """Конспекты и задания разных занятий ждут ответа одновременно."""
+
+    class SlowGenerator(ScriptedGenerator):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.active = 0
+            self.max_active = 0
+
+        async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+            self.active += 1
+            self.max_active = max(self.max_active, self.active)
+            try:
+                await asyncio.sleep(0.02)
+                self.calls.append((schema.__name__, messages[-1].content))
+                return self._answer(schema, messages[-1].content)
+            finally:
+                self.active -= 1
+
+    generator = SlowGenerator()
+    state = await generate(course_root, generator, concurrency=3)
+    assert state.status == "done", state.error
+    assert generator.max_active > 1, "шаги шли по одному — параллель не работает"
+
+
+async def test_choice_options_are_shuffled_and_answer_stays_right(course_root):
+    """Верный вариант не остаётся первым, эталон указывает на тот же текст."""
+    plan = _plan(lessons=1, sections=2)
+    items = {
+        (plan.lessons[0].key, plan.lessons[0].sections[0].key): [
+            ItemPlan(
+                prompt="Выбери верное",
+                answer_type="choice",
+                options=["Верно", "Неверно", "Тоже неверно"],
+                answer="0",
+            ),
+            _item(2, "code"),
+        ],
+        (plan.lessons[0].key, plan.lessons[0].sections[1].key): [_item(3, "choice"), _item(4, "code")],
+    }
+    seed = steps.assemble(
+        module=1,
+        plan=plan,
+        survey=ScriptedGenerator(lessons=1)._answer(ModuleSurvey, ""),
+        theories={plan.lessons[0].key: ""},
+        items=items,
+        finals={plan.lessons[0].key: _item(99, "code")},
+        allocate=lambda kind, count: list(range(1, count + 1)),
+    )
+    choice = next(item for item in seed.items if item.answer_type == "choice")
+    assert choice.options[int(choice.answer)] == "Верно"
+    assert choice.options != ["Верно", "Неверно", "Тоже неверно"]
+
+
+async def test_lesson_items_with_wrong_section_keys_are_rejected(course_root):
+    class WrongKeys(ScriptedGenerator):
+        def _answer(self, schema, request):
+            answer = super()._answer(schema, request)
+            if schema.__name__ == "LessonItems":
+                answer.sections[0].key = "выдуманный"
+            return answer
+
+    state = await generate(course_root, WrongKeys())
+    assert state.status == "failed"
+    assert "не совпали с планом" in (state.error or "")
 
 
 # --- находки аудита срезов G–J ---

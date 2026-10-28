@@ -17,7 +17,8 @@ async def sign_up(page, base: str) -> None:
 
 async def enroll(page, base: str) -> None:
     await page.goto(f"{base}/courses")
-    await page.click("button.enroll")
+    # Кнопка именно нужного курса: в каталоге их несколько, и порядок не закон.
+    await page.click(f'button.enroll[data-course="{COURSE}"]')
     await page.wait_for_url(f"{base}/lesson/{COURSE}")
     await page.wait_for_selector("#lesson[aria-busy=false]")
 

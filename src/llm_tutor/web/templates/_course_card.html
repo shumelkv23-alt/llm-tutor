@@ -20,7 +20,7 @@
   {% if card.current_topic %}<p class="course-current">Сейчас: <b>{{ card.current_topic }}</b></p>{% endif %}
   {% if card.review_due %}<p class="course-review">{{ icon('refresh') }}<span>к повторению: <b>{{ card.review_due }}</b></span></p>{% endif %}
   {% else %}
-  <p class="course-meta">{{ icon('book') }}<span>{% if card.topics %}{{ card.topics }} занятий · теория, практика и проверка кода{% else %}Занятия готовятся — модуль выйдет скоро{% endif %}</span></p>
+  <p class="course-meta">{{ icon('book') }}<span>{% if card.topics %}{{ card.topics }} занятий · теория, практика и задания{% else %}Занятия готовятся — модуль выйдет скоро{% endif %}</span></p>
   {% endif %}
   <div class="course-actions">
     {% if card.enrolled %}

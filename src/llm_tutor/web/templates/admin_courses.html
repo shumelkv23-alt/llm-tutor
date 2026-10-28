@@ -1,19 +1,19 @@
 {% extends "base.html" %}
-{% block eyebrow %}Админка{% endblock %}
+{% block eyebrow %}Редактор курсов{% endblock %}
 {% block heading %}Курсы{% endblock %}
-{% block description %}Свои курсы: материалы, генерация модулей и публикация. Ученикам виден только опубликованный курс.{% endblock %}
+{% block description %}Свои курсы: структура, модули, занятия, задания и публикация. «Редактировать» открывает курс; модули можно создать вручную или сгенерировать из материалов. Ученикам виден только опубликованный курс.{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
 {% block scripts %}<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
 {% block content %}
-{% include "_admin_tabs.html" %}
 
 <div id="admin-courses" data-screen="list" data-create="/api/admin/courses">
 
   <section class="panel" aria-labelledby="courses-title">
     <h2 id="courses-title" class="section-title">Все курсы</h2>
+    <p class="form-hint">Курс создаётся формой ниже. Внутри курса сначала составьте структуру — из каких модулей он состоит, — а затем создайте модули вручную или сгенерируйте из материалов: и то и другое правится в редакторе.</p>
     {% if items %}
     <div class="table-wrap">
-      <table class="topics-table admin-table">
+      <table class="topics-table admin-table courses-table">
         <thead>
           <tr>
             <th scope="col">Название</th>
@@ -21,6 +21,7 @@
             <th scope="col">Статус</th>
             <th scope="col">Происхождение</th>
             <th scope="col">Модулей</th>
+            <th scope="col"><span class="visually-hidden">Действия</span></th>
           </tr>
         </thead>
         <tbody>
@@ -34,6 +35,13 @@
             <td><span class="badge{% if item.status == 'published' %} success{% endif %}">{{ 'опубликован' if item.status == 'published' else 'черновик' }}</span></td>
             <td>{% if not item.editable %}—{% else %}{{ 'сгенерирован' if item.origin == 'ai' else 'собран вручную' }}{% endif %}</td>
             <td>{{ item.modules }}</td>
+            <td>
+              {% if item.editable %}
+              <a class="btn" href="/admin/courses/{{ item.id }}">Редактировать</a>
+              {% else %}
+              <button class="btn" type="button" data-action="copy" data-copy="/api/admin/courses/{{ item.id }}/copy">Редактировать копию</button>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

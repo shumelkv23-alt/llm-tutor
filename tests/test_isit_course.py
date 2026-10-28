@@ -14,9 +14,9 @@
 Модуль-черновик держит занятия пустыми — но укомплектованное занятие обязано
 быть укомплектовано целиком. Дальше по плану так же заводятся модули 5–9.
 
-Курс виден ученику с первого дня: скрывать его нельзя — иначе он просто не
-существует для того, кто пришёл смотреть (``visible=False`` остаётся запасом
-на будущее и проверяется скрытой копией курса).
+Курс скрыт из каталога вместе с mlcourse: его место заняли новые курсы. Файлы,
+прогресс и прямые адреса занятий остаются рабочими; тесты содержимого включают
+видимость точечно (фикстура ``visible_builtins``).
 """
 
 import json
@@ -76,6 +76,18 @@ def _hide(monkeypatch, course: Course) -> Course:
     return draft
 
 
+@pytest.fixture
+def visible_builtins(monkeypatch):
+    """Показывает прежние курсы ученику для проверки их наполнения.
+
+    Оба курса скрыты из каталога с появлением новых; тесты этого файла — про
+    содержимое ИСИТ и его веб-страницы, поэтому включают видимость точечно.
+    """
+    shown = tuple(replace(course, visible=True) for course in registry.COURSES)
+    monkeypatch.setattr(registry, "COURSES", shown)
+    monkeypatch.setattr(registry, "_BY_ID", {course.id: course for course in shown})
+
+
 def _modules(course: Course) -> list[tuple[int, bool, set[str]]]:
     """Модули курса по файлам seed: (номер, опубликован ли, id его занятий).
 
@@ -110,8 +122,10 @@ def test_registry_keeps_both_courses() -> None:
     assert {course.id for course in COURSES} == {MLCOURSE, ISIT}
 
 
-def test_both_courses_are_visible() -> None:
-    assert {course.id for course in visible_courses()} == {MLCOURSE, ISIT}
+def test_both_courses_are_hidden_from_catalog() -> None:
+    """Прежние курсы скрыты из списков, но остаются в реестре."""
+    assert {course.id for course in COURSES} == {MLCOURSE, ISIT}
+    assert visible_courses() == ()
 
 
 def test_hidden_course_is_not_offered_to_students(monkeypatch) -> None:
@@ -298,8 +312,8 @@ def test_course_without_seed_files_fails_with_the_folder_name(tmp_path) -> None:
 # --- Веб ---
 
 
-async def test_the_new_course_is_in_the_catalog(student) -> None:
-    """Курс ИСИТ виден с первого дня; карточка считает занятия открытых модулей."""
+async def test_the_new_course_is_in_the_catalog(visible_builtins, student) -> None:
+    """Курс ИСИТ виден ученику; карточка считает занятия открытых модулей."""
     cards = {card["id"]: card for card in (await student.get("/api/courses")).json()["courses"]}
 
     assert set(cards) == {MLCOURSE, ISIT}
@@ -307,7 +321,7 @@ async def test_the_new_course_is_in_the_catalog(student) -> None:
     assert cards[ISIT]["topics"] == PUBLISHED_LESSONS
 
 
-async def test_the_new_course_offers_its_lessons(student) -> None:
+async def test_the_new_course_offers_its_lessons(visible_builtins, student) -> None:
     """Опубликованные модули открыты: карточка считает занятия, страница открывает урок."""
     catalog = (await student.get("/courses")).text
     assert "Python: от основ до машинного обучения" in catalog
@@ -334,7 +348,9 @@ async def test_enrolling_in_the_new_course_writes_its_own_db(student, tmp_path) 
     assert [path.name for path in (tmp_path / "users").rglob("*.sqlite3")] == [f"{ISIT}.sqlite3"]
 
 
-async def test_empty_course_does_not_displace_the_real_one(monkeypatch, student) -> None:
+async def test_empty_course_does_not_displace_the_real_one(
+    monkeypatch, visible_builtins, student
+) -> None:
     """Записи на недописанный курс не вытесняют mlcourse с главной, профиля и «Занятия» (аудит 1)."""
     draft = _hide(monkeypatch, _isit())
     await student.post(f"/api/courses/{MLCOURSE}/enroll", json={})
@@ -360,7 +376,11 @@ async def test_unreadable_course_modules_do_not_break_the_pages(
     from llm_tutor.web import api_lesson
 
     broken = replace(
-        registry.COURSES[0], id="broken", seed_paths=None, data_dir=tmp_path / "нет-такого"
+        registry.COURSES[0],
+        id="broken",
+        seed_paths=None,
+        data_dir=tmp_path / "нет-такого",
+        visible=True,
     )
     monkeypatch.setattr(registry, "COURSES", (broken,))
     monkeypatch.setitem(registry._BY_ID, broken.id, broken)

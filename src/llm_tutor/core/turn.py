@@ -1596,7 +1596,7 @@ def _issue_task(
         )
         # «Объясни своими словами» — только к открытому вопросу: к заданию
         # «напиши код» такая подводка противоречит самому заданию.
-        if question.item.answer_type == "open":
+        if question.item.answer_type in ("open", "spoken"):
             text = f"{header}\n\n{VERIFY_EXPLAIN_PREFIX}\n{text}"
         else:
             text = f"{header}\n\n{text}"

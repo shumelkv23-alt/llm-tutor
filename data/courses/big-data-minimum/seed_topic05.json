@@ -1,0 +1,533 @@
+{
+  "course": "Теоретический минимум по Big Data",
+  "topic": {
+    "number": 5,
+    "title": "Классификация",
+    "intro": "Сравним три семейства классификаторов: границу максимального зазора, понятное дерево и устойчивый ансамбль.",
+    "survey": {
+      "level_key": "t05_level",
+      "level_question": "Насколько ты знаком с темой «Классификация»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t05_b1",
+          "title": "Метод опорных векторов",
+          "question": "Насколько уверенно ты разбираешься в теме «метод опорных векторов»?",
+          "example": "Максимальный зазор, мягкий зазор и ядра.",
+          "concepts": [
+            "t05_lesson13"
+          ]
+        },
+        {
+          "key": "t05_b2",
+          "title": "Деревья решений",
+          "question": "Насколько уверенно ты разбираешься в теме «деревья решений»?",
+          "example": "Вопросы, разбиение, критерии и обрезка.",
+          "concepts": [
+            "t05_lesson14"
+          ]
+        },
+        {
+          "key": "t05_b3",
+          "title": "Случайный лес",
+          "question": "Насколько уверенно ты разбираешься в теме «случайный лес»?",
+          "example": "Бэггинг, случайные признаки и цена интерпретируемости.",
+          "concepts": [
+            "t05_lesson15"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t05_b1",
+        "t05_b2"
+      ],
+      "foundation": [
+        "t05_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t05_lesson13",
+      "name": "Метод опорных векторов",
+      "difficulty": 0.7,
+      "description": "Максимальный зазор, мягкий зазор и ядра.",
+      "source_url": null,
+      "topic_id": 5,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Разделяющая граница"
+        },
+        {
+          "id": "sec2",
+          "title": "Опорные векторы и ограничения"
+        }
+      ]
+    },
+    {
+      "id": "t05_lesson14",
+      "name": "Деревья решений",
+      "difficulty": 0.7,
+      "description": "Вопросы, разбиение, критерии и обрезка.",
+      "source_url": null,
+      "topic_id": 5,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Бинарные вопросы и разбиение"
+        },
+        {
+          "id": "sec2",
+          "title": "Переобучение и обрезка"
+        }
+      ]
+    },
+    {
+      "id": "t05_lesson15",
+      "name": "Случайный лес",
+      "difficulty": 0.7,
+      "description": "Бэггинг, случайные признаки и цена интерпретируемости.",
+      "source_url": null,
+      "topic_id": 5,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Бэггинг и случайность"
+        },
+        {
+          "id": "sec2",
+          "title": "Ансамбль и интерпретация"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t05_lesson13",
+      "to_id": "t05_lesson14",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t05_lesson14",
+      "to_id": "t05_lesson15",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 61,
+      "prompt": "Какую границу выбирает SVM?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Первую найденную разделяющую",
+        "Проходящую через центр данных",
+        "Случайную",
+        "С максимальным зазором до ближайших точек классов"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 62,
+      "prompt": "Что такое опорные векторы?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Центры классов",
+        "Признаки с нулевым весом",
+        "Ближайшие к границе точки, задающие её положение",
+        "Все точки обучающей выборки"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 63,
+      "prompt": "Зачем нужно ядро?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Чтобы заменить кросс-валидацию",
+        "Чтобы строить нелинейную границу через линейную в новом пространстве",
+        "Чтобы уменьшить число классов",
+        "Чтобы удалить опорные векторы"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 64,
+      "prompt": "Как называется зазор, допускающий ошибки при неразделимых классах? Напишите слово после «мягкий».",
+      "answer_type": "short",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": "зазор",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 65,
+      "prompt": "Почему SVM чувствителен к масштабу признаков?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson13": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Ядра работают только с целыми числами",
+        "SVM не поддерживает нормализацию",
+        "Классы должны быть сбалансированы по масштабу",
+        "Расстояния и зазор зависят от единиц измерения"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 66,
+      "prompt": "Что находится в листе дерева решений?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Обучающая строка",
+        "Порог разбиения",
+        "Прогноз класса или числа",
+        "Вопрос о признаке"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 67,
+      "prompt": "Почему глубокое дерево переобучается?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Оно всегда даёт среднее",
+        "Оно запоминает шум обучающих данных",
+        "Оно слишком простое",
+        "Оно не умеет классифицировать"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 68,
+      "prompt": "Что делает обрезка дерева?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Удаляет ветви, которые не улучшают качество на валидации",
+        "Добавляет новые листья",
+        "Масштабирует признаки",
+        "Меняет классы местами"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 69,
+      "prompt": "Какая мера неоднородности часто используется для классификации вместе с энтропией? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "Gini",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 70,
+      "prompt": "Почему дерево решений нестабильно?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Оно требует масштабирования",
+        "Оно не умеет работать с пропусками",
+        "Малое изменение данных может изменить структуру разбиений",
+        "Оно не поддерживает числовые признаки"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 71,
+      "prompt": "Что такое бэггинг?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Сжатие признаков",
+        "Обучение на случайных подвыборках с возвращением",
+        "Удаление выбросов",
+        "Последовательное исправление ошибок"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 72,
+      "prompt": "Зачем на каждом разбиении рассматривать случайное подмножество признаков?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Чтобы деревья были разными и их ошибки меньше коррелировали",
+        "Чтобы ускорить сбор данных",
+        "Чтобы увеличить глубину",
+        "Чтобы убрать необходимость в тесте"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 73,
+      "prompt": "Что произойдёт при увеличении числа деревьев в лесу?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Лес начнёт переобучаться линейно",
+        "Признаки перестанут учитываться",
+        "Изменится число классов",
+        "Качество выйдет на плато, обучение замедлится"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 74,
+      "prompt": "Как называется ансамбль, где деревья обучаются последовательно на ошибках предыдущих? Два слова.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": "градиентный бустинг",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 75,
+      "prompt": "Важность признака высока, но направление его влияния неизвестно. Почему?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t05_lesson15": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Это ошибка библиотеки",
+        "Важность показывает вклад в уменьшение ошибки, а не знак связи",
+        "Признак всегда влияет положительно",
+        "Важность считается только для регрессии"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 95,
+      "prompt": "Объясни вслух, почему дерево решений легко переобучается и как обрезка или ограничение глубины это лечит. Как заметить переобучение по ошибкам на обучающей и проверочной выборках?",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t05_lesson14": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 5,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 5,
+      "name": "Голосом: переобучение дерева",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 13,
+      "rubric_id": 5,
+      "criterion": "Сказано, что глубокое дерево подгоняет листья под отдельные примеры и шум",
+      "weight": 1.0,
+      "positive_example": "«Если не ограничивать глубину, дерево запомнит выбросы вместо правила»",
+      "negative_example": "«Дерево переобучается, потому что в нём много данных»",
+      "active": true
+    },
+    {
+      "id": 14,
+      "rubric_id": 5,
+      "criterion": "Объяснено, что обрезка/ограничение глубины упрощает модель и повышает обобщение",
+      "weight": 1.0,
+      "positive_example": "«Обрезка убирает ветки, которые мало что дают на новых данных»",
+      "negative_example": "«Обрезка нужна только для ускорения обучения»",
+      "active": true
+    },
+    {
+      "id": 15,
+      "rubric_id": 5,
+      "criterion": "Назван признак: низкая ошибка на train и заметно более высокая на validation",
+      "weight": 1.0,
+      "positive_example": "«На train почти ноль ошибок, а на проверке — заметно хуже — это переобучение»",
+      "negative_example": "«Переобучение видно по высокой ошибке на train»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

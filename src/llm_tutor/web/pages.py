@@ -37,10 +37,15 @@ NAV: tuple[NavItem, ...] = (
     NavItem("profile", "/profile", "Профиль", "user"),
 )
 
-# Пункт меню только для админов (срез 63): гостю и ученику он не рисуется.
-ADMIN_NAV = NavItem("admin", "/admin", "Админка", "shield")
+# Пункты меню только для админов (срез 63): гостю и ученику они не рисуются.
+# «Редактор курсов» — прямой вход в правку курсов: из «Админки» туда ведёт
+# вкладка, но за курсом туда идут чаще, чем за списком учеников.
+ADMIN_NAV: tuple[NavItem, ...] = (
+    NavItem("admin", "/admin", "Админка", "shield"),
+    NavItem("admin_courses", "/admin/courses", "Редактор курсов", "route"),
+)
 
-_TITLES = {item.key: item.label for item in (*NAV, ADMIN_NAV)} | {
+_TITLES = {item.key: item.label for item in (*NAV, *ADMIN_NAV)} | {
     "login": "Вход",
     "register": "Регистрация",
     "forgot": "Восстановление пароля",
@@ -57,7 +62,7 @@ def render(
         request,
         template,
         {
-            "nav": (*NAV, ADMIN_NAV) if user is not None and user.is_admin else NAV,
+            "nav": (*NAV, *ADMIN_NAV) if user is not None and user.is_admin else NAV,
             "active": active,
             "page_title": _TITLES[active],
             "user": user,

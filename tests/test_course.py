@@ -52,7 +52,9 @@ def test_forward_edge_between_modules_is_rejected(tmp_path) -> None:
     data["edges"].append(
         {"from_id": "mini_corr", "to_id": "groupby", "type": "requires", "hard": False, "weight": 0.5}
     )
-    with pytest.raises(CourseGraphError, match="вперёд"):
+    # Граф проверяется внутри ``build_course``, наружу ошибка курса уходит
+    # как ``SeedError``: админка показывает её текстом, а не 500.
+    with pytest.raises(SeedError, match="вперёд"):
         _course_with(tmp_path, data)
 
 

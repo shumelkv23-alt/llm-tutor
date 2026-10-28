@@ -20,6 +20,12 @@ COURSE = "mlcourse"
 BASE = f"/api/courses/{COURSE}/lesson"
 
 
+@pytest.fixture(autouse=True)
+def _visible_builtins(visible_builtins):
+    """Тест идёт по занятиям mlcourse: показываем курс явно."""
+    return visible_builtins
+
+
 @pytest.fixture
 def web_llm():
     return ScriptedTutor("Объясняю.")

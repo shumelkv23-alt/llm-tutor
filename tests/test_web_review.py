@@ -20,6 +20,12 @@ GROUP_ITEMS = [3011, 3012, 3013, 3014]
 PAST = 1.0  # срок в далёком прошлом: просрочено при любых часах
 
 
+@pytest.fixture(autouse=True)
+def _visible_builtins(visible_builtins):
+    """Тест идёт по занятиям mlcourse: показываем курс явно."""
+    return visible_builtins
+
+
 @pytest.fixture
 def web_llm():
     return ScriptedTutor("A\n---\nB")

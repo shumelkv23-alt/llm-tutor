@@ -6,6 +6,8 @@
 """
 
 import asyncio
+import base64
+import binascii
 import logging
 import sqlite3
 from collections.abc import Awaitable
@@ -32,6 +34,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.llm.client import LLMClient
 from llm_tutor.llm.prompts import FAILURE_REPLY, LLM_FAILURE_REPLY
+from llm_tutor.llm.stt import STT_FORMATS, STTError
 from llm_tutor.schemas import CriterionResult, GradeResult, ReviewState, SessionState, Topic
 from llm_tutor.student import review, survey
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
@@ -289,6 +292,21 @@ class CodeResultBody(BaseModel):
     report: str = Field(default="", max_length=4000)
 
 
+class TranscribeBody(BaseModel):
+    """Запись с микрофона для серверного распознавания (base64 в JSON).
+
+    ``python-multipart`` в проекте нет, а ``security.api_guard`` пропускает
+    только JSON — поэтому звук идёт строкой. Потолок длины здесь грубый
+    (запас на base64), точный размер проверяет ``transcribe``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    audio: str = Field(min_length=16, max_length=12_000_000)
+    format: str = Field(default="webm", max_length=8)
+    language: str | None = Field(default=None, max_length=16)
+
+
 class ReviewStartBody(BaseModel):
     """Начало серии повторения: «Срочное» (``due``) или «Освежить» (``refresh``)."""
 
@@ -409,6 +427,59 @@ async def chat(body: ChatBody, ctx: LessonContext = Depends(lesson_context)) -> 
             )
         reply = await _safe(call, LLM_FAILURE_REPLY)
         return turn_response(ctx, text, reply, quote=focus)
+
+
+@router.post("/lesson/transcribe")
+async def transcribe(
+    body: TranscribeBody,
+    request: Request,
+    user: User = Depends(require_user),
+) -> dict:
+    """Расшифровка записи с микрофона (запасной путь для браузеров без Web Speech).
+
+    Запись уходит в модель, поэтому есть лимит на ученика: каждая расшифровка
+    стоит денег, а «записал — не понравилось — записал» иначе не ограничен.
+    """
+    limiter = request.app.state.stt_limiter
+    if limiter.blocked(user.email):
+        raise HTTPException(
+            status_code=429,
+            detail="Слишком много записей за четверть часа. Попробуйте позже.",
+        )
+    limiter.failure(user.email)
+    settings = request.app.state.settings
+    audio_format = body.format.strip().lower().lstrip(".")
+    if audio_format not in STT_FORMATS:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "format", "message": "Такой формат записи не поддерживается."},
+        )
+    try:
+        # Пробелы и переносы — обычное дело в base64 из FileReader.
+        audio = base64.b64decode("".join(body.audio.split()), validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "audio", "message": "Запись повреждена — начните заново."},
+        ) from None
+    if not audio:
+        raise HTTPException(
+            status_code=422,
+            detail={"field": "audio", "message": "Пустая запись — начните заново."},
+        )
+    if len(audio) > settings.stt_max_bytes:
+        limit = settings.stt_max_bytes / (1024 * 1024)
+        raise HTTPException(
+            status_code=413,
+            detail=f"Запись слишком длинная (максимум {limit:.0f} МБ) — говорите короче.",
+        )
+    try:
+        text = await request.app.state.stt.transcribe(
+            audio, audio_format=audio_format, language=body.language
+        )
+    except STTError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"text": text}
 
 
 def _focus(quote: QuoteBody) -> Focus:

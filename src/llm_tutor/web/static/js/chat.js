@@ -13,6 +13,8 @@
   const lessonNext = $("#lesson-next");
   const quoteBox = $("#chat-quote");
   const quoteStatus = $("#chat-quote-status");
+  const mic = $("#chat-mic");
+  const voiceStatus = $("#chat-voice-status");
   // Автопрокрутка — только если ученик и так внизу: не дёргаем того, кто читает выше.
   const NEAR_BOTTOM = 80;
 
@@ -223,6 +225,27 @@
 
   input.addEventListener("input", autosize);
 
+  /* --- Голосовой вопрос (js/voice.js): текст вставляется в поле, не уходит сам --- */
+
+  let voice = null;
+  if (window.Voice && window.Voice.available()) {
+    voice = window.Voice.create({
+      button: mic,
+      status: voiceStatus,
+      label: "Наговорить",
+      onText(text) {
+        const clean = text.trim();
+        if (!clean) return;
+        const current = input.value.trimEnd();
+        input.value = current ? `${current} ${clean}` : clean;
+        autosize();
+        input.focus();
+      },
+    });
+  } else {
+    mic.hidden = true;
+  }
+
   $("#chat-chips").addEventListener("click", (event) => {
     const chip = event.target.closest(".chip");
     // У кнопки урока свой обработчик (ниже).
@@ -272,7 +295,12 @@
     if (attached && (off || (attachedNode !== null && node !== attachedNode))) detach();
     attachedNode = node;
     input.disabled = off;
-    form.querySelector("button").disabled = off;
+    form.querySelector("button[type=submit]").disabled = off;
+    if (voice) {
+      mic.disabled = off;
+      // Анкета закрывает чат: недоговорённая запись не должна висеть.
+      if (off) voice.destroy();
+    }
     document.querySelectorAll("#chat-chips .chip").forEach((chip) => {
       chip.disabled = off;
     });

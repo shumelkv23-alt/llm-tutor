@@ -81,6 +81,9 @@ class CourseMeta(BaseModel):
     next_item_id: int = Field(default=1, ge=1)
     next_rubric_id: int = Field(default=1, ge=1)
     next_criterion_id: int = Field(default=1, ge=1)
+    # Номер нового занятия, добавленного руками: id вроде ``t01_lesson7``.
+    # Переиспользованный id унаследовал бы mastery и журнал прежнего занятия.
+    next_lesson_id: int = Field(default=1, ge=1)
 
     @field_validator("source_url")
     @classmethod
@@ -100,6 +103,7 @@ _ID_FIELDS = {
     "item": "next_item_id",
     "rubric": "next_rubric_id",
     "criterion": "next_criterion_id",
+    "lesson": "next_lesson_id",
 }
 
 

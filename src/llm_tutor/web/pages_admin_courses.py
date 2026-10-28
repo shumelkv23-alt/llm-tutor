@@ -33,13 +33,20 @@ def _course_or_404(course_id: str) -> tuple[courses.Course, Path]:
 async def course_list(request: Request, user: User = Depends(admin_page_user)) -> HTMLResponse:
     """Список курсов: черновики и опубликованные, со счётчиком модулей."""
     items = []
-    for course in courses.all_courses():
+    for course in courses.manageable_courses():
         meta = courses.meta_for(course)
         modules = 0
         if course.root is not None:
             try:
                 modules = len(edit.module_numbers(course.root))
             except Exception:  # noqa: BLE001 — битый модуль не роняет список
+                modules = 0
+        else:
+            # У встроенного курса папки нет, модули читаются из seed-файлов:
+            # без этого в списке стоял бы ноль, хотя курс полный.
+            try:
+                modules = len(courses.course_data(course).topics)
+            except Exception:  # noqa: BLE001
                 modules = 0
         items.append(
             {
@@ -55,13 +62,9 @@ async def course_list(request: Request, user: User = Depends(admin_page_user)) -
     return render(
         request,
         "admin_courses.html",
-        "admin",
+        "admin_courses",
         user=user,
         items=items,
-        tab="courses",
-        admin_courses=None,
-        admin_course=None,
-        admin_action="/admin/courses",
     )
 
 
@@ -78,23 +81,25 @@ async def course_page(
             modules.append(module_view(root, number))
         except Exception as error:  # noqa: BLE001 — недособранный модуль показываем текстом
             modules.append({"number": number, "error": str(error)})
+    built = {module["number"]: module for module in modules if "error" not in module}
     return render(
         request,
         "admin_course.html",
-        "admin",
+        "admin_courses",
         user=user,
         course=course,
         modules=modules,
+        # У собранных модулей название и число занятий — из seed: структура
+        # показывает их только для чтения.
+        built_numbers=sorted(built),
+        built_titles={number: item["title"] for number, item in built.items()},
+        built_lessons={number: item["lessons"] for number, item in built.items()},
         # Структуру отдаём сразу в шаблон: строки рисует сервер.
         plan=steps.load_course_plan(root),
         sources=sources_view(root),
         warnings=warnings(course_id),
         broken=courses.try_course_data(course)[1],
         running=request.app.state.jobs.running(course_id) is not None,
-        tab="courses",
-        admin_courses=courses.all_courses(),
-        admin_course=course,
-        admin_action=f"/admin/courses/{course_id}",
     )
 
 
@@ -116,13 +121,12 @@ async def module_page(
     return render(
         request,
         "admin_module.html",
-        "admin",
+        "admin_courses",
         user=user,
         course=course,
         number=number,
         modules=edit.module_numbers(root),
-        tab="courses",
-        admin_courses=courses.all_courses(),
-        admin_course=course,
-        admin_action=f"/admin/courses/{course_id}",
+        # Переделка кусков берёт остальные шаги из артефактов прогона: у
+        # собранного вручную модуля их нет, и кнопки были бы ложными.
+        parts=steps.plan_artifact(root, number) is not None,
     )

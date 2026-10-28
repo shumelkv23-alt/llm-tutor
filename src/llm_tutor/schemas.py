@@ -27,7 +27,7 @@ EdgeType = Literal["requires", "part_of", "leads_to"]
 
 # Тип задания: choice/short проверяются кодом (grader/autocheck.py),
 # open/code — рубрикой (Срез 6).
-AnswerType = Literal["open", "code", "choice", "short"]
+AnswerType = Literal["open", "code", "choice", "short", "spoken"]
 
 
 class Section(BaseModel):
@@ -146,7 +146,7 @@ class Item(BaseModel):
 
 
 class Rubric(BaseModel):
-    """Рубрика: набор атомарных критериев для открытых и код-ответов."""
+    """Рубрика: набор атомарных критериев для открытых, голосовых и код-ответов."""
 
     id: int
     name: str

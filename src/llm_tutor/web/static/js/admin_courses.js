@@ -25,7 +25,7 @@
   const SOURCE_KINDS = { file: "файл", url: "страница", github: "репозиторий" };
   const MAX_SOURCE_BYTES = 512 * 1024; // больше сервер не примет
   const MAX_SECTIONS = 4; // правил занятий: 2–4 раздела
-  const ANSWER_TYPES = { choice: "Выбор варианта", short: "Короткий ответ", code: "Код", open: "Открытый ответ" };
+  const ANSWER_TYPES = { choice: "Выбор варианта", short: "Короткий ответ", code: "Код", open: "Открытый ответ", spoken: "Голосовой ответ" };
   // Имя поля приходит от сервера — в селектор пускаем только безопасные символы.
   const UNSAFE = /[^a-zA-Z0-9_-]/g;
 
@@ -156,6 +156,16 @@
   function listScreen(node) {
     const form = node.querySelector("#create-course");
     const endpoint = node.dataset.create;
+    // Встроенный курс описан кодом — правится только его копия. Копия
+    // заводится черновиком, поэтому ученики её не увидят до публикации.
+    onActions(node, {
+      copy: (button) =>
+        guard(button, async () => {
+          const { course } = await request(button.dataset.copy, { method: "POST" });
+          notify(`Копия «${course.title}» создана — правьте её, оригинал не меняется.`);
+          location.assign(`/admin/courses/${encodeURIComponent(course.id)}`);
+        }),
+    });
     if (!form) return;
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -194,6 +204,7 @@
     const genButton = node.querySelector('[data-action="generate"]');
     // «Перегенерировать» — та же генерация, но с data-force: показываем и прячем вместе.
     const regenButton = node.querySelector('[data-action="regenerate"]');
+    const batchButton = node.querySelector('[data-action="generate-missing"]');
     const cancelButton = node.querySelector('[data-action="cancel-run"]');
     // Структура курса: форма есть всегда, строки — из неё же (шаблон или API).
     const structureForm = node.querySelector("#course-structure");
@@ -426,6 +437,8 @@
         if (label) label.textContent = String(number);
         const generate = row.querySelector('[data-action="generate-module"]');
         if (generate) generate.dataset.module = String(number);
+        const manual = row.querySelector('[data-action="create-module"]');
+        if (manual) manual.dataset.module = String(number);
         const [up, down] = row.querySelectorAll('[data-action="swap-module"]');
         if (up) {
           up.dataset.a = String(number - 1);
@@ -458,6 +471,7 @@
       row.append(order);
       const actions = make("div", "structure-actions");
       actions.append(buttonNode("Сгенерировать", "", "generate-module"));
+      actions.append(buttonNode("Создать вручную", "", "create-module"));
       const remove = buttonNode("", "ghost icon-only", "remove-module");
       remove.append(icon("close"));
       actions.append(remove);
@@ -482,6 +496,13 @@
         row.querySelector('[data-field="theme"]').value = module.theme || "";
         row.querySelector('[data-field="lessons"]').value = String(module.lessons || 4);
         if (generated.has(module.number)) {
+          // У собранного модуля название и число занятий — из его файла:
+          // структура их только показывает, иначе сохранение разошлось бы с seed.
+          row.dataset.built = "1";
+          row.querySelectorAll("input").forEach((input) => {
+            input.readOnly = true;
+            input.tabIndex = -1;
+          });
           const actions = row.querySelector(".structure-actions");
           actions.replaceChildren(make("span", "badge success", "готов"));
         }
@@ -489,7 +510,13 @@
       });
       // Вводная курса лежит в атрибуте корня: без неё сохранение её бы стёрло.
       node.dataset.planIntro = plan.intro || "";
-      if (makeButton) makeButton.textContent = "Составить структуру заново";
+      if (makeButton) {
+        makeButton.textContent = "Составить структуру заново";
+        makeButton.disabled = generated.size > 0;
+        if (generated.size) {
+          makeButton.title = "Модули уже собраны: структуру правьте строками, а не собирайте заново.";
+        }
+      }
       syncStructure();
     }
 
@@ -531,12 +558,35 @@
     function removeModule(button) {
       const row = button.closest(".structure-row");
       if (!row) return;
+      const rows = structureRows();
+      const index = rows.indexOf(row);
+      const generated = generatedModules();
+      // Убрать строку перед собранным модулем нельзя: он сдвинется на её
+      // номер, а файл останется на прежнем — структура разойдётся с курсом.
+      const lastBuilt = rows.reduce(
+        (last, entry, position) => (generated.has(position + 1) ? position : last),
+        -1
+      );
+      if (index < lastBuilt) {
+        notify(
+          "Перед собранным модулем строку не убрать: его номер сдвинется. Переставьте модули стрелками.",
+          { error: true }
+        );
+        return;
+      }
       row.remove();
       syncStructure();
     }
 
     /** Составить структуру: один вызов модели, ответ длинный — до минуты. */
     async function makeStructure(button) {
+      if (generatedModules().size) {
+        notify(
+          "Модули уже собраны: структуру правьте строками, а не собирайте заново — иначе модель переименует готовые модули.",
+          { error: true }
+        );
+        return;
+      }
       if (structureRows().length) {
         const confirmed = await window.App.confirm(
           "Составить структуру заново?",
@@ -590,18 +640,68 @@
       });
     }
 
+    /** Подсказки генерации: поле у кнопок ниже, иначе — подсказки структуры. */
+    function generationHints() {
+      const own = node.querySelector("#gen-hints");
+      return (own ? own.value.trim() : "") || (hintsInput ? hintsInput.value.trim() : "");
+    }
+
+    /** Пустой модуль руками: занятия-заготовки, дальше — редактор модуля.
+     *  Название и число занятий берём из строки структуры как есть: сервер
+     *  синхронизирует их со структурой после создания. */
+    async function createModule(button) {
+      const number = Number(button.dataset.module);
+      const row = button.closest(".structure-row");
+      const title = row ? row.querySelector('[data-field="title"]').value.trim() : "";
+      const lessons = row ? Number(row.querySelector('[data-field="lessons"]').value) : 4;
+      await guard(button, async () => {
+        try {
+          await request(`${api}/modules`, {
+            method: "POST",
+            body: { module: number, title, lessons },
+          });
+          notify(`Модуль ${number} создан — заполните занятия и конспекты.`);
+          location.assign(
+            `/admin/courses/${encodeURIComponent(node.dataset.course)}/modules/${number}`
+          );
+        } catch (problem) {
+          fail(problem);
+        }
+      });
+    }
+
     /** Модуль по структуре — та же генерация, что и из формы ниже. */
     async function generateModule(button) {
       const moduleNumber = Number(button.dataset.module);
+      const body = { module: moduleNumber, hints: generationHints() };
       await guard(button, async () => {
         try {
-          const data = await request(`${api}/generate`, { method: "POST", body: { module: moduleNumber } });
+          const data = await request(`${api}/generate`, { method: "POST", body });
           showRun(data.run, true);
-          notify(
-            body.force
-              ? `Модуль ${moduleNumber} собирается заново.`
-              : `Генерация модуля ${moduleNumber} пошла.`
-          );
+          notify(`Генерация модуля ${moduleNumber} пошла.`);
+          watch();
+        } catch (problem) {
+          fail(problem);
+        }
+      });
+    }
+
+    /** Все модули структуры, которых ещё нет, — одним прогоном по очереди. */
+    async function generateMissing(button) {
+      const confirmed = await window.App.confirm(
+        "Сгенерировать недостающие модули?",
+        "Модель соберёт все модули из структуры, которых ещё нет, по очереди. Это десятки вызовов и минуты на каждый модуль; готовые модули не трогаются.",
+        { label: "Сгенерировать" }
+      );
+      if (!confirmed) return;
+      await guard(button, async () => {
+        try {
+          const data = await request(`${api}/generate-missing`, {
+            method: "POST",
+            body: { hints: generationHints() },
+          });
+          showRun(data.run, true);
+          notify(`Генерация модулей пошла: ${data.modules.join(", ")}.`);
           watch();
         } catch (problem) {
           fail(problem);
@@ -614,6 +714,7 @@
     function showRun(run, generating) {
       genButton.hidden = generating;
       if (regenButton) regenButton.hidden = generating;
+      if (batchButton) batchButton.hidden = generating;
       cancelButton.hidden = !generating;
       if (!run) {
         runBox.hidden = true;
@@ -621,7 +722,12 @@
       }
       runBox.hidden = false;
       const label = RUN_LABELS[run.status] || run.status;
-      stepCell.textContent = run.current ? `${label}: ${run.current}` : label;
+      const moduleLabel = run.module ? `модуль ${run.module}` : "";
+      if (run.current) {
+        stepCell.textContent = `${label}: ${moduleLabel ? `${moduleLabel}, ` : ""}${run.current}`;
+      } else {
+        stepCell.textContent = moduleLabel ? `${label} · ${moduleLabel}` : label;
+      }
       const total = Number(run.total || 0);
       const doneCount = Number(run.done || 0);
       countCell.textContent = total ? `сделано ${doneCount} из ${total}` : "шагов пока нет";
@@ -648,7 +754,9 @@
           showRun(data.run, data.generating);
           // Прогон кончился: перечитываем страницу — модуль и предупреждения
           // могли поменяться. Ошибку шага страница покажет из состояния на диске.
-          if (data.run && TERMINAL.includes(data.run.status)) {
+          // Пока задача жива, «done» означает лишь готовый модуль: в пакетном
+          // прогоне следом идёт следующий, и перезагружаться рано.
+          if (data.run && TERMINAL.includes(data.run.status) && !data.generating) {
             location.reload();
             return;
           }
@@ -734,10 +842,12 @@
       "add-github": addGithub,
       generate,
       regenerate: generate,   // та же генерация, но с data-force="true"
+      "generate-missing": generateMissing,
       "cancel-run": cancelRun,
       "make-structure": makeStructure,
       "save-structure": saveStructure,
       "generate-module": generateModule,
+      "create-module": createModule,
       "add-module": addModule,
       "remove-module": removeModule,
       "swap-module": swapModule,
@@ -760,6 +870,9 @@
     const moduleNumber = Number(node.dataset.number);
     const theoryUrl = node.dataset.theory;
     const idsUrl = node.dataset.ids;
+    // Переделка кусков требует плана прогона: у модуля, собранного вручную,
+    // его нет, и такие кнопки показывать нечего.
+    const partsEnabled = node.dataset.parts === "1";
     const editor = node.querySelector("#module-editor");
     const loading = node.querySelector("#module-loading");
     const errorBox = node.querySelector("#module-error");
@@ -826,6 +939,25 @@
       const head = make("header", "lesson-head");
       head.append(make("h3", "", `Занятие ${index + 1}`));
       head.append(make("span", "lesson-id muted", lesson.id));
+      if (partsEnabled) {
+        head.append(
+          buttonNode("Перегенерировать конспект", "ghost part-action", "regenerate-theory", { lesson: lesson.id })
+        );
+        head.append(
+          buttonNode("Перегенерировать итоговое", "ghost part-action", "regenerate-final", { lesson: lesson.id })
+        );
+      }
+      // Порядок карточек — порядок занятий в графе: после сохранения цепочка
+      // связей модуля пересоберётся заново.
+      const order = make("span", "order-controls");
+      const up = buttonNode("↑", "ghost icon-only", "move-lesson", { direction: "up" });
+      up.disabled = index === 0;
+      up.setAttribute("aria-label", `Поднять занятие ${index + 1} выше`);
+      const down = buttonNode("↓", "ghost icon-only", "move-lesson", { direction: "down" });
+      down.disabled = index === model.nodes.length - 1;
+      down.setAttribute("aria-label", `Опустить занятие ${index + 1} ниже`);
+      order.append(up, down);
+      head.append(order);
       head.append(buttonNode("Удалить занятие", "danger", "remove-lesson"));
       card.append(head);
 
@@ -864,6 +996,14 @@
       const group = make("div", "item-group");
       group.dataset.group = final ? "final" : sectionId;
       group.append(make("h4", "section-title small", title));
+      if (partsEnabled && !final) {
+        group.append(
+          buttonNode("Перегенерировать задания", "ghost part-action", "regenerate-items", {
+            lesson: lesson.id,
+            section: sectionId,
+          })
+        );
+      }
       const items = itemsOf(lesson, sectionId, final);
       if (!items.length) {
         group.append(
@@ -922,7 +1062,7 @@
       box.dataset.only = "rubric";
       box.append(make("h4", "section-title small", "Критерии рубрики"));
       if (item.rubric_id === null || item.rubric_id === undefined) {
-        box.append(make("p", "muted", "Рубрика не выбрана: у открытого ответа и кода она нужна."));
+        box.append(make("p", "muted", "Рубрика не выбрана: у открытого, голосового ответа и кода она нужна."));
         return box;
       }
       const criteria = model.criteria.filter((criterion) => criterion.rubric_id === item.rubric_id);
@@ -956,7 +1096,10 @@
           )
         )
       );
-      grid.append(field("Эталон / номер варианта", inputNode("text", item.answer || "", { field: "answer", maxlength: 500 })));
+      const answerField = field("Эталон / номер варианта", inputNode("text", item.answer || "", { field: "answer", maxlength: 500 }));
+      // Эталон нужен только автопроверке: выбору и короткому ответу.
+      answerField.dataset.only = "auto";
+      grid.append(answerField);
       grid.append(
         field("Сложность (0–1)", inputNode("number", item.difficulty, { field: "difficulty", min: "0", max: "1", step: "0.05" }))
       );
@@ -1086,11 +1229,22 @@
       return box;
     }
 
-    function blockCard(block) {
+    function blockCard(block, index, total) {
       const card = make("article", "survey-block");
       card.dataset.blockKey = block.key;
       const head = make("header", "survey-block-head");
       head.append(make("span", "badge", block.key));
+      // Порядок блоков — порядок вопросов анкеты у ученика: он сохраняется
+      // как есть, ключи от перестановки не меняются.
+      const order = make("span", "order-controls");
+      const up = buttonNode("↑", "ghost icon-only", "move-block", { direction: "up" });
+      up.disabled = index === 0;
+      up.setAttribute("aria-label", `Поднять блок ${block.key} выше`);
+      const down = buttonNode("↓", "ghost icon-only", "move-block", { direction: "down" });
+      down.disabled = index === total - 1;
+      down.setAttribute("aria-label", `Опустить блок ${block.key} ниже`);
+      order.append(up, down);
+      head.append(order);
       head.append(buttonNode("Убрать блок", "ghost", "remove-block"));
       card.append(head);
 
@@ -1146,7 +1300,7 @@
           make("p", "muted", "В анкете нет блоков: добавьте блок и отметьте в нём занятия — без этого модуль не сохранить.")
         );
       }
-      data.blocks.forEach((block) => list.append(blockCard(block)));
+      data.blocks.forEach((block, index) => list.append(blockCard(block, index, data.blocks.length)));
       host.append(list);
       host.append(buttonNode("Добавить блок", "", "add-block"));
     }
@@ -1158,9 +1312,12 @@
         make(
           "p",
           "form-hint",
-          "Анкета открывает модуль: по ответам строится маршрут. Каждое занятие должно входить ровно в один блок, а ключи блоков не правятся — по ним в журнале остаются ответы."
+          "Анкета открывает модуль: по ответам строится маршрут. Каждое занятие должно входить ровно в один блок, а ключи блоков не правятся — по ним в журнале остаются ответы. Стрелки ↑/↓ меняют порядок вопросов, он сохраняется вместе с модулем."
         )
       );
+      if (partsEnabled) {
+        panel.append(buttonNode("Перегенерировать анкету", "ghost", "regenerate-survey"));
+      }
       surveyHost = make("div", "survey-form");
       panel.append(surveyHost);
       renderSurvey(surveyHost);
@@ -1178,7 +1335,11 @@
       grid.append(field("Вводная", inputNode("text", model.topic.intro, { field: "topic_intro", maxlength: 2000 }), "wide"));
       basics.append(grid);
       basics.append(
-        make("p", "form-hint", "Номер модуля и граф занятий здесь не правят: они не меняются при правке текста.")
+        make(
+          "p",
+          "form-hint",
+          "Номер модуля здесь не правят. Граф занятий строится по их порядку: переставьте занятия стрелками или добавьте новое — связи пересоберутся при сохранении."
+        )
       );
       box.append(basics);
 
@@ -1186,6 +1347,14 @@
       lessons.append(make("h2", "section-title", `Занятия (${model.nodes.length})`));
       if (!model.nodes.length) lessons.append(make("p", "muted", "В модуле нет ни одного занятия."));
       model.nodes.forEach((lesson, index) => lessons.append(lessonCard(lesson, index)));
+      lessons.append(buttonNode("Добавить занятие", "", "add-lesson"));
+      lessons.append(
+        make(
+          "p",
+          "form-hint",
+          "Порядок занятий — это граф модуля: каждое следующее мягко опирается на предыдущее. Стрелки меняют порядок, новое занятие встаёт в конец; связи графа пересобираются при сохранении."
+        )
+      );
       box.append(lessons);
 
       box.append(surveyPanel());
@@ -1219,7 +1388,11 @@
             ? item.answer_type === "choice"
             : only === "code"
               ? item.answer_type === "code"
-              : item.answer_type === "open" || item.answer_type === "code";
+              : only === "auto"
+                ? item.answer_type === "choice" || item.answer_type === "short"
+                : item.answer_type === "open" ||
+                  item.answer_type === "spoken" ||
+                  item.answer_type === "code";
         node.hidden = !visible;
       });
       const options = card.querySelector('[data-field="options"]');
@@ -1482,7 +1655,80 @@
       notify("Занятие удалено — не забудьте сохранить модуль.");
     }
 
+    /** Новое занятие: два раздела-заготовки, как требует формат, и место в
+     *  анкете — без него модуль не собрать. Номер id выдаёт сервер: повтор
+     *  id унаследовал бы журнал и mastery прежнего занятия. */
+    async function addLesson() {
+      let number;
+      try {
+        const data = await request(idsUrl, { method: "POST", body: { kind: "lesson", count: 1 } });
+        number = data.ids[0];
+      } catch (problem) {
+        notify(problem.message, { error: true });
+        return;
+      }
+      // Сгенерированные занятия называются `tNN_<ключ модели>`, поэтому
+      // префикс `lesson` с ними не столкнётся; латинский id безопаснее
+      // кириллицы из названия (он же имя файла конспекта).
+      const id = `t${String(moduleNumber).padStart(2, "0")}_lesson${number}`;
+      model.nodes.push({
+        id,
+        name: "Новое занятие",
+        difficulty: 0.5,
+        description: null,
+        source_url: null,
+        topic_id: moduleNumber,
+        active: true,
+        sections: [
+          { id: "sec1", title: "Раздел 1" },
+          { id: "sec2", title: "Раздел 2" },
+        ],
+      });
+      const data = survey();
+      if (data.blocks.length) {
+        // Блок без занятий анкета не переживёт, поэтому новый узел сразу
+        // попадает в последний блок: дальше преподаватель перенесёт его
+        // галочками в подходящий.
+        data.blocks[data.blocks.length - 1].concepts.push(id);
+      } else {
+        data.blocks.push({
+          key: nextBlockKey(data),
+          title: "Новый блок",
+          question: "",
+          example: "",
+          concepts: [id],
+        });
+      }
+      render();
+      notify(`Занятие ${id} добавлено: заполните разделы и проверьте блок анкеты. Граф перестроится при сохранении.`);
+    }
+
+    /** Перестановка занятия: порядок карточек задаёт цепочку рёбер модуля. */
+    function moveLesson(button) {
+      const card = button.closest("[data-lesson]");
+      if (!card) return;
+      const index = model.nodes.findIndex((lesson) => lesson.id === card.dataset.lesson);
+      const target = button.dataset.direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || target < 0 || target >= model.nodes.length) return;
+      [model.nodes[index], model.nodes[target]] = [model.nodes[target], model.nodes[index]];
+      render();
+      notify("Порядок занятий изменён — граф курса перестроится при сохранении модуля.");
+    }
+
     /* блоки анкеты */
+
+    /** Перестановка блоков: порядок карточек — порядок вопросов у ученика. */
+    function moveBlock(button) {
+      const block = blockOf(button);
+      if (!block) return;
+      const data = survey();
+      const index = data.blocks.findIndex((entry) => entry.key === block.key);
+      const target = button.dataset.direction === "up" ? index - 1 : index + 1;
+      if (index < 0 || target < 0 || target >= data.blocks.length) return;
+      [data.blocks[index], data.blocks[target]] = [data.blocks[target], data.blocks[index]];
+      renderSurvey(surveyHost);
+      notify("Порядок блоков изменён — вопросы анкеты пойдут в новом порядке. Не забудьте сохранить модуль.");
+    }
 
     function addBlock() {
       const data = survey();
@@ -1629,8 +1875,14 @@
             notify(problem.message, { error: true });
             return;
           }
+          // Пакетный прогон ушёл на следующий модуль: этот уже готов —
+          // перечитываем страницу, иначе редактор останется пустым.
+          if (data.run && Number(data.run.module) !== moduleNumber) {
+            location.reload();
+            return;
+          }
           showRun(data.run);
-          if (data.run && TERMINAL.includes(data.run.status)) {
+          if (data.run && TERMINAL.includes(data.run.status) && !data.generating) {
             location.reload();
             return;
           }
@@ -1659,15 +1911,45 @@
       });
     }
 
-    /** Полная пересборка модуля: один вызов на весь модуль, ответа ждёт прогон. */
-    async function regeneratePlan(button) {
+    const PART_TITLES = {
+      theory: "конспект занятия",
+      items: "задания раздела",
+      final: "итоговое задание",
+      survey: "анкету модуля",
+    };
+
+    async function regeneratePart(button, part, extra = {}) {
+      const what = PART_TITLES[part] || "часть модуля";
+      const confirmed = await window.App.confirm(
+        `Перегенерировать ${what}?`,
+        "Модель перепишет только эту часть, остальное возьмёт с диска. Несохранённые правки в редакторе потеряются.",
+        { label: "Перегенерировать" }
+      );
+      if (!confirmed) return;
+      await regenerate(button, part, extra);
+    }
+
+    /** Полная пересборка модуля: работает и без плана прогона (ручной модуль). */
+    async function regenerateModule(button) {
       const confirmed = await window.App.confirm(
         "Перегенерировать модуль?",
         "Модель перепишет план модуля и всё его содержимое: занятия, разделы, задания и конспекты соберутся с нуля. Ваши правки в этом модуле потеряются.",
         { label: "Перегенерировать", danger: true }
       );
       if (!confirmed) return;
-      await regenerate(button, "plan");
+      await guard(button, async () => {
+        try {
+          const data = await request(`${courseApi}/generate`, {
+            method: "POST",
+            body: { module: moduleNumber, force: true },
+          });
+          showRun(data.run);
+          notify("Перегенерация модуля пошла.");
+          watch();
+        } catch (problem) {
+          fail(problem);
+        }
+      });
     }
 
     function problemRow(problem) {
@@ -1797,6 +2079,8 @@
     // Один слушатель на весь экран: кнопки модуля стоят рядом с редактором.
     onActions(node, {
       "save-module": saveModule,
+      "add-lesson": addLesson,
+      "move-lesson": moveLesson,
       "add-section": addSection,
       "remove-section": removeSection,
       "remove-lesson": removeLesson,
@@ -1804,8 +2088,14 @@
       "remove-item": removeItem,
       "add-block": addBlock,
       "remove-block": removeBlock,
+      "move-block": moveBlock,
       "save-theory": saveTheory,
-      "regenerate-plan": regeneratePlan,
+      "regenerate-plan": regenerateModule,
+      "regenerate-theory": (button) => regeneratePart(button, "theory", { lesson: button.dataset.lesson }),
+      "regenerate-final": (button) => regeneratePart(button, "final", { lesson: button.dataset.lesson }),
+      "regenerate-items": (button) =>
+        regeneratePart(button, "items", { lesson: button.dataset.lesson, section: button.dataset.section }),
+      "regenerate-survey": (button) => regeneratePart(button, "survey"),
       "check-module": checkModule,
       "delete-module": deleteModule,
     });

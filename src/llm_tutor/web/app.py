@@ -23,6 +23,7 @@ from markupsafe import Markup, escape
 
 from llm_tutor.config import Settings
 from llm_tutor.llm.client import LLMClient
+from llm_tutor.llm.stt import SpeechToText
 from llm_tutor.web import accounts, courses, jobs, security
 from llm_tutor.web.mailer import MAIL_HELP, Mailer, build_mailer
 from llm_tutor.web.userdb import UserDBPool
@@ -184,24 +185,38 @@ def _generator_client(settings: Settings) -> LLMClient:
     )
 
 
+def _stt_client(settings: Settings) -> SpeechToText:
+    """Распознавание речи — свой клиент: таймаут и модель у него свои."""
+    return SpeechToText(
+        base_url=settings.openrouter_base_url,
+        api_key=settings.openrouter_api_key.get_secret_value(),
+        model=settings.stt_model,
+        language=settings.stt_language,
+        timeout=settings.stt_timeout,
+    )
+
+
 def create_app(
     settings: Settings,
     client: LLMClient | None = None,
     generator: LLMClient | None = None,
     mailer: Mailer | None = None,
+    stt: SpeechToText | None = None,
 ) -> FastAPI:
     """Собирает приложение.
 
     ``client`` — LLM-клиент тьютора, ``generator`` — клиент генерации курса,
-    ``mailer`` — почта; если не переданы, приложение создаёт свои и закрывает
-    их при остановке. Внедрённые закрывает тот, кто их создал. Без явного ``generator``
-    берётся ``client``: в тестах это подставной клиент, и лишних вызовов сети
-    не будет.
+    ``mailer`` — почта, ``stt`` — распознавание речи; если не переданы,
+    приложение создаёт свои и закрывает их при остановке. Внедрённые закрывает
+    тот, кто их создал. Без явного ``generator`` берётся ``client``: в тестах
+    это подставной клиент, и лишних вызовов сети не будет.
     """
     owns_client = client is None
     owns_mailer = mailer is None
+    owns_stt = stt is None
     llm = _llm_client(settings) if client is None else client
     post = build_mailer(settings) if mailer is None else mailer
+    speech = _stt_client(settings) if stt is None else stt
     owns_generator = generator is None and client is None
     gen = generator if generator is not None else (client if client is not None else _generator_client(settings))
     accounts_db = accounts.open_accounts(settings.accounts_db_path)
@@ -237,6 +252,8 @@ def create_app(
                 await post.aclose()
             if owns_generator:
                 await gen.aclose()
+            if owns_stt:
+                await speech.aclose()
 
     # Swagger и ReDoc грузят скрипты со стороннего CDN — API внутреннее.
     app = FastAPI(
@@ -261,6 +278,9 @@ def create_app(
     app.state.reset_limiter = security.LoginLimiter(limit=settings.password_reset_limit)
     app.state.userdbs = userdbs
     app.state.generator = gen
+    app.state.stt = speech
+    # Расшифровки голоса на ученика: каждая стоит денег (web/api_lesson).
+    app.state.stt_limiter = security.LoginLimiter(limit=settings.stt_request_limit)
     # Прогоны генерации курса: свои у каждого приложения (web/jobs.py).
     app.state.jobs = jobs.JobRegistry()
     # Снимок данных админки по курсам (web/admin.py); свой у каждого приложения.

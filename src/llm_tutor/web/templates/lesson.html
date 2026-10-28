@@ -16,6 +16,7 @@
 <script src="{{ static_url('vendor/codemirror-5.65.20/closebrackets.js') }}" defer></script>
 <script src="{{ static_url('js/lesson.js') }}" defer></script>
 <script src="{{ static_url('js/split.js') }}" defer></script>
+<script src="{{ static_url('js/voice.js') }}" defer></script>
 <script src="{{ static_url('js/chat.js') }}" defer></script>
 <script src="{{ static_url('js/theory.js') }}" defer></script>
 <script src="{{ static_url('js/survey.js') }}" defer></script>
@@ -103,9 +104,11 @@
         <button class="btn ghost icon-only" type="button" id="chat-quote-remove" aria-label="Убрать фрагмент">{{ icon('close') }}</button>
       </div>
       <p class="visually-hidden" id="chat-quote-status" aria-live="polite"></p>
+      <p class="voice-status" id="chat-voice-status" role="status" aria-live="polite" hidden></p>
       <form class="chat-form" id="chat-form">
         <label class="visually-hidden" for="chat-input">Сообщение тьютору</label>
         <textarea id="chat-input" name="text" rows="2" maxlength="8000" placeholder="Спросите тьютора… Enter — отправить, Shift+Enter — новая строка"></textarea>
+        <button class="btn ghost icon-only voice-btn" type="button" id="chat-mic" aria-label="Голосовой ввод" title="Голосовой ввод">{{ icon('mic') }}</button>
         <button class="btn primary icon-only" type="submit" aria-label="Отправить">{{ icon('send') }}</button>
       </form>
     </section>

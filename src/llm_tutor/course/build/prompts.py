@@ -36,8 +36,10 @@ GENERATOR_SYSTEM = """Ты — методист и автор учебного �
   «starter» и проходят на верном решении; они видны ученику;
 - вариант «choice» — 3–5 вариантов, неверные варианты правдоподобны и
   соответствуют типичным заблуждениям;
-- задание «open» и «code» обязаны иметь рубрику: 3–5 атомарных критериев, каждый
-  проверяется по ответу ученика.
+- «spoken» — задание, на которое ученик отвечает голосом: проси объяснить,
+  сравнить или привести пример вслух; его расшифровка проверяется рубрикой;
+- задание «open», «spoken» и «code» обязаны иметь рубрику: 3–5 атомарных
+  критериев, каждый проверяется по ответу ученика.
 
 Отвечай строго JSON-объектом по заданной схеме, без текста вокруг."""
 
@@ -179,55 +181,59 @@ def theory_repair_messages(*, lesson_name: str, headings: list[str], markdown: s
     return _messages(GENERATOR_SYSTEM, request)
 
 
-def items_messages(
-    *, lesson_name: str, section_title: str, goal: str, material: str, count: int = ITEMS_PER_SECTION
+def lesson_items_messages(
+    *,
+    lesson_name: str,
+    sections: list[tuple[str, str, str]],
+    material: str,
+    count: int = ITEMS_PER_SECTION,
 ) -> list[ChatMessage]:
-    """Задания раздела: с проверяемым ответом или с рубрикой."""
-    request = f"""Придумай {count} задания для раздела «{section_title}» занятия «{lesson_name}».
+    """Задания всего занятия одним ответом: разделы по ключам плюс итоговое.
 
-Цель раздела: {goal or "разобраться в теме раздела"}
+    ``sections`` — тройки (ключ, название, цель) ровно из плана занятия: по
+    ключу ответ раскладывается по разделам, и выдуманный ключ отвергается.
+    """
+    listing = "\n".join(
+        f"- {key}: «{title}» — {goal or 'разобраться в теме раздела'}"
+        for key, title, goal in sections
+    )
+    request = f"""Придумай задания для всех разделов занятия «{lesson_name}» и его итоговое задание.
+
+Разделы занятия (ключ: название — цель):
+{listing}
 
 {_material_block(material)}
 
-Верни JSON по схеме SectionItems со списком "items". В заданиях раздела:
-- одно задание с проверяемым ответом ("choice" или "short") — обязательно;
-- остальные — на выбор: "choice", "short", "open" или "code";
-- у "open" и "code" заполни "criteria" — рубрику из 3–5 критериев;
+Верни JSON по схеме LessonItems:
+- "sections" — ровно по одному элементу на каждый раздел, в том же порядке; "key" —
+  дословно ключ раздела из списка выше;
+- в каждом разделе {count} задания (не меньше {MIN_ITEMS_PER_SECTION}); одно из них
+  с проверяемым ответом ("choice" или "short") — обязательно;
+- остальные — на выбор: "choice", "short", "open", "spoken" или "code";
+- "spoken" — не больше одного на занятие и только когда ответу тесно в тексте:
+  «объясни вслух», «сравни два подхода голосом», «проговори, что произойдёт»;
+- у "open", "spoken" и "code" заполни "criteria" — рубрику из 3–5 критериев;
 - у "code" заполни "starter" (заготовка), "setup" (подготовка данных, если нужна),
   "tests" (проверки) и "solution" — эталонное решение. Проверки обязаны падать
-  на "starter" и проходить на "solution": по этому задание и проверяют.
+  на "starter" и проходить на "solution": по этому задание и проверяют;
+- "final" — итоговое задание занятия: только "code", закрывает занятие, проверки
+  падают на "starter" и проходят на "solution";
+- меняй типы и сложность (0.2–0.9): не делай все задания одинаковыми;
+- верный вариант choice не ставь всегда первым.
 
 Ровно такая форма ответа, имена полей менять нельзя:
-{{"items": [{{"prompt": "Текст задания", "answer_type": "choice",
-             "options": ["Верный", "Неверный", "Тоже неверный"], "answer": "0",
-             "difficulty": 0.3, "starter": null, "setup": null, "tests": null,
-             "criteria": []}},
-            {{"prompt": "Напиши код…", "answer_type": "code", "options": [], "answer": null,
-              "difficulty": 0.5, "starter": "result = None", "setup": "data = [1, 2, 3]",
-              "tests": "assert result == 6", "solution": "result = sum(data)",
-              "criteria": [{{"criterion": "Результат верный", "weight": 1.0,
-                            "positive_example": "result = 6", "negative_example": "result = 0"}}]}}]}}"""
-    return _messages(GENERATOR_SYSTEM, request)
-
-
-def final_messages(*, lesson_name: str, sections: list[str], material: str) -> list[ChatMessage]:
-    """Итоговое задание занятия: код, закрывающий занятие."""
-    listing = ", ".join(sections)
-    request = f"""Придумай итоговое задание занятия «{lesson_name}» — оно закрывает занятие.
-
-Разделы занятия: {listing}
-
-{_material_block(material)}
-
-Верни JSON по схеме FinalItem с одним заданием "item":
-- "answer_type" — только "code";
-- "prompt" — что нужно сделать со своими данными, одной-двумя фразами;
-- "setup" — подготовка данных (если нужна), "starter" — заготовка, "tests" — проверки,
-  "solution" — верное решение: проверки падают на заготовке и проходят на нём;
-- "criteria" — рубрика из 3–5 критериев: она нужна, если код не пройдёт тесты.
-
-Ровно такая форма ответа, имена полей менять нельзя:
-{{"item": {{"prompt": "Что нужно сделать", "answer_type": "code", "options": [], "answer": null,
+{{"sections": [{{"key": "ключ раздела из списка",
+               "items": [{{"prompt": "Текст задания", "answer_type": "choice",
+                          "options": ["Верный", "Неверный", "Тоже неверный"], "answer": "0",
+                          "difficulty": 0.3, "starter": null, "setup": null, "tests": null,
+                          "criteria": []}},
+                         {{"prompt": "Объясни вслух, чем список отличается от кортежа…",
+                           "answer_type": "spoken", "options": [], "answer": null,
+                           "difficulty": 0.4, "starter": null, "setup": null, "tests": null,
+                           "criteria": [{{"criterion": "Названо хотя бы одно отличие",
+                                         "weight": 1.0, "positive_example": "…",
+                                         "negative_example": "…"}}]}}]}}],
+ "final": {{"prompt": "Что нужно сделать", "answer_type": "code", "options": [], "answer": null,
            "difficulty": 0.5, "starter": "result = None", "setup": "df = ...",
            "tests": "assert result is not None", "solution": "result = df.head()",
            "criteria": [{{"criterion": "Проверяемое утверждение", "weight": 1.0,

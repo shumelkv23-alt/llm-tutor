@@ -1,0 +1,533 @@
+{
+  "course": "Python: к вершинам мастерства",
+  "topic": {
+    "number": 3,
+    "title": "Словари и множества",
+    "intro": "Разберём, почему dict и set такие быстрые, как правильно обрабатывать отсутствующие ключи и какие структуры выбирать.",
+    "survey": {
+      "level_key": "t03_level",
+      "level_question": "Насколько ты знаком с темой «Словари и множества»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t03_b1",
+          "title": "Хеширование и устройство dict",
+          "question": "Насколько уверенно ты разбираешься в теме «хеширование и устройство dict»?",
+          "example": "Хешируемые ключи, коллизии, порядок вставки и API словаря.",
+          "concepts": [
+            "t03_lesson7"
+          ]
+        },
+        {
+          "key": "t03_b2",
+          "title": "Отсутствующие ключи: defaultdict, __missing__, Counter",
+          "question": "Насколько уверенно ты разбираешься в теме «отсутствующие ключи: defaultdict, __missing__, counter»?",
+          "example": "Как не писать проверки на KeyError и какие готовые отображения есть в collections.",
+          "concepts": [
+            "t03_lesson8"
+          ]
+        },
+        {
+          "key": "t03_b3",
+          "title": "Множества и операции над представлениями",
+          "question": "Насколько уверенно ты разбираешься в теме «множества и операции над представлениями»?",
+          "example": "set и frozenset, операции над множествами и словарные представления.",
+          "concepts": [
+            "t03_lesson9"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t03_b1",
+        "t03_b2"
+      ],
+      "foundation": [
+        "t03_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t03_lesson7",
+      "name": "Хеширование и устройство dict",
+      "difficulty": 0.5,
+      "description": "Хешируемые ключи, коллизии, порядок вставки и API словаря.",
+      "source_url": null,
+      "topic_id": 3,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Хешируемость и устройство dict"
+        },
+        {
+          "id": "sec2",
+          "title": "API и представления"
+        }
+      ]
+    },
+    {
+      "id": "t03_lesson8",
+      "name": "Отсутствующие ключи: defaultdict, __missing__, Counter",
+      "difficulty": 0.5,
+      "description": "Как не писать проверки на KeyError и какие готовые отображения есть в collections.",
+      "source_url": null,
+      "topic_id": 3,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "defaultdict и __missing__"
+        },
+        {
+          "id": "sec2",
+          "title": "Другие отображения"
+        }
+      ]
+    },
+    {
+      "id": "t03_lesson9",
+      "name": "Множества и операции над представлениями",
+      "difficulty": 0.5,
+      "description": "set и frozenset, операции над множествами и словарные представления.",
+      "source_url": null,
+      "topic_id": 3,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Множества"
+        },
+        {
+          "id": "sec2",
+          "title": "Операции над представлениями"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t03_lesson7",
+      "to_id": "t03_lesson8",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t03_lesson8",
+      "to_id": "t03_lesson9",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 31,
+      "prompt": "Почему список нельзя использовать как ключ dict?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Список не поддерживает сравнение",
+        "Список нехешируем: его содержимое можно изменить",
+        "Список слишком длинный",
+        "Списки хранят только числа"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 32,
+      "prompt": "Чем d | e отличается от d |= e?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "| создаёт новый словарь, |= обновляет d",
+        "Оба создают новый словарь",
+        "Оба меняют d",
+        "| работает только с ключами-строками"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 33,
+      "prompt": "Что вернёт d.keys() & other.keys()?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Список значений",
+        "Новый словарь",
+        "Ошибку: представления не поддерживают &",
+        "Множество общих ключей"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 34,
+      "prompt": "Какой метод вернёт значение по ключу или default, не создавая ключ? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "get",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 35,
+      "prompt": "Что произойдёт с ключом-кортежем, внутри которого лежит список?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Ключ будет работать, пока список не изменится",
+        "Кортеж нехешируем, использовать его ключом нельзя",
+        "Кортеж захэшируется по длине",
+        "Список автоматически станет кортежем"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 36,
+      "prompt": "Что сделает defaultdict(list) при обращении к отсутствующему ключу?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Создаст ключ со значением []",
+        "Вернёт None и ничего не создаст",
+        "Поднимет KeyError",
+        "Вернёт пустой кортеж"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 37,
+      "prompt": "Когда dict вызывает __missing__?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "При каждом чтении",
+        "При удалении ключа",
+        "При сравнении словарей",
+        "При обращении к отсутствующему ключу"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 38,
+      "prompt": "Что вернёт Counter('abracadabra').most_common(1)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "5",
+        "[('b', 2)]",
+        "[('a', 5)]",
+        "['a']"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 39,
+      "prompt": "Какое отображение ищет ключ в нескольких словарях по очереди? Напишите имя из collections.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "ChainMap",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 40,
+      "prompt": "Нужно объединить настройки по умолчанию и пользовательские, не копируя их. Что выбрать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "ChainMap",
+        "Counter",
+        "OrderedDict",
+        "UserDict"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 41,
+      "prompt": "Как создать пустое множество?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "{}",
+        "[]",
+        "frozenset",
+        "set()"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 42,
+      "prompt": "Какая операция даёт элементы, которые есть и в a, и в b?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "a - b",
+        "a ^ b",
+        "a & b",
+        "a | b"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 43,
+      "prompt": "Почему dict.values() не поддерживает операции над множествами?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "У словаря нет метода values",
+        "Значения могут повторяться и быть нехешируемыми",
+        "Значения всегда строки",
+        "Представление значений доступно только для чтения"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 44,
+      "prompt": "Какой неизменяемый тип множества можно использовать как ключ dict? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "frozenset",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 45,
+      "prompt": "Есть два словаря с настройками. Как быстро найти общие ключи?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "d1.values() & d2.values()",
+        "set(d1) | set(d2)",
+        "d1 == d2",
+        "d1.keys() & d2.keys()"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 93,
+      "prompt": "Объясни вслух, почему список нельзя использовать ключом словаря, а кортеж из чисел — можно. Что случится с кортежем, внутри которого лежит список, и почему это ломает словарь?",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 3,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 3,
+      "name": "Голосом: хешируемость ключей",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 7,
+      "rubric_id": 3,
+      "criterion": "Сказано, что ключ должен быть хешируемым, а список изменяемый и хеша не имеет",
+      "weight": 1.0,
+      "positive_example": "«У списка нет стабильного хеша: его содержимое можно поменять»",
+      "negative_example": "«Список нельзя, потому что словарь принимает только строки»",
+      "active": true
+    },
+    {
+      "id": 8,
+      "rubric_id": 3,
+      "criterion": "Объяснено, что хеш кортежа считается по элементам, поэтому кортеж из чисел хешируем",
+      "weight": 1.0,
+      "positive_example": "«Кортеж из int хешируется, потому что все его элементы хешируемы»",
+      "negative_example": "«Любой кортеж хешируем по определению»",
+      "active": true
+    },
+    {
+      "id": 9,
+      "rubric_id": 3,
+      "criterion": "Разобран кортеж со списком внутри: хеш построить нельзя, будет TypeError уже при вставке ключа",
+      "weight": 1.0,
+      "positive_example": "«(1, [2]) при попытке положить в dict даст TypeError: unhashable type: list»",
+      "negative_example": "«Кортеж со списком будет работать, но сравнение сломается»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

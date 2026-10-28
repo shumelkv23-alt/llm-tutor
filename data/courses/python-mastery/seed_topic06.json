@@ -1,0 +1,533 @@
+{
+  "course": "Python: к вершинам мастерства",
+  "topic": {
+    "number": 6,
+    "title": "Функции, замыкания и декораторы",
+    "intro": "Разберём функции как значения, научимся хранить состояние в замыканиях и писать декораторы без потери имени и документации.",
+    "survey": {
+      "level_key": "t06_level",
+      "level_question": "Насколько ты знаком с темой «Функции, замыкания и декораторы»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t06_b1",
+          "title": "Функции как объекты",
+          "question": "Насколько уверенно ты разбираешься в теме «функции как объекты»?",
+          "example": "Функции первого класса, lambda, вызываемые объекты и параметры.",
+          "concepts": [
+            "t06_lesson16"
+          ]
+        },
+        {
+          "key": "t06_b2",
+          "title": "Замыкания и nonlocal",
+          "question": "Насколько уверенно ты разбираешься в теме «замыкания и nonlocal»?",
+          "example": "LEGB, global и nonlocal, захват переменных по ссылке.",
+          "concepts": [
+            "t06_lesson17"
+          ]
+        },
+        {
+          "key": "t06_b3",
+          "title": "Декораторы и кэширование",
+          "question": "Насколько уверенно ты разбираешься в теме «декораторы и кэширование»?",
+          "example": "Как устроен декоратор, functools.wraps, cache и параметризованные формы.",
+          "concepts": [
+            "t06_lesson18"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t06_b1",
+        "t06_b2"
+      ],
+      "foundation": [
+        "t06_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t06_lesson16",
+      "name": "Функции как объекты",
+      "difficulty": 0.8,
+      "description": "Функции первого класса, lambda, вызываемые объекты и параметры.",
+      "source_url": null,
+      "topic_id": 6,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Функции первого класса"
+        },
+        {
+          "id": "sec2",
+          "title": "Вызываемые объекты и параметры"
+        }
+      ]
+    },
+    {
+      "id": "t06_lesson17",
+      "name": "Замыкания и nonlocal",
+      "difficulty": 0.8,
+      "description": "LEGB, global и nonlocal, захват переменных по ссылке.",
+      "source_url": null,
+      "topic_id": 6,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Области видимости"
+        },
+        {
+          "id": "sec2",
+          "title": "Замыкания"
+        }
+      ]
+    },
+    {
+      "id": "t06_lesson18",
+      "name": "Декораторы и кэширование",
+      "difficulty": 0.8,
+      "description": "Как устроен декоратор, functools.wraps, cache и параметризованные формы.",
+      "source_url": null,
+      "topic_id": 6,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Простые декораторы"
+        },
+        {
+          "id": "sec2",
+          "title": "Кэш и параметризованные декораторы"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t06_lesson16",
+      "to_id": "t06_lesson17",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t06_lesson17",
+      "to_id": "t06_lesson18",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 76,
+      "prompt": "Что значит «функция — объект первого класса»?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Её можно передавать, возвращать и хранить как значение",
+        "Она всегда живёт в глобальной области",
+        "Она не может быть методом",
+        "Она компилируется в C"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 77,
+      "prompt": "Чем lambda отличается от def?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Она быстрее любой def",
+        "Она поддерживает несколько операторов",
+        "Она не может принимать аргументы",
+        "Это выражение для одной функции без имени"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 78,
+      "prompt": "Что делает functools.partial(f, 10)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Копирует функцию",
+        "Запрещает передавать другие аргументы",
+        "Создаёт вызываемый объект с зафиксированным первым аргументом",
+        "Вызывает f(10) сразу"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 79,
+      "prompt": "Какая функция проверяет, можно ли вызвать объект? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "callable",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 80,
+      "prompt": "Нужно отсортировать список кортежей по второму элементу. Что короче и яснее lambda?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "operator.itemgetter(1)",
+        "operator.attrgetter(1)",
+        "functools.partial(sorted, 1)",
+        "map(str, 1)"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 81,
+      "prompt": "Зачем нужно nonlocal?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Чтобы создать глобальную переменную",
+        "Чтобы импортировать модуль",
+        "Чтобы запретить замыкание",
+        "Чтобы присвоить имя из объемлющей функции"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 82,
+      "prompt": "Что хранит замыкание: значение или ссылку на переменную?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Только имя функции",
+        "Ничего, оно пересчитывается",
+        "Ссылку на переменную объемлющей области",
+        "Копию значения на момент создания"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 83,
+      "prompt": "Почему лямбды в цикле могут все вернуть последнее значение?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Python запрещает lambda в цикле",
+        "Они захватывают переменную по ссылке, а цикл её меняет",
+        "lambda не умеет читать переменные",
+        "Цикл копирует функции"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 84,
+      "prompt": "Какое ключевое слово объявляет переменную глобальной? Напишите его.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "global",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 85,
+      "prompt": "Как получить независимые счётчики из make_counter?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Вызывать counter дважды",
+        "Объявить count глобальной",
+        "Передать count аргументом в counter",
+        "Вызывать make_counter() для каждого счётчика"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 86,
+      "prompt": "Когда выполняется код декоратора @logged?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Только при первом вызове",
+        "При сборке мусора",
+        "При определении функции, обычно при импорте",
+        "При каждом вызове функции"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 87,
+      "prompt": "Зачем нужен functools.wraps?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Кэширует результат",
+        "Сохраняет имя, документацию и аннотации исходной функции",
+        "Ускоряет вызов",
+        "Запрещает передачу kwargs"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 88,
+      "prompt": "Что требует functools.cache от аргументов функции?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Хешируемость",
+        "Строковый тип",
+        "Положительные числа",
+        "Отсутствие значений по умолчанию"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 89,
+      "prompt": "Какая функция из functools выбирает реализацию по типу аргумента? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "singledispatch",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 90,
+      "prompt": "Что такое @retry(times=3) по устройству?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Кэш на три вызова",
+        "Генератор",
+        "Фабрика, возвращающая декоратор",
+        "Обычный декоратор без аргументов"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 96,
+      "prompt": "Объясни вслух, почему три лямбды, созданные в цикле, могут все вернуть последнее значение. Что замыкание хранит — значение или ссылку на переменную? Как получить три независимых счётчика?",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 6,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 6,
+      "name": "Голосом: замыкания и позднее связывание",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 16,
+      "rubric_id": 6,
+      "criterion": "Сказано, что замыкание захватывает переменную, а не её значение на момент создания",
+      "weight": 1.0,
+      "positive_example": "«Лямбда смотрит на переменную i, а не на число, которое было в i»",
+      "negative_example": "«Замыкание копирует значение при создании»",
+      "active": true
+    },
+    {
+      "id": 17,
+      "rubric_id": 6,
+      "criterion": "Объяснено, что все лямбды обращаются к одной и той же переменной цикла, которая к моменту вызова уже равна последнему значению",
+      "weight": 1.0,
+      "positive_example": "«К моменту вызова цикл закончился, и i у всех одна»",
+      "negative_example": "«Каждая лямбда получила свою копию i»",
+      "active": true
+    },
+    {
+      "id": 18,
+      "rubric_id": 6,
+      "criterion": "Назван способ исправления: значение по умолчанию `i=i`, фабрика `make_counter` или `functools.partial`",
+      "weight": 1.0,
+      "positive_example": "«Привяжу значение через lambda i=i: i * 2 или сделаю фабрику счётчика»",
+      "negative_example": "«Достаточно вызвать лямбды до конца цикла»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

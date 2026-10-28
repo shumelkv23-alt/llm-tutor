@@ -1,0 +1,15 @@
+{
+  "id": "python-mastery",
+  "title": "Python: к вершинам мастерства",
+  "subtitle": "Продвинутый Python по книге Лучано Рамальо",
+  "description": "Модель данных и специальные методы, последовательности и словари, Unicode, классы данных, функции, замыкания и декораторы. Для тех, кто уже пишет на Python и хочет понимать, как язык устроен внутри.",
+  "source_url": "https://www.oreilly.com/library/view/fluent-python-2nd/9781492056348/",
+  "status": "published",
+  "origin": "manual",
+  "created_at": 1793144833.4329855,
+  "updated_at": 1793147470.7533221,
+  "next_item_id": 97,
+  "next_rubric_id": 7,
+  "next_criterion_id": 19,
+  "next_lesson_id": 19
+}

@@ -84,8 +84,8 @@ class ItemPlan(BaseModel):
     """Задание: с проверяемым ответом или с рубрикой."""
 
     prompt: str = Field(description="Формулировка задания")
-    answer_type: Literal["choice", "short", "code", "open"] = Field(
-        description="choice и short проверяет код, open и code — рубрика"
+    answer_type: Literal["choice", "short", "code", "open", "spoken"] = Field(
+        description="choice и short проверяет код, open, spoken и code — рубрика"
     )
     options: list[str] = Field(default=[], description="Варианты для choice, 3–5 штук")
     answer: str | None = Field(
@@ -118,6 +118,27 @@ class FinalItem(BaseModel):
     """Итоговое задание занятия: всегда с кодом."""
 
     item: ItemPlan = Field(description="Задание с кодом, закрывающее занятие")
+
+
+class SectionItemsPlan(BaseModel):
+    """Задания одного раздела в ответе на всё занятие."""
+
+    key: str = Field(description="Ключ раздела ровно как в плане занятия")
+    items: list[ItemPlan] = Field(description="От 2 до 4 заданий раздела")
+
+
+class LessonItems(BaseModel):
+    """Все задания занятия одним ответом: разделы по ключам и итоговое.
+
+    Один вызов модели на занятие вместо вызова на каждый раздел и ещё одного
+    на итоговое: у модуля из трёх занятий по два раздела было девять вызовов,
+    стало три. Меньше ожидания и меньше повторов общего материала в промптах.
+    """
+
+    sections: list[SectionItemsPlan] = Field(
+        description="По элементу на каждый раздел занятия, в порядке плана"
+    )
+    final: ItemPlan = Field(description="Итоговое задание с кодом, закрывающее занятие")
 
 
 # Сколько модулей может быть в курсе: больше — это уже не курс, а программа.

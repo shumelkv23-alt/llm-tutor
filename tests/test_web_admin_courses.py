@@ -44,6 +44,21 @@ async def make(admin, **fields) -> str:
     return response.json()["course"]["id"]
 
 
+async def save_structure(admin, course_id: str, *, lessons: int = 3) -> dict:
+    """Структура из двух модулей: без неё модуль некуда поставить."""
+    plan = {
+        "title": "Основы Python",
+        "intro": "",
+        "modules": [
+            {"number": 1, "title": "Первый модуль", "theme": "", "lessons": lessons},
+            {"number": 2, "title": "Второй модуль", "theme": "", "lessons": 2},
+        ],
+    }
+    response = await admin.put(f"/api/admin/courses/{course_id}/structure", json={"plan": plan})
+    assert response.status_code == 200, response.text
+    return plan
+
+
 async def learner_client(web):
     """Отдельный клиент ученика (``student`` переписал бы сессию админа)."""
     import httpx
@@ -93,9 +108,9 @@ async def test_create_course_and_list_it(admin) -> None:
     created = next(item for item in listed if item["id"] == course_id)
     assert created["status"] == "draft" and created["modules"] == 0
     assert created["subtitle"] == "Вводный"
-    # Встроенный курс в списке тоже есть, но он нередактируемый.
-    mlcourse = next(item for item in listed if item["id"] == "mlcourse")
-    assert mlcourse["status"] == "published"
+    # Прежние встроенные курсы скрыты: в списке админки их нет, хотя по
+    # прямому id они по-прежнему открываются (на них лежит старый прогресс).
+    assert not {"mlcourse", "isit-ml"} & {item["id"] for item in listed}
 
 
 async def test_create_course_with_bad_id_is_rejected(admin) -> None:
@@ -300,6 +315,145 @@ async def test_module_can_be_read_and_edited(admin) -> None:
     assert fresh["nodes"][0]["name"] == "Первое занятие"
 
 
+async def test_saving_module_rebuilds_edges_by_lesson_order(admin) -> None:
+    """Порядок занятий задаёт граф: старые рёбра не остаются, цепочка новая."""
+    from llm_tutor.course.seed import _parse_seed
+
+    course_id = await generated(admin)
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    module["topic"]["published"] = False
+    first, second = module["nodes"]
+    module["nodes"] = [second, first]
+    # Клиент мог прислать рёбра прежнего порядка: сервер пересобирает их сам.
+    module["edges"] = [
+        {
+            "from_id": first["id"],
+            "to_id": second["id"],
+            "type": "requires",
+            "hard": False,
+            "weight": 0.3,
+        }
+    ]
+
+    response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
+
+    assert response.status_code == 200, response.text
+    root = courses.get_course(course_id).root
+    saved = _parse_seed(edit.module_path(root, 1))
+    assert [node.id for node in saved.nodes] == [second["id"], first["id"]]
+    assert [(edge.from_id, edge.to_id) for edge in saved.edges] == [
+        (second["id"], first["id"])
+    ]
+
+
+async def test_added_lesson_is_linked_and_counted(admin) -> None:
+    """Новое занятие встаёт в конец цепочки графа, даже если рёбра не прислали."""
+    from llm_tutor.course.seed import _parse_seed
+
+    course_id = await generated(admin)
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    module["topic"]["published"] = False
+    new_id = "t01_lesson1"
+    module["nodes"].append(
+        {
+            "id": new_id,
+            "name": "Новое занятие",
+            "difficulty": 0.5,
+            "description": None,
+            "source_url": None,
+            "topic_id": 1,
+            "active": True,
+            "sections": [
+                {"id": "sec1", "title": "Раздел 1"},
+                {"id": "sec2", "title": "Раздел 2"},
+            ],
+        }
+    )
+    module["topic"]["survey"]["blocks"][-1]["concepts"].append(new_id)
+    module["edges"] = []  # связи достраивает сервер
+
+    response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
+
+    assert response.status_code == 200, response.text
+    root = courses.get_course(course_id).root
+    saved = _parse_seed(edit.module_path(root, 1))
+    ids = [node.id for node in saved.nodes]
+    assert ids[-1] == new_id
+    assert [(edge.from_id, edge.to_id) for edge in saved.edges] == list(zip(ids, ids[1:]))
+
+
+async def test_survey_block_order_is_saved(admin) -> None:
+    """Порядок блоков анкеты — порядок вопросов: он сохраняется как прислан."""
+    from llm_tutor.course.seed import _parse_seed
+
+    course_id = await generated(admin)
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    module["topic"]["published"] = False
+    blocks = module["topic"]["survey"]["blocks"]
+    assert len(blocks) >= 2
+    blocks.reverse()
+
+    response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
+
+    assert response.status_code == 200, response.text
+    root = courses.get_course(course_id).root
+    saved = _parse_seed(edit.module_path(root, 1))
+    assert [block.key for block in saved.topic.survey.blocks] == [block["key"] for block in blocks]
+
+
+async def test_lesson_count_syncs_with_structure(admin) -> None:
+    """Добавленное занятие меняет и структуру: иначе она разошлась бы с модулем.
+
+    У структуры своё число занятий — из неё перегенерация просит у модели
+    столько же, а сверка при сохранении структуры падает на расхождении.
+    """
+    course_id = await make(admin)
+    structure = await admin.post(f"/api/admin/courses/{course_id}/structure", json={"hints": ""})
+    assert structure.status_code == 201, structure.text
+    await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 1})
+    run = await wait_run(admin, course_id)
+    assert run["status"] == "done", run.get("error")
+
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    module["topic"]["published"] = False
+    new_id = "t01_lesson1"
+    module["nodes"].append(
+        {
+            "id": new_id,
+            "name": "Новое занятие",
+            "difficulty": 0.5,
+            "description": None,
+            "source_url": None,
+            "topic_id": 1,
+            "active": True,
+            "sections": [
+                {"id": "sec1", "title": "Раздел 1"},
+                {"id": "sec2", "title": "Раздел 2"},
+            ],
+        }
+    )
+    module["topic"]["survey"]["blocks"][-1]["concepts"].append(new_id)
+    response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
+    assert response.status_code == 200, response.text
+
+    plan = (await admin.get(f"/api/admin/courses/{course_id}/structure")).json()["plan"]
+    assert plan is not None
+    outline = next(item for item in plan["modules"] if item["number"] == 1)
+    assert outline["lessons"] == len(module["nodes"])
+
+
+async def test_lesson_ids_are_issued_monotonically(admin) -> None:
+    """Новый id занятия не повторяет прежний: иначе ученик унаследует журнал."""
+    course_id = await generated(admin)
+    url = f"/api/admin/courses/{course_id}/ids"
+
+    first = (await admin.post(url, json={"kind": "lesson", "count": 1})).json()["ids"]
+    second = (await admin.post(url, json={"kind": "lesson", "count": 2})).json()["ids"]
+
+    assert first == [1]
+    assert second == [2, 3]
+
+
 async def test_broken_module_is_rejected(admin) -> None:
     course_id = await generated(admin)
     module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
@@ -307,9 +461,122 @@ async def test_broken_module_is_rejected(admin) -> None:
     response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
     assert response.status_code == 422
     assert "раздел" in response.json()["detail"]["message"]
-
     fresh = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
     assert len(fresh["nodes"][0]["sections"]) == 2  # правка не сохранилась
+
+
+# --- модуль, собранный руками (без модели) ---
+
+
+async def test_empty_module_can_be_created_without_a_model(admin) -> None:
+    """Курс собирается руками: заготовка модуля с занятиями и анкетой."""
+    course_id = await make(admin)
+    await save_structure(admin, course_id, lessons=3)
+    page = (await admin.get(f"/admin/courses/{course_id}")).text
+    assert 'data-action="create-module"' in page
+
+    response = await admin.post(
+        f"/api/admin/courses/{course_id}/modules",
+        json={"module": 1, "title": "", "lessons": 3},
+    )
+    assert response.status_code == 201, response.text
+    created = response.json()
+    assert created["number"] == 1
+    assert created["module"]["lessons"] == 3
+    assert created["module"]["items"] == 0
+    # У модуля из структуры берётся название: пустая форма его не затирает.
+    assert created["module"]["title"] == "Первый модуль"
+
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    assert module["topic"]["published"] is False
+    ids = [node["id"] for node in module["nodes"]]
+    assert len(ids) == 3 and len(set(ids)) == 3
+    assert all(len(node["sections"]) == 2 for node in module["nodes"])
+    # Анкета накрывает ровно занятия модуля — иначе seed не собрался бы.
+    covered = [concept for block in module["topic"]["survey"]["blocks"] for concept in block["concepts"]]
+    assert covered == ids
+
+    # Название и число занятий структура берёт из готового файла.
+    plan = (await admin.get(f"/api/admin/courses/{course_id}/structure")).json()["plan"]
+    outline = next(item for item in plan["modules"] if item["number"] == 1)
+    assert outline["lessons"] == 3
+    # И страница редактора открывается.
+    assert (
+        await admin.get(f"/admin/courses/{course_id}/modules/1")
+    ).status_code == 200
+
+
+async def test_module_creation_needs_a_saved_structure(admin) -> None:
+    course_id = await make(admin)
+    response = await admin.post(f"/api/admin/courses/{course_id}/modules", json={"module": 1})
+    assert response.status_code == 422
+    assert "структур" in response.json()["detail"]["message"]
+
+
+async def test_module_creation_does_not_overwrite_existing_module(admin) -> None:
+    course_id = await make(admin)
+    await save_structure(admin, course_id)
+    url = f"/api/admin/courses/{course_id}/modules"
+    assert (await admin.post(url, json={"module": 1})).status_code == 201
+    again = await admin.post(url, json={"module": 1})
+    assert again.status_code == 422
+    assert "уже собран" in again.json()["detail"]["message"]
+
+
+async def test_hand_made_module_is_fully_editable(admin) -> None:
+    """Созданный руками модуль правится как любой другой: текст, задания, конспект."""
+    course_id = await make(admin)
+    await save_structure(admin, course_id)
+    await admin.post(f"/api/admin/courses/{course_id}/modules", json={"module": 1})
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    lesson = module["nodes"][0]
+    item_id = (
+        await admin.post(
+            f"/api/admin/courses/{course_id}/ids", json={"kind": "item", "count": 1}
+        )
+    ).json()["ids"][0]
+
+    module["topic"]["title"] = "Свой модуль"
+    lesson["name"] = "Введение"
+    lesson["sections"][0]["title"] = "Зачем это"
+    module["items"].append(
+        {
+            "id": item_id,
+            "prompt": "Что такое DataFrame?",
+            "answer_type": "short",
+            "concept_weights": {lesson["id"]: 1.0},
+            "difficulty": 0.4,
+            "options": [],
+            "answer": "таблица",
+            "rubric_id": None,
+            "active": True,
+            "section": "sec1",
+            "final": False,
+        }
+    )
+    saved = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
+    assert saved.status_code == 200, saved.text
+
+    theory = await admin.put(
+        f"/api/admin/courses/{course_id}/modules/1/theory/{lesson['id']}",
+        json={"markdown": "# Введение\n\n## Зачем это\n\nТекст руками.\n"},
+    )
+    assert theory.status_code == 200, theory.text
+
+    fresh = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    assert fresh["topic"]["title"] == "Свой модуль"
+    assert fresh["nodes"][0]["name"] == "Введение"
+    assert fresh["items"][0]["prompt"] == "Что такое DataFrame?"
+    assert "Текст руками" in (
+        await admin.get(f"/api/admin/courses/{course_id}/modules/1/theory/{lesson['id']}")
+    ).json()["markdown"]
+
+    # И модуль удаляется: файл, конспект и строка структуры.
+    assert (await admin.delete(f"/api/admin/courses/{course_id}/modules/1")).status_code == 204
+    assert not module_path(admin, course_id, 1).exists()
+    plan = (await admin.get(f"/api/admin/courses/{course_id}/structure")).json()["plan"]
+    assert [item["number"] for item in plan["modules"]] == [1]
+    assert plan["modules"][0]["title"] == "Второй модуль"
 
 
 async def test_ids_come_from_the_server(admin) -> None:
@@ -537,6 +804,106 @@ async def test_course_picker_is_not_shown_where_it_does_nothing(admin) -> None:
     assert "admin-course-picker" not in page.text
     # А на страницах, которые читают ?course=, он есть.
     assert "admin-course-picker" in (await admin.get("/admin/students")).text
+
+
+async def test_course_list_opens_the_editor(admin) -> None:
+    """В списке у своего курса есть кнопка «Редактировать»; скрытых нет."""
+    course_id = await make(admin)
+    page = (await admin.get("/admin/courses")).text
+    assert f'<a class="btn" href="/admin/courses/{course_id}">Редактировать</a>' in page
+    # Старые встроенные курсы скрыты из каталога и списка админки целиком:
+    # их файлы и прогресс остаются, а копировать из интерфейса уже нечего.
+    assert 'data-course="mlcourse"' not in page
+    assert 'data-course="isit-ml"' not in page
+    assert 'data-copy="/api/admin/courses/mlcourse/copy"' not in page
+
+
+async def test_course_list_without_visible_courses_shows_empty_state(admin, web_app) -> None:
+    """Скрытые встроенные курсы не остаются единственным содержимым админки."""
+    page = await admin.get("/admin/courses")
+    assert page.status_code == 200
+    assert "Курсов нет" in page.text
+    assert "data-course=" not in page.text
+    listing = await admin.get("/api/admin/courses")
+    assert listing.status_code == 200
+    assert listing.json()["courses"] == []
+    # Аналитика без единого видимого курса открывается пустым состоянием и не
+    # подставляет скрытый встроенный курс ни в текст, ни в ссылки.
+    user = accounts.find_user(web_app.state.accounts, ADMIN["email"])
+    assert user is not None
+    for path in ("/admin/students", "/admin/course", "/admin/course?course=mlcourse",
+                 f"/admin/students/{user.id}"):
+        page = await admin.get(path)
+        assert page.status_code == 200
+        assert "Курсов пока нет" in page.text
+        assert "mlcourse" not in page.text
+        assert "isit-ml" not in page.text
+
+
+async def test_builtin_course_can_be_copied_for_editing(admin) -> None:
+    """Встроенный курс правится в копии: модули и конспекты переезжают целиком."""
+    response = await admin.post("/api/admin/courses/mlcourse/copy", json={})
+    assert response.status_code == 201, response.text
+    course = response.json()["course"]
+    new_id = course["id"]
+    assert new_id != "mlcourse"
+    # Копия — черновик: ученики увидят её только после публикации.
+    assert course["status"] == "draft"
+    assert course["modules"] == 5
+
+    root = courses.get_course(new_id).root
+    assert root is not None and root.is_dir()
+    assert (root / "seed_topic01.json").is_file()
+    assert (root / "theory" / "topic01").is_dir()
+    # Копия редактируется, оригинал — по-прежнему нет.
+    assert (await admin.put(f"/api/admin/courses/{new_id}", json={"title": "Мой курс"})).status_code == 200
+    assert (await admin.put("/api/admin/courses/mlcourse", json={"title": "X"})).status_code == 400
+    assert (await admin.get(f"/admin/courses/{new_id}")).status_code == 200
+    assert f'<a class="btn" href="/admin/courses/{new_id}">Редактировать</a>' in (
+        await admin.get("/admin/courses")
+    ).text
+
+
+async def test_copy_starts_ids_above_the_copied_ones(admin) -> None:
+    """Новые id копии не совпадут со скопированными: повтор переписал бы журнал."""
+    new_id = (await admin.post("/api/admin/courses/mlcourse/copy", json={})).json()["course"]["id"]
+    root = courses.get_course(new_id).root
+    assert root is not None
+    meta = store.read_meta(root)
+    items = [
+        entry["id"]
+        for path in store.seed_paths(root)
+        for entry in store.read_json(path).get("items") or []
+        if isinstance(entry.get("id"), int)
+    ]
+    assert items and meta.next_item_id == max(items) + 1
+
+
+async def test_copy_of_unknown_course_is_not_found(admin) -> None:
+    assert (await admin.post("/api/admin/courses/no-such/copy", json={})).status_code == 404
+
+
+async def test_generated_course_copy_keeps_its_artifacts(admin) -> None:
+    """У созданного курса копируются и артефакты прогона — по ним работает переделка."""
+    course_id = await generated(admin)
+    response = await admin.post(f"/api/admin/courses/{course_id}/copy", json={})
+    assert response.status_code == 201, response.text
+    copied = response.json()["course"]
+    assert copied["modules"] == 1 and copied["status"] == "draft"
+    root = courses.get_course(copied["id"]).root
+    assert root is not None
+    assert (root / "seed_topic01.json").is_file()
+    assert (root / "generation").is_dir()
+
+
+async def test_editor_pages_have_no_analytics_tabs(admin) -> None:
+    """Вкладки «Ученики | Курс» — про аналитику; в редакторе они уводили
+    из раздела, поэтому редактор живёт в своём пункте меню без них."""
+    course_id = await generated(admin)
+    for path in ("/admin/courses", f"/admin/courses/{course_id}", f"/admin/courses/{course_id}/modules/1"):
+        assert "admin-tabs" not in (await admin.get(path)).text, path
+    # Аналитика по-прежнему с вкладками.
+    assert "admin-tabs" in (await admin.get("/admin/students")).text
 
 
 # --- структура курса (срез L) ---
@@ -824,3 +1191,136 @@ async def test_survey_needs_exactly_three_level_options(admin) -> None:
     module["topic"]["survey"]["level_options"] = ["Раз", "Два"]
     response = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
     assert response.status_code == 422
+
+
+# --- пакетная генерация и согласие структуры с модулями ---
+
+
+async def wait_idle(admin, course_id: str, *, limit: int = 300) -> dict:
+    """Ждёт конца фоновой задачи, а не первого готового модуля пакета."""
+    for _ in range(limit):
+        data = (await admin.get(f"/api/admin/courses/{course_id}/generation")).json()
+        if not data["generating"]:
+            return data["run"]
+        await asyncio.sleep(0.02)
+    raise AssertionError("прогон не завершился")
+
+
+async def test_all_missing_modules_are_generated_in_one_run(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+
+    started = await admin.post(f"/api/admin/courses/{course_id}/generate-missing", json={})
+    assert started.status_code == 202, started.text
+    assert started.json()["modules"] == [1, 2]
+
+    run = await wait_idle(admin, course_id)
+    assert run["status"] == "done", run.get("error")
+    assert run["module"] == 2
+    assert module_path(admin, course_id, 1).is_file()
+    assert module_path(admin, course_id, 2).is_file()
+
+
+async def test_batch_generation_skips_modules_that_are_already_built(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 1})
+    assert (await wait_run(admin, course_id))["status"] == "done"
+
+    started = await admin.post(f"/api/admin/courses/{course_id}/generate-missing", json={})
+    assert started.status_code == 202, started.text
+    assert started.json()["modules"] == [2]
+    run = await wait_idle(admin, course_id)
+    assert run["status"] == "done", run.get("error")
+    assert run["module"] == 2
+
+
+async def test_batch_generation_needs_a_structure(admin) -> None:
+    course_id = await make(admin)
+    response = await admin.post(f"/api/admin/courses/{course_id}/generate-missing", json={})
+    assert response.status_code == 422
+    assert "структуру" in response.json()["detail"]["message"]
+
+
+async def test_batch_generation_with_nothing_missing_is_refused(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate-missing", json={})
+    assert (await wait_idle(admin, course_id))["status"] == "done"
+
+    again = await admin.post(f"/api/admin/courses/{course_id}/generate-missing", json={})
+    assert again.status_code == 422
+    assert "уже собраны" in again.json()["detail"]["message"]
+
+
+async def test_structure_is_not_regenerated_over_built_modules(admin) -> None:
+    course_id = await generated(admin)
+    response = await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    assert response.status_code == 409
+    assert "уже собраны" in response.json()["detail"]["message"]
+
+
+async def test_structure_page_shows_built_module_as_read_only(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 1})
+    assert (await wait_run(admin, course_id))["status"] == "done"
+
+    page = await admin.get(f"/admin/courses/{course_id}")
+    assert page.status_code == 200
+    assert 'data-built="1"' in page.text
+    assert "readonly" in page.text
+    assert 'data-action="make-structure" disabled' in page.text
+
+
+async def test_module_title_and_lessons_sync_into_the_structure(admin) -> None:
+    """Правка названия в редакторе не должна ломать сохранение структуры."""
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 1})
+    assert (await wait_run(admin, course_id))["status"] == "done"
+
+    module = (await admin.get(f"/api/admin/courses/{course_id}/modules/1")).json()["module"]
+    module["topic"]["title"] = "Переменные и типы"
+    saved = await admin.put(f"/api/admin/courses/{course_id}/modules/1", json=module)
+    assert saved.status_code == 200, saved.text
+
+    plan = (await admin.get(f"/api/admin/courses/{course_id}/structure")).json()["plan"]
+    assert plan["modules"][0]["title"] == "Переменные и типы"
+    assert plan["modules"][0]["lessons"] == len(module["nodes"])
+    # И структура сохраняется с этими значениями, не требуя ручной синхронизации.
+    assert (
+        await admin.put(f"/api/admin/courses/{course_id}/structure", json={"plan": plan})
+    ).status_code == 200
+
+
+async def test_structure_rejects_a_wrong_lesson_count_for_a_built_module(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 1})
+    assert (await wait_run(admin, course_id))["status"] == "done"
+
+    plan = (await admin.get(f"/api/admin/courses/{course_id}/structure")).json()["plan"]
+    plan["modules"][0]["lessons"] = 5
+    response = await admin.put(f"/api/admin/courses/{course_id}/structure", json={"plan": plan})
+    assert response.status_code == 422
+    assert "собрано занятий" in response.json()["detail"]["message"]
+
+
+async def test_structure_save_reports_a_broken_module_with_422(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    plan = (await admin.get(f"/api/admin/courses/{course_id}/structure")).json()["plan"]
+
+    root = courses.get_course(course_id).root
+    edit.module_path(root, 1).write_text("{", encoding="utf-8")
+    response = await admin.put(f"/api/admin/courses/{course_id}/structure", json={"plan": plan})
+    assert response.status_code == 422
+    assert "не проверяется" in response.json()["detail"]["message"]
+
+
+async def test_module_page_offers_part_regeneration_for_a_generated_module(admin) -> None:
+    course_id = await generated(admin)
+    page = await admin.get(f"/admin/courses/{course_id}/modules/1")
+    assert page.status_code == 200
+    assert 'data-parts="1"' in page.text

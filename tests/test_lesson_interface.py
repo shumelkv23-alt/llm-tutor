@@ -17,6 +17,12 @@ from course_fixtures import LESSON_SEED_PATHS, use_lessons_course
 from web_fakes import ScriptedTutor
 
 
+@pytest.fixture(autouse=True)
+def _visible_builtins(visible_builtins):
+    """Тест идёт по занятиям mlcourse: показываем курс явно."""
+    return visible_builtins
+
+
 def _unpublish(conn, number: int) -> None:
     course = load_course_data(LESSON_SEED_PATHS)
     topics = [

@@ -1,0 +1,533 @@
+{
+  "course": "Python: к вершинам мастерства",
+  "topic": {
+    "number": 1,
+    "title": "Модель данных и специальные методы",
+    "intro": "Разберём, почему len, for и [] работают с вашими классами без наследования, и соберём колоду карт и вектор.",
+    "survey": {
+      "level_key": "t01_level",
+      "level_question": "Насколько ты знаком с темой «Модель данных и специальные методы»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t01_b1",
+          "title": "Специальные методы и протоколы",
+          "question": "Насколько уверенно ты разбираешься в теме «специальные методы и протоколы»?",
+          "example": "len, [], for, in, repr: кто что вызывает и зачем нужны протоколы.",
+          "concepts": [
+            "t01_lesson1"
+          ]
+        },
+        {
+          "key": "t01_b2",
+          "title": "Колода карт: последовательность без наследования",
+          "question": "Насколько уверенно ты разбираешься в теме «колода карт: последовательность без наследования»?",
+          "example": "FrenchDeck: __len__ и __getitem__ дают итерацию, срезы и random.choice.",
+          "concepts": [
+            "t01_lesson2"
+          ]
+        },
+        {
+          "key": "t01_b3",
+          "title": "Эмуляция числовых типов: вектор",
+          "question": "Насколько уверенно ты разбираешься в теме «эмуляция числовых типов: вектор»?",
+          "example": "Vector: __add__, __mul__, __abs__, __eq__ и почему __hash__ исчезает.",
+          "concepts": [
+            "t01_lesson3"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t01_b1",
+        "t01_b2"
+      ],
+      "foundation": [
+        "t01_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t01_lesson1",
+      "name": "Специальные методы и протоколы",
+      "difficulty": 0.3,
+      "description": "len, [], for, in, repr: кто что вызывает и зачем нужны протоколы.",
+      "source_url": null,
+      "topic_id": 1,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Протоколы вместо наследования"
+        },
+        {
+          "id": "sec2",
+          "title": "Что вызывает интерпретатор"
+        }
+      ]
+    },
+    {
+      "id": "t01_lesson2",
+      "name": "Колода карт: последовательность без наследования",
+      "difficulty": 0.3,
+      "description": "FrenchDeck: __len__ и __getitem__ дают итерацию, срезы и random.choice.",
+      "source_url": null,
+      "topic_id": 1,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Класс FrenchDeck"
+        },
+        {
+          "id": "sec2",
+          "title": "Итерация, срезы и перемешивание"
+        }
+      ]
+    },
+    {
+      "id": "t01_lesson3",
+      "name": "Эмуляция числовых типов: вектор",
+      "difficulty": 0.3,
+      "description": "Vector: __add__, __mul__, __abs__, __eq__ и почему __hash__ исчезает.",
+      "source_url": null,
+      "topic_id": 1,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Арифметика вектора"
+        },
+        {
+          "id": "sec2",
+          "title": "Сравнение и хеширование"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t01_lesson1",
+      "to_id": "t01_lesson2",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t01_lesson2",
+      "to_id": "t01_lesson3",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "prompt": "Что произойдёт при вызове len(x)?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Вызовется x.__getitem__()",
+        "Будет прочитано поле x.len",
+        "Python пересчитает элементы перебором",
+        "Вызовется x.__len__()"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 2,
+      "prompt": "Какой специальный метод отвечает за доступ по индексу x[i]? Напишите имя метода.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "__getitem__",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 3,
+      "prompt": "Какого метода достаточно вместе с __len__, чтобы объект вёл себя как неизменяемая последовательность?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "__repr__",
+        "__getitem__",
+        "__iter__",
+        "__contains__"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 4,
+      "prompt": "Чем __repr__ отличается от __str__?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "__repr__ — однозначное представление для разработчика, __str__ — читаемое для пользователя",
+        "Они всегда возвращают одно и то же",
+        "__str__ вызывает __repr__, а не наоборот",
+        "__repr__ используется только в print"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 5,
+      "prompt": "Класс реализует __len__ и __getitem__, но не __iter__ и не __contains__. Что из перечисленного заработает?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Только len(obj)",
+        "Ничего, пока не добавлен __iter__",
+        "Только оператор in",
+        "for x in obj, in и срезы — через __getitem__"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 6,
+      "prompt": "Почему random.choice(deck) работает, если у FrenchDeck нет метода choice?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "choice ищет метод choice у класса",
+        "choice копирует объект в список",
+        "choice берёт len(deck) и обращается по индексу",
+        "choice перебирает объект через __iter__"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 7,
+      "prompt": "Что вернёт deck[:3]?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Ошибку TypeError",
+        "Список из трёх карт",
+        "Новую колоду FrenchDeck",
+        "Кортеж из трёх карт"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 8,
+      "prompt": "Почему random.shuffle(deck) падает для FrenchDeck без __setitem__?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "shuffle меняет элементы по индексу, а запись не поддерживается",
+        "shuffle требует метод __len__",
+        "shuffle не умеет работать с namedtuple",
+        "shuffle требует наследования от list"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 9,
+      "prompt": "Какой метод нужно добавить, чтобы deck[0] = card изменял колоду? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "__setitem__",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 10,
+      "prompt": "Что достаточно реализовать, чтобы объект поддерживал for, len, in и срезы, но не поддерживал изменение?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "__len__, __iter__ и __contains__",
+        "Наследование от collections.abc.Sequence",
+        "__len__ и __getitem__",
+        "Только __iter__"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 11,
+      "prompt": "Что вызовет выражение v * 3?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Vector.__add__(v, 3)",
+        "Vector.__mul__(v, 3)",
+        "Vector.__rmul__(v, 3)",
+        "int.__mul__(3, v)"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 12,
+      "prompt": "Зачем возвращать NotImplemented из __add__ при неизвестном типе?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Чтобы Python попробовал операцию с другим операндом",
+        "Чтобы немедленно поднять TypeError",
+        "Чтобы вернуть пустой вектор",
+        "Чтобы отключить оператор для класса"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 13,
+      "prompt": "Что произойдёт с __hash__ после определения __eq__?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Останется прежним",
+        "Будет вычисляться по id",
+        "Будет равен __eq__",
+        "Станет None, пока его не задать явно"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 14,
+      "prompt": "Какой метод реализует abs(v) для вектора? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "__abs__",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 15,
+      "prompt": "Вектор неизменяемый, и вы определили __eq__. Что нужно сделать, чтобы его можно было положить в set?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Наследоваться от tuple",
+        "Определить __hash__ по неизменяемым полям",
+        "Достаточно __eq__",
+        "Определить __contains__"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 91,
+      "prompt": "Объясни вслух, что произойдёт, если у класса есть `__len__` и `__getitem__`, но нет `__iter__` и `__contains__`: сработают ли `for x in obj`, `x in obj` и `list(obj)`? Назови протоколы, которые Python подключает вместо недостающих методов, и приведи пример класса, где этого достаточно.",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 1,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 1,
+      "name": "Голосом: протоколы последовательности",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 1,
+      "rubric_id": 1,
+      "criterion": "Названо, что `for` и `list()` работают через `__getitem__` с индексами от нуля до IndexError",
+      "weight": 1.0,
+      "positive_example": "«Итерация пойдёт через __getitem__, пока не встретит IndexError»",
+      "negative_example": "«Без __iter__ объект вообще нельзя перебрать»",
+      "active": true
+    },
+    {
+      "id": 2,
+      "rubric_id": 1,
+      "criterion": "Объяснено, что `in` использует `__contains__`, а без него — перебор через `__iter__` или `__getitem__`",
+      "weight": 1.0,
+      "positive_example": "«__contains__ нет, значит Python переберёт элементы и сравнит»",
+      "negative_example": "«in работает только через __contains__»",
+      "active": true
+    },
+    {
+      "id": 3,
+      "rubric_id": 1,
+      "criterion": "Приведён живой пример, где наследование не нужно: например, колода карт или обёртка над списком",
+      "weight": 1.0,
+      "positive_example": "«Класс FrenchDeck с __len__ и __getitem__ уже перебирается в for»",
+      "negative_example": "Пример без последовательности или без опоры на протоколы",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

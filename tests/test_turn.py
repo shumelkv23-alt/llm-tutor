@@ -345,6 +345,30 @@ async def test_open_answer_is_graded_with_limited_weight(conn, settings) -> None
     assert _state(conn).pending_item_id != 9  # отвеченное задание снято
 
 
+async def test_spoken_answer_is_graded_with_limited_weight(conn, settings) -> None:
+    """Голосовой ответ приходит уже текстом и проверяется той же рубрикой."""
+    load_seed(conn)
+    conn.execute("UPDATE items SET answer_type = 'spoken' WHERE id = 9")
+    conn.commit()
+    _set_state(conn, pending_item_id=9, current_node_id="groupby")
+    item = repos.get_item(conn, 9)
+    client = _FakeGraderClient(_full_verdict(conn, 9))
+
+    reply = await handle_turn(
+        conn, client, "m", "groupby даёт len и getitem у последовательности", now=2.0, settings=settings
+    )
+
+    assert "Верно" in reply.text
+    events = repos.get_events(conn)
+    assert events
+    assert {event.source for event in events} == {"rubric"}
+    assert all(
+        event.weight == item.concept_weights[event.concept_id] * settings.rubric_evidence_weight
+        for event in events
+    )
+    assert _state(conn).pending_item_id != 9
+
+
 async def test_uncheckable_task_is_dropped_not_stuck(conn, settings) -> None:
     """Задание, которое нечем проверить, снимается, а не висит вечно."""
     load_seed(conn)

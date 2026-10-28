@@ -17,7 +17,10 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from llm_tutor.course import store
+from llm_tutor.course.build.edges import chain_edges, rebuild_edges
 from llm_tutor.course.seed import (
+    MAX_LESSONS,
+    MIN_SECTIONS,
     Seed,
     SeedError,
     _check_lessons,
@@ -26,6 +29,7 @@ from llm_tutor.course.seed import (
     _theory_section_gaps,
     build_course,
 )
+from llm_tutor.schemas import Concept, Section, SurveyBlock, SurveyConfig, Topic
 
 
 def module_path(root: str | Path, module: int) -> Path:
@@ -49,6 +53,79 @@ def read_module(root: str | Path, module: int) -> dict:
     if not path.is_file():
         raise store.StoreError(f"Нет модуля {module} в курсе")
     return store.read_json(path)
+
+
+def create_module(
+    root: str | Path,
+    module: int,
+    *,
+    title: str,
+    lessons: int,
+    course_title: str = "",
+    intro: str = "",
+) -> Seed:
+    """Заводит пустой модуль-заготовку без модели: занятия и разделы уже есть.
+
+    Админ может собрать курс целиком руками: заготовка проходит проверку
+    формата, но остаётся черновиком (``published=False``), поэтому пустые
+    разделы и отсутствие конспектов — нормальное её состояние, а не ошибка.
+    Id занятий выдаёт счётчик курса: переиспользованный id унаследовал бы
+    журнал и mastery прежнего занятия.
+    """
+    root = Path(root)
+    target = module_path(root, module)
+    if target.is_file():
+        raise store.StoreError(f"Модуль {module} уже собран")
+    title = title.strip()
+    if not title:
+        raise store.StoreError("У модуля должно быть название")
+    if not 2 <= lessons <= MAX_LESSONS:
+        raise store.StoreError(f"Занятий в модуле — от 2 до {MAX_LESSONS}")
+    numbers = store.allocate_ids(root, "lesson", lessons)
+    lesson_ids = [f"t{module:02d}_lesson{number}" for number in numbers]
+    names = [f"Занятие {index}" for index in range(1, lessons + 1)]
+    nodes = [
+        Concept(
+            id=lesson_id,
+            name=name,
+            topic_id=module,
+            sections=[
+                Section(id=f"sec{position}", title=f"Раздел {position}")
+                for position in range(1, MIN_SECTIONS + 1)
+            ],
+        )
+        for lesson_id, name in zip(lesson_ids, names)
+    ]
+    survey = SurveyConfig(
+        level_key=f"t{module:02d}_level",
+        level_question=f"Как у тебя с темой «{title}»?",
+        level_options=("С нуля", "Немного знаю", "Уверенно"),
+        blocks=tuple(
+            SurveyBlock(
+                key=f"t{module:02d}_block{position}",
+                title=name,
+                question=f"Насколько уверенно ты разбираешься в теме «{name.lower()}»?",
+                example="",
+                concepts=(lesson_id,),
+            )
+            for position, (lesson_id, name) in enumerate(zip(lesson_ids, names), start=1)
+        ),
+    )
+    candidate = Seed(
+        course=course_title.strip() or title,
+        topic=Topic(
+            number=module,
+            title=title,
+            intro=intro.strip(),
+            survey=survey,
+            published=False,
+        ),
+        nodes=nodes,
+        edges=chain_edges(lesson_ids),
+    )
+    _validate_course(root, candidate, target)
+    store.write_json(target, candidate.model_dump(mode="json", exclude={"theory"}))
+    return candidate
 
 
 def read_theory(root: str | Path, module: int, lesson_id: str) -> str:
@@ -81,9 +158,31 @@ def _checked(root: Path, payload: dict, module: int) -> tuple[Seed, Path]:
 
 
 def write_module(root: str | Path, module: int, payload: dict) -> None:
-    """Записывает модуль после проверки всего курса; негодный не сохраняется."""
+    """Записывает модуль после проверки всего курса; негодный не сохраняется.
+
+    Рёбра графа пересобираются по порядку занятий: преподаватель добавляет,
+    убирает и переставляет занятия, а связи не должны остаться от прежнего
+    состава (``rebuild_edges``).
+    """
     root = Path(root)
     candidate, target = _checked(root, payload, module)
+    # Что было в модуле до правки: убранное занятие надо знать поимённо, иначе
+    # его рёбра не отличить от входов из предыдущего модуля. Файл читаем без
+    # проверки формата — преподаватель вправе починить и сломанный модуль.
+    previous = store.read_json(target)
+    old_nodes = previous.get("nodes")
+    removed = (
+        {
+            node.get("id")
+            for node in old_nodes
+            if isinstance(node, dict) and node.get("id")
+        }
+        if isinstance(old_nodes, list)
+        else set()
+    ) - {node.id for node in candidate.nodes}
+    candidate = candidate.model_copy(
+        update={"edges": rebuild_edges(candidate.nodes, candidate.edges, removed=removed)}
+    )
     _validate_course(root, candidate, target)  # SeedError, если курс развалится
     before = target.read_text(encoding="utf-8")
     store.write_json(target, candidate.model_dump(mode="json", exclude={"theory"}))

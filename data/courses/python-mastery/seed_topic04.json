@@ -1,0 +1,533 @@
+{
+  "course": "Python: к вершинам мастерства",
+  "topic": {
+    "number": 4,
+    "title": "Unicode-текст и байты",
+    "intro": "Разберёмся, почему «кракозябры» появляются на ровном месте и как работать с текстом предсказуемо.",
+    "survey": {
+      "level_key": "t04_level",
+      "level_question": "Насколько ты знаком с темой «Unicode-текст и байты»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t04_b1",
+          "title": "Символы, кодировки и базовые преобразования",
+          "question": "Насколько уверенно ты разбираешься в теме «символы, кодировки и базовые преобразования»?",
+          "example": "str, bytes, encode/decode и UTF-8.",
+          "concepts": [
+            "t04_lesson10"
+          ]
+        },
+        {
+          "key": "t04_b2",
+          "title": "Ошибки кодирования и работа с файлами",
+          "question": "Насколько уверенно ты разбираешься в теме «ошибки кодирования и работа с файлами»?",
+          "example": "UnicodeEncodeError, параметр errors, BOM и open с encoding.",
+          "concepts": [
+            "t04_lesson11"
+          ]
+        },
+        {
+          "key": "t04_b3",
+          "title": "Нормализация, регистр и сортировка Unicode",
+          "question": "Насколько уверенно ты разбираешься в теме «нормализация, регистр и сортировка unicode»?",
+          "example": "NFC/NFD, casefold и почему sorted не знает языка.",
+          "concepts": [
+            "t04_lesson12"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t04_b1",
+        "t04_b2"
+      ],
+      "foundation": [
+        "t04_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t04_lesson10",
+      "name": "Символы, кодировки и базовые преобразования",
+      "difficulty": 0.6,
+      "description": "str, bytes, encode/decode и UTF-8.",
+      "source_url": null,
+      "topic_id": 4,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Кодовая точка, символ, байт"
+        },
+        {
+          "id": "sec2",
+          "title": "encode и decode"
+        }
+      ]
+    },
+    {
+      "id": "t04_lesson11",
+      "name": "Ошибки кодирования и работа с файлами",
+      "difficulty": 0.6,
+      "description": "UnicodeEncodeError, параметр errors, BOM и open с encoding.",
+      "source_url": null,
+      "topic_id": 4,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Ошибки кодирования"
+        },
+        {
+          "id": "sec2",
+          "title": "Файлы и BOM"
+        }
+      ]
+    },
+    {
+      "id": "t04_lesson12",
+      "name": "Нормализация, регистр и сортировка Unicode",
+      "difficulty": 0.6,
+      "description": "NFC/NFD, casefold и почему sorted не знает языка.",
+      "source_url": null,
+      "topic_id": 4,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Нормализация и регистр"
+        },
+        {
+          "id": "sec2",
+          "title": "Сортировка"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t04_lesson10",
+      "to_id": "t04_lesson11",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t04_lesson11",
+      "to_id": "t04_lesson12",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 46,
+      "prompt": "Что хранит str в Python 3?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Только ASCII",
+        "Указатель на C-строку",
+        "Последовательность Unicode-символов",
+        "Последовательность байтов"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 47,
+      "prompt": "Сколько байтов занимает символ 'A' в UTF-8?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "4",
+        "1",
+        "2",
+        "3"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 48,
+      "prompt": "Что делает b'Привет'.decode('utf-8'), если байты корректны?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Возвращает str",
+        "Возвращает bytes",
+        "Меняет кодировку файла",
+        "Всегда поднимает UnicodeDecodeError"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 49,
+      "prompt": "Какой метод превращает str в bytes? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "encode",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 50,
+      "prompt": "Файл содержит байты. Что нужно сделать перед поиском подстроки по-русски?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Привести байты к int",
+        "Закодировать искомую строку дважды",
+        "Декодировать байты в str в известной кодировке",
+        "Сравнить байты со str напрямую"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 51,
+      "prompt": "Что произойдёт при '€'.encode('ascii')?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Вернутся байты UTF-8",
+        "UnicodeEncodeError",
+        "TypeError",
+        "Символ заменится на '?'"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 52,
+      "prompt": "Чем опасен errors='ignore'?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Текст молча теряет символы",
+        "Он всегда поднимает исключение",
+        "Он меняет кодировку файла",
+        "Он работает только с bytes"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 53,
+      "prompt": "Зачем указывать encoding='utf-8-sig'?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Чтобы файл стал бинарным",
+        "Чтобы отключить Unicode",
+        "Чтобы ускорить чтение",
+        "Чтобы BOM не попал в начало строки"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 54,
+      "prompt": "Какой аргумент open задаёт кодировку текстового файла? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "encoding",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 55,
+      "prompt": "Почему код с open(path) без encoding может работать на одной машине и падать на другой?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "open не поддерживает Unicode",
+        "Используется локальная кодировка по умолчанию",
+        "Python не умеет читать текст",
+        "Файл всегда в UTF-16"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 56,
+      "prompt": "Зачем нормализовать строки перед сравнением?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Один символ может быть записан разными последовательностями",
+        "Чтобы строки стали короче",
+        "Чтобы удалить все пробелы",
+        "Чтобы перевести текст в байты"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 57,
+      "prompt": "Что лучше подходит для сравнения без учёта регистра?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "lower()",
+        "upper()",
+        "capitalize()",
+        "casefold()"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 58,
+      "prompt": "Что делает NFD?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Удаляет все диакритические знаки",
+        "Переводит в ASCII",
+        "Разлагает символы на базовый и комбинирующие",
+        "Собирает комбинирующие символы"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 59,
+      "prompt": "Какая функция модуля unicodedata приводит строку к форме NFC? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "normalize",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 60,
+      "prompt": "Почему sorted(names) может поставить «Ёлку» не туда, где ждёт пользователь?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Сортировка идёт по кодовым точкам, а не по правилам языка",
+        "Python не поддерживает кириллицу",
+        "Строки сравниваются по длине",
+        "sort всегда игнорирует регистр"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 94,
+      "prompt": "Проговори вслух цепочку «текст → байты → текст»: что делает `encode`, что `decode` и почему `'Привет'.encode('ascii')` падает. Объясни, почему `len('Привет')` и `len('Привет'.encode('utf-8'))` дают разные числа.",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.45,
+      "options": [],
+      "answer": null,
+      "rubric_id": 4,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 4,
+      "name": "Голосом: кодировки",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 10,
+      "rubric_id": 4,
+      "criterion": "Чётко разделены `str` (символы) и `bytes` (байты), а `encode`/`decode` названы переходами между ними",
+      "weight": 1.0,
+      "positive_example": "«str — это символы, bytes — байты; encode переводит одно в другое, decode обратно»",
+      "negative_example": "«encode и decode — это одно и то же, просто разные имена»",
+      "active": true
+    },
+    {
+      "id": 11,
+      "rubric_id": 4,
+      "criterion": "Сказано, что в UTF-8 русские буквы занимают по два байта, поэтому байтов больше, чем символов",
+      "weight": 1.0,
+      "positive_example": "«Привет — шесть символов, а в UTF-8 это двенадцать байтов»",
+      "negative_example": "«Длина в байтах и символах всегда совпадает»",
+      "active": true
+    },
+    {
+      "id": 12,
+      "rubric_id": 4,
+      "criterion": "Объяснён отказ ascii: в этой кодировке есть только латиница и управляющие символы, для русской буквы кода нет",
+      "weight": 1.0,
+      "positive_example": "«ASCII знает только 128 символов, поэтому на 'П' он бросает UnicodeEncodeError»",
+      "negative_example": "«ASCII умеет кириллицу, просто занимает больше байтов»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

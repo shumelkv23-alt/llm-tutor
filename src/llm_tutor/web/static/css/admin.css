@@ -76,6 +76,30 @@
   white-space: nowrap;
 }
 
+/* В таблице курсов шесть колонок с кнопкой действия: с запретом переноса она
+   шире панели, и «Редактировать» уезжала за прокрутку. Названия переносятся,
+   короткие столбцы и кнопка остаются в строку. */
+.courses-table th,
+.courses-table td {
+  white-space: normal;
+}
+
+.courses-table td:last-child {
+  white-space: nowrap;
+}
+
+@media (max-width: 599px) {
+  /* Карточка курса на телефоне: две колонки профильной таблицы рассчитаны на
+     короткие подписи, а подпись курса длинная и выталкивала статус за край. */
+  .courses-table tr {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .courses-table tbody th {
+    grid-column: auto;
+  }
+}
+
 .admin-name,
 .admin-email {
   display: block;
@@ -384,6 +408,12 @@
   padding: 4px;
 }
 
+/* Собранный модуль: его название и число занятий — из seed, не из формы. */
+.structure-row[data-built="1"] input[readonly] {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
 /* Узкий экран: номер остаётся слева, поля и кнопки идут одним столбцом. */
 @media (max-width: 900px) {
   .structure-row {
@@ -503,6 +533,27 @@
 .lesson-head .btn,
 .item-head .btn {
   margin-left: auto;
+}
+
+/* Кнопки переделки части стоят рядом с названием, а «Удалить» — у правого края. */
+.lesson-head .btn.part-action {
+  margin-left: 0;
+}
+
+/* Стрелки порядка стоят рядом (занятия и блоки анкеты), а кнопка удаления —
+   у правого края: margin-left сдвигает стрелки вместе с ней. */
+.order-controls {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.order-controls .btn {
+  margin-left: 0;
+}
+
+.item-group .btn.part-action {
+  margin-bottom: 8px;
 }
 
 .lesson-id,

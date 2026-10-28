@@ -144,13 +144,20 @@ def test_generated_seeds_do_not_leak_into_builtin_course(courses_home):
 def test_draft_is_hidden_from_students_but_visible_in_registry(courses_home):
     courses.create_course(title="Основы Python")
     assert [course.id for course in courses.all_courses()] == [*BUILTIN_IDS, "osnovy-python"]
-    assert [course.id for course in courses.published_courses()] == BUILTIN_IDS
+    # Прежние встроенные курсы скрыты (``visible=False``) — ученикам пусто.
+    assert courses.published_courses() == ()
+
+
+def test_hidden_builtins_are_not_in_admin_lists(courses_home):
+    """Скрытый курс не мешает админке: в списках и выборе только видимые."""
+    courses.create_course(title="Основы Python")
+    assert [course.id for course in courses.manageable_courses()] == ["osnovy-python"]
 
 
 def test_publishing_makes_course_visible(courses_home):
     courses.create_course(title="Основы Python")
     courses.update_meta("osnovy-python", status="published", subtitle="Вводный")
-    assert [course.id for course in courses.published_courses()] == [*BUILTIN_IDS, "osnovy-python"]
+    assert [course.id for course in courses.published_courses()] == ["osnovy-python"]
     course = courses.get_course("osnovy-python")
     assert course is not None and course.subtitle == "Вводный"
 
@@ -247,7 +254,7 @@ def test_allocate_ids_never_repeats_after_regeneration(courses_home):
 def test_allocate_rejects_unknown_kind(courses_home):
     courses.create_course(title="Основы Python")
     with pytest.raises(store.StoreError):
-        courses.allocate_ids("osnovy-python", "lesson", 1)
+        courses.allocate_ids("osnovy-python", "section", 1)
 
 
 # --- находки аудита срезов A–B ---

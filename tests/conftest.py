@@ -89,6 +89,24 @@ def courses_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture
+def visible_builtins(monkeypatch):
+    """Встроенные курсы снова видны — для тестов движка ученика.
+
+    По умолчанию ``mlcourse`` и ИСИТ скрыты из каталога и админки, а их занятия
+    остаются на месте. Тесты, которые идут по этим занятиям, показывают курсы
+    явно; скрытие проверяют тесты реестра и каталога.
+    """
+    from dataclasses import replace
+
+    from llm_tutor.web import courses
+
+    shown = tuple(replace(course, visible=True) for course in courses.COURSES)
+    monkeypatch.setattr(courses, "COURSES", shown)
+    monkeypatch.setattr(courses, "_BY_ID", {course.id: course for course in shown})
+    return shown
+
+
+@pytest.fixture
 def make_course(courses_home):
     """Создаёт курс в tmp-каталоге и кладёт в него настоящий модуль фикстуры.
 
