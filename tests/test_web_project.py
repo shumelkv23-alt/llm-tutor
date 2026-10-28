@@ -154,7 +154,10 @@ async def test_chat_take_approve_flow(ready, web_app) -> None:
     assert response.status_code == 200, response.text
     messages = response.json()["messages"]
     assert [message["role"] for message in messages] == ["student", "mentor"]
-    assert messages[0]["proposal"] is None and messages[1]["proposal"] == {"title": "Отток клиентов"}
+    assert messages[0]["proposal"] is None
+    proposal = messages[1]["proposal"]
+    assert proposal["kind"] == "card" and proposal["stage"] is None
+    assert [(f["key"], f["value"]) for f in proposal["fields"]] == [("title", "Отток клиентов")]
     assert "Давай уточним" in messages[1]["html"]
 
     response = await ready.post(f"{BASE}/take", json={"turn_id": messages[1]["id"]})
@@ -396,3 +399,114 @@ async def test_unfinished_project_can_be_dropped_while_course_reopened(ready, we
     await _start(ready)
     _set_route(web_app, "ahead")
     assert (await ready.post(f"{BASE}/archive", json={})).status_code == 200
+
+
+# --- «Подтвердить и дальше», предложение объектом, быстрая кнопка (срез 103) ---
+
+STAGE_REPLY = ProjectMentorReply(
+    reply="Подведём итог этапа.",
+    proposal={"done": "Загрузил CSV и посмотрел типы", "findings": "Ушло 26 процентов клиентов"},
+)
+
+
+async def _build_with_stage_proposal(ready, web_app, web_llm, reply=STAGE_REPLY):
+    _pass_course(web_app)
+    await _start(ready)
+    await _to_build(ready)
+    web_llm.replies = [reply]
+    response = await ready.post(
+        f"{BASE}/chat", json={"text": "загрузил csv, ушло 26 процентов клиентов"}
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["messages"][1]
+
+
+async def test_accept_flow(ready, web_app, web_llm) -> None:
+    mentor = await _build_with_stage_proposal(ready, web_app, web_llm)
+
+    response = await ready.post(f"{BASE}/accept", json={"turn_id": mentor["id"]})
+
+    assert response.status_code == 200, response.text
+    view = response.json()["project"]
+    assert view["stage"] == "baseline"
+    assert [stage["status"] for stage in view["stages"]] == ["done", "current", "ahead", "ahead"]
+    old = next(m for m in view["messages"] if m["id"] == mentor["id"])
+    assert old["proposal"]["actionable"] is False
+
+
+async def test_accept_errors(ready, web_app, web_llm) -> None:
+    only_done = ProjectMentorReply(reply="Итог", proposal={"done": "Загрузил CSV и посмотрел типы"})
+    mentor = await _build_with_stage_proposal(ready, web_app, web_llm, only_done)
+
+    response = await ready.post(f"{BASE}/accept", json={"turn_id": 9999})
+    assert response.status_code == 404
+    response = await ready.post(f"{BASE}/accept", json={"turn_id": mentor["id"]})
+    assert response.status_code == 422
+    assert response.json()["detail"]["missing"] == ["findings"]
+    assert (await ready.get(BASE)).json()["project"]["stage"] == "data"
+
+    web_llm.replies = [STAGE_REPLY]
+    full = (await ready.post(
+        f"{BASE}/chat", json={"text": "загрузил csv, ушло 26 процентов клиентов"}
+    )).json()["messages"][1]
+    assert (await ready.post(f"{BASE}/accept", json={"turn_id": full["id"]})).status_code == 200
+    stale = await ready.post(f"{BASE}/accept", json={"turn_id": full["id"]})
+    assert stale.status_code == 409
+
+
+async def test_accept_in_idea_conflict(ready, web_app) -> None:
+    _pass_course(web_app)
+    await _start(ready)
+    mentor = (await ready.post(f"{BASE}/chat", json={"text": "Хочу про отток"})).json()["messages"][1]
+    response = await ready.post(f"{BASE}/accept", json={"turn_id": mentor["id"]})
+    assert response.status_code == 409
+
+
+async def test_proposal_view_shape(ready, web_app) -> None:
+    _pass_course(web_app)
+    await _start(ready)
+    mentor = (await ready.post(f"{BASE}/chat", json={"text": "Хочу про отток"})).json()["messages"][1]
+    proposal = mentor["proposal"]
+    assert proposal["fields"][0] == {
+        "key": "title", "label": "Название проекта", "value": "Отток клиентов", "required": True,
+    }
+    assert proposal["actionable"] is True and proposal["title"] == "Предложение для карточки"
+
+    await _to_build(ready)
+    view = (await ready.get(BASE)).json()["project"]
+    old = next(m for m in view["messages"] if m["id"] == mentor["id"])
+    assert old["proposal"]["actionable"] is False
+
+
+async def test_stage_proposal_view_shape(ready, web_app, web_llm) -> None:
+    mentor = await _build_with_stage_proposal(ready, web_app, web_llm)
+    proposal = mentor["proposal"]
+    assert proposal["kind"] == "stage" and proposal["stage"] == "data"
+    assert proposal["title"] == "Итог этапа «Данные и анализ»" and proposal["actionable"] is True
+    assert [f["key"] for f in proposal["fields"]] == ["done", "findings"]
+    assert all(f["required"] for f in proposal["fields"])
+
+
+async def test_quick_reply(ready, web_app) -> None:
+    _pass_course(web_app)
+    view = (await _start(ready))["project"]
+    assert view["quick_reply"] == "Предложи формулировки карточки"
+    view = await _to_build(ready)
+    assert view["quick_reply"] == "Подвести итог этапа"
+    for stage, fields in NOTES.items():
+        await ready.put(f"{BASE}/notes", json={"stage": stage, "fields": fields})
+        response = await ready.post(f"{BASE}/complete", json={"stage": stage})
+    assert response.json()["project"]["quick_reply"] is None
+
+
+async def test_accept_runs_under_student_lock(ready, web_app, web_llm) -> None:
+    import asyncio
+
+    mentor = await _build_with_stage_proposal(ready, web_app, web_llm)
+    user = accounts.find_user(web_app.state.accounts, "ann@example.com")
+    lock = web_app.state.userdbs.lock(user.id, "mlcourse")
+    async with lock:
+        task = asyncio.create_task(ready.post(f"{BASE}/accept", json={"turn_id": mentor["id"]}))
+        await asyncio.sleep(0.1)
+        assert not task.done()
+    assert (await task).status_code == 200

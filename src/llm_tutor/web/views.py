@@ -832,6 +832,53 @@ def _field_view(field: student_project.Field, values: Mapping[str, str]) -> dict
     }
 
 
+# Быстрая кнопка над полем ввода: что отправить наставнику по статусу проекта (срез 103).
+QUICK_REPLIES = {
+    "idea": "Предложи формулировки карточки",
+    "build": "Подвести итог этапа",
+}
+
+
+def _proposal_view(
+    template: student_project.ProjectTemplate, project: Project, turn
+) -> dict | None:
+    """Предложение наставника в реплике: карточка идеи или итог этапа (срез 103).
+
+    ``meta.stage`` у реплики есть только в ``build``: по нему видно, что это итог
+    этапа. ``actionable`` — предложение ещё можно применить: идея не утверждена
+    или этап всё ещё текущий.
+    """
+    if turn.role != "mentor":
+        return None
+    raw = turn.meta.get("proposal")
+    stage_id = turn.meta.get("stage")
+    if stage_id is None:
+        values = student_project.clean_proposal(template, raw)
+        fields = [field for field in template.card if field.key in values]
+        title, actionable, kind = "Предложение для карточки", project.status == "idea", "card"
+    else:
+        stage = next((item for item in template.stages if item.id == stage_id), None)
+        if stage is None:
+            return None
+        values = student_project.clean_proposal(template, raw, stage=stage)
+        fields = [field for field in stage.fields if field.key in values]
+        title = f"Итог этапа «{stage.title}»"
+        actionable = project.status == "build" and project.state.stage == stage_id
+        kind = "stage"
+    if not values:
+        return None
+    return {
+        "kind": kind,
+        "stage": stage_id,
+        "title": title,
+        "fields": [
+            {"key": f.key, "label": f.label, "value": values[f.key], "required": f.required}
+            for f in fields
+        ],
+        "actionable": actionable,
+    }
+
+
 def project_title(project: Project) -> str:
     return project.state.card.get("title") or project.brief.title
 
@@ -867,14 +914,13 @@ def project_view(conn: sqlite3.Connection, project: Project, *, max_turns: int =
         )
     messages = []
     for turn in repos.get_project_turns(conn, project.id)[-max_turns:]:
-        proposal = turn.meta.get("proposal") if turn.role == "mentor" else None
         messages.append(
             {
                 "id": turn.id,
                 "role": turn.role,
                 "html": str(markdown.render(turn.content)),
                 "ts": turn.ts,
-                "proposal": student_project.clean_proposal(template, proposal) or None,
+                "proposal": _proposal_view(template, project, turn),
             }
         )
     current = next((stage for stage in template.stages if stage.id == state.stage), None)
@@ -894,6 +940,7 @@ def project_view(conn: sqlite3.Connection, project: Project, *, max_turns: int =
         and current is not None
         and not student_project.notes_missing(current, state.notes.get(current.id, {})),
         "done_at": project.done_at,
+        "quick_reply": QUICK_REPLIES.get(project.status),
     }
 
 

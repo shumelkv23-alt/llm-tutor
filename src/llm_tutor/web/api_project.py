@@ -200,6 +200,17 @@ async def project_take(body: TakeBody, ctx: ProjectContext = Depends(project_con
         return {"project": _project_view(ctx, project)}
 
 
+@router.post("/courses/{course_id}/project/accept")
+async def project_accept(body: TakeBody, ctx: ProjectContext = Depends(project_context)) -> dict:
+    """«Подтвердить и дальше»: итог этапа из сохранённой реплики наставника (срез 103)."""
+    async with ctx.lesson.lock:
+        try:
+            project = core.accept_stage(ctx.lesson.conn, turn_id=body.turn_id, now=time.time())
+        except core.ProjectError as error:
+            raise _fail(error) from error
+        return {"project": _project_view(ctx, project)}
+
+
 @router.post("/courses/{course_id}/project/approve")
 async def project_approve(ctx: ProjectContext = Depends(project_context)) -> dict:
     async with ctx.lesson.lock:
