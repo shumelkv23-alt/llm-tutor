@@ -1198,6 +1198,12 @@
   display: none;
 }
 
+/* Колонка вкладки ограничена по высоте: без flex: none редактор сжимался бы
+   до размера окна и обрезал код (а overflow: hidden не давал его листать). */
+.code-panel > * {
+  flex: none;
+}
+
 .code-head {
   display: flex;
   justify-content: space-between;
@@ -1238,12 +1244,18 @@
 .code-editor .CodeMirror {
   height: auto;
   min-height: 260px;
+  max-height: 60vh;
   padding: 8px 0;
   background: #0b1424;
   color: #e3eaf1;
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 1.55;
+}
+
+.code-editor .CodeMirror-scroll {
+  min-height: 260px;
+  max-height: 60vh;
 }
 
 .code-editor .CodeMirror-gutters {
