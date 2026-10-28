@@ -213,13 +213,26 @@ def save_notes(
 def complete_stage(conn: sqlite3.Connection, *, stage: str, now: float) -> Project:
     """«Этап выполнен»: обязательные заметки есть — следующий этап или проект готов."""
     project = _current(conn, "build")
-    current = _stage(project, stage)
-    missing = logic.notes_missing(current, project.state.notes.get(stage, {}))
+    _stage(project, stage)
+    return _finish_stage(conn, project, project.state.notes.get(stage, {}), now)
+
+
+def _finish_stage(
+    conn: sqlite3.Connection, project: Project, notes: dict[str, str], now: float
+) -> Project:
+    """Заметки текущего этапа и переход дальше одним коммитом; нехватка — ``missing`` без записи."""
+    stage = project.state.stage
+    current = logic.stage_of(_template(project), stage)
+    missing = logic.notes_missing(current, notes)
     if missing:
         raise ProjectError("missing", missing)
     following = logic.next_stage(_template(project), stage)
     state = project.state.model_copy(
-        update={"stage": following, "done_stages": [*project.state.done_stages, stage]}
+        update={
+            "notes": {**project.state.notes, stage: notes},
+            "stage": following,
+            "done_stages": [*project.state.done_stages, stage],
+        }
     )
     with _write(conn):
         if following is None:
@@ -229,6 +242,29 @@ def complete_stage(conn: sqlite3.Connection, *, stage: str, now: float) -> Proje
         else:
             repos.update_project(conn, project.id, state=state, updated_at=now)
     return repos.get_project(conn, project.id)
+
+
+def accept_stage(conn: sqlite3.Connection, *, turn_id: int, now: float) -> Project:
+    """«Подтвердить и дальше»: итог этапа из реплики наставника — в заметки, этап закрыт.
+
+    Значения берутся из сохранённой реплики, а не из запроса (как «Взять в
+    карточку»); предложение по уже сменившемуся этапу — ``wrong_stage``.
+    """
+    project = _current(conn, "build")
+    turn = repos.get_project_turn(conn, turn_id)
+    proposal = turn.meta.get("proposal") if turn else None
+    if turn is None or turn.project_id != project.id or turn.role != "mentor" or not proposal:
+        raise ProjectError("not_found")
+    if turn.meta.get("stage") != project.state.stage:
+        raise ProjectError("wrong_stage")
+    template = _template(project)
+    cleaned = logic.clean_proposal(
+        template, proposal, stage=logic.stage_of(template, project.state.stage)
+    )
+    if not cleaned:
+        raise ProjectError("not_found")
+    notes = _merge(project.state.notes.get(project.state.stage, {}), cleaned)
+    return _finish_stage(conn, project, notes, now)
 
 
 def archive(
@@ -273,6 +309,16 @@ def _notes_block(stage: logic.Stage, notes: Mapping[str, str]) -> str:
     return "\n".join(lines) or "(заметок пока нет)"
 
 
+def _summary_fields_block(stage: logic.Stage) -> str:
+    """Поля итога этапа — ключи, которыми наставник заполняет ``proposal`` (срез 102)."""
+    lines = [
+        f"- {field.key} — {field.label}" + (" (обязательное)" if field.required else "")
+        for field in stage.fields
+        if field.key not in logic.STAGE_PROPOSAL_EXCLUDED
+    ]
+    return "Поля итога этапа (ключи для proposal):\n" + "\n".join(lines)
+
+
 def _phase_block(project: Project) -> str:
     template = _template(project)
     if project.status == "idea":
@@ -292,6 +338,7 @@ def _phase_block(project: Project) -> str:
                 f"Чек-лист:\n{_bullets(stage.checklist)}\n"
                 f"Заметки ученика:\n{_notes_block(stage, notes)}"
             )
+            parts.append(_summary_fields_block(stage))
     if project.status == "done":
         parts.append("Проект завершён: можно помочь с рассказом о нём.")
     return "\n\n".join(parts)
@@ -381,6 +428,31 @@ async def _ask(
     return retry if good(retry) else None
 
 
+def _clean_reply_proposal(
+    conn: sqlite3.Connection, project: Project, proposal: Mapping | None, text: str
+) -> dict[str, str]:
+    """Предложение из ответа наставника: карточка в ``idea``, итог текущего этапа в ``build``.
+
+    Итог этапа проходит страж чисел по словам ученика на этом этапе (срез 102).
+    """
+    template = _template(project)
+    if project.status == "idea":
+        return logic.clean_proposal(template, proposal)
+    if project.status != "build" or project.state.stage is None:
+        return {}
+    said = [
+        turn.content
+        for turn in repos.get_project_turns(conn, project.id)
+        if turn.role == "student" and turn.meta.get("stage") == project.state.stage
+    ]
+    return logic.clean_proposal(
+        template,
+        proposal,
+        stage=logic.stage_of(template, project.state.stage),
+        student_text="\n".join([*said, text]),
+    )
+
+
 async def chat(
     conn: sqlite3.Connection,
     client: LLMClient,
@@ -405,8 +477,8 @@ async def chat(
         content, mentor_meta = prompts.fallback, dict(meta)
     else:
         content, mentor_meta = reply.reply.strip(), dict(meta)
-        proposal = logic.clean_proposal(_template(project), reply.proposal)
-        if proposal and project.status == "idea":
+        proposal = _clean_reply_proposal(conn, project, reply.proposal, text)
+        if proposal:
             mentor_meta["proposal"] = proposal
     with _write(conn):
         student_id = repos.add_project_turn(

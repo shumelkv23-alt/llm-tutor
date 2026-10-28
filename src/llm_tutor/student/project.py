@@ -5,6 +5,7 @@
 можно показать ученику, решает этот модуль, а не модель.
 """
 
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -167,15 +168,44 @@ def clean_fields(fields: Sequence[Field], values: Mapping[str, str]) -> dict[str
     return cleaned
 
 
-def clean_proposal(template: ProjectTemplate, proposal: Mapping | None) -> dict[str, str]:
-    """Предложение модели: только поля карточки, строки, обрезанные по длине; пустое — выброшено."""
+# Поля этапа, которых нет в итоге от наставника: фрагмент кода ученик вставляет сам.
+STAGE_PROPOSAL_EXCLUDED = frozenset({"code"})
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def _numbers(text: str) -> set[str]:
+    return {number.replace(",", ".") for number in _NUMBER.findall(text)}
+
+
+def clean_proposal(
+    template: ProjectTemplate,
+    proposal: Mapping | None,
+    *,
+    stage: Stage | None = None,
+    student_text: str | None = None,
+) -> dict[str, str]:
+    """Предложение модели: строки нужных полей, обрезанные по длине; пустое — выброшено.
+
+    Без ``stage`` — поля карточки; со ``stage`` — заметки этого этапа, кроме
+    ``STAGE_PROPOSAL_EXCLUDED`` (срез 102). ``student_text`` включает страж чисел:
+    итог этапа — пересказ слов ученика, и поле с числом, которого ученик не
+    называл, выбрасывается целиком — модель не «досочинит» метрику.
+    """
     if not isinstance(proposal, Mapping):
         return {}
+    if stage is None:
+        fields: Sequence[Field] = template.card
+    else:
+        fields = [field for field in stage.fields if field.key not in STAGE_PROPOSAL_EXCLUDED]
+    said = _numbers(student_text) if student_text is not None else None
     cleaned: dict[str, str] = {}
-    for field in template.card:
+    for field in fields:
         value = proposal.get(field.key)
-        if isinstance(value, str) and (value := value.strip()[: field.max_chars].strip()):
-            cleaned[field.key] = value
+        if not isinstance(value, str) or not (value := value.strip()[: field.max_chars].strip()):
+            continue
+        if said is not None and not _numbers(value) <= said:
+            continue
+        cleaned[field.key] = value
     return cleaned
 
 

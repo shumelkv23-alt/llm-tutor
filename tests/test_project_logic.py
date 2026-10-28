@@ -93,3 +93,38 @@ def test_notes_missing_and_next_stage() -> None:
     assert next_stage(ML, "conclusions") is None
     with pytest.raises(KeyError):
         stage_of(ML, "nope")
+
+
+# --- итог этапа от наставника (срез 102) ---
+
+
+def test_stage_proposal_fields() -> None:
+    proposal = {"model": " Дерево ", "metric": "ROC AUC", "code": "x=1", "title": "T", "junk": "y"}
+    assert clean_proposal(ML, proposal, stage=stage_of(ML, "baseline")) == {
+        "model": "Дерево",
+        "metric": "ROC AUC",
+    }
+
+
+def test_number_guard() -> None:
+    """Число, которого ученик не называл, выбрасывает поле итога целиком."""
+    proposal = {"model": "Дерево глубины 5", "metric": "ROC AUC 0.91"}
+    cleaned = clean_proposal(
+        ML, proposal, stage=stage_of(ML, "baseline"), student_text="дерево depth=5, auc 0,79"
+    )
+    assert cleaned == {"model": "Дерево глубины 5"}
+
+
+def test_number_guard_decimal_comma() -> None:
+    proposal = {"metric": "ROC AUC 0,79 на тесте"}
+    cleaned = clean_proposal(ML, proposal, stage=stage_of(ML, "baseline"), student_text="auc 0.79")
+    assert cleaned == {"metric": "ROC AUC 0,79 на тесте"}
+
+
+def test_number_guard_off() -> None:
+    proposal = {"model": "Дерево глубины 5", "metric": "ROC AUC 0.91"}
+    assert clean_proposal(ML, proposal, stage=stage_of(ML, "baseline")) == proposal
+
+
+def test_card_proposal_ignores_stage_fields() -> None:
+    assert clean_proposal(ML, {"title": "Отток", "model": "Дерево"}) == {"title": "Отток"}

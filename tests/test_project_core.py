@@ -432,3 +432,142 @@ def test_project_prompts_reject_unknown_field(tmp_path) -> None:
     )
     with pytest.raises(PromptConfigError):
         load_project(tmp_path)
+
+
+# --- итог этапа от наставника и «Подтвердить и дальше» (срез 102) ---
+
+DATA_PROPOSAL = {
+    "done": "Загрузил CSV и посмотрел типы",
+    "findings": "Ушло 26 процентов клиентов",
+    "code": "df.head()",
+}
+
+
+async def _build_with_proposal(course, prompts, brief, settings, proposal, text="загрузил csv, ушло 26 процентов"):
+    _pass_course(course)
+    _start(course, prompts, brief, settings)
+    _to_build(course)
+    llm = ProjectLLM(replies=(ProjectMentorReply(reply="Подведём итог.", proposal=proposal),))
+    return await _chat(course, llm, prompts, settings, text=text, now=35.0)
+
+
+async def test_build_proposal_saved(course, prompts, brief, settings) -> None:
+    _, mentor = await _build_with_proposal(course, prompts, brief, settings, DATA_PROPOSAL)
+    assert mentor.meta == {
+        "stage": "data",
+        "proposal": {"done": DATA_PROPOSAL["done"], "findings": DATA_PROPOSAL["findings"]},
+    }
+
+
+async def test_build_proposal_number_guard(course, prompts, brief, settings) -> None:
+    """Ученик не называл 26 — поле с этим числом выброшено."""
+    _, mentor = await _build_with_proposal(
+        course, prompts, brief, settings, DATA_PROPOSAL, text="загрузил, ушла примерно четверть"
+    )
+    assert mentor.meta == {"stage": "data", "proposal": {"done": DATA_PROPOSAL["done"]}}
+
+
+async def test_number_guard_sees_earlier_turns_of_stage(course, prompts, brief, settings) -> None:
+    _pass_course(course)
+    _start(course, prompts, brief, settings)
+    _to_build(course)
+    llm = ProjectLLM(
+        replies=(
+            ProjectMentorReply(reply="Ок"),
+            ProjectMentorReply(reply="Итог", proposal=DATA_PROPOSAL),
+        )
+    )
+    await _chat(course, llm, prompts, settings, text="ушло 26 процентов", now=35.0)
+    _, mentor = await _chat(course, llm, prompts, settings, text="подведи итог этапа", now=36.0)
+    assert set(mentor.meta["proposal"]) == {"done", "findings"}
+
+
+async def test_accept_stage_completes(course, prompts, brief, settings) -> None:
+    _, mentor = await _build_with_proposal(course, prompts, brief, settings, DATA_PROPOSAL)
+
+    project = core.accept_stage(course, turn_id=mentor.id, now=40.0)
+
+    assert project.state.notes["data"] == {
+        "done": DATA_PROPOSAL["done"],
+        "findings": DATA_PROPOSAL["findings"],
+    }
+    assert project.state.stage == "baseline" and project.state.done_stages == ["data"]
+    assert project.status == "build"
+
+
+async def test_accept_stage_keeps_saved_notes(course, prompts, brief, settings) -> None:
+    _, mentor = await _build_with_proposal(course, prompts, brief, settings, DATA_PROPOSAL)
+    core.save_notes(course, stage="data", fields={"code": "df.info()", "done": "старое"}, now=38.0)
+
+    project = core.accept_stage(course, turn_id=mentor.id, now=40.0)
+
+    assert project.state.notes["data"]["code"] == "df.info()"
+    assert project.state.notes["data"]["done"] == DATA_PROPOSAL["done"]
+
+
+async def test_accept_stage_last_is_done(course, prompts, brief, settings) -> None:
+    _pass_course(course)
+    _start(course, prompts, brief, settings)
+    _to_build(course)
+    for stage in ("data", "baseline", "improve"):
+        core.save_notes(course, stage=stage, fields=NOTES[stage], now=32.0)
+        core.complete_stage(course, stage=stage, now=33.0)
+    llm = ProjectLLM(replies=(ProjectMentorReply(reply="Итог", proposal=NOTES["conclusions"]),))
+    _, mentor = await _chat(course, llm, prompts, settings, text="уход предсказуем по договору", now=35.0)
+
+    project = core.accept_stage(course, turn_id=mentor.id, now=40.0)
+
+    assert project.status == "done" and project.done_at == 40.0 and project.state.stage is None
+
+
+async def test_accept_stage_missing_writes_nothing(course, prompts, brief, settings) -> None:
+    _, mentor = await _build_with_proposal(
+        course, prompts, brief, settings, {"done": DATA_PROPOSAL["done"]}
+    )
+    before = repos.current_project(course)
+
+    with pytest.raises(ProjectError) as error:
+        core.accept_stage(course, turn_id=mentor.id, now=40.0)
+
+    assert error.value.code == "missing" and error.value.missing == ["findings"]
+    after = repos.current_project(course)
+    assert after.state == before.state and after.updated_at == before.updated_at
+
+
+async def test_accept_stage_errors(course, prompts, brief, settings) -> None:
+    student, mentor = await _build_with_proposal(course, prompts, brief, settings, DATA_PROPOSAL)
+    plain = ProjectLLM(replies=(ProjectMentorReply(reply="Просто ответ"),))
+    _, no_proposal = await _chat(course, plain, prompts, settings, now=36.0)
+    for turn_id in (student.id, no_proposal.id, 9999):
+        with pytest.raises(ProjectError) as error:
+            core.accept_stage(course, turn_id=turn_id, now=40.0)
+        assert error.value.code == "not_found"
+
+    core.accept_stage(course, turn_id=mentor.id, now=41.0)
+    with pytest.raises(ProjectError) as error:
+        core.accept_stage(course, turn_id=mentor.id, now=42.0)
+    assert error.value.code == "wrong_stage"
+
+
+async def test_accept_stage_in_idea_wrong_status(course, prompts, brief, settings) -> None:
+    _pass_course(course)
+    _start(course, prompts, brief, settings)
+    llm = ProjectLLM(replies=(ProjectMentorReply(reply="Название?", proposal={"title": "Отток"}),))
+    _, mentor = await _chat(course, llm, prompts, settings)
+    with pytest.raises(ProjectError) as error:
+        core.accept_stage(course, turn_id=mentor.id, now=40.0)
+    assert error.value.code == "wrong_status"
+
+
+async def test_mentor_sees_stage_fields(course, prompts, brief, settings) -> None:
+    _pass_course(course)
+    _start(course, prompts, brief, settings)
+    _to_build(course)
+    llm = ProjectLLM(replies=(ProjectMentorReply(reply="Ок"),))
+    await _chat(course, llm, prompts, settings, now=35.0)
+
+    system = llm.calls[-1][0].content
+    block = system[system.index("Поля итога этапа (ключи для proposal)") :].split("\n\n")[0]
+    assert "- done — Что сделал (обязательное)" in block
+    assert "- numbers — Цифры: размер выборки, доли классов и т. п." in block
+    assert "- code" not in block
