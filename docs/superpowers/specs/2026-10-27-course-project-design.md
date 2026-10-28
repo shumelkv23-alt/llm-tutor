@@ -111,7 +111,7 @@
 Файл лежит в каталоге модулей курса: `data/project.json` у `mlcourse`; у другого
 встроенного курса — в его `data_dir`, у созданного — `data/courses/<id>/project.json`
 (формат тот же; правки из админки — позже). Нет файла — у курса нет проекта.
-**Сейчас проект есть только у `mlcourse`.**
+**Сейчас проект есть у `mlcourse` и демо-курса `trees-demo`.**
 
 ```json
 {
@@ -146,7 +146,9 @@
   `https://archive.ics.uci.edu/dataset/275/bike+sharing+dataset`); «Своя задача
   на табличных данных» (UCI Adult, `https://archive.ics.uci.edu/dataset/2/adult`;
   Titanic, `https://www.kaggle.com/c/titanic`).
-- `trees-demo` и `isit-ml`: без проекта (решение владельца: пока только курс ML).
+- `trees-demo`: «Отток клиентов: дерево против леса» и «Своя задача для деревьев»
+  (`data/demo/project.json`; решение владельца от 2026-10-28 — показ идёт на демо-курсе).
+- `isit-ml`: без проекта.
 
 ## Наставник
 

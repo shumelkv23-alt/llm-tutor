@@ -48,9 +48,9 @@ def _conn(web_app, course: str = "mlcourse"):
     return web_app.state.userdbs.open(user.id, course)
 
 
-def _set_route(web_app, status: str) -> None:
+def _set_route(web_app, status: str, course: str = "mlcourse") -> None:
     """Все занятия курса получают один статус в маршруте ученика."""
-    conn = _conn(web_app)
+    conn = _conn(web_app, course)
     graph = CourseGraph.load(conn)
     steps = [
         RouteStep(concept_id=node, mode="full", status=status, closed_at=1.0)
@@ -89,7 +89,8 @@ async def _projects(client) -> dict[str, dict]:
 
 async def test_overview_states(ready, web_app) -> None:
     items = await _projects(ready)
-    assert set(items) == {"mlcourse"}  # у trees-demo и isit-ml проекта нет
+    assert set(items) == {"mlcourse", "trees-demo"}  # у isit-ml проекта нет
+    assert items["trees-demo"]["state"] == "not_enrolled"
     assert items["mlcourse"]["state"] == "locked"
     assert items["mlcourse"]["progress"]["total"] == 33 and items["mlcourse"]["progress"]["closed"] == 0
 
@@ -311,10 +312,27 @@ async def test_stale_second_tab_409(ready, web_app) -> None:
     assert after["stages"] == before["stages"]
 
 
-async def test_course_without_project_404(ready) -> None:
+async def test_demo_course_project(ready, web_app) -> None:
+    """У демо-курса свой проект: два описания, замок до прохождения пяти занятий."""
+    demo = "/api/courses/trees-demo/project"
     assert (await ready.post("/api/courses/trees-demo/enroll", json={})).status_code == 200
-    assert (await ready.get("/api/courses/trees-demo/project")).status_code == 404
-    assert (await ready.post("/api/courses/trees-demo/project/chat", json={"text": "Привет"})).status_code == 404
+    items = await _projects(ready)
+    assert items["trees-demo"]["state"] == "locked"
+    assert items["trees-demo"]["progress"]["total"] == 5
+    view = (await ready.get(demo)).json()
+    assert [brief["id"] for brief in view["briefs"]] == ["churn_forest", "own_trees"]
+    assert view["unlocked"] is False
+
+    _set_route(web_app, "closed", "trees-demo")
+    response = await ready.post(f"{demo}/start", json={"brief_id": "churn_forest"})
+    assert response.status_code == 200, response.text
+    assert response.json()["project"]["status"] == "idea"
+
+
+async def test_course_without_project_404(ready) -> None:
+    assert (await ready.post("/api/courses/isit-ml/enroll", json={})).status_code == 200
+    assert (await ready.get("/api/courses/isit-ml/project")).status_code == 404
+    assert (await ready.post("/api/courses/isit-ml/project/chat", json={"text": "Привет"})).status_code == 404
 
 
 async def test_not_enrolled_403(student) -> None:

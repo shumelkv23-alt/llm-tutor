@@ -339,8 +339,8 @@ E2E, дальше — ревью всей ветки. Следом — «Объ�
   Согласие показывать сессии админу — факт `explain_share`.
 - **Проект по курсу** (срезы 97–101). Проект есть **только у курса с `project.json`**
   в каталоге модулей (`web/courses.project_file`; у встроенного `mlcourse` это
-  `data/project.json`, у `trees-demo` и `isit-ml` файла нет, и их `/api/courses/…/project`
-  отвечает 404). Описания читает `course/project_file` (ошибка формата — `ProjectFileError`,
+  `data/project.json`, у демо-курса `trees-demo` — `data/demo/project.json` (два описания для показа),
+  у `isit-ml` файла нет, и его `/api/courses/…/project` отвечает 404). Описания читает `course/project_file` (ошибка формата — `ProjectFileError`,
   но `project_file` не роняет сайт: пишет в лог и отдаёт `None`); кэш сбрасывает
   `invalidate_course`. Начатый проект живёт по **своей копии описания** (`projects.brief`),
   а замок «курс пройден» (`overview.course_progress`) проверяется **только в `core.project.start`**:

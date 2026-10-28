@@ -39,9 +39,19 @@ def test_mlcourse_briefs_load() -> None:
     assert all(brief.datasets for brief in project.briefs)
 
 
-def test_only_mlcourse_has_project() -> None:
+def test_demo_briefs_load() -> None:
+    """У демо-курса свой проект: занятия описаний — занятия демо-курса."""
+    demo = load_course_data(sorted((DATA_DIR / "demo").glob("seed_topic*.json")))
+    project = load_project_file(DATA_DIR / "demo", {node.id for node in demo.nodes})
+    assert project is not None and project.template == "ml"
+    assert [brief.id for brief in project.briefs] == ["churn_forest", "own_trees"]
+    assert all(brief.datasets for brief in project.briefs)
+
+
+def test_project_courses() -> None:
+    """Проект есть у mlcourse и демо-курса; у isit-ml его нет."""
     assert (DATA_DIR / PROJECT_FILE).exists()
-    assert not (DATA_DIR / "demo" / PROJECT_FILE).exists()
+    assert (DATA_DIR / "demo" / PROJECT_FILE).exists()
     assert not (DATA_DIR / "isit" / PROJECT_FILE).exists()
 
 

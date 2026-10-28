@@ -1,0 +1,44 @@
+{
+  "template": "ml",
+  "briefs": [
+    {
+      "id": "churn_forest",
+      "title": "Отток клиентов: дерево против леса",
+      "summary": "Предскажи, какие клиенты уйдут, сначала одним деревом решений, а потом проверь, насколько лучше справится случайный лес.",
+      "result": "Настроенное дерево и случайный лес, честное сравнение на отложенной выборке и признаки, на которые опирается лес.",
+      "lessons": [
+        "tree_criteria",
+        "tree_tuning",
+        "forest"
+      ],
+      "datasets": [
+        {
+          "title": "Telco Customer Churn (Kaggle)",
+          "url": "https://www.kaggle.com/datasets/blastchar/telco-customer-churn"
+        }
+      ]
+    },
+    {
+      "id": "own_trees",
+      "title": "Своя задача для деревьев",
+      "summary": "Возьми открытые табличные данные по интересной теме и выясни, где одиночное дерево переобучается, а ансамбль помогает.",
+      "result": "Проект от постановки задачи до выводов: базовое дерево, его настройка, бэггинг и лес, ответ на вопрос задачи.",
+      "lessons": [
+        "tree_building",
+        "tree_tuning",
+        "bagging_basics",
+        "forest"
+      ],
+      "datasets": [
+        {
+          "title": "UCI Adult (доход)",
+          "url": "https://archive.ics.uci.edu/dataset/2/adult"
+        },
+        {
+          "title": "Titanic (Kaggle)",
+          "url": "https://www.kaggle.com/c/titanic"
+        }
+      ]
+    }
+  ]
+}

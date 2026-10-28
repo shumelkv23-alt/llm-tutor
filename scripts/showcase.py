@@ -518,7 +518,7 @@ def cmd_project(s: Settings, args) -> None:
     if course is not None and courses.project_file(course) is None:
         header("Проект по курсу")
         print(c(f"У курса {args.course} нет project.json — страница «Проект» его не показывает.", "yellow"))
-        print("Проект есть у курса, в каталоге модулей которого лежит project.json (сейчас — mlcourse).")
+        print("Проект есть у курса, в каталоге модулей которого лежит project.json (mlcourse, trees-demo).")
         return
     _, path = student_db(s, args.email, args.course)
     conn = open_db(path)

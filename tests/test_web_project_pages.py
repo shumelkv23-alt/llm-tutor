@@ -39,7 +39,7 @@ async def test_projects_page_guest_redirects(web) -> None:
 
 async def test_project_page_redirects_and_404(student, web_app) -> None:
     """Review Focus: чужой адрес — 404, без записи или без проекта на закрытом курсе — на /project."""
-    assert (await student.get("/project/trees-demo")).status_code == 404
+    assert (await student.get("/project/isit-ml")).status_code == 404
     assert (await student.get("/project/no-such-course")).status_code == 404
 
     response = await student.get("/project/mlcourse", follow_redirects=False)
