@@ -6,6 +6,7 @@
 
 import asyncio
 import os
+import re
 import socket
 import threading
 import time
@@ -25,6 +26,28 @@ playwright_api = pytest.importorskip("playwright.async_api")
 _SANDBOX_CHROMIUM = Path("/opt/pw-browsers/chromium")
 
 
+# Итоги этапов проекта (срез 105): наставник «пересказывает» слова ученика.
+STAGE_SUMMARIES = {
+    "Данные и анализ": {"done": "Загрузил данные и посмотрел типы", "findings": "Уходит около четверти клиентов"},
+    "Базовая модель": {"model": "Логистическая регрессия на всех признаках", "metric": "ROC AUC 0.84 на тесте"},
+    "Улучшения": {"tried": "Случайный лес с подбором глубины", "result": "Лес даёт ROC AUC 0.87"},
+    "Выводы": {"answer": "Уход предсказуем по типу договора", "limits": "Данные одной компании"},
+}
+
+
+def _stage_reply(stage: str, text: str):
+    """Ответ наставника на этапе: итог этапа; «[сбой]» — модель недоступна, «[один пункт]» — неполный итог."""
+    from llm_tutor.llm.client import LLMError
+    from llm_tutor.llm.schemas import ProjectMentorReply
+
+    if "[сбой]" in text:
+        raise LLMError("наставник недоступен", retryable=False)
+    summary = STAGE_SUMMARIES[stage]
+    if "[один пункт]" in text:
+        summary = dict(list(summary.items())[:1])
+    return ProjectMentorReply(reply="Подведём итог этапа.", proposal=summary)
+
+
 class EchoTutor:
     """Тьютор-эхо: отвечает Markdown-ом с кодом, чтобы видеть рендер."""
 
@@ -36,6 +59,9 @@ class EchoTutor:
 
         await asyncio.sleep(self.delay)
         if schema is ProjectMentorReply:
+            stage = re.search(r"Текущий этап: «(.+?)»", messages[0].content)
+            if stage:
+                return _stage_reply(stage.group(1), messages[-1].content)
             # Наставник проекта (срез 101): подсказка с предложением всех полей карточки.
             return ProjectMentorReply(
                 reply="Хорошая тема. Какие данные у вас есть?",

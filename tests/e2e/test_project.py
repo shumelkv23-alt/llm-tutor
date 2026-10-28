@@ -6,19 +6,6 @@ from playwright.async_api import expect
 
 pytestmark = pytest.mark.e2e
 
-CARD = {
-    "problem": "Предсказать, уйдёт ли клиент в следующем месяце",
-    "data": "Telco Customer Churn, около семи тысяч клиентов",
-    "success": "ROC AUC выше, чем у логистической регрессии",
-}
-NOTES = {
-    "data": {"done": "Загрузил данные и посмотрел типы", "findings": "Уходит около четверти клиентов"},
-    "baseline": {"model": "Логистическая регрессия на всех признаках", "metric": "ROC AUC 0.84 на тесте"},
-    "improve": {"tried": "Случайный лес с подбором глубины", "result": "Лес даёт ROC AUC 0.87"},
-    "conclusions": {"answer": "Уход предсказуем по типу договора", "limits": "Данные одной компании"},
-}
-
-
 @pytest.fixture
 async def course_passed(page, live_server, tmp_path):
     await sign_up(page, live_server)
@@ -27,75 +14,124 @@ async def course_passed(page, live_server, tmp_path):
     return page
 
 
+async def _open_project(page, live_server) -> None:
+    await page.goto(f"{live_server}/project")
+    await page.wait_for_selector("#projects[aria-busy=false]")
+    mlcourse = page.locator("[aria-labelledby=project-course-mlcourse]")
+    await mlcourse.locator(".brief-card").first.get_by_role("button", name="Выбрать").click()
+    await page.wait_for_url(f"{live_server}/project/mlcourse")
+    await page.wait_for_selector("#project[aria-busy=false]")
+
+
+async def _say(page, text: str) -> None:
+    await page.fill("#chat-input", text)
+    async with page.expect_response("**/project/chat"):
+        await page.press("#chat-input", "Enter")
+
+
+async def _to_build(page, live_server) -> None:
+    """Выбор описания, предложение карточки, «Взять в карточку», «Утвердить идею»."""
+    await _open_project(page, live_server)
+    await expect(page.locator("#project-meta")).to_contain_text("Идея")
+    await _say(page, "Хочу про отток клиентов")
+    await expect(page.locator("#chat-log")).to_contain_text("Какие данные у вас есть?")
+    async with page.expect_response("**/project/take"):
+        await page.locator("[data-action=take]").click()
+    await expect(page.locator(".project-card")).to_contain_text("Отток клиентов")
+    async with page.expect_response("**/project/approve"):
+        await page.locator("[data-action=approve]").click()
+    await expect(page.locator("#project-meta")).to_contain_text("Реализация")
+    await expect(page.locator("#project-steps [data-status=current]")).to_contain_text("Данные и анализ")
+
+
 async def test_project_flow(course_passed, live_server) -> None:
     page = course_passed
     await page.goto(f"{live_server}/project")
     await page.wait_for_selector("#projects[aria-busy=false]")
-    await expect(page.locator(".brief-card")).to_have_count(3)
-    await expect(page.locator(".brief-card").first).to_contain_text("Прогноз оттока клиентов")
+    mlcourse = page.locator("[aria-labelledby=project-course-mlcourse]")
+    await expect(mlcourse.locator(".brief-card")).to_have_count(3)
+    await expect(mlcourse.locator(".brief-card").first).to_contain_text("Прогноз оттока клиентов")
 
-    await page.locator(".brief-card").first.get_by_role("button", name="Выбрать").click()
-    await page.wait_for_url(f"{live_server}/project/mlcourse")
-    await page.wait_for_selector("#project[aria-busy=false]")
-    await expect(page.locator("#project-meta")).to_contain_text("Идея")
-    await expect(page.locator("#chat-log")).to_contain_text("Прогноз оттока клиентов")
+    await _to_build(page, live_server)
+    # Идея утверждена: старое предложение карточки в чате без кнопок.
+    await expect(page.locator("[data-action=take]")).to_have_count(0)
+    await expect(page.locator("#quick-reply")).to_have_text("Подвести итог этапа")
 
-    await page.fill("#chat-input", "Хочу про отток клиентов")
-    async with page.expect_response("**/project/chat"):
-        await page.press("#chat-input", "Enter")
-    await expect(page.locator("#chat-log")).to_contain_text("Какие данные у вас есть?")
-    async with page.expect_response("**/project/take"):
-        await page.get_by_role("button", name="Взять в карточку").click()
-    await expect(page.locator("#f-card-title")).to_have_value("Отток клиентов")
-
-    # Аудит среза 101: после «Взять в карточку» с полным предложением «Утвердить» сразу активна.
-    approve = page.get_by_role("button", name="Утвердить идею")
-    await expect(page.locator("#f-card-problem")).to_have_value(CARD["problem"])
-    await expect(approve).to_be_enabled()
-    # Поле, испорченное руками, гасит кнопку, исправленное — возвращает.
-    await page.fill("#f-card-problem", "коротко")
-    await expect(approve).to_be_disabled()
-    await page.fill("#f-card-problem", CARD["problem"])
-    await expect(approve).to_be_enabled()
-    # «Сохранить карточку» перерисовывает форму, кнопка остаётся активной.
-    async with page.expect_response("**/project/card"):
-        await page.get_by_role("button", name="Сохранить карточку").click()
-    await expect(approve).to_be_enabled()
-    async with page.expect_response("**/project/approve"):
-        await approve.click()
-    await expect(page.locator("#project-meta")).to_contain_text("Реализация")
-    await expect(page.locator(".project-stage[data-status=current]")).to_contain_text("Данные и анализ")
-
-    for stage, fields in NOTES.items():
-        complete = page.get_by_role("button", name="Этап выполнен")
-        await expect(complete).to_be_disabled()
-        for key, text in fields.items():
-            await page.fill(f"#f-notes-{stage}-{key}", text)
-        await expect(complete).to_be_enabled()
-        async with page.expect_response("**/project/complete"):
-            await complete.click()
-        first_note = next(iter(fields.values()))
-        await expect(page.locator(".project-stage[data-status=done]", has_text=first_note)).to_be_visible()
+    talk = {
+        "Данные и анализ": "Загрузил данные и посмотрел типы, уходит около четверти клиентов",
+        "Базовая модель": "Логистическая регрессия на всех признаках, ROC AUC 0.84 на тесте",
+        "Улучшения": "Случайный лес с подбором глубины, ROC AUC 0.87",
+        "Выводы": "Уход предсказуем по типу договора, данные одной компании",
+    }
+    titles = list(talk)
+    for index, (title, text) in enumerate(talk.items()):
+        await expect(page.locator("#project-steps [data-status=current]")).to_contain_text(title)
+        await _say(page, text)
+        async with page.expect_response("**/project/accept"):
+            await page.locator("[data-action=accept]").last.click()
+        if index + 1 < len(titles):
+            await expect(page.locator("#project-steps [data-status=current]")).to_contain_text(titles[index + 1])
+            await expect(page.locator(".stage-done", has_text=title)).to_be_visible()
 
     await expect(page.locator("#project-meta")).to_contain_text("Готов")
-    await expect(page.locator(".project-stage[data-status=done]")).to_have_count(4)
-    await expect(page.locator(".project-card")).to_contain_text("Отток клиентов")
+    await expect(page.locator("#project-steps [data-status=done]")).to_have_count(5)
+    await expect(page.locator(".stage-done")).to_have_count(4)
+    await expect(page.locator("#quick-reply")).to_be_hidden()
     assert page.errors == []
 
     await page.goto(f"{live_server}/project")
     await page.wait_for_selector("#projects[aria-busy=false]")
-    await expect(page.locator(".project-course")).to_contain_text("Готов")
+    await expect(page.locator("[aria-labelledby=project-course-mlcourse]")).to_contain_text("Готов")
+
+
+async def test_accept_missing_opens_dialog(course_passed, live_server) -> None:
+    """Предложение без обязательного поля: 422 открывает «Поправить» с подсветкой, итог дописывается."""
+    page = course_passed
+    await _to_build(page, live_server)
+    await _say(page, "Загрузил данные [один пункт]")
+    async with page.expect_response("**/project/accept"):
+        await page.locator("[data-action=accept]").last.click()
+
+    dialog = page.locator("#stage-dialog")
+    await expect(dialog).to_be_visible()
+    await expect(dialog.locator("[data-key=done] textarea")).to_have_value("Загрузил данные и посмотрел типы")
+    await expect(dialog.locator("[data-key=findings] textarea")).to_have_attribute("aria-invalid", "true")
+    await dialog.locator("[data-key=findings] textarea").fill("Уходит около четверти клиентов")
+    async with page.expect_response("**/project/complete"):
+        await dialog.get_by_role("button", name="Сохранить и дальше").click()
+    await expect(dialog).to_be_hidden()
+    await expect(page.locator("#project-steps [data-status=current]")).to_contain_text("Базовая модель")
+    assert [e for e in page.errors if "422" not in e] == []
+
+
+async def test_manual_stage_without_model(course_passed, live_server) -> None:
+    """Модель недоступна — этап закрывается через «Записать итог самому»."""
+    page = course_passed
+    await _to_build(page, live_server)
+    await page.fill("#chat-input", "[сбой]")
+    async with page.expect_response("**/project/chat"):
+        await page.press("#chat-input", "Enter")
+    await expect(page.locator("#chat-log .msg.failed")).to_have_count(1)
+
+    await page.locator("[data-action=own-summary]").click()
+    dialog = page.locator("#stage-dialog")
+    await dialog.locator("[data-key=done] textarea").fill("Загрузил данные и посмотрел типы")
+    await dialog.locator("[data-key=findings] textarea").fill("Классы несбалансированы")
+    async with page.expect_response("**/project/complete"):
+        await dialog.get_by_role("button", name="Сохранить и дальше").click()
+    await expect(page.locator("#project-steps [data-status=current]")).to_contain_text("Базовая модель")
+    assert [e for e in page.errors if "502" not in e] == []
 
 
 async def test_project_narrow_screen_switch(course_passed, live_server) -> None:
     page = course_passed
+    await _open_project(page, live_server)
     await page.set_viewport_size({"width": 600, "height": 900})
-    await page.goto(f"{live_server}/project/mlcourse")
-    await page.wait_for_selector("#project[aria-busy=false]")
-    await expect(page.locator("#pane-chat")).to_be_hidden()
-    await page.click("#view-chat")
     await expect(page.locator("#pane-chat")).to_be_visible()
-    await expect(page.locator("#pane-left")).to_be_hidden()
+    await expect(page.locator("#pane-summary")).to_be_hidden()
+    await page.click("#view-project")
+    await expect(page.locator("#pane-summary")).to_be_visible()
+    await expect(page.locator("#pane-chat")).to_be_hidden()
     assert page.errors == []
 
 
