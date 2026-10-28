@@ -15,11 +15,12 @@
     uv run python scripts/showcase.py explain [--reference grouping]
     uv run python scripts/showcase.py project
     uv run python scripts/showcase.py time-travel --days 3   # сдвинуть сроки повторения
+    uv run python scripts/showcase.py seed-review --days 2   # завести расписание закрытым занятиям и сдвинуть сроки
     uv run python scripts/showcase.py close-module 1 2       # «пройти» модули (только для показа)
 
 Ученик — ``--email`` (если учеников один — не нужен), курс — ``--course``
 (по умолчанию демо-курс ``trees-demo``).
-Команды, которые пишут в БД (``time-travel``, ``close-module``), — только для показа.
+Команды, которые пишут в БД (``time-travel``, ``seed-review``, ``close-module``), — только для показа.
 """
 
 import argparse
@@ -422,6 +423,31 @@ def cmd_time_travel(s: Settings, args) -> None:
     cmd_review(s, args)
 
 
+def cmd_seed_review(s: Settings, args) -> None:
+    """Заводит расписание закрытым занятиям (как для старого ученика) и сдвигает сроки.
+
+    ``close-module`` закрывает занятия только в маршруте: строк расписания он не
+    создаёт, их заводит ход ученика. Здесь та же функция, что при первом открытии
+    БД старого ученика (``review.backfill``): сбрасываем отметку и запускаем её
+    заново — строки появятся у занятий, у которых их ещё нет.
+    """
+    _, path = student_db(s, args.email, args.course)
+    conn = open_db(path)
+    _, state = lesson_state(conn)
+    if state is None or state.route is None:
+        sys.exit("Нет маршрута: сначала пройди анкету курса.")
+    before = len(repos.get_review_rows(conn))
+    conn.execute("DELETE FROM facts WHERE key = ?", (review_logic.BACKFILL_FACT,))
+    conn.commit()
+    review_logic.backfill(conn, state.route, now=time.time())
+    added = len(repos.get_review_rows(conn)) - before
+    print(c(f"📅 Расписание: строк было {before}, добавлено {added} (только для показа).", "yellow"))
+    if args.days:
+        cmd_time_travel(s, args)
+    else:
+        cmd_review(s, args)
+
+
 # --- explain --------------------------------------------------------------
 
 _STATE_MARK = {"correct": c("✔ correct", "green"), "partial": c("◐ partial", "yellow"),
@@ -708,6 +734,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--all", action="store_true", help="все 33 занятия")
     p.add_argument("--node", help="история α/β занятия по журналу")
     sub.add_parser("review", help="расписание повторений и что повторять сейчас")
+    p = sub.add_parser("seed-review", help="завести расписание закрытым занятиям и сдвинуть сроки (только для показа)")
+    p.add_argument("--days", type=float, default=2.0, help="на сколько дней сдвинуть сроки; 0 — не сдвигать")
+    p.add_argument("--node", help="сдвинуть сроки только этого занятия")
     p = sub.add_parser("time-travel", help="сдвинуть сроки повторения назад")
     p.add_argument("--days", type=float, default=3.0)
     p.add_argument("--node")
@@ -722,7 +751,7 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     handlers = {
         "students": cmd_students, "context": cmd_context, "mastery": cmd_mastery, "review": cmd_review,
-        "time-travel": cmd_time_travel, "explain": cmd_explain, "project": cmd_project,
+        "time-travel": cmd_time_travel, "seed-review": cmd_seed_review, "explain": cmd_explain, "project": cmd_project,
         "watch": cmd_watch, "close-module": cmd_close_module,
     }
     handlers[args.command](settings(), args)
