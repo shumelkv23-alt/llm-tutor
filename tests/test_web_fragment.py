@@ -1,5 +1,7 @@
 """Вопрос тьютору по выделенному фрагменту: API хода чата (срезы 76–78)."""
 
+import json
+
 import pytest
 from test_web_lesson import BASE, COURSE, _finish, _user_db
 from web_fakes import ScriptedTutor
@@ -77,13 +79,14 @@ async def test_chat_quote_exactly_max(enrolled, web_app) -> None:
     assert len(focus_from_meta(_user_messages(web_app)[-1].meta).text) == FOCUS_MAX_CHARS
 
 
-async def test_chat_without_quote_unchanged(enrolled, web_app) -> None:
+async def test_chat_without_quote_keeps_question_marker(enrolled, web_app) -> None:
     await _finish(enrolled)
 
     response = await enrolled.post(f"{BASE}/chat", json={"text": "почему?"})
 
     assert response.status_code == 200
-    assert _user_messages(web_app)[-1].meta is None
+    meta = json.loads(_user_messages(web_app)[-1].meta)
+    assert meta["question"] is True and "quote" not in meta
 
 
 async def test_chat_quote_before_survey_is_409(enrolled) -> None:

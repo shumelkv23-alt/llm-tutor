@@ -37,6 +37,19 @@ class LLMError(RuntimeError):
 # Ключ не принят: повтор не поможет, нужен новый ключ в .env.
 _AUTH_STATUS = {401, 403}
 
+# Напоминание о формате ответа в хвосте запроса (JSON-режим).
+#
+# У deepseek-chat через прокси (litellm) контракт JSON в конце длинного
+# системного промпта перестаёт действовать: модель возвращает content из одних
+# пробелов (finish_reason=stop, токены потрачены). Если то же требование стоит
+# последним сообщением, сбоев нет — проверено на реальном промпте тьютора
+# (0–2 из 5 успешных против 12 из 12). Поэтому в JSON-режиме клиент всегда
+# повторяет короткое требование в конце, после вопроса ученика.
+_JSON_TAIL_REMINDER = (
+    "Ответь строго JSON-объектом без текста вокруг: первым символом ответа "
+    "должна быть фигурная скобка."
+)
+
 
 class LLMClient:
     """Тонкий асинхронный клиент к OpenRouter."""
@@ -144,9 +157,14 @@ class LLMClient:
         *,
         json_mode: bool = False,
     ) -> dict:
+        dumped = [m.model_dump() for m in messages]
+        if json_mode:
+            # Требование к формату — последним сообщением, а не только в
+            # системном промпте: см. _JSON_TAIL_REMINDER.
+            dumped.append({"role": "system", "content": _JSON_TAIL_REMINDER})
         payload: dict = {
             "model": model or self._default_model,
-            "messages": [m.model_dump() for m in messages],
+            "messages": dumped,
             "temperature": self._temperature if temperature is None else temperature,
             "max_tokens": self._max_tokens,
         }

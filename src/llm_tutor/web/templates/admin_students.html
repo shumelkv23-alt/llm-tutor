@@ -3,6 +3,7 @@
 {% block heading %}Ученики{% endblock %}
 {% block description %}Кто учится и как далеко прошёл.{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block actions %}<a class="btn" href="/admin/course?course={{ admin_course.id }}">Аналитика по занятиям</a>{% endblock %}
 {% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% endblock %}
 {% block content %}
 {% include "_admin_tabs.html" %}
@@ -45,6 +46,7 @@
         <th scope="row">
           <a class="admin-name" href="/admin/students/{{ account.id }}?course={{ admin_course.id }}">{{ account.name }}</a>{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}
           <small class="admin-email muted">{{ account.email }}</small>
+          {% if item.note %}<a class="admin-stuck-note" href="/admin/students/{{ account.id }}/profile?course={{ admin_course.id }}">{{ item.note }}</a>{% endif %}
         </th>
         <td>
           <span class="badge{% if item.status == 'done' %} success{% elif item.status in ('survey', 'in_progress') %} primary{% elif item.status == 'error' %} danger{% endif %}">{{ item.label }}</span>

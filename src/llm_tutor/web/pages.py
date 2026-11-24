@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from llm_tutor.core import project as core_project
 from llm_tutor.db import repos
-from llm_tutor.web import accounts, courses as course_registry
+from llm_tutor.web import accounts, courses as course_registry, notes as notebook
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
 from llm_tutor.web.courses import RENAMED_COURSES, published_courses, student_course
@@ -38,6 +38,7 @@ NAV: tuple[NavItem, ...] = (
     NavItem("home", "/", "Главная", "home"),
     NavItem("courses", "/courses", "Мои курсы", "book"),
     NavItem("lesson", "/lesson", "Занятие", "lesson"),
+    NavItem("notes", "/notes", "Конспект", "note"),
     NavItem("project", "/project", "Проект", "spark"),
     NavItem("profile", "/profile", "Профиль", "user"),
 )
@@ -174,6 +175,106 @@ async def explain_moved(
     course_id: str, session_id: int | None = None, user: User = Depends(page_user)
 ) -> Response:
     return RedirectResponse(f"/lesson/{course_id}", status_code=303)
+
+
+@router.get("/notes", response_class=HTMLResponse)
+async def notes_page(
+    request: Request,
+    course: str | None = None,
+    lesson: str | None = None,
+    view: str | None = None,
+    kind: str | None = None,
+    user: User = Depends(page_user),
+) -> HTMLResponse:
+    """«Конспект»: вопросы тьютору и решения ученика по занятиям всех курсов.
+
+    Журнал ``messages`` у каждого курса свой, поэтому страница проходит по
+    записанным курсам (как главная и профиль). Нечитаемый курс не роняет
+    страницу: он показывается строкой с ошибкой. ``?course=`` сужает выдачу,
+    ``?lesson=`` — до одного занятия выбранного курса; неизвестный или чужой
+    id фильтр игнорирует. Курс один — он выбран сразу, без лишнего клика: темы
+    показываются его.
+
+    ``?view=solutions`` — вкладка «Мои решения» (ответы на задания вместо
+    вопросов), ``?kind=text|code`` — только текстовые записи или только
+    связанные с кодом. Неизвестные значения — как без фильтра.
+    """
+    part = "solutions" if view == "solutions" else "questions"
+    kind = kind if kind in ("text", "code") else None
+    pool = request.app.state.userdbs
+    candidates = []
+    for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
+        found = student_course(course_id, include_drafts=user.is_admin)
+        if found is not None and found.visible:
+            candidates.append(found)
+    known = {item.id for item in candidates}
+    selected = course if course in known else None
+    if selected is None and len(candidates) == 1:
+        # Единственный курс — не заставляем выбирать его в фильтре, чтобы
+        # сразу показать темы занятий.
+        selected = candidates[0].id
+    lesson_filters: list[dict] = []
+    selected_lesson: str | None = None
+    groups: list[dict] = []
+    total = 0
+    for item in candidates:
+        if selected is not None and item.id != selected:
+            continue
+        try:
+            conn = pool.open(user.id, item.id)
+            lessons = (
+                notebook.lesson_solutions(conn, kind=kind)
+                if part == "solutions"
+                else notebook.lesson_notes(conn, kind=kind)
+            )
+        except (*COURSE_ERRORS, OSError):
+            logger.exception("Конспект: БД ученика %s по курсу %s не читается", user.id, item.id)
+            groups.append(
+                {"id": item.id, "title": item.title, "error": True, "lessons": [], "count": 0}
+            )
+            continue
+        if selected is not None:
+            lesson_filters = [
+                {
+                    "id": entry["node_id"],
+                    "name": entry["name"],
+                    "module": entry.get("module"),
+                    "count": entry["count"],
+                }
+                for entry in lessons
+                if entry.get("node_id")
+            ]
+            if lesson:
+                match = next((entry for entry in lessons if entry["node_id"] == lesson), None)
+                if match is not None:
+                    selected_lesson = match["node_id"]
+                    lessons = [match]
+        count = sum(entry["count"] for entry in lessons)
+        total += count
+        groups.append(
+            {
+                "id": item.id,
+                "title": item.title,
+                "error": False,
+                "lessons": lessons,
+                "count": count,
+            }
+        )
+    return render(
+        request,
+        "notes.html",
+        "notes",
+        user=user,
+        courses=groups,
+        total=total,
+        any_error=any(group["error"] for group in groups),
+        selected=selected,
+        selected_lesson=selected_lesson,
+        lesson_filters=lesson_filters,
+        filter_courses=[{"id": item.id, "title": item.title} for item in candidates],
+        part=part,
+        kind=kind,
+    )
 
 
 @router.get("/project", response_class=HTMLResponse)

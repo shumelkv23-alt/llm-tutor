@@ -325,6 +325,21 @@ async def test_chat_context_uses_review_section(conn, settings) -> None:
     assert reply.text.startswith("Разъяснение") and reply.text.endswith(turn.PENDING_ITEM_NOTE)
 
 
+async def test_chat_marks_question_with_review_lesson(conn, settings) -> None:
+    """Вопрос посреди серии — в конспект, занятием повторяемого задания."""
+    await _lesson_with_due(conn, settings, "l1_group")
+    await core_review.start(conn, _FakeTutor(), "m", kind="due", now=NOW, settings=settings)
+
+    await core_review.chat(conn, _FakeTutor(), "m", "Что тут?", now=NOW, settings=settings)
+
+    row = conn.execute(
+        "SELECT meta FROM messages WHERE role = 'user' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    meta = json.loads(row["meta"])
+    assert meta["question"] is True and meta["node"] == "l1_group"
+    assert "section" not in meta
+
+
 async def test_chat_marks_hinted_keeps_step(conn, settings) -> None:
     await _lesson_with_due(conn, settings, "l1_group")
     await core_review.start(conn, _FakeTutor(), "m", kind="due", now=NOW, settings=settings)
@@ -406,7 +421,11 @@ async def test_chat_lesson_fields_untouched_and_journal_marked(conn, settings) -
 
     assert _state(conn).model_dump(exclude=skip) == before
     last = conn.execute("SELECT meta FROM messages ORDER BY id DESC LIMIT 2").fetchall()
-    assert [json.loads(r["meta"]) for r in last] == [{"review": "l1_group"}] * 2
+    assert [json.loads(r["meta"]) for r in last] == [
+        {"review": "l1_group"},
+        # Вопрос попадёт в конспект занятием повторяемого задания.
+        {"review": "l1_group", "question": True, "node": "l1_group"},
+    ]
 
 
 async def test_lesson_tail_labels_review_messages(conn, settings) -> None:

@@ -21,6 +21,8 @@
   // Недописанные ответы по заданиям: панель перерисовывается на каждом ходу,
   // и без этого текст пропал бы от любого вопроса в чат или сбоя сети.
   const drafts = new Map();
+  // Голосовой ввод открытого ответа (voice.js); при перерисовке замолкает.
+  let voice = null;
 
   function el(tag, className, text) {
     const element = document.createElement(tag);
@@ -72,6 +74,7 @@
   }
 
   async function submit(item, answer) {
+    voice?.stop();
     const data = await window.Lesson.act("answer", { item_id: item.id, answer }, { echo: typeof answer === "number" ? item.options[answer] : answer });
     if (data) drafts.delete(item.id);
     if (data?.verdict) {
@@ -143,7 +146,12 @@
         field.spellcheck = false;
       } else {
         field.rows = item.type === "code" ? 8 : 5;
-        field.placeholder = item.type === "code" ? "# Ваш код на Python" : "Объясните своими словами";
+        field.placeholder =
+          item.type === "code"
+            ? "# Ваш код на Python"
+            : window.Voice?.available && item.type === "open"
+              ? "Объясните своими словами или надиктуйте"
+              : "Объясните своими словами";
         if (item.type === "code") field.classList.add("mono");
       }
       form.append(field);
@@ -157,8 +165,14 @@
     send.dataset.turn = "";
     send.append("Ответить", icon("arrow"));
     send.disabled = item.type === "choice" && selected === null;
+    actions.append(send);
+    // Развёрнутый ответ удобно надиктовать: «Порассуждайте…», «Объясните…».
+    // Короткие ответы и код — руками: диктовка тут только мешает.
+    if (item.type === "open" && window.Voice?.available) {
+      voice = window.Voice.create(field, { label: "Голосом" });
+      actions.append(voice.button, voice.status);
+    }
     actions.append(
-      send,
       button("Не понимаю", "ghost", () => window.Lesson.act("stuck", {}, { echo: "Не понял, давай подробнее." })),
       skipButton()
     );
@@ -191,7 +205,11 @@
   }
 
   function render(state) {
-    if (!state || state.survey) return;
+    if (!state) return;
+    // Запись могла идти в поле, которое сейчас исчезнет (анкета, новый ход).
+    voice?.stop();
+    voice = null;
+    if (state.survey) return;
     panel.replaceChildren();
     const wrap = el("div", "practice");
 

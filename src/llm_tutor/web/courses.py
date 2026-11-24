@@ -12,6 +12,7 @@
 """
 
 import logging
+import shutil
 import time
 from dataclasses import dataclass
 from functools import lru_cache
@@ -293,6 +294,27 @@ def invalidate_course(course_id: str | None = None) -> None:
     refresh_courses()
 
 
+def folder(course: Course) -> Path:
+    """Каталог модулей курса: папка созданного или каталог встроенного.
+
+    У встроенного курса ``root`` нет (он описан кодом), но seed-файлы,
+    конспекты и ``course.json`` со счётчиками id лежат в ``data_dir``, а у
+    ``mlcourse`` — в общем ``data/``. Правка этих файлов меняет курс у всех
+    учеников сразу: отдельной копии не нужно.
+    """
+    if course.root is not None:
+        return course.root
+    return course.data_dir or DATA_DIR
+
+
+def edit_folder(course: Course) -> Path:
+    """Каталог, в котором правятся модули встроенного курса (с проверкой)."""
+    directory = folder(course)
+    if not store.seed_paths(directory):
+        raise store.StoreError(f"В курсе {course.id!r} нет файлов модулей — править нечего")
+    return directory
+
+
 def meta_for(course: Course) -> store.CourseMeta | None:
     """Метаданные созданного курса (``None`` — курс встроенный)."""
     if course.root is None:
@@ -350,6 +372,127 @@ def create_course(
     return meta
 
 
+def copy_course(
+    source: Course,
+    *,
+    title: str = "",
+    course_id: str | None = None,
+    now: float | None = None,
+) -> store.CourseMeta:
+    """Заводит редактируемую копию курса — встроенного или созданного.
+
+    Встроенные курсы описаны кодом, поэтому правятся не на диске, а в копии:
+    модули, конспекты и описание проекта переезжают в новую папку, дальше
+    копия — обычный созданный курс. Оригинал не меняется.
+    """
+    if _COURSES_DIR is None:
+        raise store.StoreError("Каталог курсов не настроен")
+    seeds = _source_seeds(source)
+    if not seeds:
+        raise store.StoreError("В курсе нет модулей — копировать нечего")
+    folder = _source_folder(source)
+    if course_id and course_id.strip():
+        new_id = store.check_id(course_id.strip())
+        if get_course(new_id) is not None:
+            raise store.StoreError(f"Курс с id {new_id!r} уже есть")
+    else:
+        new_id = _free_copy_id(_COURSES_DIR, source.id)
+    root = store.course_dir(_COURSES_DIR, new_id)
+    if root.exists():
+        raise store.StoreError(f"Папка {root.name} уже занята — выберите другой id")
+    counters = _next_counters(seeds)
+    source_meta = meta_for(source)
+    moment = time.time() if now is None else now
+    try:
+        root.mkdir(parents=True)
+        for path in seeds:
+            if not path.is_file():
+                raise store.StoreError(f"Нет файла модуля {path.name}")
+            shutil.copy2(path, root / path.name)
+        theory = folder / "theory"
+        if theory.is_dir():
+            shutil.copytree(theory, root / "theory")
+        project = folder / PROJECT_FILE
+        if project.is_file():
+            shutil.copy2(project, root / PROJECT_FILE)
+        meta = store.CourseMeta(
+            id=new_id,
+            title=(title.strip() or f"{source.title} — копия")[:200],
+            subtitle=source.subtitle,
+            description=source.description,
+            source_url=source.source_url,
+            status="draft",
+            origin=source_meta.origin if source_meta is not None else "manual",
+            created_at=moment,
+            updated_at=moment,
+            next_item_id=counters["item"],
+            next_rubric_id=counters["rubric"],
+            next_criterion_id=counters["criterion"],
+        )
+        store.write_meta(root, meta)
+    except BaseException:
+        shutil.rmtree(root, ignore_errors=True)
+        raise
+    refresh_courses()
+    return meta
+
+
+def _source_folder(course: Course) -> Path:
+    """Каталог, где лежат модули, конспекты и проекты курса."""
+    if course.root is not None:
+        return course.root
+    return course.data_dir or DATA_DIR
+
+
+def _source_seeds(course: Course) -> list[Path]:
+    """Seed-файлы копируемого курса."""
+    if course.seed_paths is not None:
+        return list(course.seed_paths)
+    return course_paths(_source_folder(course))
+
+
+def _copy_id(source_id: str, index: int) -> str:
+    """id копии: ``<курс>-copy`` или ``<курс>-copy-N`` без выхода за 40 знаков."""
+    suffix = "-copy" if index == 1 else f"-copy-{index}"
+    prefix = source_id[: 40 - len(suffix)].rstrip("-")
+    return store.check_id(f"{prefix}{suffix}")
+
+
+def _free_copy_id(courses_dir: Path, source_id: str) -> str:
+    """Свободный id копии: первый из ``<id>-copy``, ``<id>-copy-2``, …"""
+    for index in range(1, 1000):
+        candidate = _copy_id(source_id, index)
+        if get_course(candidate) is None and not store.course_dir(courses_dir, candidate).exists():
+            return candidate
+    raise store.StoreError("Не удалось подобрать id для копии")
+
+
+def _next_counters(seeds: list[Path]) -> dict[str, int]:
+    """Счётчики id копии — следующие после максимальных в её модулях.
+
+    Иначе редактор выдал бы новый id, который уже занят скопированным
+    заданием, и правка переписала бы записи журнала ученика.
+    """
+    next_item = next_rubric = next_criterion = 1
+    for path in seeds:
+        payload = store.read_json(path)
+        for item in payload.get("items") or []:
+            next_item = max(next_item, _id_of(item) + 1)
+        for rubric in payload.get("rubrics") or []:
+            next_rubric = max(next_rubric, _id_of(rubric) + 1)
+        for criterion in payload.get("criteria") or []:
+            next_criterion = max(next_criterion, _id_of(criterion) + 1)
+    return {"item": next_item, "rubric": next_rubric, "criterion": next_criterion}
+
+
+def _id_of(entry: object) -> int:
+    """id записи seed-файла; всё, что не целое число, считается нулём."""
+    if not isinstance(entry, dict):
+        return 0
+    value = entry.get("id")
+    return value if isinstance(value, int) and value >= 0 else 0
+
+
 def save_meta(course_id: str, meta: store.CourseMeta, *, now: float | None = None) -> Course:
     """Записывает метаданные курса и обновляет реестр; возвращает курс."""
     course = get_course(course_id)
@@ -387,9 +530,49 @@ def update_meta(course_id: str, **fields: str) -> store.CourseMeta:
     return meta
 
 
+# Счётчики id встроенного курса живут отдельным скрытым файлом рядом с модулями:
+# ``course.json`` там занял бы имя метаданных созданного курса и сбил бы реестр.
+BUILTIN_IDS_FILE = ".course-ids.json"
+
+
 def allocate_ids(course_id: str, kind: str, count: int) -> list[int]:
-    """Выдаёт новые id курса и сохраняет счётчики (монотонно, без повторов)."""
-    return store.allocate_ids(_root_of(course_id), kind, count)
+    """Выдаёт новые id курса и сохраняет счётчики (монотонно, без повторов).
+
+    У встроенного курса ``course.json`` нет — счётчики лежат в скрытом файле
+    рядом с модулями и начинаются после максимальных id в seed-файлах. Так
+    добавление задания в правленый встроенный курс не перепишет журнал.
+    """
+    course = get_course(course_id)
+    if course is None:
+        raise store.StoreError(f"Нет курса {course_id!r}")
+    if course.root is not None:
+        return store.allocate_ids(course.root, kind, count)
+    root = edit_folder(course)
+    path = root / BUILTIN_IDS_FILE
+    try:
+        meta = store.CourseMeta.model_validate(store.read_json(path))
+    except (store.StoreError, ValidationError):
+        meta = _builtin_meta(course, root)
+    ids = store.allocate(meta, kind, count)
+    store.write_json(path, meta.model_dump())
+    return ids
+
+
+def _builtin_meta(course: Course, root: Path) -> store.CourseMeta:
+    """Метаданные встроенного курса — только ради монотонных счётчиков id."""
+    counters = _next_counters(list(store.seed_paths(root)))
+    return store.CourseMeta(
+        id=course.id,
+        title=course.title,
+        subtitle=course.subtitle,
+        description=course.description,
+        source_url=course.source_url,
+        status="published",
+        origin="manual",
+        next_item_id=counters["item"],
+        next_rubric_id=counters["rubric"],
+        next_criterion_id=counters["criterion"],
+    )
 
 
 def _root_of(course_id: str) -> Path:

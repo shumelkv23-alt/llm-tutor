@@ -22,25 +22,27 @@ router = APIRouter(dependencies=[Depends(admin_page_user)])
 
 
 def _course_or_404(course_id: str) -> tuple[courses.Course, Path]:
-    """Созданный курс; встроенный и чужой id одинаково недоступны."""
+    """Курс и каталог его модулей; встроенный правится на месте, чужой id — 404."""
     course = courses.get_course(course_id)
-    if course is None or course.root is None:
+    if course is None:
         raise HTTPException(status_code=404, detail=NOT_FOUND)
-    return course, course.root
+    try:
+        return course, courses.edit_folder(course)
+    except store.StoreError as error:
+        raise HTTPException(status_code=404, detail=NOT_FOUND) from error
 
 
-@router.get("/admin/courses", response_class=HTMLResponse)
-async def course_list(request: Request, user: User = Depends(admin_page_user)) -> HTMLResponse:
-    """Список курсов: черновики и опубликованные, со счётчиком модулей."""
+def _course_items(*, editable_only: bool = False) -> list[dict]:
+    """Строки списка курсов: черновики и опубликованные, со счётчиком модулей."""
     items = []
     for course in courses.all_courses():
+        if editable_only and course.root is None:
+            continue
         meta = courses.meta_for(course)
-        modules = 0
-        if course.root is not None:
-            try:
-                modules = len(edit.module_numbers(course.root))
-            except Exception:  # noqa: BLE001 — битый модуль не роняет список
-                modules = 0
+        try:
+            modules = len(edit.module_numbers(courses.folder(course)))
+        except Exception:  # noqa: BLE001 — битый модуль не роняет список
+            modules = 0
         items.append(
             {
                 "id": course.id,
@@ -49,15 +51,38 @@ async def course_list(request: Request, user: User = Depends(admin_page_user)) -
                 "status": course.status,
                 "origin": meta.origin if meta is not None else "manual",
                 "modules": modules,
-                "editable": course.root is not None,
+                "editable": True,
+                "builtin": course.root is None,
             }
         )
+    return items
+
+
+def _editable_courses() -> list[courses.Course]:
+    """Курсы, которые можно генерировать и править (встроенные — только код)."""
+    return [course for course in courses.all_courses() if course.root is not None]
+
+
+def _module_rows(root: Path) -> list[dict]:
+    """Модули курса для таблицы; недособранный модуль показываем текстом."""
+    rows = []
+    for number in edit.module_numbers(root):
+        try:
+            rows.append(module_view(root, number))
+        except Exception as error:  # noqa: BLE001 — недособранный модуль показываем текстом
+            rows.append({"number": number, "error": str(error)})
+    return rows
+
+
+@router.get("/admin/courses", response_class=HTMLResponse)
+async def course_list(request: Request, user: User = Depends(admin_page_user)) -> HTMLResponse:
+    """Раздел «Изменение курсов»: список курсов и переход к правке."""
     return render(
         request,
         "admin_courses.html",
         "admin",
         user=user,
-        items=items,
+        items=_course_items(),
         tab="courses",
         admin_courses=None,
         admin_course=None,
@@ -65,32 +90,66 @@ async def course_list(request: Request, user: User = Depends(admin_page_user)) -
     )
 
 
+@router.get("/admin/generation", response_class=HTMLResponse)
+async def generation_page(
+    request: Request, course: str = "", user: User = Depends(admin_page_user)
+) -> HTMLResponse:
+    """Раздел «Генерация курса»: список курсов или рабочее место выбранного.
+
+    Курс задаётся query-параметром ``?course=``: у генерации нет отдельного
+    адреса на курс, поэтому переключаться между курсами можно тем же списком.
+    Встроенный или несуществующий курс приводит сюда же — к списку.
+    """
+    chosen = courses.get_course(course) if course else None
+    if chosen is not None and chosen.root is not None:
+        root = chosen.root
+        return render(
+            request,
+            "admin_generation.html",
+            "admin",
+            user=user,
+            course=chosen,
+            modules=_module_rows(root),
+            # Структуру отдаём сразу в шаблон: строки рисует сервер.
+            plan=steps.load_course_plan(root),
+            sources=sources_view(root),
+            broken=courses.try_course_data(chosen)[1],
+            running=request.app.state.jobs.running(chosen.id) is not None,
+            tab="generation",
+            admin_courses=_editable_courses(),
+            admin_course=chosen,
+            admin_action="/admin/generation",
+            admin_picker=True,
+        )
+    return render(
+        request,
+        "admin_generation_list.html",
+        "admin",
+        user=user,
+        items=_course_items(editable_only=True),
+        tab="generation",
+        admin_courses=_editable_courses(),
+        admin_course=None,
+        admin_action="/admin/generation",
+        admin_picker=bool(_editable_courses()),
+    )
+
+
 @router.get("/admin/courses/{course_id}", response_class=HTMLResponse)
 async def course_page(
     request: Request, course_id: str, user: User = Depends(admin_page_user)
 ) -> HTMLResponse:
-    """Обзор курса: метаданные, источники, генерация, модули, публикация."""
+    """Раздел «Изменение курсов»: метаданные, модули, публикация."""
     course, root = _course_or_404(course_id)
-    numbers = edit.module_numbers(root)
-    modules = []
-    for number in numbers:
-        try:
-            modules.append(module_view(root, number))
-        except Exception as error:  # noqa: BLE001 — недособранный модуль показываем текстом
-            modules.append({"number": number, "error": str(error)})
     return render(
         request,
         "admin_course.html",
         "admin",
         user=user,
         course=course,
-        modules=modules,
-        # Структуру отдаём сразу в шаблон: строки рисует сервер.
-        plan=steps.load_course_plan(root),
-        sources=sources_view(root),
+        modules=_module_rows(root),
         warnings=warnings(course_id),
         broken=courses.try_course_data(course)[1],
-        running=request.app.state.jobs.running(course_id) is not None,
         tab="courses",
         admin_courses=courses.all_courses(),
         admin_course=course,

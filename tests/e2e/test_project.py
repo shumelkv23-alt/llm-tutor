@@ -136,13 +136,13 @@ async def test_project_narrow_screen_switch(course_passed, live_server) -> None:
 
 
 async def test_admin_nav_labels_fit_a_phone(page, live_server, tmp_path) -> None:
-    """Шесть пунктов меню у админа на 320 px: страница не шире экрана, подписи не обрезаны."""
+    """Семь пунктов меню у админа на 320 px: страница не шире экрана, подписи не обрезаны."""
     from test_admin import _admin_page
 
     await page.set_viewport_size({"width": 320, "height": 700})
     student, _ = await _admin_page(page, live_server, tmp_path)
 
-    assert await page.locator(".main-nav a").count() == 6
+    assert await page.locator(".main-nav a").count() == 7
     assert await page.evaluate("() => document.documentElement.scrollWidth") <= 320
     clipped = await page.evaluate(
         "() => [...document.querySelectorAll('.main-nav a')]"

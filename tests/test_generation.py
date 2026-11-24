@@ -21,10 +21,12 @@ from llm_tutor.course.build.schemas import (
     LessonPlan,
     ModulePlan,
     ModuleSurvey,
+    PrerequisitePlan,
     SectionItems,
     SectionPlan,
     TheoryDoc,
 )
+from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import SeedError, load_course_data
 from llm_tutor.llm.client import LLMError
 from llm_tutor.web import courses
@@ -301,6 +303,117 @@ async def test_existing_module_needs_force(course_root):
     assert forced.status == "done", forced.error
 
 
+# --- граф знаний ---
+
+
+class GraphPlan(ScriptedGenerator):
+    """Модель, которая задаёт пререквизиты занятия явно."""
+
+    def __init__(self, prerequisites: list[PrerequisitePlan], **kwargs):
+        super().__init__(**kwargs)
+        self.prerequisites = prerequisites
+
+    def _answer(self, schema, request):
+        answer = super()._answer(schema, request)
+        if schema.__name__ == "ModulePlan":
+            answer.prerequisites = self.prerequisites
+        return answer
+
+
+async def test_plan_prompt_asks_for_prerequisites(course_root):
+    """Без поля в промпте модель никогда не пришлёт граф, и он снова станет цепочкой."""
+    generator = ScriptedGenerator()
+    await generate(course_root, generator)
+    assert "prerequisites" in generator.calls[0][1]
+    assert "from_key" in generator.calls[0][1]
+
+
+async def test_model_prerequisites_become_graph_edges(course_root):
+    """Связи из плана — это рёбра графа, а не декоративная цепочка."""
+    generator = GraphPlan(
+        [PrerequisitePlan(from_key="l1", to_key="l2", hard=True, weight=1.0)]
+    )
+    state = await generate(course_root, generator)
+    assert state.status == "done", state.error
+
+    data = load_course_data(list(store.seed_paths(course_root)))
+    graph = CourseGraph(data.nodes, data.edges)
+    assert graph.hard_prerequisites("t01_l2") == ["t01_l1"]
+    assert ("t01_l1", "t01_l2", True) in graph.prerequisite_edges()
+
+
+async def test_lesson_graph_can_branch(course_root):
+    """Два занятия могут вести к третьему: модель не обязана строить цепочку."""
+    generator = GraphPlan(
+        [
+            PrerequisitePlan(from_key="l1", to_key="l3", hard=False, weight=0.5),
+            PrerequisitePlan(from_key="l2", to_key="l3", hard=False, weight=0.5),
+        ],
+        lessons=3,
+    )
+    state = await generate(course_root, generator)
+    assert state.status == "done", state.error
+
+    data = load_course_data(list(store.seed_paths(course_root)))
+    graph = CourseGraph(data.nodes, data.edges)
+    assert graph.soft_prerequisites("t01_l3") == ["t01_l1", "t01_l2"]
+
+
+async def test_lesson_without_prerequisites_is_linked_to_previous(course_root):
+    """Забытое моделью занятие не остаётся оторванным узлом."""
+    state = await generate(course_root, GraphPlan([]))
+    assert state.status == "done", state.error
+
+    data = load_course_data(list(store.seed_paths(course_root)))
+    graph = CourseGraph(data.nodes, data.edges)
+    assert graph.soft_prerequisites("t01_l2") == ["t01_l1"]
+
+
+async def test_prerequisite_to_unknown_lesson_is_rejected(course_root):
+    state = await generate(
+        course_root,
+        GraphPlan([PrerequisitePlan(from_key="l1", to_key="nope")]),
+    )
+    assert state.status == "failed"
+    assert "неизвестный ключ" in (state.error or "")
+
+
+async def test_prerequisite_that_points_back_is_rejected(course_root):
+    state = await generate(
+        course_root,
+        GraphPlan([PrerequisitePlan(from_key="l2", to_key="l1")]),
+    )
+    assert state.status == "failed"
+    assert "не по порядку" in (state.error or "")
+
+
+async def test_duplicate_prerequisite_is_rejected(course_root):
+    state = await generate(
+        course_root,
+        GraphPlan(
+            [
+                PrerequisitePlan(from_key="l1", to_key="l2"),
+                PrerequisitePlan(from_key="l1", to_key="l2"),
+            ]
+        ),
+    )
+    assert state.status == "failed"
+    assert "повторяется" in (state.error or "")
+
+
+async def test_modules_are_linked_when_author_has_no_cross_edge(course_root):
+    """Без межмодульного ребра карта знаний распалась бы на куски."""
+    await generate(course_root, ScriptedGenerator())
+    second = await generate(
+        course_root, ScriptedGenerator(), module=2, module_title="Второй модуль"
+    )
+    assert second.status == "done", second.error
+
+    data = load_course_data(list(store.seed_paths(course_root)))
+    graph = CourseGraph(data.nodes, data.edges)
+    assert graph.soft_prerequisites("t02_l1") == ["t01_l2"]
+
+
 # --- анкета, id, материал ---
 
 
@@ -514,6 +627,94 @@ def test_outline_tells_the_module_its_place(course_root):
     assert "занятий в нём: 2" in text
     assert "1. Переменные" in text  # соседние модули видны
     assert steps.outline_for(plan, 9) == "" and steps.outline_for(None, 1) == ""
+
+
+def _course_plan(lessons: int = 2) -> CoursePlan:
+    return CoursePlan(
+        title="Основы Python",
+        intro="",
+        modules=[
+            ModuleOutline(number=1, title="Переменные", theme="Типы", lessons=lessons),
+            ModuleOutline(number=2, title="Управление", theme="Циклы", lessons=lessons),
+        ],
+    )
+
+
+async def test_whole_course_generates_every_module(course_root):
+    """Один прогон собирает модули по порядку структуры и несёт общий прогресс."""
+    seen = []
+    state = await steps.generate_course(
+        course_root,
+        client=ScriptedGenerator(),
+        model="test-model",
+        plan=_course_plan(),
+        on_update=seen.append,
+    )
+
+    assert state.status == "done", state.error
+    assert state.course_size == 2 and state.course_done == 2
+    assert (course_root / "seed_topic01.json").is_file()
+    assert (course_root / "seed_topic02.json").is_file()
+    assert [topic.number for topic in load_course_data(list(store.seed_paths(course_root))).topics] == [1, 2]
+    assert any(item.course_size == 2 and item.course_done == 0 for item in seen)
+    assert any(item.course_size == 2 and item.course_done == 1 for item in seen)
+
+
+async def test_whole_course_skips_ready_modules(course_root):
+    await generate(course_root, ScriptedGenerator())
+    generator = ScriptedGenerator()
+    state = await steps.generate_course(
+        course_root, client=generator, model="test-model", plan=_course_plan()
+    )
+
+    assert state.status == "done", state.error
+    assert state.course_done == 2
+    # План спросили только для второго модуля: первый уже собран.
+    assert [name for name, _ in generator.calls].count("ModulePlan") == 1
+    assert generator.calls[0][1].find("Управление") != -1
+
+
+async def test_whole_course_can_rebuild_ready_modules(course_root):
+    plan = _course_plan()
+    await steps.generate_course(course_root, client=ScriptedGenerator(), model="test-model", plan=plan)
+    generator = ScriptedGenerator()
+    state = await steps.generate_course(
+        course_root, client=generator, model="test-model", plan=plan, force=True
+    )
+
+    assert state.status == "done", state.error
+    assert state.course_done == 2
+    # force пересобирает и готовые модули: план спросили для каждого.
+    assert [name for name, _ in generator.calls].count("ModulePlan") == 2
+
+
+async def test_whole_course_stops_on_a_failed_module(course_root):
+    state = await steps.generate_course(
+        course_root,
+        client=ScriptedGenerator(items=1),
+        model="test-model",
+        plan=_course_plan(),
+    )
+
+    assert state.status == "failed"
+    assert "Модуль 1" in (state.error or "")
+    assert state.course_done == 0
+    assert not (course_root / "seed_topic01.json").exists()
+    assert not (course_root / "seed_topic02.json").exists()
+
+
+async def test_whole_course_can_be_cancelled(course_root):
+    state = await steps.generate_course(
+        course_root,
+        client=ScriptedGenerator(),
+        model="test-model",
+        plan=_course_plan(),
+        cancelled=lambda: True,
+    )
+
+    assert state.status == "cancelled"
+    assert state.course_done == 0
+    assert not (course_root / "seed_topic01.json").exists()
 
 
 async def test_module_follows_the_structure(course_root):

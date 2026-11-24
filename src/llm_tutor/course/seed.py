@@ -176,6 +176,16 @@ def _check_topics(seeds: Sequence[Seed]) -> list[str]:
         if not seed.nodes:
             raise SeedError(f"В модуле {number} нет тем")
         for edge in seed.edges:
+            missing_edge = [
+                node_id
+                for node_id in (edge.from_id, edge.to_id)
+                if node_id not in topic_of
+            ]
+            if missing_edge:
+                raise SeedError(
+                    f"Ребро {edge.from_id} -> {edge.to_id} в модуле {number} "
+                    f"ссылается на неизвестное занятие: {', '.join(missing_edge)}"
+                )
             src, dst = topic_of[edge.from_id], topic_of[edge.to_id]
             # Модуль отвечает только за входы в свои темы: иначе файл модуля 2
             # мог бы поменять порядок и блокировки модуля 1.
@@ -517,6 +527,64 @@ def _stamp_lesson(node: Concept) -> Concept:
     return node.model_copy(update={"explain": config})
 
 
+def _module_links(seeds: Sequence[Seed], edges: Sequence[Edge]) -> list[Edge]:
+    """Мягкие рёбра между соседними модулями, если автор их не задал.
+
+    Сгенерированный модуль описывает только свой граф, поэтому без такой связи
+    карта знаний распадается на куски. Ведём ребро от последнего занятия
+    прошлого модуля к входному занятию следующего (у которого нет входящих
+    рёбер внутри модуля). Если между модулями уже есть хоть одно ребро, ничего
+    не добавляем: у автора была своя связь. Рёбра не пишутся в seed-файлы —
+    они выводятся при каждой сборке, поэтому перегенерация модуля не оставляет
+    в соседях битых ссылок.
+    """
+    by_number = {seed.topic.number: seed for seed in seeds}
+    numbers = sorted(by_number)
+    links: list[Edge] = []
+    for previous_number, number in zip(numbers, numbers[1:]):
+        previous, current = by_number[previous_number], by_number[number]
+        if not previous.nodes or not current.nodes:
+            continue
+        previous_ids = {node.id for node in previous.nodes}
+        current_ids = {node.id for node in current.nodes}
+        if any(
+            edge.type == "requires"
+            and edge.to_id in current_ids
+            and edge.from_id not in current_ids
+            for edge in edges
+        ):
+            continue
+        inside = [
+            edge
+            for edge in edges
+            if edge.type == "requires"
+            and edge.from_id in current_ids
+            and edge.to_id in current_ids
+        ]
+        incoming = {edge.to_id for edge in inside}
+        target = next(
+            (node.id for node in current.nodes if node.id not in incoming),
+            current.nodes[0].id,
+        )
+        # Источник — последнее занятие прошлого модуля, от которого внутри
+        # модуля ничего не зависит: оно и есть выход модуля.
+        outgoing = {
+            edge.from_id
+            for edge in edges
+            if edge.type == "requires"
+            and edge.from_id in previous_ids
+            and edge.to_id in previous_ids
+        }
+        source = next(
+            (node.id for node in reversed(previous.nodes) if node.id not in outgoing),
+            previous.nodes[-1].id,
+        )
+        links.append(
+            Edge(from_id=source, to_id=target, type="requires", hard=False, weight=0.5)
+        )
+    return links
+
+
 def build_course(seeds: Sequence[Seed]) -> Course:
     """Склеивает модули и валидирует курс целиком (``SeedError`` на ошибке)."""
     # Модуль проставляется здесь, а не при чтении файла: так его получает и
@@ -524,6 +592,7 @@ def build_course(seeds: Sequence[Seed]) -> Course:
     ordered = sorted((_stamp_topic(seed) for seed in seeds), key=lambda seed: seed.topic.number)
     nodes = [node for seed in ordered for node in seed.nodes]
     edges = [edge for seed in ordered for edge in seed.edges]
+    edges.extend(_module_links(ordered, edges))
     items = [item for seed in ordered for item in seed.items]
     rubrics = [rubric for seed in ordered for rubric in seed.rubrics]
     criteria = [criterion for seed in ordered for criterion in seed.criteria]

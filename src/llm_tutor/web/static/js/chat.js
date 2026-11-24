@@ -9,6 +9,14 @@
   const log = $("#chat-log");
   const form = $("#chat-form");
   const input = $("#chat-input");
+  // Голосовой ввод (voice.js): речь распознаёт браузер. Нет движка — нет кнопки.
+  // В ветке наставника «Объясни новичку» её прячем: там оценивают, что ученик
+  // написал сам, и диктовка исказила бы проверку.
+  const voice = window.Voice?.available ? window.Voice.create(input) : null;
+  if (voice) {
+    form.insertBefore(voice.button, form.querySelector("button[type=submit]"));
+    form.append(voice.status);
+  }
   const typingLine = $("#chat-typing");
   const lessonNext = $("#lesson-next");
   const quoteBox = $("#chat-quote");
@@ -201,6 +209,8 @@
   async function send(text) {
     const clean = text.trim();
     if (!clean || locked()) return;
+    // Отправляем сказанное: распознанные хвосты после очистки поля уже не нужны.
+    voice?.stop();
     const quote = attached;
     const before = lastUserTs();
     input.value = "";
@@ -327,7 +337,13 @@
     if (attached && (off || (attachedNode !== null && node !== attachedNode))) detach();
     attachedNode = node;
     input.disabled = off;
-    form.querySelector("button").disabled = off;
+    form.querySelector("button[type=submit]").disabled = off;
+    if (voice) {
+      // Наставник «Объясни новичку» голосом не пользуется: там свои правила.
+      const voiceOff = off || mode !== "tutor";
+      voice.button.hidden = voiceOff;
+      voice.setEnabled(!voiceOff);
+    }
     document.querySelectorAll("#chat-chips .chip").forEach((chip) => {
       chip.disabled = off;
     });

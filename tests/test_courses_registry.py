@@ -7,6 +7,7 @@
 
 import json
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,13 @@ def test_slugify_transliterates_cyrillic():
 
 def test_slugify_falls_back_for_unusable_title():
     assert store.slugify("!!!") == "course"
+
+
+def test_slugify_keeps_language_names():
+    """«C++» и «C#» без отдельного правила схлопнулись бы в «course»."""
+    assert store.slugify("C++") == "cpp"
+    assert store.slugify("C# с нуля") == "csharp-s-nulya"
+    assert store.slugify("F# для аналитика") == "fsharp-dlya-analitika"
 
 
 def test_check_id_rejects_reserved_and_traversal():
@@ -230,10 +238,26 @@ def test_allocate_ids_is_monotonic_and_saved(courses_home):
     assert courses.allocate_ids("osnovy-python", "item", 2) == [1, 2]
     assert courses.allocate_ids("osnovy-python", "item", 1) == [3]
     assert store.read_meta(courses_home / "osnovy-python").next_item_id == 4
-    # Счётчики видов id независимы, встроенный курс их не имеет.
+    # Счётчики видов id независимы.
     assert courses.allocate_ids("osnovy-python", "rubric", 1) == [1]
-    with pytest.raises(store.StoreError):
-        courses.allocate_ids("mlcourse", "item", 1)
+
+
+def test_builtin_course_keeps_id_counters_next_to_its_modules(tmp_path, monkeypatch):
+    """Встроенный курс теперь правится: новые id тоже не должны повторяться."""
+    source = courses.get_course("trees-demo")
+    assert source is not None
+    target = tmp_path / "demo"
+    shutil.copytree(courses.folder(source), target)
+    builtin = replace(source, data_dir=target)
+    monkeypatch.setitem(courses._BY_ID, builtin.id, builtin)
+    monkeypatch.setattr(
+        courses, "COURSES", tuple(builtin if item.id == builtin.id else item for item in courses.COURSES)
+    )
+
+    expected = courses._next_counters(list(store.seed_paths(target)))["item"]
+    assert courses.allocate_ids(builtin.id, "item", 2) == [expected, expected + 1]
+    assert (target / courses.BUILTIN_IDS_FILE).is_file()
+    assert courses.allocate_ids(builtin.id, "item", 1) == [expected + 2]
 
 
 def test_allocate_ids_never_repeats_after_regeneration(courses_home):

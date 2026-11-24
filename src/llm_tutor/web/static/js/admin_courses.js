@@ -153,32 +153,57 @@
 
   /* --- список курсов --- */
 
+  /** Редактируемая копия курса: встроенный курс иначе не изменить. */
+  async function copyCourse(button) {
+    const id = button.dataset.course;
+    const title = button.dataset.title || id;
+    const confirmed = await window.App.confirm(
+      "Создать редактируемую копию?",
+      `Курс «${title}» скопируется вместе с модулями и конспектами. Оригинал не изменится, а копия появится черновиком — её можно полностью править.`,
+      { label: "Создать копию" }
+    );
+    if (!confirmed) return;
+    await guard(button, async () => {
+      const base = button.closest("[data-copy]")?.dataset.copy || "/api/admin/courses";
+      const { course } = await request(`${base}/${encodeURIComponent(id)}/copy`, {
+        method: "POST",
+        body: {},
+      });
+      notify(`Копия «${course.title}» создана.`);
+      location.assign(`/admin/courses/${encodeURIComponent(course.id)}`);
+    });
+  }
+
   function listScreen(node) {
     const form = node.querySelector("#create-course");
     const endpoint = node.dataset.create;
-    if (!form) return;
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      clearErrors(form);
-      const data = new FormData(form);
-      const body = {
-        title: String(data.get("title") || "").trim(),
-        course_id: String(data.get("course_id") || "").trim(),
-        subtitle: String(data.get("subtitle") || "").trim(),
-        description: String(data.get("description") || "").trim(),
-        source_url: String(data.get("source_url") || "").trim(),
-      };
-      const submit = form.querySelector('button[type="submit"]');
-      guard(submit, async () => {
-        try {
-          const { course } = await request(endpoint, { method: "POST", body });
-          notify(`Курс «${course.title}» создан.`);
-          location.assign(`/admin/courses/${encodeURIComponent(course.id)}`);
-        } catch (problem) {
-          showProblem(form, problem);
-        }
+    if (form) {
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        clearErrors(form);
+        const data = new FormData(form);
+        const body = {
+          title: String(data.get("title") || "").trim(),
+          course_id: String(data.get("course_id") || "").trim(),
+          subtitle: String(data.get("subtitle") || "").trim(),
+          description: String(data.get("description") || "").trim(),
+          source_url: String(data.get("source_url") || "").trim(),
+        };
+        const submit = form.querySelector('button[type="submit"]');
+        guard(submit, async () => {
+          try {
+            const { course } = await request(endpoint, { method: "POST", body });
+            notify(`Курс «${course.title}» создан.`);
+            // Раздел, из которого создавали, задаёт адрес: генерация открывает
+            // рабочее место курса, список правки — страницу изменения.
+            location.assign(`${node.dataset.after || "/admin/courses/"}${encodeURIComponent(course.id)}`);
+          } catch (problem) {
+            showProblem(form, problem);
+          }
+        });
       });
-    });
+    }
+    onActions(node, { "copy-course": copyCourse });
   }
 
   /* --- обзор курса --- */
@@ -194,6 +219,7 @@
     const genButton = node.querySelector('[data-action="generate"]');
     // «Перегенерировать» — та же генерация, но с data-force: показываем и прячем вместе.
     const regenButton = node.querySelector('[data-action="regenerate"]');
+    const allButton = node.querySelector('[data-action="generate-all"]');
     const cancelButton = node.querySelector('[data-action="cancel-run"]');
     // Структура курса: форма есть всегда, строки — из неё же (шаблон или API).
     const structureForm = node.querySelector("#course-structure");
@@ -210,35 +236,39 @@
     let watching = false;
 
     function fail(problem) {
-      errorBox.textContent = problem.message;
-      errorBox.hidden = false;
+      if (errorBox) {
+        errorBox.textContent = problem.message;
+        errorBox.hidden = false;
+      }
       notify(problem.message, { error: true });
     }
 
-    /* метаданные */
+    /* метаданные: форма есть только в разделе «Изменение курсов» */
 
-    form.addEventListener("submit", (event) => {
-      event.preventDefault();
-      clearErrors(form);
-      const data = new FormData(form);
-      const body = {
-        title: String(data.get("title") || "").trim(),
-        subtitle: String(data.get("subtitle") || "").trim(),
-        description: String(data.get("description") || "").trim(),
-        source_url: String(data.get("source_url") || "").trim(),
-      };
-      guard(form.querySelector('button[type="submit"]'), async () => {
-        try {
-          await request(api, { method: "PUT", body });
-          const heading = document.querySelector(".page-heading h1");
-          if (heading) heading.textContent = body.title;
-          errorBox.hidden = true;
-          notify("Курс сохранён.");
-        } catch (problem) {
-          showProblem(form, problem);
-        }
+    if (form) {
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        clearErrors(form);
+        const data = new FormData(form);
+        const body = {
+          title: String(data.get("title") || "").trim(),
+          subtitle: String(data.get("subtitle") || "").trim(),
+          description: String(data.get("description") || "").trim(),
+          source_url: String(data.get("source_url") || "").trim(),
+        };
+        guard(form.querySelector('button[type="submit"]'), async () => {
+          try {
+            await request(api, { method: "PUT", body });
+            const heading = document.querySelector(".page-heading h1");
+            if (heading) heading.textContent = body.title;
+            errorBox.hidden = true;
+            notify("Курс сохранён.");
+          } catch (problem) {
+            showProblem(form, problem);
+          }
+        });
       });
-    });
+    }
 
     async function publish(button) {
       await guard(button, async () => {
@@ -597,11 +627,9 @@
         try {
           const data = await request(`${api}/generate`, { method: "POST", body: { module: moduleNumber } });
           showRun(data.run, true);
-          notify(
-            body.force
-              ? `Модуль ${moduleNumber} собирается заново.`
-              : `Генерация модуля ${moduleNumber} пошла.`
-          );
+          // Строка структуры умеет только первичную генерацию: «собрать заново» —
+          // это кнопка «Перегенерировать» на панели ниже.
+          notify(`Генерация модуля ${moduleNumber} пошла.`);
           watch();
         } catch (problem) {
           fail(problem);
@@ -612,19 +640,36 @@
     /* генерация */
 
     function showRun(run, generating) {
-      genButton.hidden = generating;
+      if (!runBox) return;
+      if (genButton) genButton.hidden = generating;
       if (regenButton) regenButton.hidden = generating;
-      cancelButton.hidden = !generating;
+      if (allButton) allButton.hidden = generating;
+      if (cancelButton) cancelButton.hidden = !generating;
       if (!run) {
         runBox.hidden = true;
         return;
       }
       runBox.hidden = false;
       const label = RUN_LABELS[run.status] || run.status;
-      stepCell.textContent = run.current ? `${label}: ${run.current}` : label;
       const total = Number(run.total || 0);
       const doneCount = Number(run.done || 0);
-      countCell.textContent = total ? `сделано ${doneCount} из ${total}` : "шагов пока нет";
+      const courseSize = Number(run.course_size || 0);
+      const courseDone = Number(run.course_done || 0);
+      if (courseSize) {
+        // Прогон всего курса: шаги относятся к текущему модулю, а рядом видно,
+        // сколько модулей уже собрано.
+        const position = Math.min(courseDone + 1, courseSize);
+        const head = run.status === "done"
+          ? label
+          : `${label} (модуль ${position} из ${courseSize})`;
+        stepCell.textContent = run.current ? `${head}: ${run.current}` : head;
+        countCell.textContent = total
+          ? `модулей ${courseDone} из ${courseSize} · шаг ${doneCount} из ${total}`
+          : `модулей ${courseDone} из ${courseSize}`;
+      } else {
+        stepCell.textContent = run.current ? `${label}: ${run.current}` : label;
+        countCell.textContent = total ? `сделано ${doneCount} из ${total}` : "шагов пока нет";
+      }
       fill.style.width = total ? `${Math.round((100 * doneCount) / total)}%` : "0%";
       runError.hidden = !run.error;
       runError.textContent = run.error || "";
@@ -676,6 +721,21 @@
       if (data.generating) watch();
     }
 
+    /** Весь курс: модули по структуре, готовые пропускаются. */
+    async function generateAll(button) {
+      const hints = node.querySelector("#gen-hints").value.trim();
+      await guard(button, async () => {
+        try {
+          const data = await request(`${api}/generate-all`, { method: "POST", body: { hints } });
+          showRun(data.run, true);
+          notify("Генерация всех недостающих модулей пошла.");
+          watch();
+        } catch (problem) {
+          fail(problem);
+        }
+      });
+    }
+
     /** Запуск генерации модуля: кнопка «Сгенерировать» и «Перегенерировать» —
      *  одно и то же действие, разница только в data-force (собрать с нуля). */
     async function generate(button) {
@@ -725,14 +785,36 @@
       });
     }
 
+    async function deleteModuleFromCourse(button) {
+      const number = Number(button.dataset.number);
+      const label = button.dataset.title || `модуль ${number}`;
+      const confirmed = await window.App.confirm(
+        `Удалить «${label}»?`,
+        "Модуль, его задания и конспекты уберутся из курса, а следующие модули сдвинутся на его место. Прогресс учеников в журнале останется, но занятия исчезнут из курса.",
+        { label: "Удалить модуль", danger: true }
+      );
+      if (!confirmed) return;
+      await guard(button, async () => {
+        try {
+          await request(`${api}/modules/${number}`, { method: "DELETE" });
+          location.reload();
+        } catch (problem) {
+          fail(problem);
+        }
+      });
+    }
+
     onActions(node, {
       publish,
       unpublish,
       delete: remove,
+      "copy-course": copyCourse,
+      "delete-module": deleteModuleFromCourse,
       "remove-source": removeSource,
       "add-url": addUrl,
       "add-github": addGithub,
       generate,
+      "generate-all": generateAll,
       regenerate: generate,   // та же генерация, но с data-force="true"
       "cancel-run": cancelRun,
       "make-structure": makeStructure,
@@ -747,9 +829,11 @@
     node.addEventListener("submit", (event) => {
       if (event.target.id === "course-structure") event.preventDefault();
     });
-    picker.addEventListener("change", addFiles);
-    initRun();
-    loadStructure();
+    // Страница может быть без генерации (раздел «Изменение курсов»): блоки
+    // источников, структуры и запуска живут только в «Генерации курса».
+    if (picker) picker.addEventListener("change", addFiles);
+    if (structureList) loadStructure();
+    if (runBox && genButton) initRun();
   }
 
   /* --- редактор модуля --- */

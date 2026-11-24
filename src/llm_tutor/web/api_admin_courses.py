@@ -33,13 +33,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/admin", dependencies=[Depends(admin_user)])
 
 NOT_FOUND = "Такого курса нет."
-BUILTIN = "Встроенный курс не редактируется."
+BUILTIN = "Это действие для встроенного курса недоступно."
+BUILTIN_META = (
+    "Название и описание встроенного курса заданы кодом — здесь их не изменить. "
+    "Содержимое модулей правится и сразу попадает всем ученикам."
+)
 BUSY = "Генерация уже идёт — дождитесь конца или отмените её."
 READ_ONLY_PUBLISHED = "Опубликованный курс нельзя удалить — сначала снимите с публикации."
 
 # Журнал админки: имя действия → что это было (см. admin.ACTION_LABELS).
 LOG_ACTIONS = {
     "create_course": "создан курс",
+    "copy_course": "создана копия курса",
     "update_course": "правка курса",
     "delete_course": "удалён курс",
     "add_source": "добавлен источник",
@@ -58,6 +63,13 @@ class CreateBody(BaseModel):
     subtitle: str = Field(default="", max_length=200)
     description: str = Field(default="", max_length=2000)
     source_url: str = Field(default="", max_length=500)
+    course_id: str | None = Field(default=None, max_length=40)
+
+
+class CopyBody(BaseModel):
+    """Копия курса: название и id можно задать, иначе сервер подберёт сам."""
+
+    title: str = Field(default="", max_length=200)
     course_id: str | None = Field(default=None, max_length=40)
 
 
@@ -88,6 +100,13 @@ class GenerateBody(BaseModel):
     part: Literal["plan", "survey", "theory", "items", "final"] | None = None
     lesson: str = Field(default="", max_length=60)
     section: str = Field(default="", max_length=20)
+
+
+class GenerateAllBody(BaseModel):
+    """Генерация всего курса: пожелания общие для всех модулей."""
+
+    hints: str = Field(default="", max_length=2000)
+    force: bool = False
 
 
 class StructureRequest(BaseModel):
@@ -124,18 +143,34 @@ def _fail(status: int, message: str, field: str | None = None) -> HTTPException:
 
 
 def _course(course_id: str) -> courses.Course:
-    """Созданный курс (встроенный и черновик другого автора — не наша забота)."""
+    """Курс реестра: и созданный, и встроенный.
+
+    Встроенный курс правится прямо в ``data/``: его модули — обычные seed-файлы,
+    поэтому редактор работает с ними так же, как с созданными. Операции, которых
+    у встроенного курса нет (генерация, источники, публикация, удаление), ниже
+    проверяют ``root`` сами.
+    """
     course = courses.get_course(course_id)
     if course is None:
         raise _fail(404, NOT_FOUND)
-    if course.root is None:
-        raise _fail(400, BUILTIN)
     return course
 
 
 def _root(course: courses.Course) -> Path:
-    assert course.root is not None  # проверено в _course
+    """Папка созданного курса; встроенный сюда не пускаем."""
+    if course.root is None:
+        raise _fail(400, BUILTIN)
     return course.root
+
+
+def _edit_root(course: courses.Course) -> Path:
+    """Каталог модулей для чтения и правки — у встроенного это ``data/``."""
+    if course.root is not None:
+        return course.root
+    try:
+        return courses.edit_folder(course)
+    except store.StoreError as error:
+        raise _fail(404, str(error)) from error
 
 
 def _settings(request: Request) -> Settings:
@@ -230,12 +265,10 @@ async def list_courses(request: Request) -> dict:
     """Все курсы, включая черновики: раздел админки видит всё."""
     out = []
     for course in courses.all_courses():
-        modules = len(courses.course_data(course).topics) if course.root is None else 0
-        if course.root is not None:
-            try:
-                modules = len(edit.module_numbers(course.root))
-            except (store.StoreError, SeedError):
-                modules = 0
+        try:
+            modules = len(edit.module_numbers(courses.folder(course)))
+        except (store.StoreError, SeedError):
+            modules = 0
         out.append(_meta(course, modules=modules))
     return {"courses": out}
 
@@ -260,10 +293,37 @@ async def create_course(
     return {"course": _meta(course)}
 
 
+@router.post("/courses/{course_id}/copy", status_code=201)
+async def copy_course(
+    course_id: str, body: CopyBody, request: Request, admin: User = Depends(admin_user)
+) -> dict:
+    """Редактируемая копия курса: встроенный курс иначе не изменить.
+
+    Копия заводится черновиком, поэтому ученики её не видят, пока
+    преподаватель не опубликует. Оригинал остаётся нетронутым.
+    """
+    source = courses.get_course(course_id)
+    if source is None:
+        raise _fail(404, NOT_FOUND)
+    if source.root is not None and request.app.state.jobs.running(course_id) is not None:
+        raise _fail(409, BUSY)
+    try:
+        meta = await asyncio.to_thread(
+            courses.copy_course, source, title=body.title, course_id=body.course_id
+        )
+    except (store.StoreError, SeedError) as error:
+        raise _fail(422, str(error)) from error
+    _log(request, admin, "copy_course", meta.id)
+    _refresh(request, meta.id)
+    copied = courses.get_course(meta.id)
+    assert copied is not None and copied.root is not None
+    return {"course": _meta(copied, modules=len(edit.module_numbers(copied.root)))}
+
+
 @router.get("/courses/{course_id}")
 async def course_detail(course_id: str, request: Request) -> dict:
     course = _course(course_id)
-    root = _root(course)
+    root = _edit_root(course)
     numbers = edit.module_numbers(root)
     modules = []
     for number in numbers:
@@ -287,6 +347,8 @@ async def update_course(
     course_id: str, body: UpdateBody, request: Request, admin: User = Depends(admin_user)
 ) -> dict:
     course = _course(course_id)
+    if course.root is None:
+        raise _fail(400, BUILTIN_META)
     fields = {key: value for key, value in body.model_dump().items() if value is not None}
     try:
         courses.update_meta(course_id, **fields)
@@ -296,12 +358,14 @@ async def update_course(
     _refresh(request, course_id)
     updated = courses.get_course(course_id)
     assert updated is not None
-    return {"course": _meta(updated, modules=len(edit.module_numbers(_root(updated))))}
+    return {"course": _meta(updated, modules=len(edit.module_numbers(_edit_root(updated))))}
 
 
 @router.delete("/courses/{course_id}", status_code=204)
 async def delete_course(course_id: str, request: Request, admin: User = Depends(admin_user)) -> None:
     course = _course(course_id)
+    if course.root is None:
+        raise _fail(400, BUILTIN)
     if course.status == "published":
         raise _fail(409, READ_ONLY_PUBLISHED)
     if request.app.state.jobs.running(course_id) is not None:
@@ -527,6 +591,79 @@ def _run(root: Path, request: Request, course_id: str) -> dict | None:
     return None if state is None else state.view()
 
 
+@router.post("/courses/{course_id}/generate-all", status_code=202)
+async def generate_all(
+    course_id: str, body: GenerateAllBody, request: Request, admin: User = Depends(admin_user)
+) -> dict:
+    """Собирает все модули структуры; готовые пропускает, если не ``force``."""
+    course = _course(course_id)
+    root = _root(course)
+    jobs = request.app.state.jobs
+    if jobs.running(course_id) is not None:
+        raise _fail(409, BUSY)
+    plan = steps.load_course_plan(root)
+    if plan is None:
+        raise _fail(
+            422,
+            "Сначала составьте структуру курса — по ней генерация знает, какие модули собирать.",
+        )
+    if not plan.modules:
+        raise _fail(422, "В структуре курса нет модулей — сначала составьте её.")
+
+    ready = {path.name for path in store.seed_paths(root)}
+    missing = [
+        module for module in plan.modules
+        if f"seed_topic{module.number:02d}.json" not in ready
+    ]
+    if not missing and not body.force:
+        raise _fail(
+            422,
+            "Все модули курса уже собраны — пересоберите нужный модуль кнопкой "
+            "«Перегенерировать».",
+        )
+
+    settings = _settings(request)
+    generator = request.app.state.generator
+
+    async def runner(cancelled, on_update) -> steps.RunState:
+        return await steps.generate_course(
+            root,
+            client=generator,
+            model=settings.generator_model,
+            plan=plan,
+            hints=body.hints,
+            force=body.force,
+            cancelled=cancelled,
+            on_update=on_update,
+        )
+
+    first = min(module.number for module in plan.modules)
+    job = jobs.start(course_id, first, runner)
+    _log(request, admin, "generate_course", course_id)
+
+    def done(finished: asyncio.Task) -> None:
+        _refresh(request, course_id)
+        if finished.cancelled() or finished.exception() is not None:
+            logger.warning("Генерация курса %s завершилась неудачно", course_id)
+
+    assert job.task is not None
+    job.task.add_done_callback(done)
+    return {
+        "run": {
+            "module": first,
+            "status": "running",
+            "steps": {},
+            "current": "",
+            "done": 0,
+            "total": 0,
+            "error": None,
+            "warnings": [],
+            "course_size": len(plan.modules),
+            "course_done": 0,
+        }
+    }
+
+
 @router.post("/courses/{course_id}/generate", status_code=202)
 async def generate(
     course_id: str, body: GenerateBody, request: Request, admin: User = Depends(admin_user)
@@ -631,7 +768,7 @@ async def _read_module_or_404(root: Path, number: int) -> dict:
 
 @router.get("/courses/{course_id}/modules/{number}")
 async def read_module(course_id: str, number: int) -> dict:
-    root = _root(_course(course_id))
+    root = _edit_root(_course(course_id))
     return {"module": await _read_module_or_404(root, number)}
 
 
@@ -641,7 +778,7 @@ async def write_module(
     admin: User = Depends(admin_user),
 ) -> dict:
     """Модуль целиком (формы редактора собирают его в браузере)."""
-    root = _root(_course(course_id))
+    root = _edit_root(_course(course_id))
     try:
         await asyncio.to_thread(edit.write_module, root, number, payload)
     except store.StoreError as error:
@@ -662,7 +799,7 @@ async def delete_module(
     if request.app.state.jobs.running(course_id) is not None:
         raise _fail(409, BUSY)
     try:
-        await asyncio.to_thread(edit.delete_module, _root(course), number)
+        await asyncio.to_thread(edit.delete_module, _edit_root(course), number)
     except store.StoreError as error:
         raise _fail(404, str(error)) from error
     _log(request, admin, "update_course", course_id)
@@ -675,7 +812,7 @@ async def check_module(course_id: str, number: int) -> dict:
 
     Долгий запрос (по заданию на прогон), но без модели: считает сервер.
     """
-    root = _root(_course(course_id))
+    root = _edit_root(_course(course_id))
     await _read_module_or_404(root, number)
     problems = await asyncio.to_thread(check.check_module, root, number)
     return {
@@ -694,7 +831,7 @@ async def check_module(course_id: str, number: int) -> dict:
 @router.get("/courses/{course_id}/modules/{number}/theory/{lesson_id}")
 async def read_theory(course_id: str, number: int, lesson_id: str) -> dict:
     """Конспект занятия; нет такого модуля или занятия — 404, а не пустая строка."""
-    root = _root(_course(course_id))
+    root = _edit_root(_course(course_id))
     module = await _read_module_or_404(root, number)
     if lesson_id not in {node["id"] for node in module.get("nodes", [])}:
         raise _fail(404, f"В модуле {number} нет занятия {lesson_id!r}")
@@ -706,7 +843,7 @@ async def write_theory(
     course_id: str, number: int, lesson_id: str, body: TheoryBody, request: Request,
     admin: User = Depends(admin_user),
 ) -> dict:
-    root = _root(_course(course_id))
+    root = _edit_root(_course(course_id))
     try:
         headings = await asyncio.to_thread(edit.write_theory, root, number, lesson_id, body.markdown)
     except (store.StoreError, SeedError) as error:

@@ -428,6 +428,39 @@
   line-height: 1.45;
 }
 
+/* --- Голосовой ввод (voice.js): чат тьютора и открытый ответ «Практики» --- */
+
+.voice-btn {
+  flex: none;
+}
+
+.voice-btn.listening {
+  color: var(--danger);
+  background: var(--danger-soft);
+  box-shadow: inset 0 0 0 1px var(--danger);
+}
+
+.voice-btn.listening .icon {
+  animation: voice-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .voice-btn.listening .icon {
+    animation: none;
+  }
+}
+
 /* --- Фрагмент, о котором спрашивает ученик (срез 77) --- */
 
 .chat-quote {

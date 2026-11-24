@@ -201,4 +201,4 @@ async def test_admin_links_keep_the_selected_course(admin, make_course) -> None:
     make_course(status="published")
     page = await admin.get("/admin/course?course=python-basics")
     assert 'href="/admin/students?course=python-basics"' in page.text
-    assert 'href="/admin/course?course=python-basics"' in page.text
+    assert 'href="/admin/generation?course=python-basics"' in page.text

@@ -86,6 +86,10 @@ class RunState(BaseModel):
     # Что не так с готовым модулем (например, тесты код-задания не работают):
     # модуль собран, но преподавателю об этом надо сказать.
     warnings: list[str] = []
+    # Прогон всего курса: сколько модулей в структуре и сколько уже собрано.
+    # Ноль в ``course_size`` — обычный прогон одного модуля.
+    course_size: int = 0
+    course_done: int = 0
     updated_at: float = 0.0
 
     @property
@@ -425,6 +429,38 @@ def _check_plan(plan: ModulePlan, module: int, expected: int | None = None) -> N
     ids = [lesson_id(module, lesson.key) for lesson in plan.lessons]
     if len(set(ids)) != len(ids):
         raise StepError(f"ключи занятий дают одинаковые id: {ids}")
+    _check_prerequisites(plan)
+
+
+def _check_prerequisites(plan: ModulePlan) -> None:
+    """Связи занятий: известные ключи, только назад и без дублей.
+
+    Направление проверяем по порядку занятий в плане: он задан «от простого к
+    сложному», и ребро вперёд сломало бы топологический порядок модуля. Циклы
+    так невозможны, поэтому отдельная проверка DAG здесь не нужна — её всё равно
+    сделает ``build_course``.
+    """
+    positions = {lesson.key: index for index, lesson in enumerate(plan.lessons)}
+    seen: set[tuple[str, str]] = set()
+    for edge in plan.prerequisites:
+        unknown = [
+            key for key in (edge.from_key, edge.to_key) if key not in positions
+        ]
+        if unknown:
+            raise StepError(
+                f"связь занятий ссылается на неизвестный ключ: {', '.join(unknown)}"
+            )
+        if edge.from_key == edge.to_key:
+            raise StepError(f"занятие «{edge.from_key}» не может опираться на себя")
+        if positions[edge.from_key] >= positions[edge.to_key]:
+            raise StepError(
+                f"связь {edge.from_key} -> {edge.to_key} ведёт не по порядку плана: "
+                "пререквизит должен идти раньше"
+            )
+        pair = (edge.from_key, edge.to_key)
+        if pair in seen:
+            raise StepError(f"связь {edge.from_key} -> {edge.to_key} повторяется")
+        seen.add(pair)
 
 
 def _check_headings(answer: TheoryDoc, titles: Sequence[str]) -> None:
@@ -584,12 +620,11 @@ def assemble(
 ) -> Seed:
     """Собирает seed модуля из ответов модели (без обращения к диску)."""
     nodes: list[Concept] = []
-    edges: list[Edge] = []
-    for index, lesson in enumerate(plan.lessons):
-        node_id = lesson_id(module, lesson.key)
+    by_key = {lesson.key: lesson_id(module, lesson.key) for lesson in plan.lessons}
+    for lesson in plan.lessons:
         nodes.append(
             Concept(
-                id=node_id,
+                id=by_key[lesson.key],
                 name=lesson.name.strip(),
                 difficulty=lesson.difficulty,
                 description=lesson.description.strip() or None,
@@ -600,13 +635,30 @@ def assemble(
                 ],
             )
         )
-        if index:
-            # Мягкая связь «следующее занятие опирается на предыдущее»: блокировать
-            # маршрут она не должна — это подсказка планировщику, а не пререквизит.
+
+    # Граф занятий — из ответа модели: она видит материал и знает, что на что
+    # опирается. Занятие без входа (модель про него забыла или не смогла
+    # связать) подключаем мягкой цепочкой к предыдущему: оставлять узел
+    # оторванным нельзя — карта знаний и маршрут теряют связь модуля.
+    edges: list[Edge] = []
+    incoming: set[str] = set()
+    for link in plan.prerequisites:
+        edges.append(
+            Edge(
+                from_id=by_key[link.from_key],
+                to_id=by_key[link.to_key],
+                type="requires",
+                hard=link.hard,
+                weight=link.weight,
+            )
+        )
+        incoming.add(link.to_key)
+    for index, lesson in enumerate(plan.lessons):
+        if index and lesson.key not in incoming:
             edges.append(
                 Edge(
-                    from_id=lesson_id(module, plan.lessons[index - 1].key),
-                    to_id=node_id,
+                    from_id=by_key[plan.lessons[index - 1].key],
+                    to_id=by_key[lesson.key],
                     type="requires",
                     hard=False,
                     weight=0.3,
@@ -934,6 +986,91 @@ async def generate_module(
             material.close()
         runner.touch()
     return state
+
+
+async def generate_course(
+    root: str | Path,
+    *,
+    client,
+    model: str,
+    plan: CoursePlan,
+    hints: str = "",
+    force: bool = False,
+    cancelled: Callable[[], bool] | None = None,
+    on_update: Callable[[RunState], None] | None = None,
+) -> RunState:
+    """Собирает все модули курса по структуре, пропуская уже готовые.
+
+    Один прогон на весь курс: модули идут по порядку структуры, а прогресс
+    несёт номер текущего модуля и число собранных. Сбой или отмена
+    останавливают прогон на текущем модуле: следующие могут опираться на него,
+    и собирать их вслепую нельзя. ``force`` пересобирает и готовые модули.
+    """
+    root = Path(root)
+    stop = cancelled or (lambda: False)
+    outlines = sorted(plan.modules, key=lambda item: item.number)
+    if not outlines:
+        raise StepError("В структуре курса нет модулей — сначала составьте её.")
+    size = len(outlines)
+    completed = 0
+    collected: list[str] = []
+    state = RunState(module=outlines[0].number, course_size=size)
+
+    def publish(current: RunState) -> RunState:
+        view = current.model_copy(deep=True)
+        view.course_size = size
+        view.course_done = completed
+        own = [
+            f"Модуль {current.module}: {text}" for text in current.warnings
+        ] if current.status != "done" else []
+        view.warnings = [*collected, *own]
+        save_run(root, view)
+        if on_update is not None:
+            on_update(view.model_copy(deep=True))
+        return view
+
+    publish(state)
+    for outline in outlines:
+        if stop():
+            state = RunState(module=outline.number, course_size=size, status="cancelled")
+            return publish(state)
+        target = root / f"seed_topic{outline.number:02d}.json"
+        if target.exists() and not force:
+            completed += 1
+            state = RunState(module=outline.number, course_size=size)
+            publish(state)
+            continue
+
+        def relay(module_state: RunState) -> None:
+            publish(module_state)
+
+        result = await generate_module(
+            root,
+            module=outline.number,
+            client=client,
+            model=model,
+            module_title=outline.title,
+            hints=hints,
+            plan=plan,
+            force=force,
+            cancelled=stop,
+            on_update=relay,
+        )
+        if result.status == "cancelled":
+            return publish(result)
+        if result.status != "done":
+            failed = result.model_copy(deep=True)
+            failed.error = f"Модуль {outline.number}: {result.error or 'прогон не удался'}"
+            return publish(failed)
+        collected.extend(f"Модуль {outline.number}: {text}" for text in result.warnings)
+        completed += 1
+        state = result
+        publish(result)
+
+    final = state.model_copy(
+        deep=True, update={"status": "done", "error": None, "warnings": collected}
+    )
+    return publish(final)
 
 
 def _step_names(plan: ModulePlan) -> list[str]:

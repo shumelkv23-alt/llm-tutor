@@ -33,6 +33,22 @@ class LessonPlan(BaseModel):
     )
 
 
+class PrerequisitePlan(BaseModel):
+    """Связь занятий модуля: ``from_key`` нужно пройти до ``to_key``.
+
+    ``hard`` — без пререквизита зависимое занятие заблокировано; мягкая связь
+    только повышает приоритет в маршруте. Это те же рёбра, что в seed-файлах
+    курса, поэтому модель задаёт их ключами занятий, а id назначает код.
+    """
+
+    from_key: str = Field(description="Ключ занятия-пререквизита (раньше по плану)")
+    to_key: str = Field(description="Ключ занятия, которое опирается на пререквизит")
+    hard: bool = Field(
+        default=False, description="True — без пререквизита занятие не начать"
+    )
+    weight: float = Field(default=0.5, ge=0.0, le=1.0, description="Сила связи (0..1)")
+
+
 class ModulePlan(BaseModel):
     """План модуля: из него собирается граф занятий."""
 
@@ -40,6 +56,13 @@ class ModulePlan(BaseModel):
     intro: str = Field(default="", description="Вводная для ученика: зачем этот модуль")
     lessons: list[LessonPlan] = Field(
         description=f"От 2 до {MAX_LESSONS} занятий, от простого к сложному"
+    )
+    prerequisites: list[PrerequisitePlan] = Field(
+        default_factory=list,
+        description=(
+            "Связи «нужно раньше» между занятиями модуля; "
+            "без них код свяжет занятия цепочкой"
+        ),
     )
 
 

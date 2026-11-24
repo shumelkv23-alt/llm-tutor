@@ -52,6 +52,9 @@ _TRANSLIT = {
     "ф": "f", "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "sch", "ъ": "",
     "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
 }
+# Названия языков, которые иначе схлопнулись бы: «C++» без этого даёт «c», а
+# «C#» — «c», и оба падают в запасной «course».
+_LANGUAGE_SLUGS = {"c++": "cpp", "c#": "csharp", "f#": "fsharp"}
 
 
 class StoreError(ValueError):
@@ -124,7 +127,10 @@ def check_id(course_id: str) -> str:
 
 def slugify(title: str) -> str:
     """id из названия курса: транслит, дефисы, обрезка до 40 символов."""
-    latin = "".join(_TRANSLIT.get(char, char) for char in title.lower())
+    lowered = title.lower()
+    for mark, slug in _LANGUAGE_SLUGS.items():
+        lowered = lowered.replace(mark, slug)
+    latin = "".join(_TRANSLIT.get(char, char) for char in lowered)
     slug = re.sub(r"[^a-z0-9]+", "-", latin).strip("-")[:40].strip("-")
     if len(slug) >= 2 and COURSE_ID_RE.fullmatch(slug) and slug not in RESERVED_NAMES:
         return slug

@@ -18,7 +18,7 @@ import logging
 import sqlite3
 import time
 from dataclasses import dataclass, field, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from llm_tutor.config import Settings
 from llm_tutor.course.seed import Course as CourseData
@@ -29,6 +29,7 @@ from llm_tutor.core.overview import topic_rows
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.schemas import SessionState
+from llm_tutor.student import guide, planner
 from llm_tutor.web import accounts, views
 from llm_tutor.web.courses import Course
 
@@ -38,6 +39,10 @@ logger = logging.getLogger(__name__)
 SNAPSHOT_TTL = 60.0
 # «Активен» в сводке — была активность за столько секунд.
 ACTIVE_WINDOW = 7 * 24 * 3600.0
+# Задание без движения столько — ученик «застрял» (для пометки в списке).
+STUCK_AFTER = 12 * 3600.0
+# Окно, за которое считаются неудачные попытки на текущем занятии.
+FAILURE_WINDOW = 7 * 24 * 3600.0
 
 # Что значит «БД ученика не читается»: файл битый (``sqlite3.Error``), схема
 # не та (``RuntimeError`` из ``migrate``) или в ней лежит неразбираемое
@@ -75,6 +80,14 @@ class StudentData:
     weak: int
     last_activity: float | None
     lessons: dict[str, LessonMark]
+    # Где ученик сейчас: занятие и висящее задание. Нужно списку, чтобы
+    # показать «застрял», и профилю — чтобы открыть чужой экран.
+    current_node_id: str | None = None
+    pending_item_id: int | None = None
+    pending_prompt: str | None = None
+    # Когда ученик последний раз делал ход (``SessionState.last_activity``).
+    # Это не то же, что ``last_activity``: там максимум по журналу и сообщениям.
+    state_activity: float | None = None
 
     @property
     def status(self) -> str:
@@ -96,6 +109,10 @@ class StudentRow:
     last_activity: float | None = None
     busy: bool = False
     lessons: dict[str, LessonMark] = field(default_factory=dict)
+    current_node_id: str | None = None
+    pending_item_id: int | None = None
+    pending_prompt: str | None = None
+    state_activity: float | None = None
 
     @property
     def percent(self) -> int:
@@ -143,6 +160,11 @@ def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData
     latest = conn.execute(
         "SELECT MAX(ts) FROM (SELECT MAX(ts) AS ts FROM events UNION ALL SELECT MAX(ts) FROM messages)"
     ).fetchone()[0]
+    pending = (
+        repos.get_item(conn, state.pending_item_id)
+        if state.pending_item_id is not None
+        else None
+    )
     return StudentData(
         survey_done=survey_done,
         total=len(rows),
@@ -150,6 +172,10 @@ def read_student(conn: sqlite3.Connection, *, settings: Settings) -> StudentData
         weak=sum(1 for row in rows if row.weak),
         last_activity=latest,
         lessons=lessons,
+        current_node_id=state.current_node_id,
+        pending_item_id=state.pending_item_id,
+        pending_prompt=_preview(pending.prompt) if pending is not None else None,
+        state_activity=state.last_activity,
     )
 
 
@@ -176,6 +202,10 @@ def _row(state, course: Course, user_id: int, previous: StudentRow | None) -> St
         weak=data.weak,
         last_activity=data.last_activity,
         lessons=data.lessons,
+        current_node_id=data.current_node_id,
+        pending_item_id=data.pending_item_id,
+        pending_prompt=data.pending_prompt,
+        state_activity=data.state_activity,
     )
 
 
@@ -224,6 +254,379 @@ def format_time(ts: float | None) -> str:
         return "—"
 
 
+def format_duration(seconds: float) -> str:
+    """Сколько ждать/прошло — коротко: «2 дн. 3 ч.», «5 ч.», «12 мин.»."""
+    seconds = max(0.0, seconds)
+    days, rest = divmod(int(seconds), 86400)
+    hours = rest // 3600
+    if days:
+        return f"{days} дн." + (f" {hours} ч." if hours else "")
+    if hours:
+        return f"{hours} ч."
+    return f"{max(1, int(seconds // 60))} мин."
+
+
+def stuck_note(row: StudentRow, *, now: float) -> str | None:
+    """Пометка для списка: ученик висит на задании дольше ``STUCK_AFTER``.
+
+    Коротко, одной строкой: номер задания, сколько ждёт и начало условия.
+    """
+    if row.pending_item_id is None:
+        return None
+    since = row.state_activity if row.state_activity is not None else row.last_activity
+    if since is None:
+        return f"Задание #{row.pending_item_id} без ответа"
+    waited = now - since
+    if waited < STUCK_AFTER:
+        return None
+    prompt = f" · {row.pending_prompt}" if row.pending_prompt else ""
+    return f"Задание #{row.pending_item_id} · ждёт {format_duration(waited)}{prompt}"
+
+
+# --- Пульс ученика ---
+
+# Сколько недель показывать в календаре активности (как год в GitHub).
+PULSE_WEEKS = 53
+PULSE_HOURS = ((0, 6, "Ночь"), (6, 12, "Утро"), (12, 18, "День"), (18, 24, "Вечер"))
+PULSE_WEEKDAYS = ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+PULSE_MONTHS = (
+    "янв",
+    "фев",
+    "мар",
+    "апр",
+    "май",
+    "июн",
+    "июл",
+    "авг",
+    "сен",
+    "окт",
+    "ноя",
+    "дек",
+)
+
+
+def day_key(ts: float) -> str | None:
+    """Ключ дня ``YYYY-MM-DD`` по часам сервера или ``None`` для мусорной метки."""
+    try:
+        return datetime.fromtimestamp(ts).date().isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+@dataclass(frozen=True)
+class Pulse:
+    """Агрегаты «Пульса ученика»: календарь, ритм, лента и подсказки."""
+
+    weeks: list[list[dict]]
+    month_labels: list[str]
+    active_days: int
+    active_30: int
+    login_days: int
+    solved_days: int
+    streak: int
+    longest_streak: int
+    closed: int
+    total: int
+    percent: int
+    answers_7: int
+    accuracy_7: int | None
+    hours: list[dict]
+    weekdays: list[dict]
+    best_hour: str | None
+    timeline: list[dict]
+    insights: list[dict]
+    span_start: str
+    span_end: str
+
+    @property
+    def has_activity(self) -> bool:
+        return bool(self.active_days or self.login_days or self.solved_days)
+
+
+def _pulse_timeline(conn: sqlite3.Connection, *, limit: int = 12) -> list[dict]:
+    """Последние ответы на задания одной строкой: без реплик тьютора и чата."""
+    graph = CourseGraph.load(conn)
+    rows = conn.execute(
+        "SELECT ts, item_id, concept_id, result FROM events "
+        "WHERE item_id IS NOT NULL ORDER BY ts DESC, id DESC LIMIT ?",
+        (limit * 4,),
+    ).fetchall()
+    seen: set[tuple[float, int]] = set()
+    result = []
+    for ts, item_id, concept_id, score in rows:
+        key = (ts, item_id)
+        if key in seen:
+            continue
+        seen.add(key)
+        item = repos.get_item(conn, item_id)
+        main = main_concept(item) if item is not None else None
+        concept_id = main or concept_id
+        lesson = (
+            graph.concept(concept_id).name
+            if concept_id and graph.has_node(concept_id)
+            else None
+        )
+        result.append(
+            {
+                "ts": ts,
+                "item_id": item_id,
+                "lesson": lesson,
+                "prompt": _preview(item.prompt) if item is not None else None,
+                "result": _result_label(score),
+                "right": score >= 0.5,
+            }
+        )
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _pulse_insights(
+    conn: sqlite3.Connection,
+    *,
+    data: StudentData,
+    flow: dict | None,
+    answers_7: int,
+    accuracy_7: int | None,
+    streak: int,
+    last_answer: float | None,
+    now: float,
+) -> list[dict]:
+    """Короткие выводы по правилам: без модели и без догадок."""
+    insights = []
+    for reason in (flow or {}).get("stuck", []):
+        insights.append({"kind": "warning", "text": reason})
+    if last_answer is not None and now - last_answer > 3 * 86400:
+        idle = format_duration(now - last_answer)
+        insights.append({"kind": "warning", "text": f"Нет ответов на задания {idle}"})
+    elif last_answer is None and data.last_activity is not None:
+        insights.append(
+            {
+                "kind": "info",
+                "text": "Ответов на задания пока нет — начните с короткого задания.",
+            }
+        )
+    if answers_7 >= 3 and accuracy_7 is not None and accuracy_7 < 60:
+        insights.append(
+            {
+                "kind": "warning",
+                "text": f"Точность за неделю {accuracy_7}% — стоит вернуться к слабым занятиям.",
+            }
+        )
+    due = conn.execute(
+        "SELECT COUNT(*) FROM review_schedule WHERE due_at <= ?", (now,)
+    ).fetchone()[0]
+    if due:
+        insights.append({"kind": "info", "text": f"Пора повторить занятий: {due}."})
+    if data.weak:
+        insights.append({"kind": "info", "text": f"Занятий закрыто слабо: {data.weak}."})
+    if streak >= 3:
+        insights.append({"kind": "good", "text": f"Серия {streak} дн. — хороший ритм."})
+    if not insights:
+        insights.append(
+            {
+                "kind": "info",
+                "text": "Пока мало данных: как появятся ответы, здесь будут подсказки.",
+            }
+        )
+    return insights[:5]
+
+
+def pulse_view(
+    conn: sqlite3.Connection,
+    *,
+    data: StudentData,
+    flow: dict | None,
+    login_days: dict[str, int],
+    now: float,
+) -> Pulse:
+    """Считает «Пульс» по журналу ученика и истории входов.
+
+    Календарь — 53 недели по дням сервера. Ответы считаются по ``(ts, item_id)``:
+    ядро пишет событие на каждый концепт задания, а ответ всё равно один.
+    """
+    today = datetime.fromtimestamp(now).date()
+    end = today + timedelta(days=6 - today.weekday())
+    start = end - timedelta(days=PULSE_WEEKS * 7 - 1)
+    start_ts = datetime(start.year, start.month, start.day).timestamp()
+    end_ts = datetime(end.year, end.month, end.day).timestamp() + 86400
+
+    stats: dict[str, dict] = {}
+    day = start
+    while day <= end:
+        stats[day.isoformat()] = {
+            "logins": 0,
+            "attempts": set(),
+            "correct": set(),
+        }
+        day += timedelta(days=1)
+    for key, count in login_days.items():
+        if key in stats:
+            stats[key]["logins"] = count
+
+    learning_stamps: list[float] = []
+    for ts, item_id, score in conn.execute(
+        "SELECT ts, item_id, result FROM events "
+        "WHERE item_id IS NOT NULL AND ts >= ? AND ts < ?",
+        (start_ts, end_ts),
+    ):
+        key = day_key(ts)
+        if key not in stats:
+            continue
+        attempt = (ts, item_id)
+        if attempt not in stats[key]["attempts"]:
+            learning_stamps.append(ts)
+        stats[key]["attempts"].add(attempt)
+        if score >= 0.5:
+            stats[key]["correct"].add(attempt)
+
+    last_answer = conn.execute(
+        "SELECT MAX(ts) FROM events WHERE item_id IS NOT NULL"
+    ).fetchone()[0]
+
+    hours = [
+        {"label": label, "range": f"{low}–{high}", "count": 0}
+        for low, high, label in PULSE_HOURS
+    ]
+    weekdays = [{"label": label, "count": 0} for label in PULSE_WEEKDAYS]
+    for ts in learning_stamps:
+        try:
+            moment = datetime.fromtimestamp(ts)
+        except (OverflowError, OSError, ValueError):
+            continue
+        weekdays[moment.weekday()]["count"] += 1
+        for index, (low, high, _) in enumerate(PULSE_HOURS):
+            if low <= moment.hour < high:
+                hours[index]["count"] += 1
+                break
+    hours_max = max((item["count"] for item in hours), default=0)
+    for item in hours:
+        item["percent"] = round(100 * item["count"] / hours_max) if hours_max else 0
+    weekdays_max = max((item["count"] for item in weekdays), default=0)
+    for item in weekdays:
+        item["percent"] = round(100 * item["count"] / weekdays_max) if weekdays_max else 0
+    best = max(hours, key=lambda item: item["count"])
+    best_hour = best["label"] if best["count"] else None
+
+    weeks: list[list[dict]] = []
+    current: list[dict] = []
+    active_keys: set[str] = set()
+    for offset in range(PULSE_WEEKS * 7):
+        day = start + timedelta(days=offset)
+        key = day.isoformat()
+        item = stats[key]
+        answers = len(item["attempts"])
+        correct = len(item["correct"])
+        logins = item["logins"]
+        activity = logins + answers
+        if activity:
+            active_keys.add(key)
+        if activity == 0:
+            level = 0
+        elif activity == 1:
+            level = 1
+        elif activity <= 3:
+            level = 2
+        elif activity <= 6:
+            level = 3
+        else:
+            level = 4
+        parts = []
+        if logins:
+            parts.append(f"входов: {logins}")
+        if answers:
+            parts.append(f"ответов: {answers} (верно {correct})")
+        title = (
+            f"{day:%d.%m.%Y} — " + (", ".join(parts) if parts else "нет активности")
+            if day <= today
+            else f"{day:%d.%m.%Y} — ещё впереди"
+        )
+        current.append(
+            {
+                "key": key,
+                "day": day,
+                "level": level,
+                "solved": answers > 0,
+                "future": day > today,
+                "title": title,
+            }
+        )
+        if len(current) == 7:
+            weeks.append(current)
+            current = []
+
+    month_labels = []
+    last_month = None
+    for week in weeks:
+        month = week[0]["day"].month
+        month_labels.append(PULSE_MONTHS[month - 1] if month != last_month else "")
+        last_month = month
+
+    def in_last(days: int) -> set[str]:
+        first = today - timedelta(days=days - 1)
+        return {key for key in active_keys if first.isoformat() <= key <= today.isoformat()}
+
+    answers_7 = 0
+    correct_7 = 0
+    first_7 = today - timedelta(days=6)
+    for key, item in stats.items():
+        if first_7.isoformat() <= key <= today.isoformat():
+            answers_7 += len(item["attempts"])
+            correct_7 += len(item["correct"])
+    accuracy_7 = round(100 * correct_7 / answers_7) if answers_7 else None
+
+    streak = 0
+    cursor = today
+    if cursor.isoformat() not in active_keys:
+        cursor -= timedelta(days=1)
+    while cursor.isoformat() in active_keys:
+        streak += 1
+        cursor -= timedelta(days=1)
+    longest = 0
+    run = 0
+    for offset in range(PULSE_WEEKS * 7):
+        key = (start + timedelta(days=offset)).isoformat()
+        if key in active_keys:
+            run += 1
+            longest = max(longest, run)
+        else:
+            run = 0
+
+    closed = (flow or {}).get("closed", data.closed)
+    total = (flow or {}).get("total", data.total)
+    return Pulse(
+        weeks=weeks,
+        month_labels=month_labels,
+        active_days=len(active_keys),
+        active_30=len(in_last(30)),
+        login_days=sum(1 for key in stats if stats[key]["logins"]),
+        solved_days=sum(1 for key in stats if stats[key]["attempts"]),
+        streak=streak,
+        longest_streak=longest,
+        closed=closed,
+        total=total,
+        percent=round(100 * closed / total) if total else 0,
+        answers_7=answers_7,
+        accuracy_7=accuracy_7,
+        hours=hours,
+        weekdays=weekdays,
+        best_hour=best_hour,
+        timeline=_pulse_timeline(conn),
+        insights=_pulse_insights(
+            conn,
+            data=data,
+            flow=flow,
+            answers_7=answers_7,
+            accuracy_7=accuracy_7,
+            streak=streak,
+            last_answer=last_answer,
+            now=now,
+        ),
+        span_start=start.strftime("%d.%m.%Y"),
+        span_end=today.strftime("%d.%m.%Y"),
+    )
+
+
 # --- Карточка ученика ---
 
 RECENT_ANSWERS = 50
@@ -240,6 +643,7 @@ ACTION_LABELS = {
     # Действия над курсами (преподаватель создаёт курс): в журнале видно, что
     # именно делали с курсом, — подробности в поле details.
     "create_course": "Создание курса",
+    "copy_course": "Создание копии курса",
     "update_course": "Правка курса",
     "delete_course": "Удаление курса",
     "add_source": "Добавлен источник",
@@ -284,22 +688,57 @@ def _result_label(result: float) -> str:
     return f"{round(result * 100)}%"
 
 
+# Так ``code_message`` отделяет код от итога тестов (``web/api_lesson``).
+TEST_MARK = "\n\nРезультат проверки:"
+
+
+def _test_result(text: str | None) -> dict | None:
+    """Разбор итога тестов из реплики ученика с кодом — или ``None``."""
+    if not text or TEST_MARK not in text:
+        return None
+    code, _, verdict = text.rpartition(TEST_MARK)
+    verdict = verdict.strip()
+    passed = verdict.startswith("все проверки пройдены")
+    report = ""
+    if not passed:
+        _, _, report = verdict.partition("—")
+        report = report.strip() or verdict
+    return {"code": code.strip(), "passed": passed, "report": report}
+
+
 def _recent_answers(conn: sqlite3.Connection) -> list[dict]:
-    """Последние события по заданиям: время, занятие, задание, источник, итог."""
+    """Последние ответы на задания: время, занятие, задание, итог и сам ответ.
+
+    Ответ лежит в ``messages``: ход пишет реплику ученика и событие с одним
+    ``ts``. Реплики без события (вопрос тьютору) сюда не попадают — карточка и
+    профиль показывают только ответы на задания, а не переписку.
+    """
     graph = CourseGraph.load(conn)
-    result = []
-    # Событие на концепт задания: один ответ — одна строка; занятие — по главному
-    # концепту задания, а не по тому, чьё событие оказалось первым.
-    for ts, concept_id, item_id, source, score in conn.execute(
+    rows = conn.execute(
         "SELECT ts, concept_id, item_id, source, result FROM events "
         "WHERE id IN (SELECT MIN(id) FROM events WHERE item_id IS NOT NULL "
         "GROUP BY item_id, ts, source) ORDER BY ts DESC, id DESC LIMIT ?",
         (RECENT_ANSWERS,),
-    ):
+    ).fetchall()
+    texts: dict[float, str] = {}
+    if rows:
+        marks = ",".join("?" for _ in rows)
+        texts = {
+            ts: content
+            for ts, content in conn.execute(
+                f"SELECT ts, content FROM messages WHERE role = 'user' AND ts IN ({marks})",
+                [row[0] for row in rows],
+            )
+        }
+    result = []
+    # Событие на концепт задания: один ответ — одна строка; занятие — по главному
+    # концепту задания, а не по тому, чьё событие оказалось первым.
+    for ts, concept_id, item_id, source, score in rows:
         item = repos.get_item(conn, item_id)
         main = main_concept(item) if item is not None else None
         concept_id = main or concept_id
         lesson = graph.concept(concept_id).name if concept_id and graph.has_node(concept_id) else None
+        text = texts.get(ts)
         result.append(
             {
                 "ts": ts,
@@ -309,6 +748,9 @@ def _recent_answers(conn: sqlite3.Connection) -> list[dict]:
                 "source": source,
                 "result": _result_label(score),
                 "right": score >= 0.5,
+                "answer": text,
+                "test": _test_result(text),
+                "type": item.answer_type if item is not None else None,
             }
         )
     return result
@@ -343,6 +785,154 @@ def student_card(
         logger.exception("БД ученика %s по курсу %s не открывается", account.id, course.id)
         return StudentCard(state="error", **base)
     return StudentCard(state="ok", learning=learning, answers=answers, explain=sessions, **base)
+
+
+PHASE_LABELS = {"explain": "объяснение", "practice": "практика", "check": "проверка"}
+REVIEW_KIND_LABELS = {"warmup": "разминка", "due": "срочное", "refresh": "освежить"}
+
+
+@dataclass(frozen=True)
+class StudentProfile:
+    """Профиль ученика для админа: то же, что видит сам ученик, но только чтение.
+
+    ``state`` — как у карточки: ``ok``, ``not_enrolled``, ``no_db``, ``error``,
+    ``busy``. В карточку диалоги не попадают; в профиле — только ответы на
+    задания (реплики с событием ``item_id``), а не переписка с тьютором.
+    ``pulse`` — агрегаты входов и ответов за 53 недели, без текста чата.
+    """
+
+    account: accounts.AccountRow
+    sessions: int
+    state: str
+    learning: dict | None = None
+    flow: dict | None = None
+    answers: list[dict] = field(default_factory=list)
+    pulse: Pulse | None = None
+
+
+def _flow_view(
+    conn: sqlite3.Connection, *, data: StudentData, settings: Settings, now: float
+) -> dict:
+    """Где ученик сейчас: занятие, раздел, висящее задание и признаки застревания."""
+    graph = CourseGraph.load(conn)
+    session_id = repos.get_open_session(conn)
+    state = repos.get_session_state(conn, session_id) if session_id else SessionState()
+    node_id = (
+        state.current_node_id
+        if state.current_node_id and graph.has_node(state.current_node_id)
+        else None
+    )
+    concept = graph.concept(node_id) if node_id is not None else None
+    lesson = (
+        views.lesson_view(conn, graph, state, node_id, settings=settings)
+        if node_id is not None
+        else None
+    )
+    section_title = None
+    if concept is not None and concept.sections:
+        section_id = guide.current_section(state, [section.id for section in concept.sections])
+        section_title = next(
+            (section.title for section in concept.sections if section.id == section_id), None
+        )
+    item = (
+        repos.get_item(conn, state.pending_item_id)
+        if state.pending_item_id is not None
+        else None
+    )
+    review = state.review
+    review_node = (
+        graph.concept(review.node_id).name
+        if review is not None and review.node_id and graph.has_node(review.node_id)
+        else None
+    )
+    explain = core_explain.blocking(conn)
+    failures = 0
+    if node_id is not None:
+        failures = conn.execute(
+            "SELECT COUNT(DISTINCT ts) FROM events "
+            "WHERE concept_id = ? AND result < 0.5 AND ts >= ?",
+            (node_id, now - FAILURE_WINDOW),
+        ).fetchone()[0]
+    since = data.state_activity if data.state_activity is not None else data.last_activity
+    waiting = now - since if item is not None and since is not None else None
+
+    reasons = []
+    if item is not None and waiting is not None and waiting >= STUCK_AFTER:
+        reasons.append(f"Задание #{item.id} ждёт ответа {format_duration(waiting)}")
+    if failures >= planner.STUCK_FAILURES:
+        reasons.append(f"Неудачных попыток на занятии за неделю: {failures}")
+    if node_id is not None and data.lessons.get(node_id) is not None and data.lessons[node_id].weak:
+        reasons.append("Занятие закрыто слабо")
+    if explain is not None:
+        reasons.append(f"Ждёт «Объясни новичку»: {explain[1]}")
+    if (
+        data.status != "done"
+        and data.last_activity is not None
+        and now - data.last_activity > ACTIVE_WINDOW
+    ):
+        reasons.append(f"Нет активности {format_duration(now - data.last_activity)}")
+
+    return {
+        "node": {"id": concept.id, "name": concept.name} if concept is not None else None,
+        "lesson": lesson,
+        "section": section_title,
+        "phase": PHASE_LABELS.get(state.phase, state.phase),
+        "mode": planner.MODE_LABELS.get(state.mode) if state.mode else None,
+        "pending_item": views.item_view(item, graph) if item is not None else None,
+        "waiting": waiting,
+        "waiting_label": format_duration(waiting) if waiting is not None else None,
+        "review": (
+            {"kind": REVIEW_KIND_LABELS.get(review.kind, review.kind), "node": review_node}
+            if review is not None
+            else None
+        ),
+        "explain": explain[1] if explain is not None else None,
+        "failures": failures,
+        "stuck": reasons,
+        "last_activity": data.last_activity,
+        "state_activity": data.state_activity,
+        "survey_done": data.survey_done,
+        "closed": data.closed,
+        "total": data.total,
+        "status": data.status,
+    }
+
+
+def student_profile(
+    state, course: Course, account: accounts.AccountRow, *, now: float | None = None
+) -> StudentProfile:
+    """Профиль ученика без кэша; читает БД, только если ход не идёт (как карточка)."""
+    stamp = time.time() if now is None else now
+    base = {
+        "account": account,
+        "sessions": accounts.active_sessions(state.accounts, account.id, stamp),
+    }
+    if course.id not in accounts.enrolled_courses(state.accounts, account.id):
+        return StudentProfile(state="not_enrolled", **base)
+    pool = state.userdbs
+    if not pool.exists(account.id, course.id):
+        return StudentProfile(state="no_db", **base)
+    if pool.lock(account.id, course.id).locked():
+        return StudentProfile(state="busy", **base)
+    try:
+        conn = pool.open(account.id, course.id)
+        data = read_student(conn, settings=state.settings)
+        learning = views.learning_view(conn, settings=state.settings)
+        flow = _flow_view(conn, data=data, settings=state.settings, now=stamp)
+        answers = _recent_answers(conn)
+        pulse = pulse_view(
+            conn,
+            data=data,
+            flow=flow,
+            login_days=accounts.login_day_counts(state.accounts, account.id),
+            now=stamp,
+        )
+    except UNREADABLE:
+        logger.exception("БД ученика %s по курсу %s не открывается", account.id, course.id)
+        return StudentProfile(state="error", **base)
+    return StudentProfile(
+        state="ok", learning=learning, flow=flow, answers=answers, pulse=pulse, **base
+    )
 
 
 KIND_LABELS = {"required": "обязательное", "voluntary": "добровольное"}

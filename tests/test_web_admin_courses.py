@@ -9,6 +9,7 @@
 import asyncio
 import json
 import shutil
+from dataclasses import replace
 
 import pytest
 
@@ -69,6 +70,23 @@ def module_path(web_app, course_id: str, number: int = 1):
     return edit.module_path(course.root, number)
 
 
+def patched_builtin(tmp_path, monkeypatch, course_id: str = "trees-demo"):
+    """Встроенный курс с копией данных во временном каталоге.
+
+    Тесты правят его файлы; настоящие ``data/`` и ``data/demo`` остаются целы.
+    """
+    source = courses.get_course(course_id)
+    assert source is not None and source.root is None
+    target = tmp_path / course_id
+    shutil.copytree(courses.folder(source), target)
+    builtin = replace(source, data_dir=target)
+    monkeypatch.setitem(courses._BY_ID, builtin.id, builtin)
+    monkeypatch.setattr(
+        courses, "COURSES", tuple(builtin if item.id == builtin.id else item for item in courses.COURSES)
+    )
+    return builtin, target
+
+
 # --- доступ ---
 
 
@@ -104,6 +122,12 @@ async def test_create_course_with_bad_id_is_rejected(admin) -> None:
     assert "занят" in response.json()["detail"]["message"]
 
 
+async def test_create_course_without_id_uses_the_title(admin) -> None:
+    """Поле id необязательное: курс «C++» получает понятный адрес, а не «course»."""
+    assert await make(admin, title="C++") == "cpp"
+    assert await make(admin, title="Основы Go") == "osnovy-go"
+
+
 async def test_duplicate_course_is_rejected(admin) -> None:
     await make(admin)
     again = await admin.post("/api/admin/courses", json={"title": "Основы Python"})
@@ -121,6 +145,140 @@ async def test_metadata_can_be_changed(admin) -> None:
 async def test_builtin_course_is_read_only(admin) -> None:
     assert (await admin.put("/api/admin/courses/mlcourse", json={"title": "X"})).status_code == 400
     assert (await admin.delete("/api/admin/courses/mlcourse")).status_code == 400
+
+
+async def test_builtin_course_can_be_copied_for_editing(admin) -> None:
+    """Встроенный курс не правится, но с него можно снять редактируемую копию."""
+    source = courses.get_course("trees-demo")
+    assert source is not None and source.root is None
+
+    response = await admin.post("/api/admin/courses/trees-demo/copy", json={})
+    assert response.status_code == 201, response.text
+    copied = response.json()["course"]
+    assert copied["id"] == "trees-demo-copy"
+    assert copied["status"] == "draft"
+    assert copied["modules"] == 1
+
+    copy = courses.get_course("trees-demo-copy")
+    assert copy is not None and copy.root is not None
+    assert (copy.root / "seed_topic01.json").is_file()
+    assert (copy.root / "theory" / "topic01").is_dir()
+    assert (copy.root / "project.json").is_file()
+    # Оригинал остался встроенным: копия его не подменила.
+    assert courses.get_course("trees-demo").root is None
+    # Копия — обычный созданный курс, значит открывается полный редактор.
+    page = await admin.get("/admin/courses/trees-demo-copy")
+    assert page.status_code == 200
+    assert 'id="course-meta"' in page.text
+
+
+async def test_copy_gets_fresh_id_counters(admin) -> None:
+    """Новые id в копии не должны совпасть с уже скопированными заданиями."""
+    response = await admin.post("/api/admin/courses/trees-demo/copy", json={})
+    assert response.status_code == 201, response.text
+    copy = courses.get_course(response.json()["course"]["id"])
+    assert copy is not None and copy.root is not None
+    meta = store.read_meta(copy.root)
+    seed = json.loads((copy.root / "seed_topic01.json").read_text(encoding="utf-8"))
+    assert meta.next_item_id > max(item["id"] for item in seed["items"])
+    assert meta.next_rubric_id > max(rubric["id"] for rubric in seed["rubrics"])
+    assert meta.next_criterion_id > max(criterion["id"] for criterion in seed["criteria"])
+
+
+async def test_second_copy_gets_a_free_id(admin) -> None:
+    first = await admin.post("/api/admin/courses/trees-demo/copy", json={})
+    second = await admin.post("/api/admin/courses/trees-demo/copy", json={})
+    assert first.json()["course"]["id"] == "trees-demo-copy"
+    assert second.json()["course"]["id"] == "trees-demo-copy-2"
+
+
+async def test_module_can_be_removed_from_a_copy(admin) -> None:
+    """«Просто убрать модуль»: копия живёт как обычный курс."""
+    response = await admin.post("/api/admin/courses/mlcourse/copy", json={})
+    assert response.status_code == 201, response.text
+    course_id = response.json()["course"]["id"]
+    copy = courses.get_course(course_id)
+    assert copy is not None and copy.root is not None
+    third = edit.read_module(copy.root, 3)["topic"]["title"]
+
+    assert (await admin.delete(f"/api/admin/courses/{course_id}/modules/2")).status_code == 204
+    assert edit.module_numbers(copy.root) == [1, 2, 3, 4]
+    assert edit.read_module(copy.root, 2)["topic"]["title"] == third
+
+
+async def test_course_list_opens_builtin_for_editing(admin) -> None:
+    """Копий больше нет: встроенный курс открывается тем же редактором."""
+    page = await admin.get("/admin/courses")
+    assert page.status_code == 200
+    assert "/admin/courses/mlcourse" in page.text
+    assert "Создать копию" not in page.text
+    assert 'data-action="copy-course"' not in page.text
+    assert "правится кодом" not in page.text
+
+
+async def test_builtin_course_page_opens_editor(admin) -> None:
+    page = await admin.get("/admin/courses/trees-demo")
+    assert page.status_code == 200
+    assert "/admin/courses/trees-demo/modules/1" in page.text
+    assert "Создать копию" not in page.text
+    assert "изменения сразу видят все ученики" in page.text
+
+
+async def test_builtin_module_text_is_saved_in_place(admin, tmp_path, monkeypatch) -> None:
+    builtin, target = patched_builtin(tmp_path, monkeypatch)
+    response = await admin.get(f"/api/admin/courses/{builtin.id}/modules/1")
+    assert response.status_code == 200, response.text
+    payload = response.json()["module"]
+    payload["nodes"][0]["name"] = "Новое имя занятия"
+
+    saved = await admin.put(f"/api/admin/courses/{builtin.id}/modules/1", json=payload)
+    assert saved.status_code == 200, saved.text
+    stored = json.loads((target / "seed_topic01.json").read_text(encoding="utf-8"))
+    assert stored["nodes"][0]["name"] == "Новое имя занятия"
+    # Правка доехала до разбора курса — её увидят все ученики.
+    assert any(node.name == "Новое имя занятия" for node in courses.course_data(builtin).nodes)
+
+
+async def test_builtin_theory_is_saved_in_place(admin, tmp_path, monkeypatch) -> None:
+    builtin, target = patched_builtin(tmp_path, monkeypatch)
+    module = (await admin.get(f"/api/admin/courses/{builtin.id}/modules/1")).json()["module"]
+    lesson = module["nodes"][0]["id"]
+    theory = (await admin.get(f"/api/admin/courses/{builtin.id}/modules/1/theory/{lesson}")).json()
+    text = theory["markdown"] + "\n\nДописанный абзац."
+
+    saved = await admin.put(
+        f"/api/admin/courses/{builtin.id}/modules/1/theory/{lesson}", json={"markdown": text}
+    )
+    assert saved.status_code == 200, saved.text
+    stored = (target / "theory" / "topic01" / f"{lesson}.md").read_text(encoding="utf-8")
+    assert "Дописанный абзац." in stored
+
+
+async def test_builtin_module_can_be_removed_for_everyone(admin, tmp_path, monkeypatch) -> None:
+    """Модуль убирается из файлов встроенного курса — копия не нужна."""
+    builtin, target = patched_builtin(tmp_path, monkeypatch, "isit-ml")
+    third = edit.read_module(target, 3)["topic"]["title"]
+    removed_nodes = {node["id"] for node in edit.read_module(target, 2)["nodes"]}
+
+    response = await admin.delete(f"/api/admin/courses/{builtin.id}/modules/2")
+    assert response.status_code == 204, response.text
+    assert edit.module_numbers(target) == [1, 2, 3]
+    assert edit.read_module(target, 2)["topic"]["title"] == third
+    # Рёбра соседних модулей на убранные занятия не остались — курс собирается.
+    data, error = courses.try_course_data(builtin)
+    assert error is None and data is not None
+    assert all(edge.from_id not in removed_nodes and edge.to_id not in removed_nodes for edge in data.edges)
+
+
+async def test_builtin_new_item_gets_fresh_id(admin, tmp_path, monkeypatch) -> None:
+    builtin, target = patched_builtin(tmp_path, monkeypatch)
+    seed = json.loads((target / "seed_topic01.json").read_text(encoding="utf-8"))
+    max_item = max(item["id"] for item in seed["items"])
+
+    response = await admin.post(f"/api/admin/courses/{builtin.id}/ids", json={"kind": "item", "count": 1})
+    assert response.status_code == 200, response.text
+    assert response.json()["ids"] == [max_item + 1]
+    assert (target / courses.BUILTIN_IDS_FILE).is_file()
 
 
 async def test_unknown_course_is_not_found(admin) -> None:
@@ -272,6 +430,54 @@ async def test_generation_needs_a_readable_module_number(admin) -> None:
     assert (
         await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 99})
     ).status_code == 422
+
+
+async def test_whole_course_is_generated_by_structure(admin) -> None:
+    course_id = await make(admin)
+    assert (await admin.post(f"/api/admin/courses/{course_id}/structure", json={})).status_code == 201
+
+    started = await admin.post(f"/api/admin/courses/{course_id}/generate-all", json={})
+    assert started.status_code == 202, started.text
+    run = await wait_run(admin, course_id)
+    assert run["status"] == "done", run.get("error")
+    assert run["course_size"] == 2 and run["course_done"] == 2
+    assert module_path(admin, course_id, 1).is_file()
+    assert module_path(admin, course_id, 2).is_file()
+
+
+async def test_whole_course_needs_structure(admin) -> None:
+    course_id = await make(admin)
+    response = await admin.post(f"/api/admin/courses/{course_id}/generate-all", json={})
+    assert response.status_code == 422
+    assert "структуру" in response.json()["detail"]["message"]
+
+
+async def test_whole_course_skips_ready_modules(admin, web_app) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate", json={"module": 1})
+    assert (await wait_run(admin, course_id))["status"] == "done"
+
+    generator = ScriptedGenerator()
+    web_app.state.generator = generator
+    assert (
+        await admin.post(f"/api/admin/courses/{course_id}/generate-all", json={})
+    ).status_code == 202
+    run = await wait_run(admin, course_id)
+    assert run["status"] == "done", run.get("error")
+    assert run["course_done"] == 2
+    assert [name for name, _ in generator.calls].count("ModulePlan") == 1
+
+
+async def test_whole_course_refuses_when_everything_is_ready(admin) -> None:
+    course_id = await make(admin)
+    await admin.post(f"/api/admin/courses/{course_id}/structure", json={})
+    await admin.post(f"/api/admin/courses/{course_id}/generate-all", json={})
+    assert (await wait_run(admin, course_id))["status"] == "done"
+
+    response = await admin.post(f"/api/admin/courses/{course_id}/generate-all", json={})
+    assert response.status_code == 422
+    assert "уже собраны" in response.json()["detail"]["message"]
 
 
 # --- правка модуля ---
@@ -456,11 +662,40 @@ async def test_actions_go_to_the_admin_log(admin, web_app) -> None:
 
 async def test_pages_render(admin) -> None:
     course_id = await generated(admin)
-    for path in ("/admin/courses", f"/admin/courses/{course_id}", f"/admin/courses/{course_id}/modules/1"):
+    for path in (
+        "/admin/courses",
+        f"/admin/courses/{course_id}",
+        f"/admin/courses/{course_id}/modules/1",
+        "/admin/generation",
+        f"/admin/generation?course={course_id}",
+    ):
         response = await admin.get(path)
         assert response.status_code == 200, path
     assert (await admin.get("/admin/courses/no-such")).status_code == 404
     assert (await admin.get(f"/admin/courses/{course_id}/modules/9")).status_code == 404
+
+
+async def test_generation_and_editing_are_separate_sections(admin) -> None:
+    """Генерация и правка курса — разные отделы админки, а не одна страница."""
+    course_id = await generated(admin)
+
+    generation = (await admin.get(f"/admin/generation?course={course_id}")).text
+    assert "Материалы курса" in generation
+    assert "Генерация модуля" in generation
+    assert 'data-action="generate-all"' in generation
+    assert 'id="course-meta"' not in generation
+
+    editing = (await admin.get(f"/admin/courses/{course_id}")).text
+    assert 'id="course-meta"' in editing
+    assert "Материалы курса" not in editing
+    assert "Генерация модуля" not in editing
+
+    # Три отдела видны на каждой странице админки.
+    for path in ("/admin/students", "/admin/generation", "/admin/courses"):
+        html = (await admin.get(path)).text
+        assert "Ученики" in html
+        assert "Генерация курса" in html
+        assert "Изменение курсов" in html
 
 
 async def test_run_state_survives_a_restart(admin) -> None:

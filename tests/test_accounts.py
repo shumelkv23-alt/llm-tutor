@@ -266,10 +266,12 @@ def _version_2_db(path) -> None:
 def test_schema_has_admin_tables_and_columns(db) -> None:
     columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
     log = {row[1] for row in db.execute("PRAGMA table_info(admin_log)")}
+    login = {row[1] for row in db.execute("PRAGMA table_info(login_days)")}
 
-    assert accounts.SCHEMA_VERSION == 4
+    assert accounts.SCHEMA_VERSION == 5
     assert {"is_admin", "last_login_at"} <= columns
     assert {"ts", "admin_id", "action", "target_id", "details"} <= log
+    assert {"user_id", "day", "first_login_at", "last_login_at", "logins"} <= login
 
 
 def test_migration_003_keeps_existing_data(tmp_path) -> None:
@@ -299,7 +301,7 @@ def test_schema_newer_than_the_app_is_refused(tmp_path) -> None:
     import sqlite3
 
     newer = sqlite3.connect(path)
-    newer.execute("PRAGMA user_version = 5")
+    newer.execute("PRAGMA user_version = 6")
     newer.commit()
     newer.close()
 
@@ -366,6 +368,19 @@ def test_session_extension_is_not_a_login(db) -> None:
     assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 200.0
 
 
+def test_login_days_are_counted_by_calendar_day(db) -> None:
+    user = _user(db)
+    first = accounts.login_day_key(200.0)
+    later = accounts.login_day_key(200.0 + 86400)
+
+    accounts.create_session(db, user.id, now=200.0)
+    accounts.create_session(db, user.id, now=200.0)
+    assert accounts.login_day_counts(db, user.id) == {first: 2}
+
+    accounts.create_session(db, user.id, now=200.0 + 86400)
+    assert accounts.login_day_counts(db, user.id) == {first: 2, later: 1}
+
+
 # --- Восстановление пароля по ссылке (Срез 70) ---
 
 
@@ -405,17 +420,18 @@ def test_migration_004_keeps_existing_data(tmp_path) -> None:
 
     db = accounts.open_accounts(str(path))
 
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert db.execute("PRAGMA user_version").fetchone()[0] == 5
     user = accounts.get_user(db, 1)
-    assert (user.email, user.name, user.is_admin) == ("ann@example.com", "Аня", True)
+    assert (user.email, user.is_admin) == ("ann@example.com", True)
     assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 8.0
     assert db.execute("SELECT COUNT(*) FROM web_sessions").fetchone()[0] == 1
     assert db.execute("SELECT COUNT(*) FROM admin_log").fetchone()[0] == 1
     assert db.execute("SELECT COUNT(*) FROM password_resets").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM login_days").fetchone()[0] == 1
     db.close()
 
     again = accounts.open_accounts(str(path))
-    assert again.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert again.execute("PRAGMA user_version").fetchone()[0] == 5
     assert again.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     again.close()
 

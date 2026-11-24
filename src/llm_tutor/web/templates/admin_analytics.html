@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка · аналитика{% endblock %}
+{% block heading %}Аналитика по занятиям{% endblock %}
+{% block description %}{{ admin_course.title }}: где ученики застревают.{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block actions %}<a class="btn" href="/admin/students?course={{ admin_course.id }}">К ученикам</a>{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+
+<p class="admin-snapshot muted">Данные на {{ built_at }}, учеников на курсе: {{ students }} ·
+  <a href="?refresh=1&amp;course={{ admin_course.id }}">Обновить</a></p>
+
+{% if broken %}
+<p class="notice error" role="alert">{{ broken }}</p>
+{% endif %}
+
+<section class="panel" aria-labelledby="funnel-title">
+  <h2 id="funnel-title" class="section-title">Воронка по занятиям</h2>
+  <p class="muted admin-note">Откройте модуль, чтобы увидеть занятия. «Дошли» — закрыли занятие или учатся на нём сейчас, «Слабо» — закрыли после двух ошибок.</p>
+  {% for block in funnel %}
+  {# Свёрнут изначально: открытый блок — по клику, без JS. #}
+  <details class="admin-module" data-module="{{ block.number }}">
+    <summary>
+      <span class="admin-module-title">Модуль {{ block.number }} · {{ block.title }}</span>
+      <span class="admin-module-meta muted">{{ block.lessons|length }} занятий · начали {{ block.started }} · прошли {{ block.finished }}</span>
+    </summary>
+    <div class="table-wrap">
+      <table class="topics-table admin-table">
+        <thead><tr><th scope="col">Занятие</th><th scope="col">Дошли</th><th scope="col">Закрыли</th><th scope="col">Слабо</th><th scope="col">Доля закрытия</th></tr></thead>
+        <tbody>
+          {% for lesson in block.lessons %}
+          <tr class="lesson-row" data-lesson="{{ lesson.id }}" data-reached="{{ lesson.reached }}" data-closed="{{ lesson.closed }}" data-weak="{{ lesson.weak }}">
+            <th scope="row">{{ lesson.name }}</th>
+            <td>{{ lesson.reached }}</td>
+            <td>{{ lesson.closed }}</td>
+            <td>{{ lesson.weak }}</td>
+            <td>{% if lesson.rate is none %}<span class="muted">—</span>{% else %}{{ (lesson.rate * 100)|round|int }}%{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endfor %}
+</section>
+{% endblock %}

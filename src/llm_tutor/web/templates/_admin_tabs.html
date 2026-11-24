@@ -1,4 +1,6 @@
 {% set cid = admin_course.id if admin_course else '' %}
+{# Встроенный курс генерировать нельзя: вкладка ведёт в общий список. #}
+{% set gen_cid = cid if admin_course and admin_course.root else '' %}
 {% if admin_courses and admin_picker %}
 <form class="admin-course-picker" method="get" action="{{ admin_action }}">
   <label for="admin-course">Курс</label>
@@ -11,7 +13,7 @@
 </form>
 {% endif %}
 <nav class="admin-tabs" aria-label="Разделы админки">
-  <a href="/admin/students?course={{ cid }}"{% if tab == 'students' %} aria-current="page"{% endif %}>Ученики</a>
-  <a href="/admin/course?course={{ cid }}"{% if tab == 'course' %} aria-current="page"{% endif %}>Курс</a>
-  <a href="/admin/courses"{% if tab == 'courses' %} aria-current="page"{% endif %}>Создать курс</a>
+  <a href="/admin/students{% if cid %}?course={{ cid }}{% endif %}"{% if tab == 'students' %} aria-current="page"{% endif %}>Ученики</a>
+  <a href="/admin/generation{% if gen_cid %}?course={{ gen_cid }}{% endif %}"{% if tab == 'generation' %} aria-current="page"{% endif %}>Генерация курса</a>
+  <a href="/admin/courses"{% if tab == 'courses' %} aria-current="page"{% endif %}>Изменение курсов</a>
 </nav>

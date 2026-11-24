@@ -30,18 +30,26 @@
      удалить модуль можно и тогда, когда его файл не читается. #}
   <section class="panel module-actions-panel" aria-labelledby="module-actions-title">
     <h2 id="module-actions-title" class="section-title">Модуль целиком</h2>
+    {% if course.root is not none %}
     <p class="form-hint">Перегенерация собирает модуль с нуля: план, занятия, разделы, задания и конспекты перепишутся. Правки в этом модуле потеряются.</p>
+    {% else %}
+    <p class="form-hint">Встроенный курс правится на месте: сохранение меняет файлы курса, и изменения сразу видят все ученики.</p>
+    {% endif %}
     <div class="admin-actions">
       <button class="btn" type="button" data-action="check-module">Проверить код-задания</button>
+      {% if course.root is not none %}
       <button class="btn" type="button" data-action="regenerate-plan">{{ icon('refresh') }}<span>Перегенерировать</span></button>
+      {% endif %}
       <button class="btn danger" type="button" data-action="delete-module">Удалить модуль</button>
     </div>
+    {% if course.root is not none %}
     <div class="run" id="module-run" hidden>
       <div class="run-head"><strong class="run-step" id="module-run-step"></strong><span class="muted" id="module-run-count"></span></div>
       <div class="progress-track"><span class="progress-fill" id="module-run-fill"></span></div>
       <p class="notice error" id="module-run-error" role="alert" hidden></p>
       <div class="notice" id="module-run-warnings" role="status" hidden></div>
     </div>
+    {% endif %}
     <div class="notice" id="module-check" role="status" hidden></div>
   </section>
 

@@ -71,6 +71,32 @@ async def test_chat_uses_explicit_model_in_payload() -> None:
 
 
 @respx.mock
+async def test_chat_structured_puts_json_reminder_last() -> None:
+    """JSON-режим: требование к формату — последним сообщением, после вопроса.
+
+    Иначе deepseek-chat через прокси отвечает одними пробелами, если контракт
+    JSON стоит только в конце длинного системного промпта.
+    """
+    route = respx.post(CHAT_URL).mock(return_value=_ok_response('{"score": 1}'))
+    await _client().chat_structured([ChatMessage(role="user", content="x")], _Grade)
+
+    body = json.loads(route.calls[0].request.content)
+    assert body["response_format"] == {"type": "json_object"}
+    tail = body["messages"][-1]
+    assert tail["role"] == "system" and "JSON" in tail["content"]
+
+
+@respx.mock
+async def test_plain_chat_has_no_json_reminder() -> None:
+    route = respx.post(CHAT_URL).mock(return_value=_ok_response("ok"))
+    await _client().chat([ChatMessage(role="user", content="x")])
+
+    body = json.loads(route.calls[0].request.content)
+    assert [m["role"] for m in body["messages"]] == ["user"]
+    assert "response_format" not in body
+
+
+@respx.mock
 async def test_chat_structured_retries_invalid_json() -> None:
     """Первый ответ — не JSON, второй валиден: клиент ретраит и возвращает модель."""
     route = respx.post(CHAT_URL)

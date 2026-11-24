@@ -460,7 +460,7 @@ async def chat(
     graph = CourseGraph.load(conn)
     item = repos.get_item(conn, series.item_id)  # type: ignore[arg-type]
     view = _view(state, series, item.section if item is not None else None)
-    reply, _, _, new_view, wants_close = await turn._tutor_branch(
+    reply, _, _, new_view, wants_close, takeaway = await turn._tutor_branch(
         conn, client, model, session_id, text, view, graph,
         now=stamp, settings=s, force_stuck=stuck, allow_stuck=False, focus=focus,
     )
@@ -483,5 +483,7 @@ async def chat(
         review_node_id=node_id,
         focus=focus,
         now=stamp,
+        question=True,
+        takeaway=takeaway,
     )
     return TurnReply(text=reply)
