@@ -1,0 +1,533 @@
+{
+  "course": "Теоретический минимум по Big Data",
+  "topic": {
+    "number": 3,
+    "title": "Ассоциативные правила и сети",
+    "intro": "Найдём совместные покупки, а затем перейдём к графам: сообщества и важные узлы в социальных сетях.",
+    "survey": {
+      "level_key": "t03_level",
+      "level_question": "Насколько ты знаком с темой «Ассоциативные правила и сети»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t03_b1",
+          "title": "Ассоциативные правила и их метрики",
+          "question": "Насколько уверенно ты разбираешься в теме «ассоциативные правила и их метрики»?",
+          "example": "Support, confidence, lift и интерпретация правил.",
+          "concepts": [
+            "t03_lesson7"
+          ]
+        },
+        {
+          "key": "t03_b2",
+          "title": "Алгоритм Apriori",
+          "question": "Насколько уверенно ты разбираешься в теме «алгоритм apriori»?",
+          "example": "Свойство частых наборов и пошаговый поиск правил.",
+          "concepts": [
+            "t03_lesson8"
+          ]
+        },
+        {
+          "key": "t03_b3",
+          "title": "Графы: сообщества и PageRank",
+          "question": "Насколько уверенно ты разбираешься в теме «графы: сообщества и pagerank»?",
+          "example": "Модульность, Louvain и важность узлов в ориентированном графе.",
+          "concepts": [
+            "t03_lesson9"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t03_b1",
+        "t03_b2"
+      ],
+      "foundation": [
+        "t03_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t03_lesson7",
+      "name": "Ассоциативные правила и их метрики",
+      "difficulty": 0.5,
+      "description": "Support, confidence, lift и интерпретация правил.",
+      "source_url": null,
+      "topic_id": 3,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Метрики ассоциаций"
+        },
+        {
+          "id": "sec2",
+          "title": "Интерпретация"
+        }
+      ]
+    },
+    {
+      "id": "t03_lesson8",
+      "name": "Алгоритм Apriori",
+      "difficulty": 0.5,
+      "description": "Свойство частых наборов и пошаговый поиск правил.",
+      "source_url": null,
+      "topic_id": 3,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Принцип Apriori"
+        },
+        {
+          "id": "sec2",
+          "title": "Поиск правил"
+        }
+      ]
+    },
+    {
+      "id": "t03_lesson9",
+      "name": "Графы: сообщества и PageRank",
+      "difficulty": 0.5,
+      "description": "Модульность, Louvain и важность узлов в ориентированном графе.",
+      "source_url": null,
+      "topic_id": 3,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Графы и сообщества"
+        },
+        {
+          "id": "sec2",
+          "title": "Louvain и PageRank"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t03_lesson7",
+      "to_id": "t03_lesson8",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t03_lesson8",
+      "to_id": "t03_lesson9",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 31,
+      "prompt": "Что измеряет поддержка (support) правила?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Число товаров в магазине",
+        "Долю транзакций, где встречается набор",
+        "Долю транзакций с X, где есть Y",
+        "Отношение к ожидаемому при независимости"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 32,
+      "prompt": "Как считается достоверность X → Y?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "support(X ∪ Y) / support(X)",
+        "support(X) / support(Y)",
+        "support(X ∪ Y) / support(Y)",
+        "support(X) · support(Y)"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 33,
+      "prompt": "Что означает лифт меньше 1?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Правило всегда ошибочно",
+        "Поддержка равна нулю",
+        "Правило нельзя вычислить",
+        "Товары встречаются вместе реже, чем при независимости"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 34,
+      "prompt": "Какая метрика сравнивает совместное появление с ожидаемым при независимости? Напишите одно слово.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "лифт",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 35,
+      "prompt": "Правило имеет высокую достоверность, но очень низкую поддержку. Как его трактовать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Как правило с отрицательной связью",
+        "Как слабую гипотезу: сработало на малом числе транзакций",
+        "Как доказанную закономерность",
+        "Как ошибку в данных"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 36,
+      "prompt": "На каком свойстве основан Apriori?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Все подмножества частого набора тоже частые",
+        "Все товары равновероятны",
+        "Правила всегда симметричны",
+        "Чем длиннее набор, тем он чаще"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 37,
+      "prompt": "Что происходит при повышении порога поддержки?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Находится больше редких связей",
+        "Правила становятся причинными",
+        "Лифт всегда растёт",
+        "Остаётся меньше наборов, работа идёт быстрее"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 38,
+      "prompt": "Почему Apriori не перебирает все возможные наборы?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Использует нейронную сеть",
+        "Сортирует транзакции по времени",
+        "Отбрасывает расширения редких наборов",
+        "Хранит только пары товаров"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 39,
+      "prompt": "Какой более быстрый алгоритм для больших данных назван в книге вместо Apriori? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": "FP-Growth",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 40,
+      "prompt": "Правило с редким товаром не прошло порог поддержки, хотя бизнес считает его важным. Что сделать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson8": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Снизить порог или анализировать редкие товары отдельно",
+        "Увеличить порог",
+        "Удалить товар из данных",
+        "Заменить лифт на поддержку"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 41,
+      "prompt": "Что такое сообщество в графе?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Любой узел с большой степенью",
+        "Направленное ребро",
+        "Все узлы графа",
+        "Группа узлов с плотными связями внутри и редкими наружу"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 42,
+      "prompt": "Что максимизирует Louvain?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Число узлов",
+        "Длину кратчайшего пути",
+        "Модульность разбиения",
+        "Число рёбер"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 43,
+      "prompt": "Как PageRank оценивает важность узла?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Измеряет длину имени узла",
+        "Учитывает важность узлов, которые на него ссылаются",
+        "Считает только исходящие ссылки",
+        "Берёт случайное ребро"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 44,
+      "prompt": "Какая мера показывает, насколько связей внутри сообществ больше ожидаемого случайно? Напишите одно слово.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "модульность",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 45,
+      "prompt": "Узел имеет много входящих ссылок из малозначимых узлов и мало из важных. Что покажет PageRank?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t03_lesson9": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Максимальный ранг только из-за числа ссылок",
+        "Нулевой ранг всегда",
+        "Ранг, равный числу узлов",
+        "Умеренный ранг: важность источников тоже учитывается"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 93,
+      "prompt": "Правило «хлеб → молоко» имеет поддержку 0,2 и достоверность 0,8. Объясни вслух, что означают оба числа. Почему высокая достоверность сама по себе не делает правило интересным и что ещё нужно посчитать?",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t03_lesson7": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 3,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 3,
+      "name": "Голосом: метрики ассоциаций",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 7,
+      "rubric_id": 3,
+      "criterion": "Поддержка объяснена как доля транзакций с обоими товарами",
+      "weight": 1.0,
+      "positive_example": "«Поддержка 0,2 — хлеб и молоко вместе есть в 20% чеков»",
+      "negative_example": "«Поддержка — это уверенность, что купят молоко»",
+      "active": true
+    },
+    {
+      "id": 8,
+      "rubric_id": 3,
+      "criterion": "Достоверность объяснена как доля чеков с молоком среди чеков с хлебом",
+      "weight": 1.0,
+      "positive_example": "«Из всех чеков с хлебом 80% содержат ещё и молоко»",
+      "negative_example": "«Достоверность — сколько раз правило встретилось в данных»",
+      "active": true
+    },
+    {
+      "id": 9,
+      "rubric_id": 3,
+      "criterion": "Сказано, что нужен лифт/сравнение с базовой частотой: если молоко и так покупают в 80% чеков, правило ничего не добавляет",
+      "weight": 1.0,
+      "positive_example": "«Надо сравнить с долей молока вообще — лифт покажет, есть ли эффект»",
+      "negative_example": "«Нужен только лифт, поддержку можно не смотреть»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

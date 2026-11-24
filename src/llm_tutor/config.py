@@ -97,6 +97,21 @@ class Settings(BaseSettings):
     generation_max_tokens: int = 4096
     generation_timeout: float = 180.0
     generation_temperature: float = 0.3
+    # Сколько шагов модуля (конспекты и задания разных занятий) держим в
+    # полёте одновременно. Больше — быстрее, но провайдер отвечает 429.
+    generation_concurrency: int = Field(default=3, ge=1, le=8)
+    # --- Распознавание голосового ответа, когда браузер не умеет ---
+    # Основной путь — Web Speech API в браузере; серверное распознавание
+    # включается, только если браузер его не поддерживает (Firefox).
+    stt_model: str = "openai/whisper-large-v3"
+    stt_language: str = "ru"
+    # Одна запись с микрофона: дольше минуты никто не говорит ответ на задание,
+    # а 8 МБ — это как раз пара минут webm при 48 кбит/с.
+    stt_max_bytes: int = Field(default=8 * 1024 * 1024, ge=64 * 1024, le=64 * 1024 * 1024)
+    stt_timeout: float = Field(default=60.0, gt=0)
+    # Расшифровок на ученика за окно лимитера: каждая стоит денег, а цикл
+    # «записал — не понравилось — записал» иначе не ограничен.
+    stt_request_limit: int = Field(default=40, ge=1)
     registration_open: bool = True
     # Подпись под логотипом в боковом меню. Своя у каждой установки: курсов
     # теперь может быть много, и название одного не должно стоять на всех.

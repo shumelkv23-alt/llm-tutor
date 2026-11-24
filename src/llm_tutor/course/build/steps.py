@@ -13,6 +13,7 @@ Id здесь не придумывает модель: концепты и ра
 переписала записи журнала ученика.
 """
 
+import asyncio
 import re
 import time
 from collections.abc import Callable, Sequence
@@ -23,15 +24,16 @@ from pydantic import BaseModel, ValidationError
 
 from llm_tutor.course import store
 from llm_tutor.course.build import prompts
+from llm_tutor.course.build.edges import chain_edges
 from llm_tutor.course.build.material import Material
 from llm_tutor.course.build.schemas import (
     CoursePlan,
     CriterionPlan,
-    FinalItem,
     ItemPlan,
+    LessonItems,
+    LessonPlan,
     ModulePlan,
     ModuleSurvey,
-    SectionItems,
     TheoryDoc,
 )
 from llm_tutor.course.seed import (
@@ -46,7 +48,6 @@ from llm_tutor.course.seed import (
 from llm_tutor.schemas import (
     Concept,
     Criterion,
-    Edge,
     Item,
     Rubric,
     Section,
@@ -60,6 +61,11 @@ from llm_tutor.schemas import (
 STEP_PLAN = "план модуля"
 STEP_SURVEY = "анкета модуля"
 STEP_ASSEMBLE = "сборка модуля"
+
+# Сколько шагов модуля держим в полёте одновременно. Шаги независимы (конспект
+# и задания разных занятий друг от друга не зависят), но лимит нужен: провайдер
+# отвечает 429 на пачку запросов, а платим мы за ожидание.
+DEFAULT_CONCURRENCY = 3
 
 GENERATION_DIR = "generation"
 RUN_NAME = "run.json"
@@ -105,12 +111,9 @@ def theory_step(lesson_key: str) -> str:
     return f"конспект: {lesson_key}"
 
 
-def items_step(lesson_key: str, section_key: str) -> str:
-    return f"задания: {lesson_key}/{section_key}"
-
-
-def final_step(lesson_key: str) -> str:
-    return f"итоговое: {lesson_key}"
+def items_step(lesson_key: str) -> str:
+    """Шаг всех заданий занятия: разделы и итоговое приходят одним ответом."""
+    return f"задания: {lesson_key}"
 
 
 def plan_artifact(root: str | Path, module: int) -> ModulePlan | None:
@@ -132,11 +135,15 @@ def regenerate_steps(
     lesson: str = "",
     section: str = "",
 ) -> list[str]:
-    """Какие шаги переделать: «конспект занятия», «задания раздела», «итоговое».
+    """Какие шаги переделать: «конспект занятия», «задания занятия».
 
-    Занятие и раздел адресуются так, как их видит интерфейс: id занятия
-    (``t01_l1``) и id раздела (``sec2``). Внутри шаги называются ключами плана —
-    переводим по порядку: занятие N в модуле это N-е занятие плана.
+    Занятие адресуется так, как его видит интерфейс: id занятия (``t01_l1``).
+    Внутри шаги называются ключами плана — переводим по порядку: занятие N в
+    модуле это N-е занятие плана.
+
+    Задания раздела и итоговое задание — один шаг: модель получает всё занятие
+    сразу, поэтому «переделать раздел» переписывает и его соседей. Иначе
+    пришлось бы держать два разных ответа модели на один и тот же материал.
     """
     plan = plan_artifact(root, module)
     if plan is None:
@@ -155,16 +162,12 @@ def regenerate_steps(
     lesson_plan = plan.lessons[index]
     if part == "theory":
         return [theory_step(lesson_plan.key)]
-    if part == "final":
-        return [final_step(lesson_plan.key)]
-    if part == "items":
-        if not section:
-            raise StepError("Не указан раздел")
-        positions = [section_id(pos) for pos in range(len(lesson_plan.sections))]
-        if section not in positions:
-            raise StepError(f"В занятии {lesson!r} нет раздела {section!r}")
-        section_plan = lesson_plan.sections[positions.index(section)]
-        return [items_step(lesson_plan.key, section_plan.key)]
+    if part in ("final", "items"):
+        if part == "items" and section:
+            positions = [section_id(pos) for pos in range(len(lesson_plan.sections))]
+            if section not in positions:
+                raise StepError(f"В занятии {lesson!r} нет раздела {section!r}")
+        return [items_step(lesson_plan.key)]
     raise StepError(f"Неизвестная часть: {part!r}")
 
 
@@ -303,6 +306,7 @@ class _Runner:
         regenerate: set[str],
         cancelled: Callable[[], bool],
         on_update: Callable[[RunState], None] | None,
+        concurrency: int = DEFAULT_CONCURRENCY,
     ) -> None:
         self.root = root
         self.module = module
@@ -316,6 +320,7 @@ class _Runner:
         self.regenerate = regenerate
         self.cancelled = cancelled
         self.on_update = on_update
+        self.semaphore = asyncio.Semaphore(max(1, concurrency))
         self.dir = module_dir(root, module)
         self.state = load_run(root) or RunState(module=module)
         if self.state.module != module:
@@ -364,7 +369,10 @@ class _Runner:
         self.stop_check()
         self.set_step(name, "running")
         try:
-            answer = await self.client.chat_structured(messages, schema, model=self.model)
+            # Семафор — только вокруг запроса: проверка и запись артефакта
+            # короткие, а ждать ответа можно параллельно с другими шагами.
+            async with self.semaphore:
+                answer = await self.client.chat_structured(messages, schema, model=self.model)
         except Exception as error:  # noqa: BLE001 — текст ошибки нужен преподавателю
             raise StepError(f"{name}: {error}") from error
         try:
@@ -436,18 +444,27 @@ def _check_headings(answer: TheoryDoc, titles: Sequence[str]) -> None:
         )
 
 
-def _check_items(answer: SectionItems) -> None:
-    """Заданий в разделе должно хватать для публикации модуля."""
-    if len(answer.items) < prompts.MIN_ITEMS_PER_SECTION:
+def _check_lesson_items(answer: LessonItems, lesson: LessonPlan) -> None:
+    """Задания занятия: разделы те же, что в плане, и у каждого хватает заданий.
+
+    Ключ раздела — единственная связь ответа с планом. Выдуманный или
+    пропущенный ключ оставил бы раздел без заданий уже на сборке, поэтому
+    проверяем до записи артефакта.
+    """
+    expected = [section.key for section in lesson.sections]
+    got = [section.key for section in answer.sections]
+    if got != expected:
         raise StepError(
-            f"в разделе {len(answer.items)} заданий, а нужно не меньше "
-            f"{prompts.MIN_ITEMS_PER_SECTION}"
+            f"разделы задания занятия «{lesson.name}» не совпали с планом: "
+            f"{', '.join(got) or 'ни одного'} вместо {', '.join(expected)}"
         )
-
-
-def _check_final(answer: FinalItem) -> None:
-    """Итоговое задание занятия — всегда с кодом."""
-    if answer.item.answer_type != "code":
+    for section in answer.sections:
+        if len(section.items) < prompts.MIN_ITEMS_PER_SECTION:
+            raise StepError(
+                f"в разделе {section.key} {len(section.items)} заданий, а нужно "
+                f"не меньше {prompts.MIN_ITEMS_PER_SECTION}"
+            )
+    if answer.final.answer_type != "code":
         raise StepError("итоговое задание занятия должно быть с кодом")
 
 
@@ -541,6 +558,25 @@ def _survey_config(survey: ModuleSurvey, plan: ModulePlan, module: int) -> Surve
     )
 
 
+def _shuffle_choice(plan: ItemPlan, item_id: int) -> tuple[list[str], str | None]:
+    """Варианты choice-задания в другом порядке, эталон пересчитан.
+
+    Модели почти всегда ставят верный вариант первым. Порядок здесь меняется
+    по id задания — детерминированно (повторная сборка даст то же), но
+    равномерно: правильный ответ не читается по позиции. Сдвиг, а не случайная
+    перестановка: она сохраняет соседство вариантов и не путает эталон.
+    """
+    options = [option.strip() for option in plan.options]
+    answer = plan.answer.strip() if isinstance(plan.answer, str) else plan.answer
+    if plan.answer_type != "choice" or not options or not isinstance(answer, str):
+        return options, answer
+    if not answer.isdigit() or not 0 <= int(answer) < len(options):
+        # Битый эталон пусть ловит валидатор Item — здесь нечего переставлять.
+        return options, answer
+    shift = item_id % len(options)
+    return options[shift:] + options[:shift], str((int(answer) - shift) % len(options))
+
+
 def _item(
     plan: ItemPlan,
     *,
@@ -551,6 +587,7 @@ def _item(
     final: bool,
 ) -> Item:
     """Задание из плана модели; кривое задание — ошибка шага, а не мусор в курсе."""
+    options, answer = _shuffle_choice(plan, item_id)
     try:
         return Item(
             id=item_id,
@@ -558,8 +595,8 @@ def _item(
             answer_type=plan.answer_type,
             concept_weights={lesson: 1.0},
             difficulty=plan.difficulty,
-            options=[option.strip() for option in plan.options],
-            answer=plan.answer.strip() if isinstance(plan.answer, str) else plan.answer,
+            options=options,
+            answer=answer,
             rubric_id=rubric_id,
             starter=plan.starter,
             setup=plan.setup,
@@ -584,8 +621,7 @@ def assemble(
 ) -> Seed:
     """Собирает seed модуля из ответов модели (без обращения к диску)."""
     nodes: list[Concept] = []
-    edges: list[Edge] = []
-    for index, lesson in enumerate(plan.lessons):
+    for lesson in plan.lessons:
         node_id = lesson_id(module, lesson.key)
         nodes.append(
             Concept(
@@ -600,18 +636,11 @@ def assemble(
                 ],
             )
         )
-        if index:
-            # Мягкая связь «следующее занятие опирается на предыдущее»: блокировать
-            # маршрут она не должна — это подсказка планировщику, а не пререквизит.
-            edges.append(
-                Edge(
-                    from_id=lesson_id(module, plan.lessons[index - 1].key),
-                    to_id=node_id,
-                    type="requires",
-                    hard=False,
-                    weight=0.3,
-                )
-            )
+
+    # Мягкая связь «следующее занятие опирается на предыдущее»: блокировать
+    # маршрут она не должна — это подсказка планировщику, а не пререквизит.
+    # Та же цепочка пересобирается при правке модуля в редакторе (``edges``).
+    edges = chain_edges([node.id for node in nodes])
 
     rubrics: list[Rubric] = []
     criteria: list[Criterion] = []
@@ -671,7 +700,7 @@ def _add_rubric(
     plan: ItemPlan, rubrics: list[Rubric], criteria: list[Criterion], allocate
 ) -> int | None:
     """Рубрика задания (``None`` — задание проверяется кодом без рубрики)."""
-    if plan.answer_type not in ("open", "code") or not plan.criteria:
+    if plan.answer_type not in ("open", "code", "spoken") or not plan.criteria:
         return None
     rubric_id = allocate("rubric", 1)[0]
     rubrics.append(Rubric(id=rubric_id, name=f"Рубрика: {plan.prompt.strip()[:60]}"))
@@ -734,6 +763,23 @@ def write_module(root: str | Path, seed: Seed, *, force: bool = False) -> Path:
 # --- прогон ---
 
 
+async def _gather_tasks(coros: Sequence) -> list:
+    """Дождаться независимых шагов; первый сбой отменяет остальные.
+
+    ``asyncio.gather`` без отмены ждал бы, пока все сотни токенов допишутся, —
+    при ошибке одного шага платить за остальные незачем. Уже записанные
+    артефакты при этом остаются: перезапуск продолжит с упавшего шага.
+    """
+    tasks = [asyncio.create_task(coro) for coro in coros]
+    try:
+        return list(await asyncio.gather(*tasks))
+    except BaseException:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        raise
+
+
 async def generate_module(
     root: str | Path,
     *,
@@ -747,6 +793,7 @@ async def generate_module(
     force: bool = False,
     cancelled: Callable[[], bool] | None = None,
     on_update: Callable[[RunState], None] | None = None,
+    concurrency: int = DEFAULT_CONCURRENCY,
 ) -> RunState:
     """Собирает модуль курса из источников. Возвращает состояние прогона."""
     root = Path(root)
@@ -780,6 +827,7 @@ async def generate_module(
         regenerate=set(regenerate),
         cancelled=cancelled or (lambda: False),
         on_update=on_update,
+        concurrency=concurrency,
     )
     if STEP_PLAN in runner.regenerate:
         # План переписывают — всё, что по нему собрано, больше не подходит:
@@ -819,17 +867,17 @@ async def generate_module(
         state.steps = {name: state.steps.get(name, "pending") for name in _step_names(plan_)}
         runner.touch()
 
-        survey = await runner.ask(
-            STEP_SURVEY,
-            ModuleSurvey,
-            prompts.survey_messages(
-                module_title=plan_.title, lessons=[(l.key, l.name) for l in plan_.lessons]
-            ),
-            force=force,
-        )
+        async def survey_task() -> ModuleSurvey:
+            return await runner.ask(
+                STEP_SURVEY,
+                ModuleSurvey,
+                prompts.survey_messages(
+                    module_title=plan_.title, lessons=[(l.key, l.name) for l in plan_.lessons]
+                ),
+                force=force,
+            )
 
-        theories: dict[str, str] = {}
-        for lesson in plan_.lessons:
+        async def theory_task(lesson: LessonPlan) -> tuple[str, str]:
             titles = [section.title for section in lesson.sections]
             name = theory_step(lesson.key)
             doc = await runner.ask(
@@ -861,46 +909,50 @@ async def generate_module(
                         f"конспект занятия «{lesson.name}»: заголовки разделов не совпали с планом "
                         f"({', '.join(headings(doc.markdown)) or 'заголовков нет'})"
                     )
-            theories[lesson.key] = doc.markdown
+            return lesson.key, doc.markdown
 
-        items: dict[tuple[str, str], list[ItemPlan]] = {}
-        for lesson in plan_.lessons:
-            for section in lesson.sections:
-                answer = await runner.ask(
-                    items_step(lesson.key, section.key),
-                    SectionItems,
-                    prompts.items_messages(
-                        lesson_name=lesson.name,
-                        section_title=section.title,
-                        goal=section.goal,
-                        material=runner.material_for(f"{lesson.name} {section.title}"),
-                    ),
-                    force=force,
-                    check=_check_items,
-                )
-                if len(answer.items) < prompts.MIN_ITEMS_PER_SECTION:
-                    raise StepError(
-                        f"раздел «{section.title}»: модель дала {len(answer.items)} заданий, "
-                        f"нужно не меньше {prompts.MIN_ITEMS_PER_SECTION}"
-                    )
-                items[(lesson.key, section.key)] = answer.items
-
-        finals: dict[str, ItemPlan] = {}
-        for lesson in plan_.lessons:
+        async def items_task(lesson: LessonPlan) -> tuple[str, LessonItems]:
+            # Все разделы занятия и итоговое задание — один вызов модели:
+            # разделы одного занятия делят материал, и одним ответом модель
+            # не повторяет задание в соседнем разделе.
             answer = await runner.ask(
-                final_step(lesson.key),
-                FinalItem,
-                prompts.final_messages(
+                items_step(lesson.key),
+                LessonItems,
+                prompts.lesson_items_messages(
                     lesson_name=lesson.name,
-                    sections=[section.title for section in lesson.sections],
-                    material=runner.material_for(f"{lesson.name} итоговое задание"),
+                    sections=[(section.key, section.title, section.goal) for section in lesson.sections],
+                    material=runner.material_for(
+                        f"{lesson.name} {' '.join(section.title for section in lesson.sections)}"
+                    ),
                 ),
                 force=force,
-                check=_check_final,
+                check=lambda answer, lesson=lesson: _check_lesson_items(answer, lesson),
             )
-            if answer.item.answer_type != "code":
-                raise StepError(f"итоговое задание занятия «{lesson.name}»: нужен код")
-            finals[lesson.key] = answer.item
+            return lesson.key, answer
+
+        # Шаги независимы: анкета, конспекты и задания разных занятий не
+        # ссылаются друг на друга. Порядок в списке фиксирован, поэтому
+        # состояние шагов и артефакты не зависят от того, кто ответил первым.
+        jobs: list[tuple[str, str, object]] = [("survey", "", survey_task())]
+        jobs += [("theory", lesson.key, theory_task(lesson)) for lesson in plan_.lessons]
+        jobs += [("items", lesson.key, items_task(lesson)) for lesson in plan_.lessons]
+        answers = await _gather_tasks([job[2] for job in jobs])
+
+        survey: ModuleSurvey | None = None
+        theories: dict[str, str] = {}
+        items: dict[tuple[str, str], list[ItemPlan]] = {}
+        finals: dict[str, ItemPlan] = {}
+        for (kind, key, _), answer in zip(jobs, answers):
+            if kind == "survey":
+                survey = answer
+            elif kind == "theory":
+                theories[key] = answer[1]
+            else:
+                lesson_key, lesson_items = answer
+                for section in lesson_items.sections:
+                    items[(lesson_key, section.key)] = section.items
+                finals[lesson_key] = lesson_items.final
+        assert survey is not None  # jobs всегда содержит анкету
 
         runner.stop_check()
         if state.status == "cancelled":
@@ -930,18 +982,23 @@ async def generate_module(
         state.status = "failed"
         state.error = f"неожиданная ошибка: {error}"
     finally:
-        if material is not None:
-            material.close()
+        # Материал грузится уже внутри прогона (``Material.load`` ниже), поэтому
+        # закрываем то, что реально открыто, а не пустую локальную переменную.
+        if runner.material is not None:
+            runner.material.close()
         runner.touch()
     return state
 
 
 def _step_names(plan: ModulePlan) -> list[str]:
-    """План шагов модуля — по нему интерфейс считает прогресс."""
+    """План шагов модуля — по нему интерфейс считает прогресс.
+
+    На занятие два шага (конспект и все задания), поэтому модуль из трёх
+    занятий — восемь шагов, а не четырнадцать.
+    """
     names = [STEP_PLAN, STEP_SURVEY]
     for lesson in plan.lessons:
         names.append(theory_step(lesson.key))
-        names.extend(items_step(lesson.key, section.key) for section in lesson.sections)
-        names.append(final_step(lesson.key))
+        names.append(items_step(lesson.key))
     names.append(STEP_ASSEMBLE)
     return names

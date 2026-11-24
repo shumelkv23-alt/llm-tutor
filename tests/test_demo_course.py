@@ -101,11 +101,13 @@ def web_llm():
     return ScriptedTutor("Дерево — это цепочка вопросов.\n---\nВторая часть.")
 
 
-async def test_catalog_lists_three_courses(student) -> None:
+async def test_catalog_shows_demo_but_hides_old_builtins(student) -> None:
+    """mlcourse и isit-ml скрыты из каталога (ветка admin), демо-курс для показа виден."""
     response = await student.get("/api/courses")
     assert response.status_code == 200
     ids = [card["id"] for card in response.json()["courses"]]
-    assert ids == ["mlcourse", "isit-ml", DEMO]
+    assert DEMO in ids
+    assert "mlcourse" not in ids and "isit-ml" not in ids
 
 
 async def test_enroll_survey_and_first_lesson(student) -> None:

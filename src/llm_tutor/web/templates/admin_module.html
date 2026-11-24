@@ -1,12 +1,11 @@
 {% extends "base.html" %}
-{% block eyebrow %}Админка · редактор{% endblock %}
+{% block eyebrow %}Редактор курсов · модуль{% endblock %}
 {% block heading %}Модуль {{ number }}{% endblock %}
 {% block description %}{{ course.title }}{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
 {% block scripts %}<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
 {% block actions %}<a class="btn" href="/admin/courses/{{ course.id }}">К курсу</a>{% endblock %}
 {% block content %}
-{% include "_admin_tabs.html" %}
 
 {% if modules|length > 1 %}
 <nav class="module-nav" aria-label="Модули курса">
@@ -21,7 +20,7 @@
      data-api="/api/admin/courses/{{ course.id }}/modules/{{ number }}"
      data-course-api="/api/admin/courses/{{ course.id }}"
      data-theory="/api/admin/courses/{{ course.id }}/modules/{{ number }}/theory"
-     data-ids="/api/admin/courses/{{ course.id }}/ids">
+     data-ids="/api/admin/courses/{{ course.id }}/ids"{% if parts %} data-parts="1"{% endif %}>
   <p class="muted" id="module-loading">Загружаю модуль…</p>
   <p class="notice error" id="module-error" role="alert" hidden></p>
   <div class="notice" id="module-warnings" role="status" hidden></div>
@@ -30,7 +29,7 @@
      удалить модуль можно и тогда, когда его файл не читается. #}
   <section class="panel module-actions-panel" aria-labelledby="module-actions-title">
     <h2 id="module-actions-title" class="section-title">Модуль целиком</h2>
-    <p class="form-hint">Перегенерация собирает модуль с нуля: план, занятия, разделы, задания и конспекты перепишутся. Правки в этом модуле потеряются.</p>
+    <p class="form-hint">Перегенерация собирает модуль с нуля: план, занятия, разделы, задания и конспекты перепишутся. Правки в этом модуле потеряются. Если модуль собран прогоном, у занятия и раздела есть кнопки переделки только этой части — остальное берётся с диска.</p>
     <div class="admin-actions">
       <button class="btn" type="button" data-action="check-module">Проверить код-задания</button>
       <button class="btn" type="button" data-action="regenerate-plan">{{ icon('refresh') }}<span>Перегенерировать</span></button>

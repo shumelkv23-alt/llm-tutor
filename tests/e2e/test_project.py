@@ -142,7 +142,8 @@ async def test_admin_nav_labels_fit_a_phone(page, live_server, tmp_path) -> None
     await page.set_viewport_size({"width": 320, "height": 700})
     student, _ = await _admin_page(page, live_server, tmp_path)
 
-    assert await page.locator(".main-nav a").count() == 6
+    # Шесть пунктов ученика и админа + «Редактор курсов» (ветка admin).
+    assert await page.locator(".main-nav a").count() == 7
     assert await page.evaluate("() => document.documentElement.scrollWidth") <= 320
     clipped = await page.evaluate(
         "() => [...document.querySelectorAll('.main-nav a')]"

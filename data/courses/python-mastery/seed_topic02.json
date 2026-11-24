@@ -1,0 +1,533 @@
+{
+  "course": "Python: к вершинам мастерства",
+  "topic": {
+    "number": 2,
+    "title": "Последовательности и кортежи",
+    "intro": "Научимся выбирать последовательность под задачу и не попадать в ловушки срезов, алиасов и ленивых генераторов.",
+    "survey": {
+      "level_key": "t02_level",
+      "level_question": "Насколько ты знаком с темой «Последовательности и кортежи»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t02_b1",
+          "title": "Списковые включения и генераторные выражения",
+          "question": "Насколько уверенно ты разбираешься в теме «списковые включения и генераторные выражения»?",
+          "example": "Как собирать списки выразительно и когда генератор экономит память.",
+          "concepts": [
+            "t02_lesson4"
+          ]
+        },
+        {
+          "key": "t02_b2",
+          "title": "Кортежи, распаковка и сопоставление с образцом",
+          "question": "Насколько уверенно ты разбираешься в теме «кортежи, распаковка и сопоставление с образцом»?",
+          "example": "Кортеж как запись, звёздочная распаковка и match по структуре.",
+          "concepts": [
+            "t02_lesson5"
+          ]
+        },
+        {
+          "key": "t02_b3",
+          "title": "Срезы, конкатенация и выбор структуры",
+          "question": "Насколько уверенно ты разбираешься в теме «срезы, конкатенация и выбор структуры»?",
+          "example": "Правила срезов, ловушки + и *, array, deque и сортировка.",
+          "concepts": [
+            "t02_lesson6"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t02_b1",
+        "t02_b2"
+      ],
+      "foundation": [
+        "t02_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t02_lesson4",
+      "name": "Списковые включения и генераторные выражения",
+      "difficulty": 0.4,
+      "description": "Как собирать списки выразительно и когда генератор экономит память.",
+      "source_url": null,
+      "topic_id": 2,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Включения и читаемость"
+        },
+        {
+          "id": "sec2",
+          "title": "Ленивые генераторы"
+        }
+      ]
+    },
+    {
+      "id": "t02_lesson5",
+      "name": "Кортежи, распаковка и сопоставление с образцом",
+      "difficulty": 0.4,
+      "description": "Кортеж как запись, звёздочная распаковка и match по структуре.",
+      "source_url": null,
+      "topic_id": 2,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Кортеж как запись"
+        },
+        {
+          "id": "sec2",
+          "title": "Распаковка и match"
+        }
+      ]
+    },
+    {
+      "id": "t02_lesson6",
+      "name": "Срезы, конкатенация и выбор структуры",
+      "difficulty": 0.4,
+      "description": "Правила срезов, ловушки + и *, array, deque и сортировка.",
+      "source_url": null,
+      "topic_id": 2,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Срезы и операции"
+        },
+        {
+          "id": "sec2",
+          "title": "Выбор структуры"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t02_lesson4",
+      "to_id": "t02_lesson5",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t02_lesson5",
+      "to_id": "t02_lesson6",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 16,
+      "prompt": "Чем генераторное выражение отличается от спискового включения?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Вычисляет элементы лениво и не хранит список",
+        "Всегда быстрее любого списка",
+        "Не поддерживает условие if",
+        "Создаёт кортеж"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 17,
+      "prompt": "Что вернёт list(gen), если gen уже полностью перебрали?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Тот же список повторно",
+        "Ошибку StopIteration",
+        "None",
+        "Пустой список"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 18,
+      "prompt": "Что делает [x for row in matrix for x in row]?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Строит транспонированную матрицу",
+        "Сравнивает строки",
+        "Собирает все элементы строк по порядку",
+        "Собирает строки матрицы"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 19,
+      "prompt": "Какой встроенной функцией удобно просуммировать генератор? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.2,
+      "options": [],
+      "answer": "sum",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 20,
+      "prompt": "Нужно дважды обойти результат фильтрации большого файла. Что выбрать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Один раз собрать список и обходить его",
+        "Использовать генератор дважды",
+        "Вызвать list(gen) после первого обхода",
+        "Заменить генератор на lambda"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 21,
+      "prompt": "Что означает неизменяемость кортежа?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Вложенные объекты тоже становятся неизменяемыми",
+        "Кортеж нельзя присвоить переменной",
+        "Элементы доступны только по имени",
+        "Нельзя изменить состав кортежа, но вложенный список менять можно"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 22,
+      "prompt": "Сколько элементов окажется в rest после first, *rest = [1, 2, 3, 4]?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "1",
+        "Ошибка",
+        "3",
+        "4"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 23,
+      "prompt": "Какой образец match сработает для списка из трёх элементов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "case [a, *b, c, d]",
+        "case [a, b, c]",
+        "case [a, b]",
+        "case (a, b, c, d)"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 24,
+      "prompt": "Какое имя переменной в match означает «любое значение, не сохранять»?",
+      "answer_type": "short",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "_",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 25,
+      "prompt": "Чем кортеж-запись хуже namedtuple при чтении кода?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson5": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Кортеж нельзя распаковать",
+        "Кортеж изменяемый",
+        "Кортеж хранит только числа",
+        "Поля приходится помнить по позициям"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 26,
+      "prompt": "Что вернёт 'bicycle'[::3]?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "'bicycle'",
+        "'bc'",
+        "'bye'",
+        "'bce'"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 27,
+      "prompt": "Что делает lst[2:5] = [10]?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Поднимает ValueError",
+        "Заменяет три элемента одним",
+        "Вставляет 10 после пятого",
+        "Оставляет список неизменным"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 28,
+      "prompt": "Почему [[0] * 3] * 2 — плохой способ создать матрицу?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Обе строки ссылаются на один и тот же список",
+        "Внешний список нельзя изменить",
+        "Так создаются кортежи",
+        "Числа становятся строками"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 29,
+      "prompt": "Какая структура даёт быстрые вставки и удаления с обоих концов? Напишите имя из collections.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": "deque",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 30,
+      "prompt": "Нужно хранить миллион чисел компактно и без накладных расходов на объекты Python. Что выбрать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t02_lesson6": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "tuple",
+        "set",
+        "array.array",
+        "list"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 92,
+      "prompt": "Представь, что нужно отфильтровать файл на десять гигабайт и обойти результат дважды. Объясни вслух, что выберешь — списковое включение или генераторное выражение — и почему. Что случится при втором обходе генератора и как это исправить?",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t02_lesson4": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 2,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 2,
+      "name": "Голосом: ленивые генераторы",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 4,
+      "rubric_id": 2,
+      "criterion": "Сказано, что генератор ленивый: элементы считаются по одному и не занимают память под весь результат",
+      "weight": 1.0,
+      "positive_example": "«Генератор не хранит миллион строк, он выдаёт их по мере обхода»",
+      "negative_example": "«Генератор — это просто другой синтаксис, память та же»",
+      "active": true
+    },
+    {
+      "id": 5,
+      "rubric_id": 2,
+      "criterion": "Объяснено, что второй обход пустого исчерпанного генератора не вернёт ничего, потому что он одноразовый",
+      "weight": 1.0,
+      "positive_example": "«После первого обхода генератор исчерпан, второй цикл промолчит»",
+      "negative_example": "«Генератор можно обходить сколько угодно раз»",
+      "active": true
+    },
+    {
+      "id": 6,
+      "rubric_id": 2,
+      "criterion": "Предложено решение: обернуть в `list` (если память позволяет) или создавать генератор заново",
+      "weight": 1.0,
+      "positive_example": "«Сделаю list(gen) один раз или буду строить генератор заново на каждый проход»",
+      "negative_example": "«Просто вызову list(gen) после первого обхода»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

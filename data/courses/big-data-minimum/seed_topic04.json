@@ -1,0 +1,533 @@
+{
+  "course": "Теоретический минимум по Big Data",
+  "topic": {
+    "number": 4,
+    "title": "Регрессия и ближайшие соседи",
+    "intro": "Разберём, как предсказывать числа, обучать модель градиентным спуском и искать непохожие объекты.",
+    "survey": {
+      "level_key": "t04_level",
+      "level_question": "Насколько ты знаком с темой «Регрессия и ближайшие соседи»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t04_b1",
+          "title": "Линейная регрессия и градиентный спуск",
+          "question": "Насколько уверенно ты разбираешься в теме «линейная регрессия и градиентный спуск»?",
+          "example": "Наименьшие квадраты и итеративное обучение.",
+          "concepts": [
+            "t04_lesson10"
+          ]
+        },
+        {
+          "key": "t04_b2",
+          "title": "Коэффициенты и корреляция",
+          "question": "Насколько уверенно ты разбираешься в теме «коэффициенты и корреляция»?",
+          "example": "Смысл коэффициентов, масштаб, мультиколлинеарность и корреляция.",
+          "concepts": [
+            "t04_lesson11"
+          ]
+        },
+        {
+          "key": "t04_b3",
+          "title": "kNN и обнаружение аномалий",
+          "question": "Насколько уверенно ты разбираешься в теме «knn и обнаружение аномалий»?",
+          "example": "Голосование соседей, выбор k и поиск непохожих объектов.",
+          "concepts": [
+            "t04_lesson12"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t04_b1",
+        "t04_b2"
+      ],
+      "foundation": [
+        "t04_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t04_lesson10",
+      "name": "Линейная регрессия и градиентный спуск",
+      "difficulty": 0.6,
+      "description": "Наименьшие квадраты и итеративное обучение.",
+      "source_url": null,
+      "topic_id": 4,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Линия наилучшего соответствия"
+        },
+        {
+          "id": "sec2",
+          "title": "Градиентный спуск"
+        }
+      ]
+    },
+    {
+      "id": "t04_lesson11",
+      "name": "Коэффициенты и корреляция",
+      "difficulty": 0.6,
+      "description": "Смысл коэффициентов, масштаб, мультиколлинеарность и корреляция.",
+      "source_url": null,
+      "topic_id": 4,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Коэффициенты"
+        },
+        {
+          "id": "sec2",
+          "title": "Корреляция"
+        }
+      ]
+    },
+    {
+      "id": "t04_lesson12",
+      "name": "kNN и обнаружение аномалий",
+      "difficulty": 0.6,
+      "description": "Голосование соседей, выбор k и поиск непохожих объектов.",
+      "source_url": null,
+      "topic_id": 4,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Метод k ближайших соседей"
+        },
+        {
+          "id": "sec2",
+          "title": "Обнаружение аномалий"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t04_lesson10",
+      "to_id": "t04_lesson11",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t04_lesson11",
+      "to_id": "t04_lesson12",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 46,
+      "prompt": "Что минимизирует метод наименьших квадратов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Сумму коэффициентов",
+        "Корреляцию признаков",
+        "Сумму квадратов отклонений прогноза от фактических значений",
+        "Число признаков"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 47,
+      "prompt": "Куда двигает параметры градиентный спуск?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "К среднему значению признака",
+        "В сторону уменьшения функции потерь",
+        "В сторону увеличения ошибки",
+        "Случайным образом"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 48,
+      "prompt": "Что произойдёт при слишком большой скорости обучения?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Обучение может разойтись",
+        "Модель станет линейной",
+        "Признаки перестанут масштабироваться",
+        "Появится больше данных"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 49,
+      "prompt": "Как называется параметр α, задающий размер шага в градиентном спуске? Два слова через дефис или пробел.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "скорость обучения",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 50,
+      "prompt": "Остатки регрессии обнаруживают явную кривую. О чём это говорит?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Коэффициенты равны нулю",
+        "Метрика посчитана неверно",
+        "Линейная модель не уловила нелинейную связь",
+        "Данных слишком много"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 51,
+      "prompt": "Что означает коэффициент регрессии, равный нулю?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Модель не обучилась",
+        "При контроле остальных переменных вклад не обнаружен",
+        "Признак обязательно удалить",
+        "Связь строго отрицательная"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 52,
+      "prompt": "Почему коэффициенты разных признаков нельзя сравнивать без стандартизации?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Они выражены в разных единицах измерения",
+        "Они всегда отрицательные",
+        "Они не имеют знака",
+        "Они зависят от числа строк"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 53,
+      "prompt": "Что такое мультиколлинеарность?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Большое число наблюдений",
+        "Нелинейная связь с откликом",
+        "Отсутствие выбросов",
+        "Сильная корреляция между предикторами"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 54,
+      "prompt": "Какая корреляция измеряет только линейную связь и обозначается буквой r? Напишите фамилию.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "Пирсон",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 55,
+      "prompt": "Корреляция между продажами мороженого и утоплениями высокая. Какой вывод корректен?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson11": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Данные обязательно ошибочны",
+        "Связь может объясняться третьей переменной, например жарой",
+        "Мороженое вызывает утопления",
+        "Корреляция всегда означает причинность"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 56,
+      "prompt": "Как kNN предсказывает класс объекта?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Голосованием k ближайших известных объектов",
+        "Строит дерево решений",
+        "Решает систему уравнений",
+        "Считает корреляцию"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 57,
+      "prompt": "Что будет при слишком малом k?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Слишком гладкие границы",
+        "Модель перестанет обучаться",
+        "Признаки не нужно масштабировать",
+        "Высокая чувствительность к шуму"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 58,
+      "prompt": "Почему kNN страдает в многомерном пространстве?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Классы исчезают",
+        "Нужно больше деревьев",
+        "Расстояния между объектами становятся малоразличимыми",
+        "Нельзя вычислить евклидово расстояние"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 59,
+      "prompt": "Как называется эффект потери смысла расстояний в многомерном пространстве? Два слова.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [],
+      "answer": "проклятие размерности",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 60,
+      "prompt": "Признак аномалии — объект далеко от всех соседей. Что это может означать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t04_lesson12": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Ошибку датчика, мошенничество или новый сегмент",
+        "Только ошибку в данных",
+        "Что модель переобучена",
+        "Что признаков слишком мало"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 94,
+      "prompt": "Объясни вслух, как работает градиентный спуск в линейной регрессии: зачем нужен градиент, что задаёт скорость обучения и что будет при слишком большом и слишком маленьком шаге.",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t04_lesson10": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": null,
+      "rubric_id": 4,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 4,
+      "name": "Голосом: градиентный спуск",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 10,
+      "rubric_id": 4,
+      "criterion": "Сказано, что градиент показывает направление роста ошибки, а шаг идёт в противоположную сторону",
+      "weight": 1.0,
+      "positive_example": "«Градиент указывает, куда ошибка растёт, поэтому движемся минус градиент»",
+      "negative_example": "«Градиент — это сама ошибка модели»",
+      "active": true
+    },
+    {
+      "id": 11,
+      "rubric_id": 4,
+      "criterion": "Скорость обучения названа размером шага: большая — прыжки и расходимость, маленькая — долгое обучение",
+      "weight": 1.0,
+      "positive_example": "«С большим шагом можно перескочить минимум и разойтись»",
+      "negative_example": "«Скорость обучения — сколько эпох обучать»",
+      "active": true
+    },
+    {
+      "id": 12,
+      "rubric_id": 4,
+      "criterion": "Упомянуто, что процесс повторяется до сходимости и останавливается по изменению ошибки/числу итераций",
+      "weight": 1.0,
+      "positive_example": "«Крутим шаги, пока ошибка перестанет заметно падать»",
+      "negative_example": "«Достаточно одного шага, дальше спуск не нужен»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

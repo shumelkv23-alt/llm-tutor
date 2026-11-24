@@ -30,6 +30,12 @@ BASE = f"/api/courses/{ISIT}/lesson"
 PUBLISHED_LESSONS = 16
 
 
+@pytest.fixture(autouse=True)
+def _visible_builtins(visible_builtins):
+    """Курс проходится через веб: ИСИТ должен быть виден как у ученика."""
+    return visible_builtins
+
+
 def _course() -> CourseData:
     course = get_course(ISIT)
     assert course is not None, "курс isit-ml не зарегистрирован"

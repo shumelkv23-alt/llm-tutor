@@ -1,6 +1,7 @@
 """Запись на курс и «Мои курсы» (Срез 39)."""
 
 import sqlite3
+from dataclasses import replace
 
 import pytest
 
@@ -8,11 +9,20 @@ from legacy_course import load_course, load_seed
 from llm_tutor.db import repos
 from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.core.overview import course_progress
-from llm_tutor.web import accounts
+from llm_tutor.web import accounts, courses as registry
 from llm_tutor.web.cli import main as cli_main
 
 from llm_tutor.web.courses import COURSES as _COURSES, course_data as _course_data
 from llm_tutor.web.courses import visible_courses
+
+
+@pytest.fixture(autouse=True)
+def visible_builtin(monkeypatch):
+    """Механика записи проверяется на mlcourse, а он теперь скрыт из списков."""
+    shown = replace(_COURSES[0], visible=True)
+    all_courses = (shown, *registry.COURSES[1:])
+    monkeypatch.setattr(registry, "COURSES", all_courses)
+    monkeypatch.setattr(registry, "_BY_ID", {course.id: course for course in all_courses})
 
 # Занятий в открытых ученикам модулях (неопубликованные — «скоро», срез 55).
 _PUBLISHED = {t.number for t in _course_data(_COURSES[0]).topics if t.published}

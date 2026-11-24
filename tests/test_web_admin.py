@@ -1,11 +1,14 @@
 """Админка: роль, доступ, меню, CLI (Срез 63)."""
 
+import re
 import sqlite3
+from dataclasses import replace
 
 import httpx
 import pytest
 
 from llm_tutor.web import accounts, api_admin, security
+from llm_tutor.web import courses as registry
 from llm_tutor.web.cli import main as cli_main
 
 ANN = {"email": "ann@example.com", "name": "Аня", "password": "секретный-пароль"}
@@ -24,6 +27,19 @@ def _set_admin(web_app, email: str, value: bool = True) -> None:
 async def _sign_up(client, person: dict) -> None:
     response = await client.post("/api/auth/register", json=person)
     assert response.status_code == 201
+
+
+@pytest.fixture(autouse=True)
+def visible_mlcourse(monkeypatch):
+    """Аналитике нужен курс, по которому считать: здесь mlcourse снова видим.
+
+    Скрытие встроенных курсов проверяют тесты реестра и каталога; тесты админки
+    про воронку, поиск и карточку ученика должны иметь по чему считать.
+    """
+    shown = replace(registry.COURSES[0], visible=True)
+    all_courses = (shown, *registry.COURSES[1:])
+    monkeypatch.setattr(registry, "COURSES", all_courses)
+    monkeypatch.setattr(registry, "_BY_ID", {course.id: course for course in all_courses})
 
 
 @pytest.fixture
@@ -168,6 +184,16 @@ async def test_admin_menu_item_only_for_admins(admin, web_app) -> None:
 
     assert 'data-nav="admin"' in page
     assert 'href="/admin"' in home
+    # Прямой вход в правку курсов — отдельным пунктом меню.
+    assert 'href="/admin/courses"' in home
+
+
+async def test_courses_editor_nav_item_is_current_there(admin) -> None:
+    """На страницах редактора подсвечен «Редактор курсов», а не «Админка»."""
+    page = (await admin.get("/admin/courses")).text
+
+    current = re.findall(r'<a [^>]*data-nav="(\w+)"[^>]*aria-current="page"', page)
+    assert current == ["admin_courses"]
 
 
 async def test_plain_student_and_guest_have_no_admin_menu_item(student, web_app) -> None:

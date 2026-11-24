@@ -1,0 +1,533 @@
+{
+  "course": "Теоретический минимум по Big Data",
+  "topic": {
+    "number": 6,
+    "title": "Нейросети и эксперименты",
+    "intro": "Закончим нейросетями и тем, как проверять решения на людях: A/B-тесты и баланс исследования и использования.",
+    "survey": {
+      "level_key": "t06_level",
+      "level_question": "Насколько ты знаком с темой «Нейросети и эксперименты»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t06_b1",
+          "title": "Устройство нейронной сети",
+          "question": "Насколько уверенно ты разбираешься в теме «устройство нейронной сети»?",
+          "example": "Нейроны, слои, веса и прямой проход.",
+          "concepts": [
+            "t06_lesson16"
+          ]
+        },
+        {
+          "key": "t06_b2",
+          "title": "Активации и обучение сети",
+          "question": "Насколько уверенно ты разбираешься в теме «активации и обучение сети»?",
+          "example": "Нелинейность, обратное распространение и гиперпараметры.",
+          "concepts": [
+            "t06_lesson17"
+          ]
+        },
+        {
+          "key": "t06_b3",
+          "title": "A/B-тестирование и многорукий бандит",
+          "question": "Насколько уверенно ты разбираешься в теме «a/b-тестирование и многорукий бандит»?",
+          "example": "Сравнение вариантов, статистическая значимость и epsilon-жадная стратегия.",
+          "concepts": [
+            "t06_lesson18"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t06_b1",
+        "t06_b2"
+      ],
+      "foundation": [
+        "t06_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t06_lesson16",
+      "name": "Устройство нейронной сети",
+      "difficulty": 0.8,
+      "description": "Нейроны, слои, веса и прямой проход.",
+      "source_url": null,
+      "topic_id": 6,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Нейроны и слои"
+        },
+        {
+          "id": "sec2",
+          "title": "Прямой проход"
+        }
+      ]
+    },
+    {
+      "id": "t06_lesson17",
+      "name": "Активации и обучение сети",
+      "difficulty": 0.8,
+      "description": "Нелинейность, обратное распространение и гиперпараметры.",
+      "source_url": null,
+      "topic_id": 6,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Правила активации"
+        },
+        {
+          "id": "sec2",
+          "title": "Обучение сети"
+        }
+      ]
+    },
+    {
+      "id": "t06_lesson18",
+      "name": "A/B-тестирование и многорукий бандит",
+      "difficulty": 0.8,
+      "description": "Сравнение вариантов, статистическая значимость и epsilon-жадная стратегия.",
+      "source_url": null,
+      "topic_id": 6,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "A/B-тестирование"
+        },
+        {
+          "id": "sec2",
+          "title": "Эпсилон-жадная стратегия"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t06_lesson16",
+      "to_id": "t06_lesson17",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t06_lesson17",
+      "to_id": "t06_lesson18",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 76,
+      "prompt": "Что делает нейрон с входными значениями?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Умножает на веса, складывает с порогом и применяет активацию",
+        "Сортирует их",
+        "Удаляет выбросы",
+        "Считает корреляцию"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 77,
+      "prompt": "Сколько выходов у сети для распознавания десяти цифр?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "1",
+        "2",
+        "Зависит от числа скрытых слоёв",
+        "10"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 78,
+      "prompt": "Что такое прямой проход?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Разбиение данных на батчи",
+        "Вычисление ошибки на тесте",
+        "Последовательное вычисление выхода от входного слоя к выходному",
+        "Обновление весов"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 79,
+      "prompt": "Какая функция превращает выходы сети в распределение вероятностей для нескольких классов? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "softmax",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 80,
+      "prompt": "Почему нейросеть трудно интерпретировать?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson16": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Знания распределены по множеству весов и не сводятся к простым правилам",
+        "Она всегда линейна",
+        "Она не хранит параметры",
+        "Она работает только с изображениями"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 81,
+      "prompt": "Что произойдёт без нелинейной активации?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Сеть обучится быстрее",
+        "Веса исчезнут",
+        "Выход станет вероятностью",
+        "Несколько слоёв сведутся к одному линейному преобразованию"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 82,
+      "prompt": "Что такое обратное распространение ошибки?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Сортировка данных",
+        "Удаление нейронов",
+        "Передача градиента потерь от выхода к входу для обновления весов",
+        "Повторный прямой проход"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 83,
+      "prompt": "Что такое эпоха?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Один гиперпараметр",
+        "Один полный проход по обучающим данным",
+        "Один нейрон",
+        "Один слой"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 84,
+      "prompt": "Какая активация равна max(0, x)? Напишите имя.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "ReLU",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 85,
+      "prompt": "Почему sigmoid в глубокой сети замедляет обучение?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson17": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Она не имеет производной",
+        "Она всегда возвращает 0",
+        "Она увеличивает размер батча",
+        "Она насыщается, и градиент становится малым"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 86,
+      "prompt": "Зачем в A/B-тесте случайно делят аудиторию на группы?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Чтобы повысить конверсию обеих групп",
+        "Чтобы ускорить раскатку",
+        "Чтобы сравнение было честным и не смешивалось с другими различиями",
+        "Чтобы уменьшить число пользователей"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 87,
+      "prompt": "Что означает статистическая значимость результата A/B-теста?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Обе версии одинаковы",
+        "Разница вряд ли объясняется случайностью",
+        "Разница обязательно большая",
+        "Тест можно остановить"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 88,
+      "prompt": "Что делает epsilon-жадная стратегия?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "С вероятностью ε исследует случайный вариант, иначе выбирает лучший",
+        "Всегда выбирает лучший вариант",
+        "Всегда выбирает случайный вариант",
+        "Сравнивает две группы статистическим тестом"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 89,
+      "prompt": "Как называется проблема распределения ресурсов между вариантами с неизвестной наградой? Два слова.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [],
+      "answer": "многорукий бандит",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 90,
+      "prompt": "В чём главный компромисс A/B-теста по сравнению с бандитом?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.7,
+      "options": [
+        "Тест нельзя провести на людях",
+        "Тест всегда даёт ложноположительный результат",
+        "Тест тратит трафик на худший вариант, пока не завершится",
+        "Тест не требует метрики"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 96,
+      "prompt": "Объясни вслух, чем A/B-тест отличается от эпсилон-жадной стратегии многорукого бандита: что оптимизирует каждый подход и в какой ситуации выберешь какой.",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t06_lesson18": 1.0
+      },
+      "difficulty": 0.55,
+      "options": [],
+      "answer": null,
+      "rubric_id": 6,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 6,
+      "name": "Голосом: A/B и бандит",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 16,
+      "rubric_id": 6,
+      "criterion": "Сказано, что A/B-тест заранее делит трафик и оценивает варианты после набора данных",
+      "weight": 1.0,
+      "positive_example": "«В A/B мы фиксируем доли и сравниваем метрики в конце эксперимента»",
+      "negative_example": "«A/B-тест сам перераспределяет трафик на лучший вариант»",
+      "active": true
+    },
+    {
+      "id": 17,
+      "rubric_id": 6,
+      "criterion": "Объяснён компромисс исследования и использования в бандите: epsilon — доля случайных проб, остальное — лучший вариант",
+      "weight": 1.0,
+      "positive_example": "«Девяносто процентов трафика — лучший вариант, десять — исследование»",
+      "negative_example": "«Бандит всегда выбирает лучший вариант, исследования нет»",
+      "active": true
+    },
+    {
+      "id": 18,
+      "rubric_id": 6,
+      "criterion": "Приведены уместные случаи: A/B — проверка гипотезы и стабильный продукт, бандит — много быстрых решений и дорогая ошибка",
+      "weight": 1.0,
+      "positive_example": "«Для рекламы с тысячами показов возьму бандита, для проверки новой формы — A/B»",
+      "negative_example": "Оба подхода названы взаимозаменяемыми без условий",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

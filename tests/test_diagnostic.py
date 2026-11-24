@@ -83,6 +83,14 @@ def test_open_item_needs_rubric_mode(conn, settings) -> None:
     assert diagnostic._available_items(conn, include_rubric=False) == []
 
 
+def test_spoken_item_needs_rubric_mode(conn, settings) -> None:
+    """Голосовой ответ проверяется рубрикой, как открытый, — не автопроверкой."""
+    _concept(conn, "a")
+    _item(conn, item_id=1, concept_id="a", answer_type="spoken", answer=None)
+
+    assert diagnostic._available_items(conn, include_rubric=False) == []
+
+
 def test_prefers_item_closest_to_current_mastery(conn, settings) -> None:
     """Целевая сложность ≈ текущему владению — задание информативнее."""
     _concept(conn, "a")

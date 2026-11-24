@@ -14,7 +14,7 @@ def web_llm():
 
 
 @pytest.fixture
-async def enrolled(student):
+async def enrolled(visible_builtins, student):
     assert (await student.post(f"/api/courses/{COURSE}/enroll", json={})).status_code == 200
     await _finish(student)
     return student

@@ -1,0 +1,533 @@
+{
+  "course": "Теоретический минимум по Big Data",
+  "topic": {
+    "number": 1,
+    "title": "Основы Data Science",
+    "intro": "Начнём с базы: какие бывают данные и задачи, как измерять качество модели и почему нельзя проверять её на обучающей выборке.",
+    "survey": {
+      "level_key": "t01_level",
+      "level_question": "Насколько ты знаком с темой «Основы Data Science»?",
+      "level_options": [
+        "С нуля",
+        "Немного знаю",
+        "Уверенно"
+      ],
+      "blocks": [
+        {
+          "key": "t01_b1",
+          "title": "Данные, признаки и подготовка",
+          "question": "Насколько уверенно ты разбираешься в теме «данные, признаки и подготовка»?",
+          "example": "Таблица данных, типы признаков, пропуски и выбросы.",
+          "concepts": [
+            "t01_lesson1"
+          ]
+        },
+        {
+          "key": "t01_b2",
+          "title": "Типы машинного обучения",
+          "question": "Насколько уверенно ты разбираешься в теме «типы машинного обучения»?",
+          "example": "Обучение без учителя, с учителем и с подкреплением.",
+          "concepts": [
+            "t01_lesson2"
+          ]
+        },
+        {
+          "key": "t01_b3",
+          "title": "Метрики и валидация",
+          "question": "Насколько уверенно ты разбираешься в теме «метрики и валидация»?",
+          "example": "Матрица ошибок, precision/recall, MAE/RMSE и кросс-валидация.",
+          "concepts": [
+            "t01_lesson3"
+          ]
+        }
+      ],
+      "assumed_by_confident": [
+        "t01_b1",
+        "t01_b2"
+      ],
+      "foundation": [
+        "t01_b1"
+      ]
+    },
+    "active": true,
+    "published": true
+  },
+  "nodes": [
+    {
+      "id": "t01_lesson1",
+      "name": "Данные, признаки и подготовка",
+      "difficulty": 0.3,
+      "description": "Таблица данных, типы признаков, пропуски и выбросы.",
+      "source_url": null,
+      "topic_id": 1,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Данные и признаки"
+        },
+        {
+          "id": "sec2",
+          "title": "Пропуски и выбросы"
+        }
+      ]
+    },
+    {
+      "id": "t01_lesson2",
+      "name": "Типы машинного обучения",
+      "difficulty": 0.3,
+      "description": "Обучение без учителя, с учителем и с подкреплением.",
+      "source_url": null,
+      "topic_id": 1,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Обучение без учителя"
+        },
+        {
+          "id": "sec2",
+          "title": "Обучение с учителем и подкреплением"
+        }
+      ]
+    },
+    {
+      "id": "t01_lesson3",
+      "name": "Метрики и валидация",
+      "difficulty": 0.3,
+      "description": "Матрица ошибок, precision/recall, MAE/RMSE и кросс-валидация.",
+      "source_url": null,
+      "topic_id": 1,
+      "active": true,
+      "sections": [
+        {
+          "id": "sec1",
+          "title": "Метрики"
+        },
+        {
+          "id": "sec2",
+          "title": "Валидация"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from_id": "t01_lesson1",
+      "to_id": "t01_lesson2",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    },
+    {
+      "from_id": "t01_lesson2",
+      "to_id": "t01_lesson3",
+      "type": "requires",
+      "hard": false,
+      "weight": 0.3
+    }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "prompt": "Что означает «утечка целевой переменной» в признаках?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Целевая переменная удалена из таблицы",
+        "Все пропуски заполнены средним",
+        "Признаки приведены к одной шкале",
+        "В признаки попадает информация, которой модель не будет располагать при прогнозе"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 2,
+      "prompt": "Как называется столбец таблицы, описывающий свойство объекта? Напишите одно слово.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "признак",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 3,
+      "prompt": "Почему удаление всех строк с пропусками может быть плохим решением?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Строки становятся дубликатами",
+        "Выборка уменьшается и может сместиться",
+        "Пропуски исчезают не полностью",
+        "Python не поддерживает удаление строк"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 4,
+      "prompt": "Что делать с выбросом в первую очередь?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Выяснить причину его появления",
+        "Всегда удалить",
+        "Заменить нулём",
+        "Добавить ещё один такой же"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 5,
+      "prompt": "В каком случае заполнение пропусков медианой предпочтительнее среднего?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Когда пропусков нет",
+        "Когда признак категориальный",
+        "Когда строк больше столбцов",
+        "Когда распределение скошено и есть выбросы"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 6,
+      "prompt": "Чем обучение с учителем отличается от обучения без учителя?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Не требует данных",
+        "Всегда строит графы",
+        "Есть примеры с известным правильным ответом",
+        "Используется только для текстов"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 7,
+      "prompt": "Предсказание цены квартиры — это какая задача?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [
+        "Обучение с подкреплением",
+        "Регрессия",
+        "Классификация",
+        "Кластеризация"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 8,
+      "prompt": "Что делает обучение с подкреплением?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [
+        "Ищет стратегию, максимизирующую награду агента",
+        "Группирует похожие объекты",
+        "Сжимает признаки",
+        "Строит ассоциативные правила"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 9,
+      "prompt": "Как называется группировка объектов без известных меток? Напишите одно слово.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.3,
+      "options": [],
+      "answer": "кластеризация",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 10,
+      "prompt": "Почему нельзя заранее сказать, что один алгоритм лучше всех?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson2": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Лучшим всегда является самый сложный",
+        "Выбор алгоритма не влияет на результат",
+        "Качество зависит от данных, задачи и требований",
+        "Все алгоритмы дают одинаковый результат"
+      ],
+      "answer": "2",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 11,
+      "prompt": "Какую метрику выбрать, если важно не пропустить больного, а ложные тревоги допустимы?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "R²",
+        "Recall",
+        "Precision",
+        "Accuracy"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 12,
+      "prompt": "Почему accuracy обманчива при дисбалансе классов?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Модель, всегда предсказывающая частый класс, получает высокую accuracy",
+        "Accuracy требует числовой ответ",
+        "Accuracy не считается на тесте",
+        "Accuracy зависит от масштаба признаков"
+      ],
+      "answer": "0",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec1",
+      "final": false
+    },
+    {
+      "id": 13,
+      "prompt": "Что такая кросс-валидация?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [
+        "Обучение на всех данных и проверка на них же",
+        "Разделение данных на два класса",
+        "Удаление выбросов перед обучением",
+        "Обучение на k−1 частях и проверка на оставшейся, повторённое k раз"
+      ],
+      "answer": "3",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 14,
+      "prompt": "Какая метрика регрессии измеряется в единицах целевой переменной и штрафует крупные промахи сильнее MAE? Напишите аббревиатуру.",
+      "answer_type": "short",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.5,
+      "options": [],
+      "answer": "RMSE",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    },
+    {
+      "id": 15,
+      "prompt": "Модель показала accuracy 0.99 на обучении и 0.55 на тесте. Что это?",
+      "answer_type": "choice",
+      "concept_weights": {
+        "t01_lesson3": 1.0
+      },
+      "difficulty": 0.6,
+      "options": [
+        "Ошибка в метрике",
+        "Переобучение",
+        "Недообучение",
+        "Нормальный результат"
+      ],
+      "answer": "1",
+      "rubric_id": null,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": null,
+      "final": true
+    },
+    {
+      "id": 91,
+      "prompt": "У тебя таблица с числовым признаком: пять процентов пропусков и один явный выброс. Объясни вслух, что сделаешь с пропусками и почему, и как выброс повлияет на среднее и медиану.",
+      "answer_type": "spoken",
+      "concept_weights": {
+        "t01_lesson1": 1.0
+      },
+      "difficulty": 0.4,
+      "options": [],
+      "answer": null,
+      "rubric_id": 1,
+      "starter": null,
+      "setup": null,
+      "tests": null,
+      "solution": null,
+      "active": true,
+      "section": "sec2",
+      "final": false
+    }
+  ],
+  "rubrics": [
+    {
+      "id": 1,
+      "name": "Голосом: пропуски и выбросы",
+      "active": true
+    }
+  ],
+  "criteria": [
+    {
+      "id": 1,
+      "rubric_id": 1,
+      "criterion": "Предложена осмысленная стратегия для пропусков (удалить редкие строки или заполнить медианой/средним) с причиной",
+      "weight": 1.0,
+      "positive_example": "«Пять процентов — немного: заполню медианой, чтобы не терять строки»",
+      "negative_example": "«Удалю все строки с пропусками, потому что так проще» без оценки доли",
+      "active": true
+    },
+    {
+      "id": 2,
+      "rubric_id": 1,
+      "criterion": "Сказано, что медиана устойчива к выбросам, а среднее смещается к выбросу",
+      "weight": 1.0,
+      "positive_example": "«Один выброс сильно тянет среднее, а медиана почти не меняется»",
+      "negative_example": "«Выброс одинаково влияет на среднее и медиану»",
+      "active": true
+    },
+    {
+      "id": 3,
+      "rubric_id": 1,
+      "criterion": "Упомянуто, что выброс стоит проверить (ошибка ввода или реальное значение), а не удалять вслепую",
+      "weight": 1.0,
+      "positive_example": "«Сначала посмотрю, откуда значение: опечатка это или настоящий случай»",
+      "negative_example": "«Всегда удаляю всё, что дальше двух сигм»",
+      "active": true
+    }
+  ],
+  "legacy": {}
+}

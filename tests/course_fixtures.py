@@ -49,18 +49,36 @@ def load_lessons(conn) -> Course:
     return load_course(conn, LESSON_SEED_PATHS)
 
 
-def use_lessons_course(monkeypatch) -> None:
-    """Веб-курс ``mlcourse`` — из фикстуры занятий, а не из data/ (срез 55).
+def show_builtin_course(monkeypatch) -> None:
+    """Показать встроенный ``mlcourse`` в каталоге ученика.
 
-    Подменяется реестр курсов: список курсов читается модулем ``courses`` по
-    имени на каждом обращении, поэтому достаточно заменить ``COURSES`` и
-    ``_BY_ID`` здесь.
+    В бою курс скрыт (``visible=False``) — его место заняли два новых курса, —
+    но браузерные сценарии записываются именно на него: контент и id заданий
+    на нём стабильны. Прятать его в тестах незачем.
     """
     from dataclasses import replace
 
     from llm_tutor.web import courses
 
-    course = replace(courses.COURSES[0], seed_paths=tuple(LESSON_SEED_PATHS))
+    first, *rest = courses.COURSES
+    shown = replace(first, visible=True)
+    monkeypatch.setattr(courses, "COURSES", (shown, *rest))
+    monkeypatch.setitem(courses._BY_ID, shown.id, shown)
+
+
+def use_lessons_course(monkeypatch) -> None:
+    """Веб-курс ``mlcourse`` — из фикстуры занятий, а не из data/ (срез 55).
+
+    Подменяется реестр курсов: список курсов читается модулем ``courses`` по
+    имени на каждом обращении, поэтому достаточно заменить ``COURSES`` и
+    ``_BY_ID`` здесь. Курс при этом виден в каталоге — иначе записаться на
+    него из браузера нельзя.
+    """
+    from dataclasses import replace
+
+    from llm_tutor.web import courses
+
+    course = replace(courses.COURSES[0], seed_paths=tuple(LESSON_SEED_PATHS), visible=True)
     monkeypatch.setattr(courses, "COURSES", (course,))
     monkeypatch.setitem(courses._BY_ID, course.id, course)
 

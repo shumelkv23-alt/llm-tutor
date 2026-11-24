@@ -37,7 +37,8 @@ def answer_kind(item: Item, text: str) -> AnswerKind:
         looks_question = stripped.endswith("?") or lowered.startswith(_QUESTION_STARTS)
         is_short = len(stripped.split()) <= SHORT_ANSWER_MAX_WORDS
         return "answer" if is_short and not looks_question else "chat"
-    # Открытое и код-задание — развёрнутый ответ: вопросом считаем только «?».
+    # Открытое, голосовое и код-задание — развёрнутый ответ: вопросом считаем
+    # только «?».
     return "chat" if stripped.endswith("?") else "answer"
 
 

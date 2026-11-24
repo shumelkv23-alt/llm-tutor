@@ -1543,10 +1543,13 @@ dialog p {
     gap: 8px;
   }
 
+  /* У админа пунктов шесть, и с прежними зазорами и боковыми отступами они не
+     влезали в 320px, растягивая страницу («Редактор курсов» шире соседей). */
   .main-nav {
     order: 3;
     width: 100%;
     margin: 0;
+    gap: 2px;
     justify-content: space-between;
   }
 
@@ -1557,7 +1560,7 @@ dialog p {
     flex-direction: column;
     justify-content: center;
     gap: 2px;
-    padding: 6px 2px;
+    padding: 6px 0;
     font-size: 11px;
     text-align: center;
   }
@@ -1589,14 +1592,21 @@ dialog p {
 }
 
 @media (max-width: 399px) {
-  /* Шесть пунктов меню у админа на 320 px: подпись помещается в ячейку, а не обрезается. */
+  /* У админа пунктов семь («Проект» из master и «Редактор курсов» из admin): в
+     одну строку на 320 px ячейка ~40 px, и подписи обрезались. Меню идёт в два
+     ряда по четыре, длинная подпись переносится внутри ячейки. */
   .main-nav {
-    gap: 2px;
+    flex-wrap: wrap;
+    gap: 4px 2px;
   }
 
   .main-nav a {
-    padding: 6px 0;
+    flex: 1 0 calc(25% - 2px);
+    padding: 6px 2px;
     font-size: 10px;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 }
 

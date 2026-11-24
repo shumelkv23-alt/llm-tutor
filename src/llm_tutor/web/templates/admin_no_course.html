@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block eyebrow %}Админка{% endblock %}
+{% block heading %}{{ heading }}{% endblock %}
+{% block description %}{{ description }}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block content %}
+
+<section class="panel empty">
+  <strong>Курсов пока нет</strong>
+  Аналитика считается по курсу. Создайте курс в редакторе — он появится и здесь.
+</section>
+
+<p><a class="btn primary" href="/admin/courses">Открыть редактор курсов</a></p>
+
+{% endblock %}

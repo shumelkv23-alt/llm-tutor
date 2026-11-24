@@ -159,7 +159,7 @@ async def test_unsubscribe_api_turns_emails_off(web_app, web_settings, student) 
 
 
 async def test_send_reminders_walks_enrolled_students(
-    web_app, web_settings, student, monkeypatch
+    visible_builtins, web_app, web_settings, student, monkeypatch
 ) -> None:
     """Полный обход: аккаунты, запись, БД ученика и dry-run без отправки."""
     course = courses.COURSES[0]

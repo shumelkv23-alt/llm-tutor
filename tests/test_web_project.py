@@ -36,7 +36,7 @@ def web_llm():
 
 
 @pytest.fixture
-async def ready(student):
+async def ready(visible_builtins, student):
     """Ученик записан на mlcourse."""
     response = await student.post("/api/courses/mlcourse/enroll", json={})
     assert response.status_code == 200, response.text
@@ -112,7 +112,7 @@ async def test_overview_states(ready, web_app) -> None:
     assert items["mlcourse"]["state"] == "done"
 
 
-async def test_overview_not_enrolled(student) -> None:
+async def test_overview_not_enrolled(visible_builtins, student) -> None:
     items = await _projects(student)
     assert items["mlcourse"]["state"] == "not_enrolled" and items["mlcourse"]["project"] is None
 
