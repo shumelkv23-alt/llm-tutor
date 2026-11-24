@@ -315,20 +315,28 @@ def main(argv: list[str] | None = None) -> int:
         help=f"путь к БД материалов (по умолчанию MATERIALS_DB_PATH или {default_db})",
     )
     args = parser.parse_args(argv)
+    # URL из буфера обмена или списка на Windows часто приходит с \r\n:
+    # без strip httpx падает на непечатаемом символе.
+    source = args.source.strip()
+    source_url = args.source_url.strip() if args.source_url else None
+    if not source:
+        parser.error("пустой источник")
+    if args.db.strip():
+        args.db = args.db.strip()
 
     conn = get_conn(args.db)
     try:
         migrate(conn)
-        if args.source.startswith(("http://", "https://")):
-            count = ingest_url(conn, args.source, topic_id=args.topic)
+        if source.startswith(("http://", "https://")):
+            count = ingest_url(conn, source, topic_id=args.topic)
         else:
             count = ingest_file(
-                conn, args.source, source_url=args.source_url, topic_id=args.topic
+                conn, source, source_url=source_url, topic_id=args.topic
             )
     finally:
         conn.close()
 
-    print(f"Загружено чанков: {count} из {args.source}")
+    print(f"Загружено чанков: {count} из {source}")
     return 0
 
 

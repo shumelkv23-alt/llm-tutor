@@ -45,7 +45,28 @@
     wrap.append(tools);
   }
 
+  /** Кнопка чтения конспекта вслух; сам текст берём из уже отрисованного DOM. */
+  function speechToolbar(body) {
+    const tools = document.createElement("div");
+    tools.className = "theory-tools";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "btn ghost icon-only speech-btn";
+    button.setAttribute("aria-label", "Прослушать конспект");
+    button.title = "Прослушать конспект";
+    button.setAttribute("aria-pressed", "false");
+    button.append(window.App.icon("speaker"));
+    button.addEventListener("click", () => {
+      const copy = body.cloneNode(true);
+      copy.querySelectorAll("pre, code, table, .code-block").forEach((node) => node.remove());
+      window.Voice.speak(copy.textContent || "", button);
+    });
+    tools.append(button);
+    return tools;
+  }
+
   function render(state) {
+    window.Voice?.stopSpeaking?.();
     panel.replaceChildren();
     if (state.survey) {
       const empty = document.createElement("div");
@@ -87,6 +108,7 @@
       body.querySelectorAll("pre").forEach(decorateCode);
       const lesson = state.node.lesson;
       if (lesson && lesson.sections.length) article.append(contents(lesson, body));
+      if (window.Voice?.ttsSupported) article.append(speechToolbar(body));
       article.append(body);
     } else {
       const note = document.createElement("p");

@@ -6,7 +6,8 @@
 {% block heading %}{% if sources is defined %}{{ course.title }}{% else %}Курс{% endif %}{% endblock %}
 {% block description %}{% if sources is defined %}Модули, материалы, генерация и публикация.{% else %}Где ученики застревают: воронка по занятиям.{% endif %}{% endblock %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/voice.js') }}" defer></script>
+<script src="{{ static_url('js/admin_courses.js') }}" defer></script>{% endblock %}
 {% block actions %}{% if sources is defined %}<a class="btn" href="/admin/courses">Все курсы</a>{% endif %}{% endblock %}
 {% block content %}
 {% include "_admin_tabs.html" %}
@@ -34,6 +35,7 @@
       <p class="form-error" role="alert" hidden></p>
       <div class="admin-actions">
         <button class="btn primary" type="submit">Сохранить</button>
+        <button class="btn voice-btn" type="button" data-voice="description" hidden>{{ icon('mic') }} Надиктовать описание</button>
         {% if course.status == 'published' %}
         <button class="btn" type="button" data-action="unpublish">Снять с публикации</button>
         {% else %}
@@ -71,6 +73,30 @@
       <label>Ссылка на репозиторий GitHub<input id="source-github" type="url" maxlength="1000" placeholder="https://github.com/user/repo"></label>
       <button class="btn" type="button" data-action="add-github">Добавить репозиторий</button>
     </div>
+    {# Голосовой бриф: преподаватель рассказывает идею курса, текст становится
+       материалом — тем же путём, что и загруженный файл. Показывается только
+       там, где браузер умеет распознавать речь (reveal в admin_courses.js). #}
+    <div class="source-add voice-brief" id="voice-brief" hidden>
+      <h3 class="voice-brief-title">{{ icon('mic') }} Голосовой бриф</h3>
+      <p class="form-hint">Расскажите словами, для кого курс и что в нём. Текст станет материалом курса — генерация будет на него опираться.</p>
+      <button class="btn voice-btn" type="button" id="voice-brief-start" aria-pressed="false">{{ icon('mic') }} Надиктовать</button>
+      <label>Текст брифа<textarea id="voice-brief-text" rows="6" maxlength="10000" placeholder="Для кого курс, что в нём, какие данные и примеры…"></textarea></label>
+      <div class="admin-actions">
+        <button class="btn primary" type="button" id="voice-brief-save">Добавить как источник</button>
+        <button class="btn" type="button" id="voice-brief-clear">Очистить</button>
+      </div>
+      <p class="form-hint">Распознаёт браузер (Chrome/Edge): звук уходит в сервис распознавания, в материалы курса — только текст.</p>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="versions-title">
+    <h2 id="versions-title" class="section-title">Версии</h2>
+    <p class="form-hint">Снимок содержания — course.json, seed-файлы и конспекты. Источники и материалы не входят. Версия снимается автоматически перед публикацией, перегенерацией и удалением модуля, а также перед откатом. Откат не снимает курс с публикации и не откатывает счётчики id.</p>
+    <div class="source-add">
+      <label>Название версии<input id="version-label" maxlength="200" placeholder="например, до правки модуля 3"></label>
+      <button class="btn" type="button" id="version-save">Сохранить версию</button>
+    </div>
+    <ul class="source-list" id="version-list"></ul>
   </section>
 
   {# Структура: из каких модулей состоит курс и что в каждом. Составляется до
@@ -220,6 +246,8 @@
 <p class="notice error" role="alert">{{ broken }}</p>
 {% endif %}
 
+<p><a class="btn" href="/admin/course/export.csv?course={{ admin_course.id }}">Скачать CSV</a></p>
+
 <section class="panel" aria-labelledby="funnel-title">
   <h2 id="funnel-title" class="section-title">Воронка по занятиям</h2>
   <p class="muted admin-note">Откройте модуль, чтобы увидеть занятия. «Дошли» — закрыли занятие или учатся на нём сейчас, «Слабо» — закрыли после двух ошибок.</p>
@@ -249,5 +277,70 @@
   </details>
   {% endfor %}
 </section>
+
+{% if analytics %}
+<section class="panel" aria-labelledby="items-title">
+  <h2 id="items-title" class="section-title">Задания</h2>
+  <p class="muted admin-note">По журналу ответов: сколько раз спрашивали, доля верных и сложность (доля неверных), средние подсказки и время от выдачи до ответа. «Различает» — корреляция задания с общим результатом ученика. Показаны первые {{ analytics.items|length }} заданий по числу ответов.</p>
+  {% if analytics.items %}
+  <div class="table-wrap">
+    <table class="topics-table admin-table">
+      <thead><tr><th scope="col">Задание</th><th scope="col">Ответов</th><th scope="col">Верно</th><th scope="col">Сложность</th><th scope="col">Подсказки</th><th scope="col">Время</th><th scope="col">Различает</th></tr></thead>
+      <tbody>
+        {% for item in analytics.items %}
+        <tr>
+          <td class="admin-prompt"><b>#{{ item.item_id }}</b> {{ item.prompt }}</td>
+          <td>{{ item.attempts }}</td>
+          <td>{% if item.correct_rate is none %}<span class="muted">—</span>{% else %}{{ (item.correct_rate * 100)|round|int }}%{% endif %}</td>
+          <td>{{ item.difficulty_label }}</td>
+          <td>{{ item.hints_label }}</td>
+          <td>{{ item.time_label }}</td>
+          <td>{{ item.discrimination_label }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">Ответов на задания пока нет.</p>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="insights-title">
+  <h2 id="insights-title" class="section-title">Подсказки и повторение</h2>
+  <p><strong>Подсказки:</strong>
+    {% for hints, count in analytics.hints %}
+    {{ hints }} — {{ count }}{% if not loop.last %}, {% endif %}
+    {% else %}
+    <span class="muted">пока нет данных</span>
+    {% endfor %}
+  </p>
+  <p><strong>Повторение:</strong> в расписании {{ analytics.review_total }},
+    готово сейчас {{ analytics.review_due }},
+    просрочено больше суток {{ analytics.review_overdue }},
+    отвечено {{ analytics.review_answered }}{% if analytics.review_adherence is not none %}
+    (в срок {{ (analytics.review_adherence * 100)|round|int }}%){% endif %}.</p>
+  {% if analytics.groups %}
+  <h3>Группы учеников</h3>
+  <div class="table-wrap">
+    <table class="topics-table admin-table">
+      <thead><tr><th scope="col">Группа</th><th scope="col">Учеников</th><th scope="col">Средний прогресс</th><th scope="col">Занятий закрыто</th><th scope="col">Слабых занятий</th></tr></thead>
+      <tbody>
+        {% for group in analytics.groups %}
+        <tr>
+          <th scope="row">{{ group.label }}</th>
+          <td>{{ group.count }}</td>
+          <td>{{ group.avg_percent|round|int }}%</td>
+          <td>{{ group.avg_closed|round(1) }}</td>
+          <td>{{ group.avg_weak|round(1) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  <p class="muted">Данные на {{ format_time(analytics.built_at) }}. Ученики с идущим ходом в этот срез не входят.</p>
+</section>
+{% endif %}
 {% endif %}
 {% endblock %}

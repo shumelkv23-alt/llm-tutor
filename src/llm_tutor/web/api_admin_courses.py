@@ -21,7 +21,7 @@ from pydantic import BaseModel, Field
 
 from llm_tutor.config import Settings
 from llm_tutor.course import store
-from llm_tutor.course.build import check, edit, sources, steps
+from llm_tutor.course.build import check, edit, sources, steps, versions
 from llm_tutor.course.build.schemas import CoursePlan
 from llm_tutor.course.seed import MAX_LESSONS, SeedError
 from llm_tutor.web import accounts, courses
@@ -48,6 +48,8 @@ LOG_ACTIONS = {
     "cancel_generation": "генерация отменена",
     "publish_course": "курс опубликован",
     "unpublish_course": "курс снят с публикации",
+    "save_version": "сохранена версия курса",
+    "restore_version": "курс возвращён к версии",
 }
 
 
@@ -116,6 +118,10 @@ class TheoryBody(BaseModel):
 class IdsBody(BaseModel):
     kind: Literal["item", "rubric", "criterion"]
     count: int = Field(ge=1, le=100)
+
+
+class VersionBody(BaseModel):
+    label: str = Field(default="", max_length=200)
 
 
 def _fail(status: int, message: str, field: str | None = None) -> HTTPException:
@@ -555,6 +561,15 @@ async def generate(
     module_title = body.title or (
         outline.title if outline is not None else f"{course.title}, модуль {body.module}"
     )
+    # Перегенерация затирает готовый модуль: сначала снимок, чтобы было куда
+    # вернуться. Первая генерация (файла ещё нет) версию не создаёт.
+    if edit.module_path(root, body.module).is_file() or regenerate:
+        try:
+            await asyncio.to_thread(
+                versions.snapshot, root, f"перед генерацией модуля {body.module}"
+            )
+        except versions.VersionError:
+            logger.warning("Не удалось сохранить версию перед генерацией курса %s", course_id)
 
     async def runner(cancelled, on_update) -> steps.RunState:
         return await steps.generate_module(
@@ -661,8 +676,19 @@ async def delete_module(
     course = _course(course_id)
     if request.app.state.jobs.running(course_id) is not None:
         raise _fail(409, BUSY)
+    root = _root(course)
+    # Удаление необратимо: снимок до него позволяет вернуть модуль. Нет
+    # модуля — 404 до снимка, чтобы не плодить пустые версии.
+    if not edit.module_path(root, number).is_file():
+        raise _fail(404, f"В курсе нет модуля {number}")
     try:
-        await asyncio.to_thread(edit.delete_module, _root(course), number)
+        await asyncio.to_thread(
+            versions.snapshot, root, f"перед удалением модуля {number}"
+        )
+    except versions.VersionError:
+        logger.warning("Не удалось сохранить версию перед удалением модуля %s", course_id)
+    try:
+        await asyncio.to_thread(edit.delete_module, root, number)
     except store.StoreError as error:
         raise _fail(404, str(error)) from error
     _log(request, admin, "update_course", course_id)
@@ -724,7 +750,10 @@ async def publish(course_id: str, request: Request, admin: User = Depends(admin_
     """Публикация: строгая проверка всего курса, потом флаг и видимость ученикам."""
     course = _course(course_id)
     root = _root(course)
+    if request.app.state.jobs.running(course_id) is not None:
+        raise _fail(409, BUSY)
     try:
+        await asyncio.to_thread(versions.snapshot, root, "перед публикацией")
         await asyncio.to_thread(edit.publish_course, root)
         courses.update_meta(course_id, status="published")
     except (SeedError, store.StoreError) as error:
@@ -740,6 +769,8 @@ async def publish(course_id: str, request: Request, admin: User = Depends(admin_
 async def unpublish(course_id: str, request: Request, admin: User = Depends(admin_user)) -> dict:
     """Снятие с публикации: ученики теряют доступ, их БД и прогресс остаются."""
     course = _course(course_id)
+    if request.app.state.jobs.running(course_id) is not None:
+        raise _fail(409, BUSY)
     await asyncio.to_thread(edit.unpublish_course, _root(course))
     courses.update_meta(course_id, status="draft")
     _log(request, admin, "unpublish_course", course_id)
@@ -747,3 +778,52 @@ async def unpublish(course_id: str, request: Request, admin: User = Depends(admi
     updated = courses.get_course(course_id)
     assert updated is not None
     return {"course": _meta(updated, modules=len(edit.module_numbers(_root(updated))))}
+
+
+@router.get("/courses/{course_id}/versions")
+async def list_versions(course_id: str) -> dict:
+    course = _course(course_id)
+    return {"versions": await asyncio.to_thread(versions.list_versions, _root(course))}
+
+
+@router.post("/courses/{course_id}/versions", status_code=201)
+async def save_version(
+    course_id: str,
+    body: VersionBody,
+    request: Request,
+    admin: User = Depends(admin_user),
+) -> dict:
+    course = _course(course_id)
+    if request.app.state.jobs.running(course_id) is not None:
+        raise _fail(409, BUSY)
+    try:
+        version = await asyncio.to_thread(versions.snapshot, _root(course), body.label)
+    except versions.VersionError as error:
+        raise _fail(422, str(error)) from error
+    _log(request, admin, "save_version", course_id)
+    return {"version": version}
+
+
+@router.post("/courses/{course_id}/versions/{version_id}/restore")
+async def restore_version(
+    course_id: str,
+    version_id: str,
+    request: Request,
+    admin: User = Depends(admin_user),
+) -> dict:
+    course = _course(course_id)
+    root = _root(course)
+    if request.app.state.jobs.running(course_id) is not None:
+        raise _fail(409, BUSY)
+    try:
+        version = await asyncio.to_thread(versions.restore, root, version_id)
+    except versions.VersionError as error:
+        raise _fail(422, str(error)) from error
+    _log(request, admin, "restore_version", course_id)
+    _refresh(request, course_id)
+    updated = courses.get_course(course_id)
+    assert updated is not None
+    return {
+        "version": version,
+        "course": _meta(updated, modules=len(edit.module_numbers(root))),
+    }

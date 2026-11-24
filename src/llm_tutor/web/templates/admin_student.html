@@ -82,7 +82,7 @@
   {% if card.answers %}
   <div class="table-wrap">
     <table class="topics-table admin-table">
-      <thead><tr><th scope="col">Время</th><th scope="col">Занятие</th><th scope="col">Задание</th><th scope="col">Источник</th><th scope="col">Итог</th></tr></thead>
+      <thead><tr><th scope="col">Время</th><th scope="col">Занятие</th><th scope="col">Задание</th><th scope="col">Источник</th><th scope="col">Подсказки</th><th scope="col">Время на ответ</th><th scope="col">Итог</th></tr></thead>
       <tbody>
         {% for answer in card.answers %}
         <tr class="answer-row">
@@ -90,6 +90,8 @@
           <td>{{ answer.lesson or '—' }}</td>
           <td class="admin-prompt"><b>#{{ answer.item_id }}</b> {{ answer.prompt or '—' }}</td>
           <td>{{ answer.source }}</td>
+          <td>{{ answer.hints }}</td>
+          <td>{{ answer.time_spent }}</td>
           <td><span class="badge{% if answer.right %} success{% else %} danger{% endif %}">{{ answer.result }}</span></td>
         </tr>
         {% endfor %}

@@ -267,7 +267,7 @@ def test_schema_has_admin_tables_and_columns(db) -> None:
     columns = {row[1] for row in db.execute("PRAGMA table_info(users)")}
     log = {row[1] for row in db.execute("PRAGMA table_info(admin_log)")}
 
-    assert accounts.SCHEMA_VERSION == 4
+    assert accounts.SCHEMA_VERSION == 5
     assert {"is_admin", "last_login_at"} <= columns
     assert {"ts", "admin_id", "action", "target_id", "details"} <= log
 
@@ -299,7 +299,7 @@ def test_schema_newer_than_the_app_is_refused(tmp_path) -> None:
     import sqlite3
 
     newer = sqlite3.connect(path)
-    newer.execute("PRAGMA user_version = 5")
+    newer.execute("PRAGMA user_version = 6")
     newer.commit()
     newer.close()
 
@@ -399,13 +399,15 @@ def test_schema_has_reset_table_and_indexes(db) -> None:
     assert {"idx_password_resets_user", "idx_password_resets_expires"} <= indexes
 
 
-def test_migration_004_keeps_existing_data(tmp_path) -> None:
+def test_migration_keeps_existing_data(tmp_path) -> None:
     path = tmp_path / "accounts.sqlite3"
     _version_3_db(path)
 
     db = accounts.open_accounts(str(path))
 
-    assert db.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert db.execute("PRAGMA user_version").fetchone()[0] == accounts.SCHEMA_VERSION
+    columns = {row[1] for row in db.execute("PRAGMA table_info(course_progress)")}
+    assert {"course_id", "user_id", "data", "updated_at"} <= columns
     user = accounts.get_user(db, 1)
     assert (user.email, user.name, user.is_admin) == ("ann@example.com", "Аня", True)
     assert db.execute("SELECT last_login_at FROM users").fetchone()[0] == 8.0
@@ -415,7 +417,7 @@ def test_migration_004_keeps_existing_data(tmp_path) -> None:
     db.close()
 
     again = accounts.open_accounts(str(path))
-    assert again.execute("PRAGMA user_version").fetchone()[0] == 4
+    assert again.execute("PRAGMA user_version").fetchone()[0] == accounts.SCHEMA_VERSION
     assert again.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 1
     again.close()
 

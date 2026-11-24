@@ -125,6 +125,10 @@ def test_project_repos(conn) -> None:
 
 
 def test_schema_version(conn) -> None:
-    assert SCHEMA_VERSION == 10
+    # 010 — проект (master), 011–013 — заметки и журнал повторений (ветка golos,
+    # перенумерованы при слиянии: номера 008–010 уже были заняты).
+    assert SCHEMA_VERSION == 13
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"projects", "project_turns"} <= tables
+    assert {"projects", "project_turns", "explain_sessions", "notes", "review_log"} <= tables
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(notes)")}
+    assert {"comment", "section_id"} <= columns

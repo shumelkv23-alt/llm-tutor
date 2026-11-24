@@ -35,6 +35,7 @@ from llm_tutor.llm.prompts import (
     format_state_block,
     format_theory_block,
     tutor_system_prompt,
+    tutor_turn_contract,
 )
 from llm_tutor.llm.schemas import ChatMessage
 from llm_tutor.rag.retriever import retrieve
@@ -301,6 +302,7 @@ def _system_prompt(
             phase=state.phase,
             route_block=route_block,
             topic=topic,
+            contract=False,
         ),
         profile,
         format_state_block(
@@ -317,6 +319,9 @@ def _system_prompt(
             _mastery_slice(conn, graph, state, now=now, settings=settings)
         ),
         _theory_block(conn, state, graph, node_name),
+        # Контракт формата — последним: иначе конспект ниже перебивает
+        # инструкцию, и модель отвечает обычным текстом вместо JSON.
+        tutor_turn_contract(),
     ]
     return "\n\n".join(block for block in blocks if block)
 

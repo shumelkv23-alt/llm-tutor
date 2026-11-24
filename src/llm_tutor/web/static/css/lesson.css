@@ -322,6 +322,24 @@
   background: none;
 }
 
+/* Чтение ответа вслух: кнопка внизу реплики, не мешает тексту. */
+.msg-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.speech-btn.speaking {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+.theory-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin: 4px 0 8px;
+}
+
 .chat-typing {
   display: flex;
   align-items: center;

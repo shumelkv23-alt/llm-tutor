@@ -64,6 +64,9 @@ _SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "same-origin",
     "X-Frame-Options": "DENY",
+    # Микрофон нужен голосовому вводу (Web Speech API). Явно разрешаем его
+    # только своему origin: встраивание страницы в чужой фрейм и так запрещено.
+    "Permissions-Policy": "microphone=(self)",
 }
 
 
@@ -325,12 +328,14 @@ def create_app(
         api_auth,
         api_lesson,
         api_project,
+        api_reminders,
         pages,
         pages_admin,
         pages_admin_courses,
     )
 
     app.include_router(api_auth.router)
+    app.include_router(api_reminders.router)
     app.include_router(api_lesson.router)
     app.include_router(api_project.router)
     app.include_router(api_admin.router)

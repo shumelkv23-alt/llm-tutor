@@ -7,6 +7,7 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.ingest import ingest_text
 from legacy_course import load_seed
 from llm_tutor.db import repos
+from llm_tutor.llm.prompts import tutor_turn_contract
 from llm_tutor.schemas import SessionState
 from llm_tutor.student import route as route_mod
 from llm_tutor.student import survey
@@ -118,6 +119,27 @@ def test_system_prompt_carries_profile_state_and_mastery(conn, settings) -> None
     assert "Группировка" in system  # текущая тема в состоянии
     assert "уровень подсказки: 2" in system
     assert "≈" in system  # срез модели ученика по соседним узлам
+
+
+def test_json_contract_is_the_last_block(conn, settings) -> None:
+    """Контракт формата — последним: конспект ниже иначе перебивает его."""
+    load_seed(conn)
+    session_id = repos.ensure_open_session(conn, now=1.0)
+    state = SessionState(current_node_id="groupby")
+    repos.update_session_state(conn, session_id, state)
+
+    package = build_context(
+        conn,
+        session_id,
+        "groupby",
+        state=state,
+        graph=CourseGraph.load(conn),
+        settings=settings,
+    )
+
+    system = package.messages[0].content
+    assert system.rstrip().endswith(tutor_turn_contract())
+    assert '"wants_close_topic"' in system
     assert "groupby aggregates" not in system  # материал в system не попадает
 
 

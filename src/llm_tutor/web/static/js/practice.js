@@ -18,6 +18,13 @@
   let closedNote = null;
   let previous = null;
   let selected = null;
+  // Активная диктовка ответа: панель перерисовывается, старую сессию гасим.
+  let activeVoice = null;
+  // Ход начался — запись останавливаем: ответ всё равно уйдёт со следующим
+  // «Ответить», а недослушанный текст не должен копиться в поле.
+  document.addEventListener("lesson:busy", (event) => {
+    if (event.detail && activeVoice) activeVoice.stop();
+  });
   // Недописанные ответы по заданиям: панель перерисовывается на каждом ходу,
   // и без этого текст пропал бы от любого вопроса в чат или сбоя сети.
   const drafts = new Map();
@@ -36,6 +43,22 @@
     element.append(label);
     element.dataset.turn = "";
     element.addEventListener("click", onClick);
+    return element;
+  }
+
+  /** «Голосом»: распознанный текст попадает в поле, отправляет ученик сам. */
+  function voiceButton(field) {
+    const element = el("button", "btn ghost voice-btn");
+    element.type = "button";
+    element.dataset.turn = "";
+    element.title = "Надиктовать ответ";
+    element.append(icon("mic"), el("span", "", "Голосом"));
+    const controller = window.Voice?.attach(element, field, { label: "Ответ голосом" });
+    if (!controller || controller.supported === false) {
+      element.hidden = true;
+      return element;
+    }
+    activeVoice = controller;
     return element;
   }
 
@@ -97,6 +120,8 @@
     if (item.runnable) return codeActions();
     const form = el("form", "practice-answer");
     form.noValidate = true;
+    // Поле, к которому можно приставить микрофон: код и выбор — без голоса.
+    let voiceField = null;
     if (item.type === "choice") {
       const list = el("div", "practice-options");
       list.setAttribute("role", "radiogroup");
@@ -147,6 +172,8 @@
         if (item.type === "code") field.classList.add("mono");
       }
       form.append(field);
+      // Голос — только для свободного ответа: код и выбор им не надиктуешь.
+      if (item.type === "open" || item.type === "short") voiceField = field;
       if (item.type === "code") {
         form.append(el("p", "form-hint", "Скоро код можно будет запустить и проверить тестами во вкладке «Код»."));
       }
@@ -157,6 +184,7 @@
     send.dataset.turn = "";
     send.append("Ответить", icon("arrow"));
     send.disabled = item.type === "choice" && selected === null;
+    if (voiceField) actions.append(voiceButton(voiceField));
     actions.append(
       send,
       button("Не понимаю", "ghost", () => window.Lesson.act("stuck", {}, { echo: "Не понял, давай подробнее." })),
@@ -165,6 +193,12 @@
     form.append(actions);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
+      // Идёт диктовка: сначала останавливаем её, недослушанный текст не
+      // отправляем. Ученик проверит распознанное и нажмёт «Ответить» снова.
+      if (voiceField && voiceField.readOnly) {
+        activeVoice?.stop();
+        return;
+      }
       if (item.type === "choice") {
         if (selected !== null) submit(item, selected);
         return;
@@ -191,6 +225,12 @@
   }
 
   function render(state) {
+    // Панель перерисовывается — старый микрофон остался бы с отсоединённым
+    // полем. Черновик уже сохранён слушателем input.
+    if (activeVoice) {
+      activeVoice.destroy();
+      activeVoice = null;
+    }
     if (!state || state.survey) return;
     panel.replaceChildren();
     const wrap = el("div", "practice");

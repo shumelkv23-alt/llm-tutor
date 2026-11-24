@@ -144,6 +144,19 @@ def test_cli_main_ingests_url(tmp_path, capsys) -> None:
     assert "Загружено чанков" in capsys.readouterr().out
 
 
+@respx.mock
+def test_cli_strips_crlf_from_url(tmp_path, capsys) -> None:
+    """URL из буфера обмена Windows приходит с \\r\\n — это не часть адреса."""
+    respx.get("http://course/u.md").mock(
+        return_value=httpx.Response(200, text="# T\n\n## S\n\ngamma\n")
+    )
+    code = main(
+        ["http://course/u.md\r\n", "--topic", "1", "--db", str(tmp_path / "t.db")]
+    )
+    assert code == 0
+    assert "Загружено чанков" in capsys.readouterr().out
+
+
 # --- краевые случаи парсинга (по итогам ревью) ---
 
 

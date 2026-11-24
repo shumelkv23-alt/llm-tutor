@@ -6,6 +6,7 @@ import re
 import httpx
 import pytest
 
+from llm_tutor.web import accounts
 from llm_tutor.web.accounts import RESET_TOKEN_INVALID
 from llm_tutor.web.app import create_app
 from llm_tutor.web.security import SESSION_COOKIE, safe_next
@@ -343,10 +344,25 @@ async def test_password_change_is_rate_limited(web, web_app) -> None:
     assert blocked.status_code == 429
 
 
-async def test_login_does_not_block_the_event_loop(web) -> None:
-    """scrypt считается в потоке: параллельные входы не останавливают другие запросы."""
+async def test_login_does_not_block_the_event_loop(web, monkeypatch) -> None:
+    """Сверка пароля идёт в потоке: параллельные входы не останавливают запросы.
+
+    Подменяем scrypt на предсказуемую паузу: настоящий scrypt на 12 параллельных
+    входах сам по себе перегружает CPU раннера, и порог по времени становится
+    плавающим. С паузой 0.15 с синхронный вызов задержал бы healthz на ~1.8 с,
+    а вынесенный в поток — нет.
+    """
     import asyncio
     import time
+
+    def slow_verify(password: str, stored: str) -> bool:
+        time.sleep(0.15)
+        return False
+
+    # Неизвестный email не должен тратить настоящий scrypt на фиктивный хеш:
+    # иначе первый вход считает его прямо в цикле событий и портит замер.
+    monkeypatch.setattr(accounts, "credentials", lambda db, email: (None, "dummy"))
+    monkeypatch.setattr(accounts, "verify_password", slow_verify)
 
     async def attempt(index: int):
         return await web.post("/api/auth/login", json={"email": f"x{index}@e.io", "password": "пароль-123"})
@@ -356,10 +372,14 @@ async def test_login_does_not_block_the_event_loop(web) -> None:
     await asyncio.sleep(0.01)
     health = await web.get("/healthz")
     health_latency = time.perf_counter() - started
+    # healthz ответил, пока медленные входы ещё считаются в потоках. Если бы
+    # сверка шла в цикле событий, к этому моменту они были бы уже завершены.
+    still_running = any(not task.done() for task in logins)
     await asyncio.gather(*logins)
 
     assert health.status_code == 200
-    assert health_latency < 0.3
+    assert health_latency < 0.5
+    assert still_running
 
 
 # --- Восстановление пароля по почте: API (Срез 72) ---

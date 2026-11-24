@@ -23,19 +23,60 @@ class LLMError(RuntimeError):
 
     ``retryable`` помечает ошибки, которые имеет смысл повторить
     (сеть, лимиты, временные сбои провайдера). ``status`` — HTTP-код ответа
-    провайдера, если ответ был (``None`` — сеть или разбор).
+    провайдера, если ответ был (``None`` — сеть или разбор). ``json_error`` —
+    провайдер ответил, но не JSON нужной схемы: тьютор в этом случае может
+    взять обычный текстовый ответ.
     """
 
     def __init__(
-        self, message: str, *, retryable: bool = False, status: int | None = None
+        self,
+        message: str,
+        *,
+        retryable: bool = False,
+        status: int | None = None,
+        json_error: bool = False,
     ) -> None:
         super().__init__(message)
         self.retryable = retryable
         self.status = status
+        self.json_error = json_error
 
 
 # Ключ не принят: повтор не поможет, нужен новый ключ в .env.
 _AUTH_STATUS = {401, 403}
+
+# Напоминание на повторной попытке: часть провайдеров (DeepSeek и совместимые)
+# включает JSON-режим, только если в промпте есть явная просьба о JSON.
+_JSON_REMINDER = (
+    "Формат ответа: верни ТОЛЬКО один JSON-объект, без Markdown-обёртки, "
+    "пояснений и текста вокруг. Внутри строковых значений разметка разрешена."
+)
+
+
+def _json_candidates(text: str) -> list[str]:
+    """Варианты разбора ответа: как есть, из ```-обёртки и между {…}."""
+    clean = text.strip()
+    candidates = [clean]
+    if clean.startswith("```"):
+        lines = clean.splitlines()
+        inner = lines[1:-1] if len(lines) > 1 and lines[-1].strip() == "```" else lines[1:]
+        candidates.append("\n".join(inner).strip())
+    start, end = clean.find("{"), clean.rfind("}")
+    if start != -1 and end > start:
+        candidates.append(clean[start : end + 1])
+    return [candidate for candidate in candidates if candidate]
+
+
+def _with_json_reminder(payload: dict) -> dict:
+    """Копия запроса с напоминанием о JSON в системном сообщении."""
+    messages = list(payload["messages"])
+    if messages and messages[0].get("role") == "system":
+        first = dict(messages[0])
+        first["content"] = f"{first['content']}\n\n{_JSON_REMINDER}"
+        messages[0] = first
+    else:
+        messages.insert(0, {"role": "system", "content": _JSON_REMINDER})
+    return {**payload, "messages": messages}
 
 
 class LLMClient:
@@ -152,6 +193,11 @@ class LLMClient:
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+            # Часть провайдеров (DeepSeek и совместимые) игнорирует
+            # response_format, если инструкция о JSON стоит только в system.
+            # Последнее сообщение — то, на которое модель смотрит в первую
+            # очередь; поэтому формат напоминаем именно от лица пользователя.
+            payload["messages"].append({"role": "user", "content": _JSON_REMINDER})
         return payload
 
     async def _request(self, payload: dict, *, schema: Type[T] | None = None) -> str | T:
@@ -160,26 +206,43 @@ class LLMClient:
             if attempt > 0:
                 await asyncio.sleep(self._backoff_base * (2 ** (attempt - 1)))
 
+            # Повтор после невалидного JSON несёт явное напоминание о формате:
+            # модель могла ответить обычным текстом, проигнорировав
+            # response_format. Промпт при этом не меняется по смыслу.
+            attempt_payload = payload if attempt == 0 or schema is None else _with_json_reminder(payload)
             try:
-                data = await self._post(payload)
+                data = await self._post(attempt_payload)
             except LLMError as exc:
                 last_error = exc
                 if exc.retryable and attempt < self._max_retries:
                     continue
                 raise
 
-            content = self._extract_content(data)
+            try:
+                content = self._extract_content(data)
+            except LLMError as exc:
+                if schema is None:
+                    raise
+                # В JSON-режиме пустой или битый content — тот же отказ формата,
+                # что и невалидный JSON: повторяем и помечаем json_error, чтобы
+                # тьютор мог взять обычный текстовый ответ.
+                last_error = LLMError(str(exc), status=exc.status, json_error=True)
+                if attempt < self._max_retries:
+                    continue
+                raise last_error
             if schema is None:
                 return content
 
-            try:
-                return schema.model_validate_json(content)
-            except ValidationError as exc:
-                last_error = exc
-                # JSON не соответствует схеме — пробуем ещё раз (если есть попытки).
+            for candidate in _json_candidates(content):
+                try:
+                    return schema.model_validate_json(candidate)
+                except ValidationError as exc:
+                    last_error = exc
+                    # JSON не соответствует схеме — пробуем ещё раз (если есть попытки).
 
         raise LLMError(
-            f"LLM не вернул валидный ответ за {self._max_retries + 1} попыток: {last_error}"
+            f"LLM не вернул валидный ответ за {self._max_retries + 1} попыток: {last_error}",
+            json_error=schema is not None,
         )
 
     async def _post(self, payload: dict) -> dict:

@@ -69,6 +69,22 @@ class _FailingTutor:
         raise LLMError("сбой", retryable=False)
 
 
+class _JsonFallbackTutor:
+    """Модель ответила текстом вместо JSON: тьютор берёт текст, а не молчит."""
+
+    def __init__(self, text: str = "Объясняю обычным текстом") -> None:
+        self.text = text
+        self.calls: list[str] = []
+
+    async def chat_structured(self, messages, schema, *, model=None, temperature=None):
+        self.calls.append("structured")
+        raise LLMError("LLM не вернул валидный ответ", json_error=True)
+
+    async def chat(self, messages, *, model=None, temperature=None) -> str:
+        self.calls.append("text")
+        return self.text
+
+
 class _FakeGraderClient:
     """Подставной грейдер: возвращает заготовленный вердикт по рубрике."""
 
@@ -177,6 +193,51 @@ async def test_llm_failure_reason_is_logged(conn, settings, caplog) -> None:
     assert "сбой" in caplog.text
 
 
+async def test_tutor_falls_back_to_plain_text_on_json_error(conn, settings) -> None:
+    """Провайдер проигнорировал JSON-режим — ответ ученику всё равно нужен."""
+    ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    client = _JsonFallbackTutor("Объясняю обычным текстом")
+
+    reply = await handle_turn(conn, client, "m", "groupby?", now=1.0, settings=settings)
+
+    assert reply.text == "Объясняю обычным текстом"
+    assert client.calls == ["structured", "text"]
+
+
+async def test_tutor_fallback_understands_json_text(conn, settings) -> None:
+    """Если обычный вызов всё-таки вернул JSON, разбираем его, а не показываем как текст."""
+    ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    client = _JsonFallbackTutor('{"reply": "Из JSON", "hint_level": 1}')
+
+    reply = await handle_turn(conn, client, "m", "groupby?", now=1.0, settings=settings)
+
+    assert reply.text == "Из JSON"
+    assert _state(conn).hint_level == 1
+
+
+@pytest.mark.parametrize("answer", ['{"hint_level": 1}', '{"reply": "обрыв', ""])
+async def test_tutor_fallback_never_shows_raw_json(conn, settings, answer: str) -> None:
+    """Обрезанный/не тот JSON — сбой, а не объяснение: ученику уходит честный отказ."""
+    ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    client = _JsonFallbackTutor(answer)
+
+    reply = await handle_turn(conn, client, "m", "groupby?", now=1.0, settings=settings)
+
+    assert reply.text == LLM_FAILURE_REPLY
+    assert not reply.text.lstrip().startswith(("{", "["))
+
+
+async def test_tutor_fallback_keeps_hint_level(conn, settings) -> None:
+    """Фолбэк не должен откатывать лестницу подсказок на каждый ход."""
+    ingest_text(conn, "# T\n\n## S\n\ngroupby\n", "u")
+    _set_state(conn, hint_level=2)
+    client = _JsonFallbackTutor("Обычный текстовый ответ")
+
+    await handle_turn(conn, client, "m", "groupby?", now=1.0, settings=settings)
+
+    assert _state(conn).hint_level == 2
+
+
 # --- ответ на задание ---
 
 
@@ -194,6 +255,34 @@ async def test_answer_is_checked_without_llm(conn, settings) -> None:
     assert client.calls == []  # проверял код, не модель
     assert _state(conn).pending_item_id != item.id  # отвеченное задание снято
     assert any(event.source == "checked" for event in repos.get_events(conn))
+
+
+async def test_answer_event_records_hints_and_time(conn, settings) -> None:
+    """В журнал идут подсказки и время от выдачи задания до ответа."""
+    load_seed(conn)
+    _set_state(
+        conn,
+        pending_item_id=1,
+        current_node_id="pandas_intro",
+        hint_level=2,
+        item_issued_at=1.0,
+    )
+    item = repos.get_item(conn, 1)
+
+    await handle_turn(
+        conn,
+        _FakeTutor(),
+        "m",
+        item.options[0],
+        now=11.0,
+        settings=settings,
+        answer_mode="answer",
+    )
+
+    events = [event for event in repos.get_events(conn) if event.item_id == 1]
+    assert events
+    assert all(event.hints_used == 2 for event in events)
+    assert all(event.time_spent == pytest.approx(10.0) for event in events)
 
 
 async def test_wrong_answer_shows_correct_option(conn, settings) -> None:
