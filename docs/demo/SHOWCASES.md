@@ -554,8 +554,9 @@ Id занятий демо-курса: `tree_criteria`, `tree_building`, `tree_t
 
 ## Быстрые рецепты (Windows, PowerShell)
 
-Рецепты проверены на Windows 11 в PowerShell 5.1. Все команды запускаются из корня
-проекта (`D:\projects\llm_tutor`). **Сервер перезапускать не нужно**: он читает базу на
+Рецепты проверены на Windows 11 в PowerShell 5.1. `sc` из Р0 работает из любой папки;
+команды с путями вида `data/...` запускаются из корня проекта (или возьмите их вариант из
+раздела «Полные команды для показа»). **Сервер перезапускать не нужно**: он читает базу на
 каждый запрос, достаточно обновить страницу (F5).
 
 Команды, которые **пишут** в базу ученика (`close-module`, `seed-review`, `time-travel`,
@@ -565,11 +566,12 @@ Id занятий демо-курса: `tree_criteria`, `tree_building`, `tree_t
 ### Р0. Короткое имя `sc` в PowerShell
 
 `alias sc=…` из bash в PowerShell не работает. Кроме того, `sc` там уже занят:
-это встроенный псевдоним `Set-Content`. Выполните в **каждом новом окне** терминала:
+это встроенный псевдоним `Set-Content`. Выполните в **каждом новом окне** терминала
+(нужна переменная `LLM_TUTOR`, см. «Полные команды для показа»; тогда `sc` работает
+из любой папки):
 
 ```powershell
-Remove-Item alias:sc -Force -ErrorAction SilentlyContinue
-function sc { uv run python scripts/showcase.py @args }
+Remove-Item alias:sc -Force -ErrorAction SilentlyContinue; function sc { uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" @args }
 ```
 
 Без этого пишите команду полностью: `uv run python scripts/showcase.py --email X review`.
@@ -735,7 +737,8 @@ uv run python -m llm_tutor.web                  # сервер на тех же 
 
 | Симптом | Что сделать |
 |---|---|
-| `sc` пишет «Нет базы аккаунтов» | терминал открыт не в корне проекта или `.env` указывает не на те пути |
+| `sc` пишет «Нет базы аккаунтов» | `.env` указывает не на те пути (или `sc` заведён старой версией Р0 и терминал не в корне проекта) |
+| uv: `a value is required for '--project'` | пуста переменная `LLM_TUTOR`: настройка в разделе «Полные команды для показа» |
 | `У … нет базы курса trees-demo` | ученик не записан на курс: записать в браузере |
 | `watch` молчит | не тот `--email`, либо ход ещё не дошёл до сервера |
 | Тьютор отвечает «не смог получить ответ» | нет ключа или сети; задания, повторение и закрытие занятий работают и без модели |
@@ -758,15 +761,25 @@ uv run python -m llm_tutor.web                  # сервер на тех же 
   этот сценарий идёт на настоящих базах.
 - Не показывать `.env` и не светить ключ в терминале.
 
-Остальные материалы показа: схемы `docs/demo/SCHEMES.html`, справочник докладчика и
-запросы к базе `docs/demo/README.md`, прежний сценарий на заготовленных данных
-`docs/demo/SHOWCASE.md`.
+Остальные материалы показа: схемы `docs/demo/SCHEMES.html` и `docs/demo/new_schemes.html`,
+справочник докладчика и запросы к базе `docs/demo/README.md`.
 
 ## Полные команды для показа (любая папка)
 
-Все команды ниже записаны с полными путями: их можно запускать из любой папки
-PowerShell, без `sc` и без перехода в проект. Сервер и `showcase.py` сами находят
-базы и `.env` в `D:\projects\llm_tutor`.
+Команды ниже не привязаны ни к папке проекта на конкретной машине, ни к текущей
+папке терминала: путь к проекту берётся из переменной окружения `LLM_TUTOR`. Сервер,
+`showcase.py` и `pass_course.py` сами находят `.env` и базы относительно папки проекта.
+
+**Один раз на машине** откройте PowerShell в корне проекта (там, где `pyproject.toml`) и
+выполните:
+
+```powershell
+[Environment]::SetEnvironmentVariable('LLM_TUTOR', (Get-Location).Path, 'User'); $env:LLM_TUTOR = (Get-Location).Path
+```
+
+Переменная сохраняется для пользователя: во всех новых окнах она уже есть. Проверить:
+`echo $env:LLM_TUTOR` печатает путь к проекту. Перенесли проект в другую папку — повторите
+команду из новой папки.
 
 Что подставить:
 
@@ -777,55 +790,60 @@ PowerShell, без `sc` и без перехода в проект. Сервер
   `big-data-minimum` или `mlcourse`.
 
 Если PowerShell пишет «Имя "uv" не распознано», замените в любой команде начало
-`uv run --project D:\projects\llm_tutor python` на
-`D:\projects\llm_tutor\.venv\Scripts\python.exe` — остальное не меняется.
+`uv run --project "$env:LLM_TUTOR" python` на
+`& "$env:LLM_TUTOR\.venv\Scripts\python.exe"` — остальное не меняется.
+
+Если uv отвечает `a value is required for '--project <PROJECT>'` или пишет про
+несуществующую папку, переменная в этом окне пуста или устарела: окно открыто до
+настройки. Откройте новое окно или подтяните значение в текущее:
+`$env:LLM_TUTOR = [Environment]::GetEnvironmentVariable('LLM_TUTOR', 'User')`.
 
 ### Подготовка и запуск
 
 Резервная копия перед показом (команды, которые пишут в базу, потом можно откатить):
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.web.cli backup --out D:\projects\llm_tutor\backups\pered-pokazom
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.web.cli backup --out "$env:LLM_TUTOR\backups\pered-pokazom"
 ```
 
 Запуск сервера (http://127.0.0.1:8000, остановить — Ctrl+C):
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.web
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.web
 ```
 
 Роль админа аккаунту Б:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.web.cli make-admin --email <почта Б>
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.web.cli make-admin --email <почта Б>
 ```
 
 Узнать id ученика (номер папки его базы):
 
 ```powershell
-D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\data\accounts.sqlite3 "SELECT id, email FROM users"
+uv run --project "$env:LLM_TUTOR" python -m sqlite3 "$env:LLM_TUTOR\data\accounts.sqlite3" "SELECT id, email FROM users"
 ```
 
 Материалы поиска для демо-курса (один раз, по желанию):
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html --topic 1 --db D:\projects\llm_tutor\data\demo\materials.sqlite3
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html --topic 1 --db "$env:LLM_TUTOR\data\demo\materials.sqlite3"
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic05/topic5_part1_bagging.html --topic 1 --db D:\projects\llm_tutor\data\demo\materials.sqlite3
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic05/topic5_part1_bagging.html --topic 1 --db "$env:LLM_TUTOR\data\demo\materials.sqlite3"
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html --topic 1 --db D:\projects\llm_tutor\data\demo\materials.sqlite3
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html --topic 1 --db "$env:LLM_TUTOR\data\demo\materials.sqlite3"
 ```
 
 Ключи к вопросам демо-курса (где отвечать верно, где нарочно ошибаться):
 
 ```powershell
-D:\projects\llm_tutor\.venv\Scripts\python.exe -c "
-import json
-d=json.load(open('D:/projects/llm_tutor/data/demo/seed_topic01.json', encoding='utf-8'))
+uv run --project "$env:LLM_TUTOR" python -c "
+import json, os
+d=json.load(open(os.path.join(os.environ['LLM_TUTOR'], 'data', 'demo', 'seed_topic01.json'), encoding='utf-8'))
 for i in d['items']:
     if i['answer_type']=='choice':
         print(i['id'], i.get('section','итог'), '|', i['prompt'][:60], '| верно:', i['options'][int(i['answer'])][:60])
@@ -837,73 +855,73 @@ for i in d['items']:
 Живая лента — держать открытой весь показ (выход — Ctrl+C):
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> watch
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> watch
 ```
 
 Контекст тьютора — блоки промпта с размерами:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> context
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --text "Чем энтропия отличается от Джини?" --full
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> context --text "Чем энтропия отличается от Джини?" --full
 ```
 
 Что видят роли «Объясни новичку» и наставник проекта:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role novice --node tree_criteria --text "дерево - это вопросы"
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> context --role novice --node tree_criteria --text "дерево - это вопросы"
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role evaluator --node tree_criteria --text "дерево - это вопросы"
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> context --role evaluator --node tree_criteria --text "дерево - это вопросы"
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role mentor --node tree_criteria
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> context --role mentor --node tree_criteria
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role project
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> context --role project
 ```
 
 Оценка владения:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> mastery
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> mastery
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> mastery --node tree_criteria
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> mastery --node tree_criteria
 ```
 
 Повторение — лестница, сроки и что спросится сейчас:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> review
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> review
 ```
 
 «Объясни новичку» — задания, сессии, покрытие идей, эталон занятия:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> explain
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> explain
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> explain --reference tree_criteria
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> explain --reference tree_criteria
 ```
 
 Проект — карточка, этапы, обязательные заметки, чат:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> project
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> project
 ```
 
 Все ученики и файлы их баз (**не на проекторе**: показывает настоящих учеников):
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py students
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" students
 ```
 
 ### Подготовка состояния: пишут в базу ученика
@@ -913,34 +931,34 @@ uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\show
 Закрыть курс и сразу получить «Объясни новичку»:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> close-module 1
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> close-module 1
 ```
 
 Засеять повторение: строки расписания закрытым занятиям и сроки на 2 дня назад:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> seed-review
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> seed-review
 ```
 
 Сдвинуть сроки повторения ещё назад — всем занятиям или одному:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> time-travel --days 3
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> time-travel --days 3
 ```
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> time-travel --days 3 --node forest
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\showcase.py" --email <почта> time-travel --days 3 --node forest
 ```
 
 Снять висящие «Объясни новичку», чтобы открылась вкладка «Повторение» (Р4).
 Сначала запишите старое значение — без него задания не вернуть:
 
 ```powershell
-D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\data\users\<id>\trees-demo.sqlite3 "SELECT value FROM facts WHERE key='explain_since'"
+uv run --project "$env:LLM_TUTOR" python -m sqlite3 "$env:LLM_TUTOR\data\users\<id>\trees-demo.sqlite3" "SELECT value FROM facts WHERE key='explain_since'"
 ```
 
 ```powershell
-D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\data\users\<id>\trees-demo.sqlite3 "UPDATE facts SET value = strftime('%s','now') + 1 WHERE key='explain_since'"
+uv run --project "$env:LLM_TUTOR" python -m sqlite3 "$env:LLM_TUTOR\data\users\<id>\trees-demo.sqlite3" "UPDATE facts SET value = strftime('%s','now') + 1 WHERE key='explain_since'"
 ```
 
 Для другого курса замените в пути к базе `trees-demo` на id курса.
@@ -963,25 +981,25 @@ D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\
 Существующий аккаунт: нужны его почта и пароль. Можно не останавливать сервер:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\pass_course.py --email <почта> --password <пароль>
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\pass_course.py" --email <почта> --password <пароль>
 ```
 
 Другой курс:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\pass_course.py --email <почта> --password <пароль> --course python-mastery
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\pass_course.py" --email <почта> --password <пароль> --course python-mastery
 ```
 
 Новый аккаунт сразу с пройденным курсом:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\pass_course.py --email <почта> --password <пароль> --register --name Аня
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\pass_course.py" --email <почта> --password <пароль> --register --name Аня
 ```
 
 Живой прогресс: каждый N-й ответ неверный, появятся слабые места и разные оценки:
 
 ```powershell
-uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\pass_course.py --email <почта> --password <пароль> --wrong-every 4
+uv run --project "$env:LLM_TUTOR" python "$env:LLM_TUTOR\scripts\pass_course.py" --email <почта> --password <пароль> --wrong-every 4
 ```
 
 `--survey-answer` задаёт ответ анкеты: 0 «Впервые вижу», 1 «Знаю в теории» (по
@@ -995,5 +1013,5 @@ uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\pass
 Вернуть базы к состоянию до показа (сервер должен быть остановлен):
 
 ```powershell
-uv run --project D:\projects\llm_tutor python -m llm_tutor.web.cli restore --from D:\projects\llm_tutor\backups\pered-pokazom --yes
+uv run --project "$env:LLM_TUTOR" python -m llm_tutor.web.cli restore --from "$env:LLM_TUTOR\backups\pered-pokazom" --yes
 ```
