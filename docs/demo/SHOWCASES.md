@@ -23,6 +23,7 @@
 8. [Быстрые рецепты (Windows, PowerShell)](#быстрые-рецепты-windows-powershell)
 9. [Если что-то пошло не так](#если-что-то-пошло-не-так)
 10. [Чего не делать на показе](#чего-не-делать-на-показе)
+11. [Полные команды для показа (любая папка)](#полные-команды-для-показа-любая-папка)
 
 ## 1. Что понадобится
 
@@ -653,12 +654,15 @@ sc --email X review              # лестница и «что попадёт �
 ```powershell
 # сначала запишите старое значение: без него вернуть задания нельзя
 uv run python -m sqlite3 data/users/<id>/trees-demo.sqlite3 "SELECT value FROM facts WHERE key='explain_since'"
-uv run python -m sqlite3 data/users/<id>/trees-demo.sqlite3 "UPDATE facts SET value = strftime('%s','now') WHERE key='explain_since'"
+uv run python -m sqlite3 data/users/<id>/trees-demo.sqlite3 "UPDATE facts SET value = strftime('%s','now') + 1 WHERE key='explain_since'"
 ```
+
+`+ 1` нужен потому, что `strftime('%s','now')` отбрасывает доли секунды. Если
+`close-module` прошёл в ту же секунду, без запаса задание останется висеть.
 
 После F5 вкладка **Повторение** открыта. Завершённые сессии объяснения остаются, а
 занятия, закрытые позже, снова будут давать задания как обычно. Вернуть задания:
-тот же `UPDATE` со старым значением вместо `strftime('%s','now')`.
+тот же `UPDATE` со старым значением вместо `strftime('%s','now') + 1`.
 
 ### Р5. Открыть «Проект»
 
@@ -757,3 +761,194 @@ uv run python -m llm_tutor.web                  # сервер на тех же 
 Остальные материалы показа: схемы `docs/demo/SCHEMES.html`, справочник докладчика и
 запросы к базе `docs/demo/README.md`, прежний сценарий на заготовленных данных
 `docs/demo/SHOWCASE.md`.
+
+## Полные команды для показа (любая папка)
+
+Все команды ниже записаны с полными путями: их можно запускать из любой папки
+PowerShell, без `sc` и без перехода в проект. Сервер и `showcase.py` сами находят
+базы и `.env` в `D:\projects\llm_tutor`.
+
+Что подставить:
+
+- `<почта>` — почта ученика (`<почта А>`, `<почта Б>` — аккаунты показа);
+- `<id>` — номер ученика из команды «Узнать id ученика» ниже;
+- курс по умолчанию — демо-курс `trees-demo`. Для другого курса добавьте
+  `--course <курс>` сразу после `showcase.py`: `python-mastery`,
+  `big-data-minimum` или `mlcourse`.
+
+Если PowerShell пишет «Имя "uv" не распознано», замените в любой команде начало
+`uv run --project D:\projects\llm_tutor python` на
+`D:\projects\llm_tutor\.venv\Scripts\python.exe` — остальное не меняется.
+
+### Подготовка и запуск
+
+Резервная копия перед показом (команды, которые пишут в базу, потом можно откатить):
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.web.cli backup --out D:\projects\llm_tutor\backups\pered-pokazom
+```
+
+Запуск сервера (http://127.0.0.1:8000, остановить — Ctrl+C):
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.web
+```
+
+Роль админа аккаунту Б:
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.web.cli make-admin --email <почта Б>
+```
+
+Узнать id ученика (номер папки его базы):
+
+```powershell
+D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\data\accounts.sqlite3 "SELECT id, email FROM users"
+```
+
+Материалы поиска для демо-курса (один раз, по желанию):
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic03/topic03_decision_trees_kNN.html --topic 1 --db D:\projects\llm_tutor\data\demo\materials.sqlite3
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic05/topic5_part1_bagging.html --topic 1 --db D:\projects\llm_tutor\data\demo\materials.sqlite3
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.course.ingest https://mlcourse.ai/book/topic05/topic5_part2_random_forest.html --topic 1 --db D:\projects\llm_tutor\data\demo\materials.sqlite3
+```
+
+Ключи к вопросам демо-курса (где отвечать верно, где нарочно ошибаться):
+
+```powershell
+D:\projects\llm_tutor\.venv\Scripts\python.exe -c "
+import json
+d=json.load(open('D:/projects/llm_tutor/data/demo/seed_topic01.json', encoding='utf-8'))
+for i in d['items']:
+    if i['answer_type']=='choice':
+        print(i['id'], i.get('section','итог'), '|', i['prompt'][:60], '| верно:', i['options'][int(i['answer'])][:60])
+"
+```
+
+### Наблюдение: только читают базы
+
+Живая лента — держать открытой весь показ (выход — Ctrl+C):
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> watch
+```
+
+Контекст тьютора — блоки промпта с размерами:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --text "Чем энтропия отличается от Джини?" --full
+```
+
+Что видят роли «Объясни новичку» и наставник проекта:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role novice --node tree_criteria --text "дерево - это вопросы"
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role evaluator --node tree_criteria --text "дерево - это вопросы"
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role mentor --node tree_criteria
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> context --role project
+```
+
+Оценка владения:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> mastery
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> mastery --node tree_criteria
+```
+
+Повторение — лестница, сроки и что спросится сейчас:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> review
+```
+
+«Объясни новичку» — задания, сессии, покрытие идей, эталон занятия:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> explain
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> explain --reference tree_criteria
+```
+
+Проект — карточка, этапы, обязательные заметки, чат:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> project
+```
+
+Все ученики и файлы их баз (**не на проекторе**: показывает настоящих учеников):
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py students
+```
+
+### Подготовка состояния: пишут в базу ученика
+
+Только для аккаунта показа (рецепты Р2–Р6 выше).
+
+Закрыть курс и сразу получить «Объясни новичку»:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> close-module 1
+```
+
+Засеять повторение: строки расписания закрытым занятиям и сроки на 2 дня назад:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> seed-review
+```
+
+Сдвинуть сроки повторения ещё назад — всем занятиям или одному:
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> time-travel --days 3
+```
+
+```powershell
+uv run --project D:\projects\llm_tutor python D:\projects\llm_tutor\scripts\showcase.py --email <почта> time-travel --days 3 --node forest
+```
+
+Снять висящие «Объясни новичку», чтобы открылась вкладка «Повторение» (Р4).
+Сначала запишите старое значение — без него задания не вернуть:
+
+```powershell
+D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\data\users\<id>\trees-demo.sqlite3 "SELECT value FROM facts WHERE key='explain_since'"
+```
+
+```powershell
+D:\projects\llm_tutor\.venv\Scripts\python.exe -m sqlite3 D:\projects\llm_tutor\data\users\<id>\trees-demo.sqlite3 "UPDATE facts SET value = strftime('%s','now') + 1 WHERE key='explain_since'"
+```
+
+Для другого курса замените в пути к базе `trees-demo` на id курса.
+
+### После показа
+
+Вернуть базы к состоянию до показа (сервер должен быть остановлен):
+
+```powershell
+uv run --project D:\projects\llm_tutor python -m llm_tutor.web.cli restore --from D:\projects\llm_tutor\backups\pered-pokazom --yes
+```
