@@ -1,0 +1,281 @@
+{% extends "base.html" %}
+{% block title %}Профиль · {{ profile.account.name }}{% endblock %}
+{% block eyebrow %}Админка · профиль ученика{% endblock %}
+{% block heading %}{{ profile.account.name }}{% endblock %}
+{% block description %}{{ profile.account.email }} · {{ course.title }}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ static_url('css/admin.css') }}">{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/admin.js') }}" defer></script>{% if profile.state == 'ok' %}<script src="{{ static_url('js/knowledge-graph.js') }}" defer></script>{% endif %}{% endblock %}
+{% block actions %}
+<a class="btn" href="/admin/students/{{ profile.account.id }}?course={{ course.id }}">Карточка и действия</a>
+<a class="btn" href="/admin/students?course={{ course.id }}">Все ученики</a>
+{% endblock %}
+{% block content %}
+{% include "_admin_tabs.html" %}
+{% set account = profile.account %}
+{% set section_labels = {'passed': 'пройден', 'weak': 'пройден слабо', 'skipped': 'без заданий', 'current': 'сейчас', 'ahead': 'впереди'} %}
+{% set type_labels = {'choice': 'выбор', 'short': 'короткий ответ', 'code': 'код', 'open': 'развёрнутый ответ'} %}
+
+<section class="panel" aria-labelledby="profile-account-title">
+  <h2 id="profile-account-title" class="section-title">Аккаунт</h2>
+  <dl class="admin-facts">
+    <div><dt>Имя</dt><dd>{{ account.name }}{% if account.is_admin %} <span class="badge accent">админ</span>{% endif %}</dd></div>
+    <div><dt>Email</dt><dd>{{ account.email }}</dd></div>
+    <div><dt>Регистрация</dt><dd>{{ format_time(account.created_at) }}</dd></div>
+    <div><dt>Последний вход</dt><dd>{{ format_time(account.last_login_at) }}</dd></div>
+    <div><dt>Активных сессий</dt><dd>{{ profile.sessions }}</dd></div>
+    <div><dt>Курс</dt><dd>{{ course.title }}</dd></div>
+  </dl>
+  <p class="muted">Только чтение: переписку с тьютором профиль не показывает — лишь ответы на задания и итоги проверок.</p>
+</section>
+
+{% if profile.state == 'ok' and profile.pulse %}
+{% set pulse = profile.pulse %}
+<section class="panel pulse-panel" aria-labelledby="pulse-title">
+  <div class="pulse-hero">
+    <div class="pulse-ring-wrap" role="img" aria-label="Прогресс курса {{ pulse.closed }} из {{ pulse.total }}">
+      <svg class="pulse-ring" viewBox="0 0 42 42" aria-hidden="true">
+        <circle class="pulse-ring-bg" cx="21" cy="21" r="16" pathLength="100"></circle>
+        <circle class="pulse-ring-value" cx="21" cy="21" r="16" pathLength="100"
+          transform="rotate(-90 21 21)" stroke-dasharray="{{ pulse.percent }} 100"></circle>
+      </svg>
+      <div class="pulse-ring-label"><b>{{ pulse.percent }}%</b><span>{{ pulse.closed }} из {{ pulse.total }}</span></div>
+    </div>
+    <div class="pulse-hero-copy">
+      <p class="eyebrow" id="pulse-title">Пульс ученика</p>
+      <div class="pulse-chips">
+        <span class="pulse-chip hot" title="Дни подряд со входом или ответами на задания">Серия: {{ pulse.streak }} дн.</span>
+        <span class="pulse-chip" title="Дни со входом или ответами на задания">Активен: {{ pulse.active_30 }} из 30 дней</span>
+        <span class="pulse-chip" title="За последние 53 недели">Решал: {{ pulse.solved_days }} дн.</span>
+        <span class="pulse-chip" title="За последние 53 недели">Заходил: {{ pulse.login_days }} дн.</span>
+      </div>
+      <p class="muted">
+        {% if pulse.answers_7 %}
+        За неделю ответов: {{ pulse.answers_7 }}{% if pulse.accuracy_7 is not none %}, точность {{ pulse.accuracy_7 }}%{% endif %}.
+        {% else %}
+        За неделю ответов на задания не было.
+        {% endif %}
+        {% if pulse.best_hour %}Чаще всего учится: {{ pulse.best_hour | lower }}.{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <h3>Календарь активности <span class="muted">({{ pulse.span_start }} — {{ pulse.span_end }})</span></h3>
+  <div class="pulse-calendar-scroll">
+    <div class="pulse-months" aria-hidden="true">
+      {% for label in pulse.month_labels %}
+      <span class="pulse-month">{{ label }}</span>
+      {% endfor %}
+    </div>
+    <div class="pulse-calendar" role="grid"
+      aria-label="Календарь активности за 53 недели: {{ pulse.active_days }} активных дней, {{ pulse.solved_days }} с заданиями">
+      {% for week in pulse.weeks %}
+      <div class="pulse-week" role="row">
+        {% for day in week %}
+        <span class="pulse-day level-{{ day.level }}{% if day.solved %} solved{% endif %}{% if day.future %} future{% endif %}"
+          title="{{ day.title }}" aria-label="{{ day.title }}" role="gridcell"></span>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <ul class="pulse-legend" aria-label="Обозначения календаря">
+    <li><i class="pulse-key level-0"></i>нет</li>
+    <li><i class="pulse-key level-1"></i>мало</li>
+    <li><i class="pulse-key level-2"></i>средне</li>
+    <li><i class="pulse-key level-3"></i>много</li>
+    <li><i class="pulse-key level-4"></i>очень много</li>
+    <li><i class="pulse-key solved"></i>решал задания</li>
+    <li><span class="pulse-legend-note">наведите на день, чтобы увидеть детали</span></li>
+  </ul>
+
+  <div class="pulse-columns">
+    <div class="pulse-inset">
+      <h3>Ритм учёбы <span class="muted">(по ответам на задания)</span></h3>
+      <ul class="pulse-bars" aria-label="Активность по времени суток">
+        {% for hour in pulse.hours %}
+        <li>
+          <span title="{{ hour.range }}">{{ hour.label }}</span>
+          <svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+            <rect width="{{ hour.percent }}" height="8" rx="4"></rect>
+          </svg>
+          <b>{{ hour.count }}</b>
+        </li>
+        {% endfor %}
+      </ul>
+      <ul class="pulse-bars" aria-label="Активность по дням недели">
+        {% for weekday in pulse.weekdays %}
+        <li>
+          <span>{{ weekday.label }}</span>
+          <svg viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+            <rect width="{{ weekday.percent }}" height="8" rx="4"></rect>
+          </svg>
+          <b>{{ weekday.count }}</b>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="pulse-inset">
+      <h3>Что видно сразу</h3>
+      <ul class="pulse-insights">
+        {% for insight in pulse.insights %}
+        <li class="pulse-insight {{ insight.kind }}">{{ insight.text }}</li>
+        {% endfor %}
+      </ul>
+      {% if pulse.longest_streak > pulse.streak %}
+      <p class="muted">Лучшая серия за год: {{ pulse.longest_streak }} дн.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <h3>Последние события</h3>
+  {% if pulse.timeline %}
+  <ol class="pulse-timeline">
+    {% for event in pulse.timeline %}
+    <li>
+      <time>{{ format_time(event.ts) }}</time>
+      <span class="pulse-event-lesson">{{ event.lesson or 'Задание' }}</span>
+      {% if event.prompt %}<span class="pulse-event-prompt">{{ event.prompt }}</span>{% endif %}
+      <span class="badge{% if event.right %} success{% else %} danger{% endif %}">{{ event.result }}</span>
+      <span class="muted">#{{ event.item_id }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="muted">Ответов на задания ещё не было.</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if profile.state == 'not_enrolled' %}
+<section class="panel"><p class="muted">Ученик не записан на курс.</p></section>
+{% elif profile.state == 'no_db' %}
+<section class="panel"><p class="muted">Записан на курс, но данных нет: ученик ещё ни разу не открывал занятие.</p></section>
+{% elif profile.state == 'error' %}
+<section class="panel"><div class="notice error" role="alert">Данные ученика недоступны: база не открывается. Подробности — в логе сервера.</div></section>
+{% elif profile.state == 'busy' %}
+<section class="panel"><div class="notice" role="status">Ученик сейчас отвечает — обновите страницу через несколько секунд.</div></section>
+{% else %}
+{% set flow = profile.flow %}
+<section class="panel" aria-labelledby="now-title">
+  <h2 id="now-title" class="section-title">Сейчас</h2>
+  {% if flow.stuck %}
+  <div class="notice" role="status">
+    <strong>Похоже, застрял</strong>
+    <ul class="admin-stuck">
+      {% for reason in flow.stuck %}<li>{{ reason }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  <dl class="admin-facts">
+    <div><dt>Занятие</dt><dd>{{ flow.node.name if flow.node else '—' }}</dd></div>
+    <div><dt>Модуль</dt><dd>{% if flow.lesson %}Модуль {{ flow.lesson.module.number }} · {{ flow.lesson.module.title }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Номер занятия</dt><dd>{% if flow.lesson %}{{ flow.lesson.index }} из {{ flow.lesson.total }}{% else %}—{% endif %}</dd></div>
+    <div><dt>Раздел</dt><dd>{{ flow.section or '—' }}</dd></div>
+    <div><dt>Фаза</dt><dd>{{ flow.phase or '—' }}</dd></div>
+    <div><dt>Режим</dt><dd>{{ flow.mode or '—' }}</dd></div>
+    <div><dt>Закрыто занятий</dt><dd>{{ flow.closed }} из {{ flow.total }}</dd></div>
+    <div><dt>Последний ход</dt><dd>{{ format_time(flow.state_activity) }}</dd></div>
+    <div><dt>Активность</dt><dd>{{ format_time(flow.last_activity) }}</dd></div>
+    <div><dt>Решено заданий</dt><dd>{{ profile.learning.solved }}</dd></div>
+  </dl>
+
+  {% if flow.review %}<p class="muted">Повторение: {{ flow.review.kind }}{% if flow.review.node %} · {{ flow.review.node }}{% endif %}</p>{% endif %}
+  {% if flow.explain %}<p class="muted">Ждёт проверки «Объясни новичку»: {{ flow.explain }}</p>{% endif %}
+
+  {% if flow.lesson and flow.lesson.sections %}
+  <h3>Разделы занятия</h3>
+  <ul class="admin-sections">
+    {% for section in flow.lesson.sections %}
+    <li class="{{ section.status }}"><span>{{ section.title }}</span><b>{{ section_labels.get(section.status, section.status) }}</b></li>
+    {% endfor %}
+    {% if flow.lesson.final %}<li class="{{ flow.lesson.final.status }}"><span>{{ flow.lesson.final.title }}</span><b>{{ section_labels.get(flow.lesson.final.status, flow.lesson.final.status) }}</b></li>{% endif %}
+  </ul>
+  {% endif %}
+
+  <h3>Задание, ожидающее ответа</h3>
+  {% if flow.pending_item %}
+  <div class="admin-pending">
+    <p class="admin-pending-head">
+      <b>#{{ flow.pending_item.id }}</b>
+      {% if flow.pending_item.part %}<span class="muted">{{ flow.pending_item.part }}</span>{% endif %}
+      <span class="badge">{{ type_labels.get(flow.pending_item.type, flow.pending_item.type) }}</span>
+      {% if flow.pending_item.runnable %}<span class="badge accent">запускается в браузере</span>{% endif %}
+      {% if flow.waiting_label %}<span class="badge warning">ждёт {{ flow.waiting_label }}</span>{% endif %}
+    </p>
+    <div class="admin-pending-prompt">{{ flow.pending_item.prompt_html|safe }}</div>
+    {% if flow.pending_item.options %}
+    <ol class="admin-options">
+      {% for option in flow.pending_item.options %}<li>{{ option }}</li>{% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted">Сейчас ничего не ждёт ответа.</p>
+  {% endif %}
+</section>
+
+<section class="panel knowledge" id="knowledge" aria-labelledby="knowledge-title"
+  data-course="{{ course.id }}"
+  data-href="/lesson/{{ course.id }}"
+  data-graph="/api/admin/students/{{ account.id }}/graph?course={{ course.id|urlencode }}"
+  data-readonly="true">
+  <div class="panel-header">
+    <div><p class="eyebrow" id="knowledge-title">Карта знаний</p></div>
+  </div>
+  <div class="kg-stage" id="kg-stage">
+    <canvas id="kg-canvas" aria-hidden="true"></canvas>
+    <div class="kg-tip" id="kg-tip" hidden></div>
+    <div class="kg-hud">
+      <button class="btn" type="button" id="kg-fit">Вписать</button>
+      <button class="btn" type="button" id="kg-current">К текущему</button>
+    </div>
+    <p class="kg-status muted" id="kg-status" role="status">Загружаем карту…</p>
+  </div>
+  <ul class="kg-legend" aria-label="Обозначения">
+    <li><i class="kg-key closed"></i>Закрыто</li>
+    <li><i class="kg-key weak"></i>Закрыто слабо</li>
+    <li><i class="kg-key current"></i>Сейчас</li>
+    <li><i class="kg-key claimed"></i>Знакомо по анкете</li>
+    <li><i class="kg-key available"></i>Доступно</li>
+    <li><i class="kg-key ahead"></i>Впереди</li>
+  </ul>
+  <div class="kg-card" id="kg-card" aria-live="polite" hidden></div>
+  <details class="kg-list">
+    <summary>Все занятия списком</summary>
+    <div id="kg-list"></div>
+  </details>
+</section>
+
+<section class="panel" aria-labelledby="answers-title">
+  <h2 id="answers-title" class="section-title">Ответы на задания</h2>
+  {% if profile.answers %}
+  <div class="admin-answers">
+    {% for answer in profile.answers %}
+    <article class="admin-answer{% if not answer.right %} wrong{% endif %}">
+      <header class="admin-answer-head">
+        <b>#{{ answer.item_id }}</b>
+        <span>{{ answer.lesson or '—' }}</span>
+        <span class="muted">{{ type_labels.get(answer.type, answer.type or 'задание') }}</span>
+        <span class="muted">{{ answer.source }}</span>
+        <span class="badge{% if answer.right %} success{% else %} danger{% endif %}">{{ answer.result }}</span>
+        <span class="muted">{{ format_time(answer.ts) }}</span>
+      </header>
+      {% if answer.prompt %}<p class="admin-answer-prompt">{{ answer.prompt }}</p>{% endif %}
+      {% if answer.test %}
+        <p class="muted">Тесты: {% if answer.test.passed %}все проверки пройдены{% else %}есть ошибки{% endif %}</p>
+        {% if answer.test.report %}<pre class="admin-answer-report">{{ answer.test.report }}</pre>{% endif %}
+        {% if answer.test.code %}<details><summary>Код ученика</summary><pre>{{ answer.test.code }}</pre></details>{% endif %}
+      {% elif answer.answer %}
+        <details><summary>Ответ ученика</summary><pre>{{ answer.answer }}</pre></details>
+      {% else %}
+        <p class="muted">Текст ответа не сохранился.</p>
+      {% endif %}
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted">Ответов на задания пока нет.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

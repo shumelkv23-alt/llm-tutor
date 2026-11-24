@@ -12,6 +12,11 @@
   if (!root) return;
   const course = root.dataset.course;
   const lessonHref = root.dataset.href;
+  // Админка открывает чужую карту с отдельного эндпоинта и только для чтения:
+  // переходы к занятию оттуда не работают (это была бы чужая сессия).
+  const graphPath =
+    root.dataset.graph || `/api/courses/${encodeURIComponent(course)}/graph`;
+  const readOnly = root.dataset.readonly === "true";
   const canvas = $("#kg-canvas");
   const stage = $("#kg-stage");
   const tip = $("#kg-tip");
@@ -66,7 +71,6 @@
   const colorOf = (node) => palette.modules[(node.module - 1) % MODULE_COLORS];
   const radius = (node) => 4 + Math.sqrt(node.degree) * 2.3;
   const statusText = (node) => (node.weak ? "закрыто слабо" : STATUS[node.status] || node.status);
-  const graphPath = `/api/courses/${encodeURIComponent(course)}/graph`;
   const names = (ids) => ids.map((id) => byId[id].name);
   const moduleTitle = (number) => data.modules.find((m) => m.number === number)?.title || "";
 
@@ -351,26 +355,29 @@
     if (before.length) card.append(el("p", "kg-meta", `Нужно до: ${names(before).join(", ")}`));
     if (after.length) card.append(el("p", "kg-meta", `Открывает: ${names(after).join(", ")}`));
     const actions = el("div", "kg-actions");
-    if (node.status === "current") {
-      const link = el("a", "btn primary", "Продолжить занятие");
-      link.href = lessonHref;
-      actions.append(link);
-    } else if (data.survey_done && data.pending_survey !== null && data.pending_survey !== undefined && node.needs_survey) {
-      // Сервер такой переход отклонит (409): сначала висящая анкета.
-      actions.append(el("p", "kg-meta", `Сначала анкета модуля ${data.pending_survey}: она открыта на странице занятия.`));
-      const link = el("a", "btn primary", "К анкете");
-      link.href = lessonHref;
-      actions.append(link);
-    } else if (data.survey_done) {
-      const button = el("button", "btn primary", "Перейти к занятию");
-      button.type = "button";
-      button.addEventListener("click", () => go(node, button));
-      actions.append(button);
-    } else {
-      actions.append(el("p", "kg-meta", "Перейти к занятию можно после анкеты курса."));
-      const link = el("a", "btn", "К анкете");
-      link.href = lessonHref;
-      actions.append(link);
+    // Чужой профиль открыт только для чтения: ни перехода, ни снятия задания.
+    if (!readOnly) {
+      if (node.status === "current") {
+        const link = el("a", "btn primary", "Продолжить занятие");
+        link.href = lessonHref;
+        actions.append(link);
+      } else if (data.survey_done && data.pending_survey !== null && data.pending_survey !== undefined && node.needs_survey) {
+        // Сервер такой переход отклонит (409): сначала висящая анкета.
+        actions.append(el("p", "kg-meta", `Сначала анкета модуля ${data.pending_survey}: она открыта на странице занятия.`));
+        const link = el("a", "btn primary", "К анкете");
+        link.href = lessonHref;
+        actions.append(link);
+      } else if (data.survey_done) {
+        const button = el("button", "btn primary", "Перейти к занятию");
+        button.type = "button";
+        button.addEventListener("click", () => go(node, button));
+        actions.append(button);
+      } else {
+        actions.append(el("p", "kg-meta", "Перейти к занятию можно после анкеты курса."));
+        const link = el("a", "btn", "К анкете");
+        link.href = lessonHref;
+        actions.append(link);
+      }
     }
     const close = el("button", "btn ghost", "Закрыть");
     close.type = "button";

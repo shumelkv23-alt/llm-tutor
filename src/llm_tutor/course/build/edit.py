@@ -403,28 +403,72 @@ def delete_module(root: str | Path, number: int):
     Остальные модули сдвигаются на его место — номера остаются подряд с 1, иначе
     структура разошлась бы с файлами. Прогресс учеников не трогаем: события
     журнала остаются, просто занятий этого модуля в курсе больше нет.
+
+    Межмодульные рёбра в соседних модулях ссылаются на занятия удалённого:
+    их надо убрать, иначе весь курс перестанет собираться. Сначала новый курс
+    собирается **в памяти** и проверяется, и только потом файлы меняются.
     """
     root = Path(root)
     from llm_tutor.course.build import steps
 
-    if not module_path(root, number).is_file():
+    target = module_path(root, number)
+    if not target.is_file():
         raise store.StoreError(f"В курсе нет модуля {number}")
     plan = steps.load_course_plan(root)
-    later = sorted(
-        int(path.name[10:12]) for path in store.seed_paths(root) if int(path.name[10:12]) > number
-    )
-    # Сначала убираем сам модуль, и только потом сдвигаем хвост: иначе перенос
-    # записал бы следующий модуль поверх удаляемого и тут же его стёр.
-    module_path(root, number).unlink(missing_ok=True)
+    seeds = {n: _parse_seed(module_path(root, n)) for n in module_numbers(root)}
+    doomed = seeds[number]
+    removed = {node.id for node in doomed.nodes}
+    removed_items = {item.id for item in doomed.items}
+
+    remaining: list[Seed] = []
+    for old_number in sorted(seeds):
+        if old_number == number:
+            continue
+        seed = seeds[old_number]
+        new_number = old_number if old_number < number else old_number - 1
+        nodes = [node.model_copy(update={"topic_id": new_number}) for node in seed.nodes]
+        edges = [
+            edge
+            for edge in seed.edges
+            if edge.from_id not in removed and edge.to_id not in removed
+        ]
+        # Задание соседнего модуля не должно ссылаться на убранное занятие:
+        # такое ссылается либо на концепт, либо на чужое задание.
+        items = [
+            item
+            for item in seed.items
+            if item.id not in removed_items
+            and not (set(item.concept_weights) & removed)
+        ]
+        topic = seed.topic.model_copy(update={"number": new_number})
+        remaining.append(
+            seed.model_copy(update={"topic": topic, "nodes": nodes, "edges": edges, "items": items})
+        )
+    build_course(remaining)  # SeedError, если курс после удаления не собирается — файлы целы
+
+    # Проверка прошла: убираем модуль и сдвигаем хвост на его место.
+    target.unlink(missing_ok=True)
     shutil.rmtree(theory_dir(root, number), ignore_errors=True)
-    for higher in later:  # сдвигаем хвост на место удалённого, начиная с ближнего
-        move_module(root, higher, higher - 1)
+    for higher in sorted(n for n in seeds if n > number):
+        module_path(root, higher).unlink(missing_ok=True)
+        source = theory_dir(root, higher)
+        if not source.is_dir():
+            continue
+        destination = theory_dir(root, higher - 1)
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.move(str(source), str(destination))
+    for seed in remaining:
+        store.write_json(
+            module_path(root, seed.topic.number),
+            seed.model_dump(mode="json", exclude={"theory"}),
+        )
 
     if plan is not None:
-        remaining = [item for item in plan.modules if item.number != number]
+        left = [item for item in plan.modules if item.number != number]
         renumbered = [
             item.model_copy(update={"number": item.number - 1 if item.number > number else item.number})
-            for item in remaining
+            for item in left
         ]
         steps.save_course_plan(
             root,

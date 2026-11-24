@@ -136,7 +136,8 @@ def test_button_questions_are_not_intents(question) -> None:
     assert intents.detect(question) is None
 
 
-async def test_turn_without_focus_writes_no_user_meta(conn, settings) -> None:
+async def test_turn_without_focus_writes_question_marker(conn, settings) -> None:
+    """Вопрос без фрагмента: в meta — только пометка для конспекта."""
     load_seed(conn)
     _set_state(conn, current_node_id="groupby")
 
@@ -144,7 +145,7 @@ async def test_turn_without_focus_writes_no_user_meta(conn, settings) -> None:
         conn, _FakeTutor(), "m", "почему так?", now=1.0, settings=settings, answer_mode="tutor"
     )
 
-    assert _last_user(conn).meta is None
+    assert json.loads(_last_user(conn).meta) == {"question": True, "node": "groupby"}
 
 
 async def test_task_chars_stay_on_tutor_reply(conn, settings) -> None:

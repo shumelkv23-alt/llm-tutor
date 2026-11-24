@@ -16,6 +16,7 @@ import secrets
 import sqlite3
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from llm_tutor.db.connection import get_conn, migrate
 # Корень проекта (web/accounts.py → src → корень) — не зависит от cwd.
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
 MIGRATIONS_DIR = _PROJECT_ROOT / "migrations_accounts"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # Срок сессии; продлевается, когда прошло больше половины (скользящий срок).
 SESSION_TTL = 30 * 24 * 3600.0
@@ -314,6 +315,11 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
+def login_day_key(stamp: float) -> str:
+    """Календарный день входа (``YYYY-MM-DD``) по часам сервера."""
+    return datetime.fromtimestamp(stamp).date().isoformat()
+
+
 def create_session(conn: sqlite3.Connection, user_id: int, *, now: float | None = None) -> str:
     """Новая сессия: возвращает токен для cookie (в БД — только его хеш)."""
     stamp = time.time() if now is None else now
@@ -327,8 +333,25 @@ def create_session(conn: sqlite3.Connection, user_id: int, *, now: float | None 
     # Вход и регистрация создают сессию, продление срока — нет: «последний вход»
     # не должен сдвигаться от каждого визита.
     conn.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (stamp, user_id))
+    conn.execute(
+        "INSERT INTO login_days (user_id, day, first_login_at, last_login_at, logins) "
+        "VALUES (?, ?, ?, ?, 1) "
+        "ON CONFLICT(user_id, day) DO UPDATE SET "
+        "last_login_at = excluded.last_login_at, logins = login_days.logins + 1",
+        (user_id, login_day_key(stamp), stamp, stamp),
+    )
     conn.commit()
     return token
+
+
+def login_day_counts(conn: sqlite3.Connection, user_id: int) -> dict[str, int]:
+    """История входов ученика: ``день -> сколько раз заходил``."""
+    return {
+        row["day"]: row["logins"]
+        for row in conn.execute(
+            "SELECT day, logins FROM login_days WHERE user_id = ? ORDER BY day", (user_id,)
+        )
+    }
 
 
 def resolve_session_info(

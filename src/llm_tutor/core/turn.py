@@ -112,6 +112,10 @@ REVIEW_STEP_HEADER = "🔁 Повторение · «{name}» · {position} из
 # Разминка перед новым занятием (срез 81).
 WARMUP_NOTE = "Перед «{next}» — разминка: вспомним пройденное."
 
+# Итог хода для личного конспекта («что я узнал») — не длиннее этого. Модель
+# просит 1–2 фразы; запас нужен на случай, если она всё же разошлась.
+TAKEAWAY_MAX_CHARS = 600
+
 AnswerMode = Literal["auto", "answer", "tutor"]
 
 
@@ -144,6 +148,18 @@ def _render_item(item: Item) -> str:
         f"{index + 1}. {option}" for index, option in enumerate(item.options)
     )
     return f"{item.prompt}\n\n{options}"
+
+
+def clean_takeaway(raw: str | None) -> str | None:
+    """Итог хода для конспекта: строка без краёв или ``None``, если он пуст.
+
+    Обрезка — страховка от разошедшейся модели: в конспекте нужна выжимка,
+    а не второй ответ целиком.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return None
+    return text[:TAKEAWAY_MAX_CHARS].rstrip()
 
 
 def issue_review_item(
@@ -289,6 +305,8 @@ def post_turn(
     focus: Focus | None = None,
     schedule: Sequence[review.ScheduleChange] = (),
     review_node_id: str | None = None,
+    question: bool = False,
+    takeaway: str | None = None,
 ) -> None:
     """Пишет ход одним коммитом; при сбое откатывает всё.
 
@@ -305,17 +323,38 @@ def post_turn(
     ``task_text`` — выданное в ходе задание, которым заканчивается
     ``assistant_text``. Его длина ложится в ``meta`` реплики: модель видит ход
     целиком, а веб в истории чата заменяет задание отметкой (оно в «Практике»).
+
+    ``question`` — реплика ученика задана тьютору (а не ответ/команда). В
+    ``meta`` ложится пометка ``{"question": true, "node": …, "section": …}``:
+    по ней страница «Конспект» собирает вопросы по занятиям. Занятие
+    повторения берётся из ``review_node_id``, урока — из состояния.
+
+    ``takeaway`` — короткий итог хода «что ученик узнал» от модели. Ложится в
+    ``meta`` реплики тьютора: страница «Конспект» показывает его вместо
+    полного ответа, а ответ оставляет под спойлером.
     """
     stamp = time.time() if now is None else now
     meta_parts: dict = {}
     if task_text and assistant_text.endswith(task_text):
         meta_parts["task_chars"] = len(task_text)
+    brief = clean_takeaway(takeaway)
+    if brief:
+        meta_parts["takeaway"] = brief
     user_parts: dict = {}
     if focus:
         user_parts["quote"] = json.loads(focus_meta(focus))["quote"]
     if review_node_id is not None:
         meta_parts["review"] = review_node_id
         user_parts["review"] = review_node_id
+    if question and user_text.strip():
+        user_parts["question"] = True
+        # Вопрос повторения — о занятии повторяемого задания, а не о текущем
+        # узле урока; раздел у повторения свой и в состояние урока не пишется.
+        node_id = review_node_id or state.current_node_id
+        if node_id:
+            user_parts["node"] = node_id
+        if review_node_id is None and state.section_id:
+            user_parts["section"] = state.section_id
     meta = json.dumps(meta_parts, ensure_ascii=False) if meta_parts else None
     user_meta = json.dumps(user_parts, ensure_ascii=False) if user_parts else None
     try:
@@ -581,11 +620,12 @@ async def _tutor_branch(
     force_stuck: bool = False,
     allow_stuck: bool = True,
     focus: Focus | None = None,
-) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool]:
+) -> tuple[str, list[Event], list[beta.MasteryUpdate], SessionState, bool, str | None]:
     """Тьюторский путь: контекст → модель → новый уровень подсказки.
 
     Пятый элемент — просьба закрыть тему из флага модели: она обрабатывается
-    вызывающим кодом (проход живёт в ``core/verify.py``).
+    вызывающим кодом (проход живёт в ``core/verify.py``). Шестой — итог хода
+    для конспекта (``TutorReply.takeaway``), ``None`` — итога нет.
 
     ``allow_stuck=False`` — ход, на котором узел выбирает код (вход в узел,
     объяснение следующего): ученик этого узла ещё не видел, и «застрял» от
@@ -613,7 +653,7 @@ async def _tutor_branch(
         # лимит, отвергнутый ключ) должна остаться хотя бы в логе сервера.
         logger.warning("Тьютор не получил структурированный ответ: %s", exc)
         if not exc.json_error:
-            return LLM_FAILURE_REPLY, [], [], idle_state, False
+            return LLM_FAILURE_REPLY, [], [], idle_state, False, None
         # Провайдер ответил, но проигнорировал JSON-режим. Ответ ученику важнее
         # служебных флагов: берём обычный текст, флаги остаются по умолчанию.
         # Явные «не понял»/«закрой тему» разобраны intents до этой ветки
@@ -623,11 +663,11 @@ async def _tutor_branch(
             text = await client.chat(package.messages, model=model)
         except LLMError as plain_exc:
             logger.warning("Тьютор не получил и текстовый ответ: %s", plain_exc)
-            return LLM_FAILURE_REPLY, [], [], idle_state, False
+            return LLM_FAILURE_REPLY, [], [], idle_state, False, None
         answer = _tutor_reply_from_text(text, hint_level=state.hint_level)
     except Exception:  # noqa: BLE001 — бот не должен молчать на неожиданный сбой
         logger.exception("Неожиданный сбой тьюторского хода")
-        return LLM_FAILURE_REPLY, [], [], idle_state, False
+        return LLM_FAILURE_REPLY, [], [], idle_state, False, None
 
     level = hints.next_hint_level(state.hint_level, answer.hint_level)
     new_state = state.model_copy(update={"hint_level": level, "last_activity": now})
@@ -648,8 +688,22 @@ async def _tutor_branch(
                 "task_hinted": True,
             }
         )
-        return f"{answer.reply}\n\n{STUCK_NOTE}", [], [], stuck_state, False
-    return answer.reply, [], [], new_state, answer.wants_close_topic
+        return (
+            f"{answer.reply}\n\n{STUCK_NOTE}",
+            [],
+            [],
+            stuck_state,
+            False,
+            clean_takeaway(answer.takeaway),
+        )
+    return (
+        answer.reply,
+        [],
+        [],
+        new_state,
+        answer.wants_close_topic,
+        clean_takeaway(answer.takeaway),
+    )
 
 
 def reset_lesson(
@@ -871,6 +925,8 @@ async def handle_turn(
         )
     force_stuck = intent == "stuck"
     options: list[str] | None = None
+    # Итог хода для конспекта: заполняет только тьюторская ветка (вопрос ученика).
+    takeaway: str | None = None
     # Второе сообщение хода — задание. Появится, если задание реально выдано:
     # отказ «заданий нет» остаётся в тексте, отдельным сообщением ему не быть.
     tail: str | None = None
@@ -941,7 +997,7 @@ async def handle_turn(
                 if pending_item.answer_type == "choice"
                 else str(pending_item.answer)
             )
-            explanation, _, _, new_state, _ = await _tutor_branch(
+            explanation, _, _, new_state, _, _ = await _tutor_branch(
                 conn,
                 client,
                 model,
@@ -1073,7 +1129,7 @@ async def handle_turn(
                 conn, session_id, graph, user_text, reply, new_state, button=button,
                 now=stamp, settings=s, focus=focus,
             )
-        reply, events, mastery, new_state, wants_close = await _tutor_branch(
+        reply, events, mastery, new_state, wants_close, takeaway = await _tutor_branch(
             conn,
             client,
             model,
@@ -1131,6 +1187,10 @@ async def handle_turn(
         mastery=mastery,
         now=stamp,
         focus=focus,
+        # Тьюторская ветка — вопрос ученика; ответ на задание — нет. «Не понял»
+        # поверх висящего задания идёт той же веткой и вопросом остаётся.
+        question=not is_answer or force_stuck,
+        takeaway=takeaway,
     )
     shown = new_state.review.item_id if warmed and new_state.review else new_state.pending_item_id
     return TurnReply(
@@ -1179,7 +1239,7 @@ async def _section_answer(
             if pending_item.answer_type == "choice"
             else str(pending_item.answer)
         )
-        explanation, _, _, new_state, _ = await _tutor_branch(
+        explanation, _, _, new_state, _, _ = await _tutor_branch(
             conn,
             client,
             model,
@@ -1269,7 +1329,7 @@ async def _start_lesson(
         title = _section_title(graph, node_id, section)
         kickoff = guided.SECTION_KICKOFF.format(name=concept.name, section=title)
         fallback = f"📘 {concept.name} · {title}\n\n{concept.description or concept.name}"
-    reply, _, _, new_state, _ = await _tutor_branch(
+    reply, _, _, new_state, _, _ = await _tutor_branch(
         conn,
         client,
         model,
@@ -1845,7 +1905,7 @@ async def stuck_reply(
     state = repos.get_session_state(conn, session_id)
     graph = CourseGraph.load(conn)
 
-    reply, events, mastery, new_state, _ = await _tutor_branch(
+    reply, events, mastery, new_state, _, takeaway = await _tutor_branch(
         conn,
         client,
         model,
@@ -1867,6 +1927,7 @@ async def stuck_reply(
         events=events,
         mastery=mastery,
         now=stamp,
+        takeaway=takeaway,
     )
     return TurnReply(text=reply)
 

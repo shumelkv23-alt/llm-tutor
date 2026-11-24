@@ -382,7 +382,12 @@
     input.disabled = off;
     // Именно submit: первая кнопка формы — микрофон, её выключает Voice.
     form.querySelector('button[type="submit"]').disabled = off;
-    voice?.setEnabled(!off);
+    // Наставник «Объясни новичку» голосом не пользуется: там оценивают, что
+    // ученик написал сам (в том числе не скопировал ли), и диктовка исказила бы
+    // проверку (правило ветки sanya).
+    const voiceOff = off || mode !== "tutor";
+    voice?.setEnabled(!voiceOff);
+    if (mic && voice && voice.supported !== false) mic.hidden = mode !== "tutor";
     document.querySelectorAll("#chat-chips .chip").forEach((chip) => {
       chip.disabled = off;
     });

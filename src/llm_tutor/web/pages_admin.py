@@ -116,7 +116,15 @@ async def students(
     for account in shown:
         row = snap.rows.get(account.id)
         status = row.status if row is not None else "not_enrolled"
-        rows.append({"account": account, "row": row, "status": status, "label": admin.STATUS_LABELS[status]})
+        rows.append(
+            {
+                "account": account,
+                "row": row,
+                "status": status,
+                "label": admin.STATUS_LABELS[status],
+                "note": admin.stuck_note(row, now=now) if row is not None else None,
+            }
+        )
     return render(
         request,
         "admin_students.html",
@@ -156,6 +164,35 @@ async def student_card_page(
         format_time=admin.format_time,
         tab="students",
         **_tabs(request, chosen, f"/admin/students/{user_id}"),
+    )
+
+
+@router.get("/admin/students/{user_id}/profile", response_class=HTMLResponse)
+async def student_profile_page(
+    request: Request, user_id: int, course: str = "", user: User = Depends(admin_page_user)
+) -> HTMLResponse:
+    """Профиль ученика глазами админа: карта знаний, текущее задание и ответы.
+
+    Только чтение: страница ничего не меняет в БД ученика и не показывает
+    переписку с тьютором — только ответы на задания (см. ``admin.student_profile``).
+    """
+    account = accounts.get_account(accounts_db(request), user_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    chosen = _selected_course(course)
+    if chosen is None:
+        return _no_course_page(request, user, "Профиль ученика", "Профиль ученика по выбранному курсу.")
+    profile = admin.student_profile(request.app.state, chosen, account)
+    return render(
+        request,
+        "admin_student_profile.html",
+        "admin",
+        user=user,
+        profile=profile,
+        course=chosen,
+        format_time=admin.format_time,
+        tab="students",
+        **_tabs(request, chosen, f"/admin/students/{user_id}/profile"),
     )
 
 

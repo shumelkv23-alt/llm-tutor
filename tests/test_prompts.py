@@ -101,6 +101,14 @@ def test_tutor_prompt_mentions_close_topic_flag() -> None:
     assert "wants_close_topic" in tutor_system_prompt(0, material="found")
 
 
+def test_tutor_prompt_asks_for_notes_takeaway() -> None:
+    """Промпт просит итог хода для личного конспекта."""
+    text = tutor_system_prompt(0, material="found")
+
+    assert "takeaway" in text
+    assert "личного конспекта" in text
+
+
 # --- ведомый урок (Срез 21) ---
 
 

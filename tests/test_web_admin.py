@@ -1883,4 +1883,249 @@ async def test_course_csv_export(admin, web_app) -> None:
     assert "повторение" in response.text
     assert "отвечено" in response.text
     assert "группа" in response.text
+# --- Профиль ученика для админа (только чтение) ---
+
+
+def _profile_url(user_id: int) -> str:
+    return f"/admin/students/{user_id}/profile?course={COURSE}"
+
+
+def _graph_url(user_id: int) -> str:
+    return f"/api/admin/students/{user_id}/graph?course={COURSE}"
+
+
+async def _profile(admin_client, user_id: int):
+    return await admin_client.get(_profile_url(user_id))
+
+
+def _open_state(web_app, user):
+    conn = _db(web_app, user)
+    session_id = repos.ensure_open_session(conn)
+    return conn, session_id, repos.get_session_state(conn, session_id)
+
+
+async def test_profile_shows_account_current_lesson_and_map(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+
+    response = await _profile(admin, user.id)
+
+    assert response.status_code == 200
+    html = response.text
+    for text in ("Ann", "ann@example.com", "Сейчас", "Номер занятия", "Карта знаний"):
+        assert text in html
+    assert "Модуль 1" in html
+    # Карта читается с админского эндпоинта и не даёт перейти к чужому занятию.
+    assert f"/api/admin/students/{user.id}/graph?course={COURSE}" in html
+    assert 'data-readonly="true"' in html
+    await client.aclose()
+
+
+async def test_profile_pulse_shows_calendar_rhythm_and_timeline(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    items = _items(web_app, user, 3)
+    now = time.time()
+    _answer(web_app, user, items[0], now - 86400, result=1.0)
+    _answer(web_app, user, items[1], now, result=1.0)
+    _answer(web_app, user, items[2], now, result=0.0)
+    _answer(web_app, user, items[1], now, result=1.0)
+    conn, session_id, _ = _open_state(web_app, user)
+    repos.add_message(conn, session_id, "user", "личный вопрос по теории", ts=now - 120)
+
+    html = (await _profile(admin, user.id)).text
+
+    for text in (
+        "Пульс ученика",
+        "Календарь активности",
+        "Серия:",
+        "Заходил:",
+        "Ритм учёбы",
+        "Что видно сразу",
+        "Последние события",
+    ):
+        assert text in html
+    assert "За неделю ответов: 3, точность 67%" in html
+    assert html.count("pulse-day level-") == admin_data.PULSE_WEEKS * 7
+    assert html.count('class="pulse-month"') == admin_data.PULSE_WEEKS
+    assert "ответов: 2 (верно 1)" in html
+    assert "личный вопрос по теории" not in html
+    assert f"#{items[2].id}" in html
+    assert "верно" in html and "неверно" in html
+    await client.aclose()
+
+
+
+async def test_profile_pending_task_and_stuck_note(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    conn, session_id, state = _open_state(web_app, user)
+    item = next(item for item in repos.get_items(conn) if not item.final)
+    stamp = time.time() - 13 * 3600
+    repos.update_session_state(
+        conn,
+        session_id,
+        state.model_copy(update={"pending_item_id": item.id, "last_activity": stamp}),
+    )
+
+    html = (await _profile(admin, user.id)).text
+
+    assert "Задание, ожидающее ответа" in html
+    assert f"#{item.id}" in html
+    assert "ждёт 13 ч." in html
+    assert "Похоже, застрял" in html
+
+    listing = await _students_page(admin)
+    assert f'href="/admin/students/{user.id}/profile?course={COURSE}"' in listing
+    assert "ждёт 13 ч." in listing
+    await client.aclose()
+
+
+async def test_profile_shows_answer_with_code_test_report(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    conn, session_id, _ = _open_state(web_app, user)
+    item, = _items(web_app, user, 1)
+    ts = 1_700_000_000.0
+    code = "print(sum([1, 2]))"
+    repos.add_message(
+        conn,
+        session_id,
+        "user",
+        f"{code}\n\nРезультат проверки: есть ошибки — AssertionError: ожидалось 3",
+        ts=ts,
+    )
+    _answer(web_app, user, item, ts, result=0.0, source="checked")
+
+    html = (await _profile(admin, user.id)).text
+
+    assert "Ответы на задания" in html
+    assert "есть ошибки" in html
+    assert "AssertionError: ожидалось 3" in html
+    assert "Код ученика" in html and code in html
+    assert f"#{item.id}" in html
+    await client.aclose()
+
+
+async def test_profile_shows_plain_answer(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    conn, session_id, _ = _open_state(web_app, user)
+    item, = _items(web_app, user, 1)
+    repos.add_message(conn, session_id, "user", "мой короткий ответ", ts=4_000.0)
+    _answer(web_app, user, item, 4_000.0, result=1.0)
+
+    html = (await _profile(admin, user.id)).text
+
+    assert "Ответ ученика" in html and "мой короткий ответ" in html
+    assert "верно" in html
+    await client.aclose()
+
+
+async def test_profile_never_shows_chat_messages(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    conn, session_id, _ = _open_state(web_app, user)
+    repos.add_message(conn, session_id, "user", "СЕКРЕТНАЯ-РЕПЛИКА-УЧЕНИКА", ts=1.0)
+    repos.add_message(conn, session_id, "assistant", "СЕКРЕТНЫЙ-ОТВЕТ-ТЬЮТОРА", ts=2.0)
+
+    html = (await _profile(admin, user.id)).text
+
+    assert "СЕКРЕТНАЯ-РЕПЛИКА-УЧЕНИКА" not in html
+    assert "СЕКРЕТНЫЙ-ОТВЕТ-ТЬЮТОРА" not in html
+    await client.aclose()
+
+
+async def test_profile_busy_student_shows_banner(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    lock = web_app.state.userdbs.lock(user.id, COURSE)
+
+    await lock.acquire()
+    try:
+        response = await _profile(admin, user.id)
+    finally:
+        lock.release()
+
+    assert response.status_code == 200
+    assert "сейчас отвечает" in response.text
+    assert "Карта знаний" not in response.text
+    assert "ann@example.com" in response.text
+    await client.aclose()
+
+
+async def test_profile_student_not_enrolled(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    html = (await _profile(admin, user.id)).text
+
+    assert "не записан" in html.lower()
+    await client.aclose()
+
+
+async def test_profile_unknown_id_is_404(admin) -> None:
+    assert (await _profile(admin, 9999)).status_code == 404
+
+
+async def test_profile_hidden_from_plain_student(student, web_app) -> None:
+    ann = accounts.find_user(web_app.state.accounts, ANN["email"])
+    unknown = await student.get("/no-such-page")
+
+    response = await student.get(_profile_url(ann.id))
+
+    assert response.status_code == 404
+    assert response.json() == unknown.json()
+
+
+async def test_student_graph_api_returns_map(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+
+    response = await admin.get(_graph_url(user.id))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["nodes"]
+    assert payload["survey_done"] is True
+    await client.aclose()
+
+
+async def test_student_graph_api_missing_is_404(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", enroll=False)
+
+    assert (await admin.get(_graph_url(user.id))).status_code == 404
+    assert (await admin.get(_graph_url(9999))).status_code == 404
+    await client.aclose()
+
+
+async def test_student_graph_api_busy_is_409(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    lock = web_app.state.userdbs.lock(user.id, COURSE)
+
+    await lock.acquire()
+    try:
+        response = await admin.get(_graph_url(user.id))
+    finally:
+        lock.release()
+
+    assert response.status_code == 409
+    assert "сейчас отвечает" in response.json()["detail"]["message"]
+    await client.aclose()
+
+
+async def test_profile_enrolled_without_db_file(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    path = web_app.state.userdbs.path(user.id, COURSE)
+    web_app.state.userdbs.close_all()
+    for suffix in ("", "-wal", "-shm"):
+        path.with_name(path.name + suffix).unlink(missing_ok=True)
+
+    response = await _profile(admin, user.id)
+
+    assert response.status_code == 200
+    assert "данных нет" in response.text.lower()
+    await client.aclose()
+
+
+async def test_profile_broken_db(admin, web_app) -> None:
+    client, user = await _learner(web_app, "Ann")
+    web_app.state.userdbs.close_all()
+    web_app.state.userdbs.path(user.id, COURSE).write_bytes(b"not a database")
+
+    response = await _profile(admin, user.id)
+
+    assert response.status_code == 200
+    assert "недоступны" in response.text.lower()
     await client.aclose()

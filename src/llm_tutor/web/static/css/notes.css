@@ -1,0 +1,347 @@
+/* Страница «Конспект»: вопросы ученика по занятиям.
+ *
+ * Данные приходят с сервера готовым HTML (ответ тьютора — web.markdown),
+ * JS на странице нет. Цвета — только из токенов, тёмная тема получается сама.
+ */
+
+.notes-toolbar {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.notes-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-filter-label {
+  margin-right: 2px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.notes-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.notes-chip-count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notes-chip[aria-current="page"] .notes-chip-count {
+  background: var(--surface);
+  color: var(--primary-text);
+}
+
+.notes-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+.notes-chip[aria-current="page"] {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary-text);
+}
+
+/* Переключатель «Вопросы тьютору / Мои решения» и фильтр типа решений:
+ * две ленты одного конспекта, код — отдельно, но на этой же странице. */
+.notes-views,
+.notes-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 10px 12px;
+}
+
+.notes-kinds .notes-filter-label {
+  margin-right: 2px;
+}
+
+.notes-empty p {
+  margin: 0 0 8px;
+}
+
+.notes-empty p:last-child {
+  margin-bottom: 0;
+}
+
+.notes-course + .notes-course {
+  margin-top: 20px;
+}
+
+.notes-lesson {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.notes-lesson:first-of-type {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.notes-lesson + .notes-lesson {
+  margin-top: 18px;
+}
+
+.notes-lesson-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 12px;
+  margin-bottom: 12px;
+}
+
+.notes-lesson-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.note-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.note-section {
+  font-size: 12px;
+}
+
+.note-quote {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-quote-code {
+  border-left-color: var(--accent);
+  border-radius: var(--radius-sm);
+  background: #0b1424;
+  color: #e3eaf1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  overflow-x: auto;
+}
+
+.note-topic {
+  margin: 0 0 8px;
+  color: var(--heading);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Краткая выжимка «что вы узнали»: главное в записи, полный ответ — под ней. */
+.note-brief {
+  margin: 0 0 10px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface);
+}
+
+.note-brief-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.note-brief-body {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.note-brief-body p,
+.note-brief-body ul,
+.note-brief-body ol {
+  margin: 0 0 6px;
+}
+
+.note-brief-body :last-child {
+  margin-bottom: 0;
+}
+
+.note-brief-body ul,
+.note-brief-body ol {
+  padding-left: 20px;
+}
+
+.note-brief-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.note-failed {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* «Мои решения»: условие задания подписью, ответ ученика и вердикт. */
+.solution-prompt {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.solution-verdict {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.solution-verdict.ok {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.solution-verdict.bad {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.solution-answer {
+  margin: 0;
+}
+
+.solution-report {
+  margin: 8px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-answer summary {
+  cursor: pointer;
+  color: var(--primary-text);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.note-answer summary:hover {
+  text-decoration: underline;
+}
+
+.note-answer-body {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.note-answer-body p,
+.note-answer-body ul,
+.note-answer-body ol,
+.note-answer-body pre {
+  margin: 0 0 8px;
+}
+
+.note-answer-body :last-child {
+  margin-bottom: 0;
+}
+
+.note-answer-body ul,
+.note-answer-body ol {
+  padding-left: 20px;
+}
+
+.note-answer-body code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.note-answer-body pre {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #0b1424;
+  color: #e3eaf1;
+  overflow-x: auto;
+}
+
+.note-answer-body pre code {
+  padding: 0;
+  background: none;
+}
+
+@media (max-width: 560px) {
+  .note {
+    padding: 12px;
+  }
+
+  .notes-chip {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

@@ -15,9 +15,10 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from llm_tutor.web import accounts
+from llm_tutor.web import accounts, courses, views
+from llm_tutor.web import admin as admin_data
 from llm_tutor.web.accounts import AccountRow, User
-from llm_tutor.web.security import accounts_db, admin_user
+from llm_tutor.web.security import NOT_FOUND, accounts_db, admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,49 @@ def _target(request: Request, admin: User, user_id: int) -> AccountRow:
     if account.id == admin.id:
         raise HTTPException(status_code=400, detail={"message": SELF_ACTION})
     return account
+
+
+def _chosen_course(course_id: str) -> courses.Course:
+    """Курс запроса — тот же выбор, что у страниц админки (``pages_admin._selected_course``).
+
+    Скрытый встроенный курс не подставляется: видимых курсов нет — 404.
+    """
+    chosen = courses.get_course(course_id) if course_id else None
+    if chosen is not None and chosen.visible:
+        return chosen
+    managed = courses.manageable_courses()
+    published = [course for course in managed if course.status == "published"]
+    if published or managed:
+        return (published or managed)[0]
+    raise HTTPException(status_code=404, detail=NOT_FOUND)
+
+
+@router.get("/students/{user_id}/graph")
+async def student_graph(user_id: int, request: Request, course: str = "") -> dict:
+    """Карта знаний чужого ученика для read-only профиля.
+
+    Ученик с идущим ходом не читается: соединение общее, ход может не успеть
+    закоммитить. Для админки это 409 — страница попросит обновить.
+    """
+    chosen = _chosen_course(course)
+    db = accounts_db(request)
+    if user_id not in accounts.enrolled_user_ids(db, chosen.id):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    state = request.app.state
+    pool = state.userdbs
+    if not pool.exists(user_id, chosen.id):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+    if pool.lock(user_id, chosen.id).locked():
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "Ученик сейчас отвечает — обновите страницу через несколько секунд."},
+        )
+    try:
+        conn = pool.open(user_id, chosen.id)
+        return views.graph_view(conn, settings=state.settings)
+    except admin_data.UNREADABLE:
+        logger.exception("БД ученика %s по курсу %s не открывается", user_id, chosen.id)
+        raise HTTPException(status_code=404, detail=NOT_FOUND) from None
 
 
 @router.post("/students/{user_id}/reset-password")

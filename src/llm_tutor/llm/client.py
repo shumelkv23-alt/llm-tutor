@@ -185,9 +185,10 @@ class LLMClient:
         *,
         json_mode: bool = False,
     ) -> dict:
+        dumped = [m.model_dump() for m in messages]
         payload: dict = {
             "model": model or self._default_model,
-            "messages": [m.model_dump() for m in messages],
+            "messages": dumped,
             "temperature": self._temperature if temperature is None else temperature,
             "max_tokens": self._max_tokens,
         }
@@ -197,6 +198,9 @@ class LLMClient:
             # response_format, если инструкция о JSON стоит только в system.
             # Последнее сообщение — то, на которое модель смотрит в первую
             # очередь; поэтому формат напоминаем именно от лица пользователя.
+            # Ветка sanya нашла то же на deepseek-chat через litellm: контракт
+            # только в конце длинного system даёт content из пробелов (0–2 из 5),
+            # требование последним сообщением — 12 из 12.
             payload["messages"].append({"role": "user", "content": _JSON_REMINDER})
         return payload
 
