@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Схемы llm_tutor</title><style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #fff; font-family: 'Segoe UI', system-ui, sans-serif; color: #0f172a; }
+.slide { width: 1920px; height: 1080px; padding: 48px 72px 36px; display: flex; flex-direction: column; }
+h1 { margin: 0 0 26px; font-size: 52px; font-weight: 700; letter-spacing: -0.5px; }
+.stage { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 22px; min-height: 0; }
+.row { display: flex; align-items: stretch; justify-content: center; }
+.gap { gap: 18px; }
+.col { display: flex; flex-direction: column; gap: 12px; }
+.box { border-radius: 16px; padding: 16px 20px; min-width: 0; display: flex; flex-direction: column;
+       justify-content: center; gap: 6px; }
+.box b { font-size: 25px; font-weight: 650; line-height: 1.2; }
+.box span { font-size: 19px; line-height: 1.38; color: #334155; }
+.box ul { margin: 2px 0 0; padding-left: 22px; font-size: 19px; line-height: 1.42; color: #334155; }
+.box.small { padding: 7px 12px; border-radius: 12px; gap: 1px; }
+.box.small b { font-size: 20px; }
+.box.small span { font-size: 16px; }
+.mono b { font-family: Consolas, 'Cascadia Mono', monospace; font-weight: 700; }
+.group { border-radius: 16px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
+         background: #fff; border: 2px solid #c4b5fd; }
+.group > .h b { font-size: 22px; } .group > .h span { font-size: 16px; color: #475569; }
+.code { background: #eff6ff; border: 3px solid #2563eb; }
+.model { background: #fff7ed; border: 3px dashed #ea580c; }
+.db { background: #ede9fe; border: 3px solid #7c3aed; }
+.plain { background: #f8fafc; border: 3px solid #cbd5e1; }
+.good { background: #ecfdf5; border: 3px solid #059669; }
+.small.code, .small.db, .small.plain, .small.model, .small.good { border-width: 2px; }
+.arrow { flex: 0 0 48px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+         font-size: 38px; color: #475569; }
+.arrow small { font-size: 16px; color: #475569; line-height: 1.1; text-align: center; margin-bottom: 2px; }
+.label { font-size: 22px; font-weight: 650; color: #334155; }
+.note { font-size: 21px; color: #334155; text-align: center; line-height: 1.4; }
+.legend { display: flex; gap: 26px; justify-content: flex-end; font-size: 18px; color: #64748b; margin-top: 6px; }
+.legend i { display: inline-block; width: 28px; height: 16px; border-radius: 5px; margin-right: 8px; vertical-align: -3px; }
+.legend .c { background: #eff6ff; border: 2px solid #2563eb; }
+.legend .m { background: #fff7ed; border: 2px dashed #ea580c; }
+.legend .d { background: #ede9fe; border: 2px solid #7c3aed; }
+.pill { border-radius: 999px; padding: 6px 16px; font-size: 17px; border: 2px solid #cbd5e1; background: #fff; }
+.pill.on { border-color: #2563eb; background: #eff6ff; font-weight: 650; }
+.btn { border-radius: 10px; padding: 6px 14px; font-size: 17px; border: 2px solid #059669; background: #ecfdf5; font-weight: 600; }
+.btn.alt { border-color: #94a3b8; background: #fff; }
+
+:root { --page:#e8ecf2; --ink:#0f172a; --muted:#475569; --bar:#ffffff; --line:#d5dbe4; --accent:#1f6feb; }
+@media (prefers-color-scheme: dark) {
+  :root { --page:#0f141b; --ink:#e6edf3; --muted:#9aa7b4; --bar:#161c24; --line:#2a333f; }
+}
+html, body { background: var(--page); }
+body { margin: 0; color: var(--ink); font-family: 'Segoe UI', system-ui, sans-serif; }
+.bar { position: sticky; top: 0; z-index: 5; background: var(--bar); border-bottom: 1px solid var(--line);
+       padding: 12px 24px; display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; }
+.bar .name { font-weight: 700; font-size: 20px; margin-right: auto; }
+.bar .hint { font-size: 14px; color: var(--muted); }
+.bar button { font: 600 15px 'Segoe UI', sans-serif; border: 0; border-radius: 10px; padding: 9px 16px;
+              background: var(--accent); color: #fff; cursor: pointer; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 8px; padding: 12px 24px 0; max-width: 1480px; margin: 0 auto; }
+.toc a { font-size: 14px; color: var(--ink); text-decoration: none; border: 1px solid var(--line);
+         border-radius: 999px; padding: 5px 12px; background: var(--bar); }
+.toc a:hover { border-color: var(--accent); }
+.list { max-width: 1480px; margin: 0 auto; padding: 16px 24px 64px; display: flex; flex-direction: column; gap: 28px; }
+.frame { margin: 0; scroll-margin-top: 80px; }
+.frame figcaption { font-size: 14px; color: var(--muted); margin: 0 0 8px; }
+.viewport { position: relative; overflow: hidden; border-radius: 12px; box-shadow: 0 8px 28px rgba(15,23,42,.18);
+            background: #fff; cursor: zoom-in; }
+.scaler { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+.present { position: fixed; inset: 0; z-index: 10; background: #000; display: flex; align-items: center; justify-content: center; }
+.present[hidden] { display: none; }
+body.presenting { overflow: hidden; }
+.present .viewport { box-shadow: none; border-radius: 0; cursor: default; }
+.hud { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 11; display: flex; gap: 10px;
+       align-items: center; background: rgba(15,23,42,.72); color: #fff; font: 600 15px 'Segoe UI', sans-serif;
+       padding: 8px 14px; border-radius: 999px; opacity: .25; transition: opacity .2s; }
+.hud:hover, .present:focus-within .hud { opacity: 1; }
+.hud button { background: transparent; color: #fff; border: 0; font: inherit; cursor: pointer; padding: 2px 8px; }
+</style></head>
+<body>
+<div class="bar"><span class="name">Схемы работы llm_tutor</span>
+  <span class="hint">клик по схеме или Enter — показ · ← → листать · F — полный экран · Esc — выход</span>
+  <button type="button" id="start">Показ ▶</button></div>
+<nav class="toc"><a href="#s1">1. Где хранятся данные</a><a href="#s2">2. Ответ на задание</a><a href="#s3">3. Вопрос в чат и «не понял»</a><a href="#s4">4. Оценка владения</a><a href="#s5">5. Объясни новичку</a><a href="#s6">6. Повторение по расписанию</a><a href="#s7">7. Проект: путь ученика</a><a href="#s8">8. Проект: разговор вместо форм</a><a href="#s9">9. Проект: кто что решает</a><a href="#s10">10. Голосовой ввод и озвучивание</a><a href="#s11">11. Заметки и поиск</a><a href="#s12">12. Напоминания о повторении</a><a href="#s13">13. Версии курса</a></nav>
+<main class="list"><figure class="frame" id="s1"><figcaption>1 / 13 · Где хранятся данные</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Где хранятся данные</h1><div class="stage"><div class="row" style="align-items:stretch"><div class="box db" style="width:430px; justify-content:flex-start; gap:10px">
+  <b>accounts.sqlite3</b><span>одна на всё приложение</span>
+  <div class="box small plain mono"><b>users</b><span>email, хеш пароля, роль</span></div>
+  <div class="box small plain mono"><b>web_sessions</b><span>хеш токена, срок</span></div>
+  <div class="box small plain mono"><b>enrollments</b><span>ученик и курс</span></div>
+  <div class="box small plain mono"><b>password_resets</b><span>хеш токена, срок</span></div>
+  <div class="box small plain mono"><b>admin_log</b><span>действия админа</span></div>
+  <div class="box small plain mono"><b>course_progress</b><span>сводка прогресса для админки</span></div>
+</div><div class="arrow" style="flex-basis:108px"><small>запись<br>на курс<br>определяет<br>файл</small>→</div><div class="box db" style="flex:1; justify-content:flex-start; gap:12px">
+  <b>users/&lt;id&gt;/&lt;курс&gt;.sqlite3 — один файл на ученика и курс</b>
+  <div class="row gap" style="align-items:flex-start">
+    <div class="col" style="flex:1">
+      <div class="group"><div class="h"><b>Курс</b> <span>— копия seed, одинакова у всех</span></div><div class="box small plain mono"><b>topics</b><span>модули и анкета</span></div><div class="box small plain mono"><b>concepts</b><span>занятия, разделы, конспект</span></div><div class="box small plain mono"><b>edges</b><span>пререквизиты</span></div><div class="box small plain mono"><b>items</b><span>задания, ссылка на рубрику</span></div><div class="box small plain mono"><b>rubrics, criteria</b><span>критерии проверки</span></div><div class="box small plain mono"><b>chunks</b><span>материалы для поиска</span></div></div>
+      <div class="group"><div class="h"><b>Заметки</b> <span>— из выделенного фрагмента</span></div><div class="box small plain mono"><b>notes</b><span>цитата, занятие, раздел, комментарий</span></div></div>
+    </div>
+    <div class="col" style="flex:1">
+      <div class="group"><div class="h"><b>Журнал и оценка</b> <span>— истина и производное</span></div><div class="box small plain mono"><b>events</b><span>занятие, задание, источник, результат</span></div><div class="box small plain mono"><b>mastery</b><span>α, β по занятию, из журнала</span></div><div class="box small plain mono"><b>review_schedule</b><span>ступень и срок повторения</span></div><div class="box small plain mono"><b>review_log</b><span>ответы повторения: в срок или нет</span></div><div class="box small plain mono"><b>misconceptions</b><span>таблица есть, не заполняется</span></div></div>
+      <div class="group"><div class="h"><b>Занятие</b> <span>— состояние и диалог</span></div><div class="box small plain mono"><b>sessions</b><span>state: JSON занятия, маршрут</span></div><div class="box small plain mono"><b>messages</b><span>реплики, meta: цитата, повторение</span></div><div class="box small plain mono"><b>facts</b><span>анкета, настройки, цель</span></div></div>
+    </div>
+    <div class="col" style="flex:1">
+      <div class="group"><div class="h"><b>Объясни новичку</b> <span>— по важным занятиям</span></div><div class="box small plain mono"><b>explain_sessions</b><span>занятие, тип, статус, отчёт</span></div><div class="box small plain mono"><b>explain_turns</b><span>ученик, новичок, наставник</span></div></div>
+      <div class="group"><div class="h"><b>Проект</b> <span>— после прохождения курса</span></div><div class="box small plain mono"><b>projects</b><span>статус, описание, карточка, этапы</span></div><div class="box small plain mono"><b>project_turns</b><span>чат, meta: предложение</span></div></div>
+      <div class="box small code"><b>Что откуда считается</b><span>events — источник истины, не переписывается<br>
+        mastery — из events и хода<br>review_schedule — из закрытий и ответов повторения<br>
+        sessions.state — текущее состояние занятия</span></div>
+    </div>
+  </div>
+</div></div><div class="note">В схеме курса нет user_id — ученика задаёт сам файл. Схема меняется только миграциями (migrations и migrations_accounts). Диалоги админка не показывает.</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s2"><figcaption>2 / 13 · Ответ на задание</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Ответ на задание</h1><div class="stage"><svg width="1776" height="810" viewBox="0 0 1776 810" style="align-self:center; flex-shrink:0; font-family:'Segoe UI',sans-serif">
+  <defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#334155"/></marker></defs>
+  <rect x="20" y="0" width="300" height="62" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="3"/><text x="170" y="41" text-anchor="middle" font-size="26" font-weight="650">Браузер</text><line x1="170" y1="62" x2="170" y2="800" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 7"/><rect x="395" y="0" width="300" height="62" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="545" y="41" text-anchor="middle" font-size="26" font-weight="650">API</text><line x1="545" y1="62" x2="545" y2="800" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 7"/><rect x="770" y="0" width="300" height="62" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="920" y="41" text-anchor="middle" font-size="26" font-weight="650">Ядро хода</text><line x1="920" y1="62" x2="920" y2="800" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 7"/><rect x="1145" y="0" width="300" height="62" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="1295" y="41" text-anchor="middle" font-size="26" font-weight="650">Проверка ответа</text><line x1="1295" y1="62" x2="1295" y2="800" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 7"/><rect x="1460" y="0" width="300" height="62" rx="14" fill="#ede9fe" stroke="#7c3aed" stroke-width="3"/><text x="1610" y="41" text-anchor="middle" font-size="26" font-weight="650">Оценка и база</text><line x1="1610" y1="62" x2="1610" y2="800" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 7"/>
+  <line x1="170" y1="120" x2="537" y2="120" stroke="#334155" stroke-width="3" marker-end="url(#a)"/><text x="357.5" y="108" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">1. ответ на задание</text>
+  <line x1="545" y1="182" x2="912" y2="182" stroke="#334155" stroke-width="3" marker-end="url(#a)"/><text x="732.5" y="170" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">2. ход под замком ученика</text>
+  <line x1="920" y1="244" x2="1287" y2="244" stroke="#334155" stroke-width="3" marker-end="url(#a)"/><text x="1107.5" y="232" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">3. вердикт: тесты, автопроверка, рубрика</text>
+  <line x1="1295" y1="300" x2="928" y2="300" stroke="#334155" stroke-width="3" stroke-dasharray="10 7" marker-end="url(#a)"/><text x="1107.5" y="288" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">4. балл от 0 до 1</text>
+  <line x1="920" y1="362" x2="1602" y2="362" stroke="#334155" stroke-width="3" marker-end="url(#a)"/><text x="1265.0" y="350" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">5. события и пересчёт α и β</text>
+  <rect x="705" y="392" width="430" height="74" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/>
+  <text x="920" y="424" text-anchor="middle" font-size="22">6. раздел: пройден, второй шанс</text>
+  <text x="920" y="452" text-anchor="middle" font-size="22">или слабое место</text>
+  <line x1="920" y1="526" x2="1602" y2="526" stroke="#334155" stroke-width="3" marker-end="url(#a)"/><text x="1265.0" y="514" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">7. маршрут и расписание повторений</text>
+  <rect x="705" y="556" width="1055" height="86" rx="14" fill="#ede9fe" stroke="#7c3aed" stroke-width="3"/>
+  <text x="730" y="592" font-size="24" font-weight="650">8. запись хода: одна транзакция</text>
+  <text x="730" y="624" font-size="20" fill="#334155">реплики, события, оценка, расписание, состояние занятия</text>
+  <line x1="920" y1="706" x2="553" y2="706" stroke="#334155" stroke-width="3" stroke-dasharray="10 7" marker-end="url(#a)"/><text x="732.5" y="694" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">9. вердикт берётся из журнала</text>
+  <line x1="545" y1="772" x2="178" y2="772" stroke="#334155" stroke-width="3" stroke-dasharray="10 7" marker-end="url(#a)"/><text x="357.5" y="760" text-anchor="middle" font-size="22" paint-order="stroke" stroke="#fff" stroke-width="8">10. реплики и новое состояние занятия</text>
+</svg><div class="note">Вердикт даёт код: тесты кода выполняются в браузере, выбор варианта проверяет автопроверка. Модель участвует только в рубрике открытого ответа, и её цитаты проверяет код.</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s3"><figcaption>3 / 13 · Вопрос в чат и «не понял»</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Вопрос в чат и «не понял»</h1><div class="stage"><div style="display:grid; grid-template-columns: 1fr 48px 1fr 48px 1fr 48px 1fr 48px 1fr; row-gap:6px">
+  <div class="box plain"><b>Реплика</b><span>чат, «не понял»,<br>выделенный фрагмент</span></div><div class="arrow">→</div>
+  <div class="box code"><b>Разбор команды</b><span>до 6 слов: «закрой тему»,<br>«пропусти», «не понял»;<br>выполняется до модели</span></div><div class="arrow">→</div>
+  <div class="box code"><b>Ответ или чат?</b><span>висит задание и текст похож<br>на ответ → ветка ответа;<br>иначе — чат</span></div><div class="arrow" style="flex-basis:108px"><small>нет</small>→</div>
+  <div class="box code"><b>Сборка контекста</b><span>заново из базы<br>на каждый ход</span></div><div class="arrow">→</div>
+  <div class="box model"><b>Модель</b><span>ответ тьютора<br>и три флага</span></div>
+  <div></div><div></div><div></div><div></div>
+  <div class="arrow" style="font-size:34px"><small>да</small>↓</div>
+  <div></div><div></div><div></div>
+  <div class="arrow" style="font-size:34px">↓</div>
+  <div></div><div></div><div></div><div></div>
+  <div class="box code"><b>Ветка ответа</b><span>как на схеме «Ответ на задание»:<br>вердикт считает код</span></div>
+  <div></div>
+  <div class="box code" style="grid-column: 7 / 10">
+    <b>Код оформляет ответ модели</b>
+    <ul><li>уровень подсказки растёт не больше чем на 1 за ход</li>
+        <li>флаг «застрял» → режим усиленного прохода</li>
+        <li>флаг «закрыть тему» → проверочный проход</li>
+        <li>ответ уходит ученику, ход пишется одной транзакцией</li></ul>
+  </div>
+</div><div class="note">Реплика не становится событием в журнале: вопрос или просьба о помощи не считаются свидетельством незнания.</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s4"><figcaption>4 / 13 · Оценка владения</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Оценка владения</h1><div class="stage"><div class="row" style="align-items:stretch">
+      <div class="col" style="width:440px">
+        <div class="box code small"><b>Тесты кода</b><span>вес 1.0</span></div>
+        <div class="box code small"><b>Выбор и короткий ответ</b><span>вес 1.0</span></div>
+        <div class="box model small"><b>Открытый ответ по рубрике</b><span>вес 0.5</span></div>
+        <div class="box plain small"><b>Анкета</b><span>вес 0.3</span></div>
+        <div class="box plain small"><b>Повтор того же задания</b><span>умножает вес на 0.3</span></div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box db" style="width:520px"><b>Счётчики занятия</b><span>α + вес × результат<br>β + вес × (1 − результат)<br><br><b style='font-size:26px'>оценка = α / (α + β)</b><br>неопределённость — ширина Beta<br>старт: Beta(1, 1) — «не знаем»<br><br>забывание при чтении: 0.05 в сутки<br>успех слегка поднимает пререквизиты</span></div>
+      <div class="arrow" style="flex-basis:108px"><small>режим</small>→</div>
+      <div class="col" style="width:560px">
+        <div class="box code small"><b>Не менее 3 провалов за 3 дня</b><span>усиленный проход</span></div>
+        <div class="box code small"><b>Оценка ≥ 0.90 и неопределённость ≤ 0.10</b><span>пропустить</span></div>
+        <div class="box code small"><b>Оценка ≥ 0.75</b><span>проверить</span></div>
+        <div class="box code small"><b>Ниже 0.50 и слабый мягкий пререквизит</b><span>вернуться назад</span></div>
+        <div class="box code small"><b>Оценка ≥ 0.50</b><span>сжатый проход</span></div>
+        <div class="box code small"><b>Иначе</b><span>полный проход</span></div>
+      </div>
+    </div><div class="box code"><b>Закрытие занятия решает код отдельно от оценки</b><span>пройдены все разделы и итоговое задание — либо оценка ≥ 0.90 при неопределённости ≤ 0.10. Поэтому занятие может закрыться и при оценке ниже 0.75.</span></div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s5"><figcaption>5 / 13 · Объясни новичку</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Объясни новичку</h1><div class="stage"><div class="row"><div class="box code" style="flex:1"><b>Важное занятие закрыто</b><span>любым путём</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Задание висит</b><span>вычисляется по маршруту</span></div><div class="arrow">→</div><div class="box plain" style="flex:1"><b>Сессия</b><span>до 10 реплик ученика</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Отчёт</b><span>покрытие, ошибки, пробелы</span></div><div class="arrow">→</div><div class="box good" style="flex:1"><b>Продолжить</b><span>разминка или занятие</span></div></div><div class="row gap">
+        <div class="box plain small" style="flex:1"><b>Пока задание висит</b><span>ходы урока отвечают 409 и ничего не пишут; конспект и задание сервер не отдаёт; чат справа — наставник</span></div>
+        <div class="box db small" style="flex:1"><b>Результат</b><span>по каждой идее событие: верно 0.3, с помощью наставника 0.15, неверно 0.3; ошибка или пробел — занятие в повторение на завтра</span></div>
+        <div class="box code small" style="flex:1"><b>Конец сессии</b><span>все обязательные идеи названы верно или 10-я реплика; занятие не закрывается и не открывается заново</span></div>
+      </div><div class="label" style="text-align:center">Каждая реплика ученика: две модели, остальное решает код</div><div class="row"><div class="box model" style="flex:1"><b>Оценщик</b><span>видит эталон: какие идеи названы, вердикт, цитата</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Засчитано?</b><span>«верно» — только если цитата дословно есть в реплике; вставка из конспекта не растит покрытие</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Установка хода</b><span>одна из семи: противоречие, загвоздка, вопрос, «понял»…</span></div><div class="arrow">→</div><div class="box model" style="flex:1"><b>Новичок</b><span>отвечает по установке, эталона не видит совсем</span></div><div class="arrow">→</div><div class="box db" style="flex:1"><b>Фильтр и запись</b><span>длинно или блок кода — повтор; реплики и состояние — одной транзакцией</span></div></div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s6"><figcaption>6 / 13 · Повторение по расписанию</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Повторение по расписанию</h1><div class="stage"><svg width="1776" height="430" viewBox="0 0 1776 430" style="align-self:center; flex-shrink:0; font-family:'Segoe UI',sans-serif">
+  <defs>
+    <marker id="g" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#059669"/></marker>
+    <marker id="r" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5L0 10z" fill="#dc2626"/></marker>
+  </defs>
+  <rect x="40" y="290" width="200" height="84" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="60" y="326" font-size="27" font-weight="650" fill="#0f172a">ступень 0</text><text x="60" y="356" font-size="21" fill="#334155">через 1 день</text><rect x="276" y="244" width="200" height="84" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="296" y="280" font-size="27" font-weight="650" fill="#0f172a">ступень 1</text><text x="296" y="310" font-size="21" fill="#334155">через 3 дня</text><rect x="512" y="198" width="200" height="84" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="532" y="234" font-size="27" font-weight="650" fill="#0f172a">ступень 2</text><text x="532" y="264" font-size="21" fill="#334155">через 7 дней</text><rect x="748" y="152" width="200" height="84" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="768" y="188" font-size="27" font-weight="650" fill="#0f172a">ступень 3</text><text x="768" y="218" font-size="21" fill="#334155">через 14 дней</text><rect x="984" y="106" width="200" height="84" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="1004" y="142" font-size="27" font-weight="650" fill="#0f172a">ступень 4</text><text x="1004" y="172" font-size="21" fill="#334155">через 30 дней</text><rect x="1220" y="60" width="200" height="84" rx="14" fill="#eff6ff" stroke="#2563eb" stroke-width="3"/><text x="1240" y="96" font-size="27" font-weight="650" fill="#0f172a">ступень 5</text><text x="1240" y="126" font-size="21" fill="#334155">через 60 дней</text>
+  <path d="M244 316 L270 294" stroke="#059669" stroke-width="4" fill="none" marker-end="url(#g)"/><path d="M480 270 L506 248" stroke="#059669" stroke-width="4" fill="none" marker-end="url(#g)"/><path d="M716 224 L742 202" stroke="#059669" stroke-width="4" fill="none" marker-end="url(#g)"/><path d="M952 178 L978 156" stroke="#059669" stroke-width="4" fill="none" marker-end="url(#g)"/><path d="M1188 132 L1214 110" stroke="#059669" stroke-width="4" fill="none" marker-end="url(#g)"/><path d="M1424 86 L1450 64" stroke="#059669" stroke-width="4" fill="none" marker-end="url(#g)"/>
+  <rect x="1456" y="14" width="250" height="84" rx="14" fill="#ecfdf5" stroke="#059669" stroke-width="3"/>
+  <text x="1476" y="50" font-size="27" font-weight="650">закреплено</text>
+  <text x="1476" y="80" font-size="21" fill="#334155">строка удалена</text>
+  <text x="512" y="86" font-size="27" font-weight="650" fill="#059669">верно в срок → ступень вверх</text>
+  <path d="M612.0 286 C 612.0 444, 140.0 444, 140.0 384" stroke="#dc2626" stroke-width="4" fill="none" marker-end="url(#r)"/>
+  <text x="642.0" y="426" font-size="27" font-weight="650" fill="#dc2626">ошибка → на две ступени вниз, срок завтра</text>
+</svg><div class="row gap">
+        <div class="box code" style="flex:1"><b>Откуда берётся строка</b><ul>
+          <li>закрытие занятия — ступень 0</li><li>закрыто проходом или пропуском — ступень 2</li>
+          <li>объяснение с ошибкой — срок завтра</li><li>старые ученики — один раз, по давности</li></ul></div>
+        <div class="box code" style="flex:1"><b>Что и когда спрашивается</b><ul>
+          <li>занятие закрыто, в графе, срок наступил</li><li>есть задание: не итоговое, не решалось за сутки</li>
+          <li>сначала самое просроченное, затем слабее оценка</li><li>не более 10 новых сроков в день</li></ul></div>
+        <div class="box plain" style="flex:1"><b>Где ученик это видит</b><ul>
+          <li>разминка: 1–2 вопроса на границе занятий</li><li>вкладка «Повторение»: «Срочное» до 5 занятий</li>
+          <li>«Освежить»: выбранные занятия</li><li>верно с подсказкой — ступень та же, завтра</li></ul></div>
+      </div><div class="note">Ответ повторения — обычное свидетельство: он попадает в events и меняет оценку. Просрочка занятие не переоткрывает — переоткрывают два провала после закрытия.</div></div></section></div></div></figure><figure class="frame" id="s7"><figcaption>7 / 13 · Проект: путь ученика</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Проект: путь ученика</h1><div class="stage"><div class="row"><div class="box plain" style="flex:1"><b>Не записан</b><span>нужна запись на курс</span></div><div class="arrow" style="flex-basis:108px"><small>запись</small>→</div><div class="box plain" style="flex:1"><b>Курс не пройден</b><span>пройдено N из M</span></div><div class="arrow" style="flex-basis:108px"><small>курс<br>пройден</small>→</div><div class="box plain" style="flex:1"><b>Выбор</b><span>1–3 описания проекта</span></div><div class="arrow" style="flex-basis:108px"><small>выбрать</small>→</div><div class="box db" style="flex:1"><b>Идея</b><span>статус idea: карточка — задача, данные, метрика</span></div><div class="arrow" style="flex-basis:108px"><small>утвердить<br>идею</small>→</div><div class="box db" style="flex:1"><b>Реализация</b><span>статус build: Данные и анализ → Базовая модель → Улучшения → Выводы</span></div><div class="arrow" style="flex-basis:108px"><small>последний<br>этап</small>→</div><div class="box good" style="flex:1"><b>Готов</b><span>статус done</span></div></div><div class="row" style="justify-content:flex-end; padding-right:270px">
+          <div class="note" style="color:#b45309; font-weight:600">↶ «Начать заново»: проект уходит в архив, снова идея</div>
+        </div><div class="note">«Курс пройден» — закрыты все занятия опубликованных модулей. Проверяется только при выборе проекта:<br>начатый проект продолжается, даже если провалы потом переоткрыли занятие.</div></div></section></div></div></figure><figure class="frame" id="s8"><figcaption>8 / 13 · Проект: разговор вместо форм</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Проект: разговор вместо форм</h1><div class="stage"><div class="box plain" style="gap:16px; padding:20px 24px">
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <b>Заголовок проекта и статус</b>
+        <div class="row gap"><span class="btn alt">К проектам</span><span class="btn alt">Начать заново</span></div>
+      </div>
+      <div class="row gap" style="justify-content:flex-start"><span class="pill">Идея</span><span class="pill">Данные и анализ</span><span class="pill on">Базовая модель</span><span class="pill">Улучшения</span><span class="pill">Выводы</span></div>
+      <div class="row gap" style="align-items:stretch">
+        <div class="box plain" style="flex:62; background:#fff; justify-content:flex-start; gap:12px">
+          <b>Чат с наставником · около 62 %</b>
+          <div class="row" style="justify-content:flex-end"><div class="box small plain"><span>Реплика ученика</span></div></div>
+          <div class="box model" style="width:80%">
+            <b>Реплика наставника</b><span>Итог этапа: что сделал, что увидел — словами ученика</span>
+            <div class="row gap" style="justify-content:flex-start; margin-top:6px">
+              <span class="btn">Подтвердить и дальше</span><span class="btn alt">Поправить</span></div>
+          </div>
+          <div class="row" style="justify-content:flex-start"><span class="btn alt">Подвести итог этапа</span></div>
+          <div class="box small plain" style="margin-top:auto"><span>Поле ввода реплики</span></div>
+        </div>
+        <div class="box plain" style="flex:38; background:#fff; justify-content:flex-start; gap:12px">
+          <b>Сводка проекта · около 38 %</b>
+          <div class="box db small"><b>Карточка</b><span>задача, данные, метрика</span><div class="row gap" style="justify-content:flex-start; margin-top:6px"><span class="btn alt">Изменить</span><span class="btn">Утвердить идею</span></div><span>кнопки — только в статусе «идея»</span></div>
+          <div class="box code small"><b>Сейчас: Базовая модель</b><span>цель и чек-лист этапа</span><div class="row" style="justify-content:flex-start; margin-top:6px"><span class="btn alt">Записать итог самому</span></div></div>
+          <div class="box db small"><b>Пройденные этапы</b><span>раскрываются; итог только для чтения</span></div>
+        </div>
+      </div>
+    </div><div class="note">Форм нет: поля появляются только в окнах «Изменить», «Поправить» и «Записать итог самому». На телефоне вместо двух колонок — переключатель «Наставник / Проект».</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s9"><figcaption>9 / 13 · Проект: кто что решает</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Проект: кто что решает</h1><div class="stage"><div class="row"><div class="box plain" style="flex:1"><b>Реплика ученика</b><span>до 4000 знаков; всё, что он написал, идёт модели как данные</span></div><div class="arrow">→</div><div class="box model" style="flex:1"><b>Наставник</b><span>отвечает и может предложить поля карточки или итог этапа</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Проверка ответа</b><span>блок кода длиннее 8 строк — повтор, затем запасная реплика</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Чистка предложения</b><span>только поля карточки или этапа; страж чисел: поле с цифрой, которой ученик не называл, выбрасывается</span></div></div><div class="label" style="text-align:center">↓</div><div class="row"><div class="box plain" style="flex:1"><b>Ученик решает</b><span>«Взять в карточку» (идея) или «Подтвердить и дальше» / «Поправить» (этап)</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Всё обязательное есть?</b><span>нет — 422, ничего не пишется, открывается окно «Поправить»</span></div><div class="arrow" style="flex-basis:108px"><small>да</small>→</div><div class="box db" style="flex:1"><b>Запись</b><span>значения берутся из сохранённой реплики, а не из запроса; заметки и переход этапа — одной транзакцией</span></div></div><div class="note">Модель недоступна — «Записать итог самому»: проект не блокируется. Код и данные проекта платформа не хранит и не исполняет.</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s10"><figcaption>10 / 13 · Голосовой ввод и озвучивание</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Голосовой ввод и озвучивание</h1><div class="stage"><div class="row"><div class="box plain" style="flex:1"><b>Ученик жмёт микрофон</b><span>чат, «Голосом» в «Практике», панель выделения, «Надиктовать» и голосовой бриф в админке, задание «ответь голосом»</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Браузер распознаёт сам?</b><span>Web Speech API, ru-RU (Chrome, Edge)</span></div><div class="arrow" style="flex-basis:108px"><small>да</small>→</div><div class="box code" style="flex:1"><b>Распознаёт браузер</b><span>звук не уходит с устройства, текст растёт по ходу речи</span></div><div class="arrow">→</div><div class="box good" style="flex:1"><b>Текст — в поле</b><span>не отправляется сам: ученик правит и жмёт «Отправить»; ошибка распознавания не уходит на проверку</span></div></div><div class="label" style="text-align:center">нет (Firefox, часть телефонов) или сетевая ошибка — только у панели задания «ответь голосом»</div><div class="row"><div class="box code" style="flex:1"><b>Запись в браузере</b><span>MediaRecorder → base64</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>POST /api/lesson/transcribe</b><span>формат: wav, mp3, flac, m4a, ogg, webm, aac; до 8 МБ; не больше 40 записей за 15 минут (иначе 429)</span></div><div class="arrow">→</div><div class="box model" style="flex:1"><b>Расшифровка</b><span>Whisper через OpenRouter (STT_MODEL), язык ru; сбой — 502 с текстом ошибки</span></div><div class="arrow">→</div><div class="box good" style="flex:1"><b>Текст — в поле</b><span>дальше так же, как у браузерного пути</span></div></div><div class="row gap">
+        <div class="box code small" style="flex:1"><b>Задание «ответь голосом» (spoken)</b><span>проверяется рубрикой, как открытый ответ; без рубрики не выдаётся; в «Практике» над полем — панель «Записать ответ»</span></div>
+        <div class="box code small" style="flex:1"><b>Озвучивание</b><span>кнопка-динамик у ответа тьютора и конспекта; speechSynthesis, ru-RU; код и таблицы не читаются; повторный клик — стоп</span></div>
+      </div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s11"><figcaption>11 / 13 · Заметки и поиск</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Заметки и поиск</h1><div class="stage"><div class="row"><div class="box plain" style="flex:1"><b>Выделить фрагмент</b><span>в конспекте, задании или коде</span></div><div class="arrow">→</div><div class="box plain" style="flex:1"><b>«В заметку»</b><span>кнопка в панели над выделенным</span></div><div class="arrow">→</div><div class="box db" style="flex:1"><b>Таблица notes</b><span>в базе ученика: цитата до 4000 знаков, источник, занятие, раздел, время</span></div><div class="arrow">→</div><div class="box plain" style="flex:1"><b>Профиль → «Заметки»</b><span>список, комментарий к заметке, удаление</span></div></div><div class="label" style="text-align:center">↓ поиск в профиле</div><div class="row"><div class="box plain" style="flex:1"><b>Запрос ученика</b><span>строка поиска</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>По заметкам</b><span>совпадение в цитате или комментарии</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>По конспектам курса</b><span>все занятия курса; фрагмент вокруг совпадения</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Переход по ссылке</b><span>открывается своё занятие (?node=) и раздел (#section-) — один раз, затем адрес чистится</span></div></div><div class="row gap">
+        <div class="box code small" style="flex:1"><b>Ещё в профиле: калибровка</b><span>самооценка из анкеты против фактического владения по занятиям</span></div>
+        <div class="box code small" style="flex:1"><b>Ещё в профиле: план на неделю</b><span>ближайшие шаги маршрута с ориентиром около 25 минут на шаг</span></div>
+      </div><div class="note">Заметка — не свидетельство: в журнал оценок она ничего не пишет.</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s12"><figcaption>12 / 13 · Напоминания о повторении</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Напоминания о повторении</h1><div class="stage"><div class="row"><div class="box plain" style="flex:1"><b>Раз в день</b><span>Планировщик задач Windows или cron запускает send-review-reminders (--dry-run — только показать)</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Обход учеников</b><span>отдельный процесс, не веб; курсы, на которые ученик записан и которые опубликованы</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Есть что напомнить?</b><span>повторение включено, письма не отключены, есть просроченные занятия, по курсу сегодня ещё не писали</span></div><div class="arrow" style="flex-basis:108px"><small>да</small>→</div><div class="box good" style="flex:1"><b>Одно письмо</b><span>на ученика, даже если курсов несколько; без SMTP — печатается в журнал сервера</span></div><div class="arrow">→</div><div class="box db" style="flex:1"><b>Отметка дня</b><span>факт review_reminder_sent: повторный запуск в тот же день молчит</span></div></div><div class="label" style="text-align:center">В письме — ссылка «отписаться»</div><div class="row"><div class="box code" style="flex:1"><b>Подписанная ссылка</b><span>HMAC от id ученика на UNSUBSCRIBE_SECRET (по умолчанию — ключ модели); вход не нужен</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>GET /unsubscribe</b><span>только показывает кнопку: почтовые клиенты открывают ссылки заранее</span></div><div class="arrow">→</div><div class="box db" style="flex:1"><b>POST /api/unsubscribe</b><span>выключает только письма (review_reminders) во всех курсах; той же ссылкой письма можно включить снова</span></div></div><div class="note">Повторение в самом курсе отписка не трогает: разминка и вкладка «Повторение» работают как прежде.</div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure><figure class="frame" id="s13"><figcaption>13 / 13 · Версии курса</figcaption><div class="viewport"><div class="scaler"><section class="slide"><h1>Версии курса</h1><div class="stage"><div class="row gap" style="align-items:stretch">
+      <div class="box db" style="flex:1"><b>Что входит в версию</b><span>course.json, seed_topic*.json, конспекты theory/.<br>Не входят: источники, артефакты генерации, материалы поиска.</span></div>
+      <div class="box db" style="flex:1"><b>Где хранится</b><span>&lt;курс&gt;/versions/&lt;id&gt;/ — не больше 20 версий, старые удаляются</span></div>
+    </div><div class="label" style="text-align:center">Когда снимается</div><div class="row gap">
+      <div class="box plain" style="flex:1"><b>Вручную</b><span>кнопка на карточке курса</span></div>
+      <div class="box code" style="flex:1"><b>Перед публикацией</b><span>автоматически</span></div>
+      <div class="box code" style="flex:1"><b>Перед генерацией модуля</b><span>автоматически</span></div>
+      <div class="box code" style="flex:1"><b>Перед удалением модуля</b><span>автоматически</span></div>
+      <div class="box code" style="flex:1"><b>Перед откатом</b><span>автоматически — откат тоже обратим</span></div>
+    </div><div class="label" style="text-align:center">Откат к версии</div><div class="row"><div class="box plain" style="flex:1"><b>Выбрать версию</b><span>список на карточке курса</span></div><div class="arrow">→</div><div class="box db" style="flex:1"><b>Снимок текущего</b><span>«перед откатом к …»</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Вернуть содержимое</b><span>из версии; статус публикации и счётчики id — текущие: иначе курс снялся бы с публикации, а id совпали бы с журналом учеников</span></div><div class="arrow">→</div><div class="box code" style="flex:1"><b>Обновить</b><span>реестр курсов, базы учеников, кэш админки</span></div></div></div><div class="legend"><span><i class="c"></i>решает код</span><span><i class="m"></i>говорит модель</span><span><i class="d"></i>запись в базу</span></div></section></div></div></figure></main>
+<div class="present" id="present" tabindex="-1" hidden>
+  <div class="viewport"><div class="scaler"></div></div>
+  <div class="hud"><button type="button" id="prev" aria-label="Назад">◀</button><span id="counter"></span>
+    <button type="button" id="next" aria-label="Вперёд">▶</button>
+    <button type="button" id="full">Полный экран</button><button type="button" id="exit">Выход</button></div>
+</div>
+<script>
+(() => {
+  const frames = [...document.querySelectorAll('.list .frame')];
+  const present = document.getElementById('present');
+  const holder = present.querySelector('.viewport');
+  const counter = document.getElementById('counter');
+  let current = 0;
+
+  // Слайд 1920×1080 вписывается в ширину ленты или в экран показа.
+  function fit(viewport, width, height) {
+    const scale = Math.min(width / 1920, height / 1080);
+    viewport.style.width = `${1920 * scale}px`;
+    viewport.style.height = `${1080 * scale}px`;
+    viewport.querySelector('.scaler').style.transform = `scale(${scale})`;
+  }
+  function fitList() {
+    for (const frame of frames) {
+      const viewport = frame.querySelector('.viewport');
+      fit(viewport, frame.clientWidth, Infinity);
+    }
+  }
+  function show(index) {
+    current = (index + frames.length) % frames.length;
+    holder.querySelector('.scaler').replaceChildren(frames[current].querySelector('.slide').cloneNode(true));
+    fit(holder, innerWidth, innerHeight);
+    counter.textContent = `${current + 1} / ${frames.length}`;
+    history.replaceState(null, '', `#${current + 1}`);
+  }
+  function open(index) {
+    present.hidden = false;
+    document.body.classList.add('presenting');
+    show(index);
+    present.focus();
+  }
+  function close() {
+    present.hidden = true;
+    document.body.classList.remove('presenting');
+    if (document.fullscreenElement) document.exitFullscreen();
+    frames[current].scrollIntoView({block: 'start'});
+  }
+
+  frames.forEach((frame, index) => frame.querySelector('.viewport').addEventListener('click', () => open(index)));
+  document.getElementById('start').addEventListener('click', () => open(0));
+  document.getElementById('prev').addEventListener('click', () => show(current - 1));
+  document.getElementById('next').addEventListener('click', () => show(current + 1));
+  document.getElementById('full').addEventListener('click', () => present.requestFullscreen?.());
+  document.getElementById('exit').addEventListener('click', close);
+  document.addEventListener('keydown', (event) => {
+    if (present.hidden) {
+      if (event.key === 'Enter' || event.key === 'F5') { event.preventDefault(); open(0); }
+      return;
+    }
+    if (['ArrowRight', 'ArrowDown', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); show(current + 1); }
+    else if (['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace'].includes(event.key)) { event.preventDefault(); show(current - 1); }
+    else if (event.key === 'Home') show(0);
+    else if (event.key === 'End') show(frames.length - 1);
+    else if (event.key === 'f' || event.key === 'F' || event.key === 'а' || event.key === 'А') present.requestFullscreen?.();
+    else if (event.key === 'Escape' && !document.fullscreenElement) close();
+  });
+  addEventListener('resize', () => { fitList(); if (!present.hidden) fit(holder, innerWidth, innerHeight); });
+  fitList();
+  const start = parseInt(location.hash.slice(1), 10);
+  if (start >= 1 && start <= frames.length) open(start - 1);
+})();
+</script>
+</body></html>
