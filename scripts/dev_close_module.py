@@ -25,10 +25,11 @@ from llm_tutor.db.connection import get_conn, migrate
 from llm_tutor.student import explain as explain_logic
 
 
-def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
-    """Закрывает занятия модуля в маршруте ученика; возвращает, сколько закрыто.
+def _close(conn: sqlite3.Connection, pick) -> int:
+    """Закрывает в маршруте занятия, для которых ``pick(graph, id)`` истинно.
 
     Нет открытой сессии или маршрута (анкета ещё не пройдена) — ничего не делает.
+    Уже закрытое занятие сохраняет прежнее время закрытия.
     """
     session_id = repos.get_open_session(conn)
     state = repos.get_session_state(conn, session_id) if session_id else None
@@ -42,7 +43,7 @@ def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
     closed = 0
     steps = []
     for step in state.route.steps:
-        if graph.has_node(step.concept_id) and graph.topic_of(step.concept_id) == topic_id:
+        if graph.has_node(step.concept_id) and pick(graph, step.concept_id):
             closed += 1
             was_closed = step.status == "closed" and step.closed_at is not None
             step = step.model_copy(
@@ -52,6 +53,19 @@ def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
     route = state.route.model_copy(update={"steps": steps})
     repos.update_session_state(conn, session_id, state.model_copy(update={"route": route}))
     return closed
+
+
+def close_module(conn: sqlite3.Connection, topic_id: int) -> int:
+    """Закрывает занятия модуля в маршруте ученика; возвращает, сколько закрыто."""
+    return _close(conn, lambda graph, node: graph.topic_of(node) == topic_id)
+
+
+def close_lesson(conn: sqlite3.Connection, node_id: str) -> bool:
+    """Закрывает одно занятие в маршруте ученика; ``False`` — нет такого занятия или маршрута.
+
+    Как и модуль: без событий в журнале, важное занятие сразу даёт «Объясни новичку».
+    """
+    return _close(conn, lambda graph, node: node == node_id) > 0
 
 
 def main(argv: list[str] | None = None) -> None:

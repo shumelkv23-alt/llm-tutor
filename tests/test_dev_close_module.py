@@ -42,6 +42,37 @@ def test_close_module_marks_only_that_module(tmp_path) -> None:
     assert logic.pending_lesson(conn, route, order) == "l1_select"
 
 
+def test_close_lesson_marks_only_that_lesson(tmp_path) -> None:
+    conn = _student_db(tmp_path / "mlcourse.sqlite3")
+    assert dev.close_lesson(conn, "l1_select") is True
+    route = repos.get_session_state(conn, repos.get_open_session(conn)).route
+    status = {step.concept_id: step.status for step in route.steps}
+    assert status["l1_select"] == "closed"
+    assert [status[n] for n in ("l1_frames", "l1_group", "l2_hist")] == ["current", "ahead", "ahead"]
+    # Важное занятие сразу даёт обязательное объяснение новичку.
+    order = CourseGraph.load(conn).topo_order()
+    assert logic.pending_lesson(conn, route, order) == "l1_select"
+
+
+def test_close_lesson_keeps_earlier_closed_at(tmp_path) -> None:
+    conn = _student_db(tmp_path / "mlcourse.sqlite3")
+    dev.close_lesson(conn, "l1_group")
+    first = repos.get_session_state(conn, repos.get_open_session(conn)).route
+    stamp = next(s.closed_at for s in first.steps if s.concept_id == "l1_group")
+    assert dev.close_lesson(conn, "l1_group") is True
+    again = repos.get_session_state(conn, repos.get_open_session(conn)).route
+    assert next(s.closed_at for s in again.steps if s.concept_id == "l1_group") == stamp
+
+
+def test_close_lesson_unknown_or_without_route(tmp_path) -> None:
+    conn = _student_db(tmp_path / "mlcourse.sqlite3")
+    assert dev.close_lesson(conn, "нет-такого") is False
+    empty = get_conn(str(tmp_path / "empty.sqlite3"))
+    migrate(empty)
+    load_lessons(empty)
+    assert dev.close_lesson(empty, "l1_select") is False
+
+
 def test_close_module_without_route(tmp_path) -> None:
     conn = get_conn(str(tmp_path / "empty.sqlite3"))
     migrate(conn)

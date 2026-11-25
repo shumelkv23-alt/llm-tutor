@@ -17,10 +17,12 @@
     uv run python scripts/showcase.py time-travel --days 3   # сдвинуть сроки повторения
     uv run python scripts/showcase.py seed-review --days 2   # завести расписание закрытым занятиям и сдвинуть сроки
     uv run python scripts/showcase.py close-module 1 2       # «пройти» модули (только для показа)
+    uv run python scripts/showcase.py close-lesson tree_criteria  # «пройти» одно занятие (только для показа)
 
 Ученик — ``--email`` (если учеников один — не нужен), курс — ``--course``
 (по умолчанию демо-курс ``trees-demo``).
-Команды, которые пишут в БД (``time-travel``, ``seed-review``, ``close-module``), — только для показа.
+Команды, которые пишут в БД (``time-travel``, ``seed-review``, ``close-module``,
+``close-lesson``), — только для показа.
 """
 
 import argparse
@@ -715,6 +717,20 @@ def cmd_close_module(s: Settings, args) -> None:
     cmd_explain(s, argparse.Namespace(**{**vars(args), "reference": None, "session": None}))
 
 
+def cmd_close_lesson(s: Settings, args) -> None:
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import dev_close_module
+
+    _, path = student_db(s, args.email, args.course)
+    conn = open_db(path)
+    for node in args.lessons:
+        if dev_close_module.close_lesson(conn, node):
+            print(c(f"занятие {node}: закрыто (без событий в журнале, только для показа)", "yellow"))
+        else:
+            print(c(f"занятие {node}: не закрыто — нет такого занятия в маршруте или анкета не пройдена", "red"))
+    cmd_explain(s, argparse.Namespace(**{**vars(args), "reference": None, "session": None}))
+
+
 # --- CLI ------------------------------------------------------------------
 
 
@@ -748,11 +764,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--interval", type=float, default=1.0)
     p = sub.add_parser("close-module", help="закрыть модули (только для показа)")
     p.add_argument("modules", type=int, nargs="+")
+    p = sub.add_parser("close-lesson", help="закрыть занятия по id (только для показа)")
+    p.add_argument("lessons", nargs="+", help="id занятий, например tree_criteria")
     args = parser.parse_args(argv)
     handlers = {
         "students": cmd_students, "context": cmd_context, "mastery": cmd_mastery, "review": cmd_review,
         "time-travel": cmd_time_travel, "seed-review": cmd_seed_review, "explain": cmd_explain, "project": cmd_project,
-        "watch": cmd_watch, "close-module": cmd_close_module,
+        "watch": cmd_watch, "close-module": cmd_close_module, "close-lesson": cmd_close_lesson,
     }
     handlers[args.command](settings(), args)
 
