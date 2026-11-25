@@ -16,7 +16,16 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
-from llm_tutor.schemas import Event, Route, RouteStep, SessionState
+from llm_tutor.schemas import (
+    Event,
+    ExplainReport,
+    ExplainState,
+    IdeaReport,
+    PitfallReport,
+    Route,
+    RouteStep,
+    SessionState,
+)
 from llm_tutor.web import accounts, notebook, notes
 
 REPLY = "Группировка делит строки по ключу."
@@ -1433,3 +1442,141 @@ async def test_locked_lesson_hides_mistakes(enrolled, web_app) -> None:
     _route(conn, closed=(important,), closed_at=time.time() + 60)
 
     assert "неверный выбор" not in (await enrolled.get("/notes")).text
+
+
+# --- загвоздки: «Объясни новичку» (срез 111) ---
+
+
+def _important(conn, index: int = 0) -> tuple[str, object]:
+    configs = repos.get_explain_configs(conn)
+    node = [node for node in _order(conn) if node in configs][index]
+    return node, configs[node]
+
+
+def _explain_session(
+    conn,
+    *,
+    concept_id: str | None,
+    ideas: list,
+    pitfalls: list = (),
+    ended_at: float = 10.0,
+    status: str = "finished",
+) -> None:
+    session_id = repos.create_explain_session(conn, 1, now=ended_at - 1, concept_id=concept_id, kind="required")
+    report = ExplainReport(
+        topic_id=1,
+        required_done=0,
+        required_total=1,
+        ideas_done=0,
+        ideas_total=len(ideas),
+        ideas=list(ideas),
+        pitfalls=list(pitfalls),
+        end_reason="button",
+    )
+    repos.update_explain_session(
+        conn,
+        session_id,
+        state=ExplainState(),
+        updated_at=ended_at,
+        status=status,
+        ended_at=ended_at if status == "finished" else None,
+        report=report if status == "finished" else None,
+        commit=True,
+    )
+
+
+async def test_explain_wrong_idea_shown(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, config = _important(conn)
+    idea = next(i for i in config.ideas if i.required)
+    _explain_session(
+        conn, concept_id=node, ideas=[IdeaReport(id=idea.id, lesson=node, state="wrong", reference=idea.text)]
+    )
+
+    lesson = _lesson_of(notebook.course_notebook(conn), node)
+
+    assert lesson["explain"] == [{"kind": "wrong", "label": "Ошибся, объясняя:", "text": idea.text, "belief": None}]
+    assert "Ошибся, объясняя:" in (await enrolled.get("/notes")).text
+
+
+async def test_explain_missing_required_only(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, config = _important(conn)
+    required = next(i for i in config.ideas if i.required)
+    optional = [i for i in config.ideas if not i.required]
+    reports = [IdeaReport(id=required.id, lesson=node, state="missing", reference=required.text)]
+    reports += [IdeaReport(id=i.id, lesson=node, state="missing", reference=i.text) for i in optional]
+    reports.append(IdeaReport(id="ушла-из-эталона", lesson=node, state="partial", reference="старая идея"))
+    _explain_session(conn, concept_id=node, ideas=reports)
+
+    explain = _lesson_of(notebook.course_notebook(conn), node)["explain"]
+
+    assert [(e["kind"], e["text"]) for e in explain] == [("missed", required.text)]
+
+
+async def test_explain_missed_pitfall_with_belief(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, config = _important(conn)
+    pitfall = config.pitfalls[0]
+    _explain_session(
+        conn,
+        concept_id=node,
+        ideas=[],
+        pitfalls=[PitfallReport(id=pitfall.id, lesson=node, outcome="missed", fix=pitfall.fix)],
+    )
+
+    explain = _lesson_of(notebook.course_notebook(conn), node)["explain"]
+    html = (await enrolled.get("/notes")).text
+
+    assert explain == [
+        {"kind": "pitfall", "label": "Не заметил ловушку:", "text": pitfall.fix, "belief": pitfall.belief}
+    ]
+    assert "Не заметил ловушку:" in html
+
+
+async def test_explain_latest_session_wins(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, config = _important(conn)
+    idea = next(i for i in config.ideas if i.required)
+    _explain_session(
+        conn, concept_id=node, ended_at=10.0,
+        ideas=[IdeaReport(id=idea.id, lesson=node, state="wrong", reference=idea.text)],
+    )
+    _explain_session(conn, concept_id=node, ended_at=20.0, ideas=[IdeaReport(id=idea.id, lesson=node, state="correct")])
+
+    book = notebook.course_notebook(conn)
+
+    assert all(lesson["node_id"] != node or not lesson["explain"] for lesson in book["lessons"])
+
+
+async def test_old_module_session_split_by_idea_lesson(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    first, first_config = _important(conn, 0)
+    second, second_config = _important(conn, 1)
+    a = next(i for i in first_config.ideas if i.required)
+    b = next(i for i in second_config.ideas if i.required)
+    _explain_session(
+        conn,
+        concept_id=None,
+        ideas=[
+            IdeaReport(id=a.id, lesson=first, state="wrong", reference=a.text),
+            IdeaReport(id=b.id, lesson=second, state="wrong", reference=b.text),
+        ],
+    )
+
+    book = notebook.course_notebook(conn)
+
+    assert [e["text"] for e in _lesson_of(book, first)["explain"]] == [a.text]
+    assert [e["text"] for e in _lesson_of(book, second)["explain"]] == [b.text]
+
+
+async def test_active_explain_session_ignored(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, config = _important(conn)
+    idea = next(i for i in config.ideas if i.required)
+    _explain_session(
+        conn, concept_id=node, status="active",
+        ideas=[IdeaReport(id=idea.id, lesson=node, state="wrong", reference=idea.text)],
+    )
+
+    assert notebook.explain_snags(conn) == {}

@@ -109,6 +109,17 @@
     <h4 class="notes-section nb-lesson-extra">{% if lesson.node_id %}По занятию целиком{% else %}Без привязки к занятию{% endif %}</h4>
     {{ material(lesson, course_id) }}
     {% endif %}
+    {% if lesson.explain %}
+    <ul class="nb-snags nb-explain">
+      {% for snag in lesson.explain %}
+      <li class="nb-snag nb-snag-explain">
+        <span class="nb-snag-label">{{ snag.label }}</span>
+        {% if snag.belief %}«{{ snag.belief }}» — {% endif %}{{ snag.text }}
+        <span class="nb-snag-from">· «Объясни новичку»</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
     {% endif %}
   </section>
 {% endmacro %}

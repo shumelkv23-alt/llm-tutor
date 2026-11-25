@@ -754,3 +754,13 @@
   color: var(--success);
   font-size: 13px;
 }
+
+.nb-snag-explain {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.nb-snag-from {
+  color: var(--muted);
+  font-size: 12px;
+}

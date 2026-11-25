@@ -229,6 +229,63 @@ def task_mistakes(conn: sqlite3.Connection) -> list[dict]:
     return mistakes
 
 
+def explain_snags(conn: sqlite3.Connection) -> dict[str, list[dict]]:
+    """Промахи «Объясни новичку» по занятиям — из последней завершённой сессии.
+
+    Занятие — у каждой идеи и загвоздки отчёта (``lesson``), а не у сессии:
+    старые модульные сессии (``concept_id = NULL``) несут идеи разных занятий.
+    Для занятия берётся самая поздняя завершённая сессия, где оно встречается.
+    Неверная идея — «Ошибся, объясняя», обязательная пропущенная или неполная
+    — «Упустил» (обязательность — по текущему эталону; идеи вне эталона не
+    показываются), пропущенная ловушка — «Не заметил ловушку» с фразой новичка.
+    """
+    configs = repos.get_explain_configs(conn)
+    seen: set[str] = set()
+    snags: dict[str, list[dict]] = {}
+    sessions = sorted(
+        (s for s in repos.list_explain_sessions(conn) if s.status == "finished" and s.report),
+        key=lambda s: (s.ended_at or s.updated_at, s.id),
+        reverse=True,
+    )
+    for session in sessions:
+        report = session.report
+        lessons = {idea.lesson for idea in report.ideas} | {p.lesson for p in report.pitfalls}
+        fresh = lessons - seen
+        seen |= lessons
+        for idea in report.ideas:
+            if idea.lesson not in fresh:
+                continue
+            config = configs.get(idea.lesson)
+            reference = next((i for i in config.ideas if i.id == idea.id), None) if config else None
+            text = idea.reference or (reference.text if reference else None)
+            if idea.state == "wrong" and text:
+                snags.setdefault(idea.lesson, []).append(_snag("wrong", text))
+            elif idea.state in ("missing", "partial") and reference is not None and reference.required:
+                snags.setdefault(idea.lesson, []).append(_snag("missed", text or reference.text))
+        for pitfall in report.pitfalls:
+            if pitfall.lesson not in fresh or pitfall.outcome not in ("missed", "unclear"):
+                continue
+            config = configs.get(pitfall.lesson)
+            known = next((p for p in config.pitfalls if p.id == pitfall.id), None) if config else None
+            text = pitfall.fix or (known.fix if known else None)
+            if text:
+                snags.setdefault(pitfall.lesson, []).append(
+                    _snag("pitfall", text, known.belief if known else None)
+                )
+    return snags
+
+
+EXPLAIN_LABELS = {
+    "wrong": "Ошибся, объясняя:",
+    "missed": "Упустил:",
+    "pitfall": "Не заметил ловушку:",
+}
+
+
+def _snag(kind: str, text: str, belief: str | None = None) -> dict:
+    return {"kind": kind, "label": EXPLAIN_LABELS[kind], "text": text, "belief": belief}
+
+
 def _place(lesson: dict, kind: str, section_id: str | None, entry: dict) -> None:
     """Кладёт запись в раздел занятия, а без раздела (или с чужим) — в блок занятия."""
     target = next((s for s in lesson["sections"] if s["id"] == section_id), None)
@@ -313,6 +370,16 @@ def course_notebook(
             outside["count"] += 1
         elif not lesson["locked"]:
             _place(lesson, "mistakes", mistake["section_id"], mistake)
+
+    # Загвоздки «Объясни новичку» — на уровень занятия (идеи не делятся на разделы).
+    for lesson_id, snags in explain_snags(conn).items():
+        lesson = blocks.get(lesson_id)
+        if lesson is None or lesson["locked"] or (node_id is not None and lesson_id != node_id):
+            continue
+        for snag in snags:
+            if notes_feed._matches(query, snag["text"], snag["belief"]):
+                lesson["explain"].append(snag)
+                lesson["count"] += 1
 
     lessons: list[dict] = []
     ahead: list[str] = []
