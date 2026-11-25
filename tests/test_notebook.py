@@ -1647,11 +1647,19 @@ async def test_course_notebook_is_fast_on_full_course(enrolled, web_app) -> None
     _route(conn, closed=tuple(order))
     graph = CourseGraph.load(conn)
     items = repos.get_items(conn)
+    # Реалистичный ответ тьютора (аудит: короткие ответы скрывали цену рендера):
+    # ~2 КБ Markdown с кодом и списком, у половины вопросов нет итога.
+    long_answer = (
+        "Группировка делит строки по ключу и считает агрегаты. " * 8
+        + "\n\n```python\n" + "df.groupby('k').agg({'v': 'mean'})\n" * 12 + "```\n\n"
+        + "".join(f"- пункт {n}: **важное** и `код` рядом;\n" for n in range(15))
+        + "\nВывод: " + "группы считаются независимо. " * 10
+    )
     for number in range(300):
         node = order[number % len(order)]
         sections = graph.concept(node).sections
         _add(conn, float(number), f"Вопрос {number}", node=node, section=sections[number % len(sections)].id,
-             takeaway=f"Итог {number}.")
+             answer=f"{long_answer}\n\n№{number}", takeaway=f"Итог {number}." if number % 2 else None)
     for number in range(100):
         node = order[number % len(order)]
         repos.add_note(conn, concept_id=node, source="theory", quote=f"Фрагмент {number}", now=float(number))
@@ -1665,3 +1673,58 @@ async def test_course_notebook_is_fast_on_full_course(enrolled, web_app) -> None
         timings.append(time.perf_counter() - start)
 
     assert min(timings) < 0.1, timings
+
+
+# --- аудит ветки (итоговое ревью) ---
+
+
+async def test_lesson_filter_builds_notebook_once(enrolled, web_app, monkeypatch) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0], order[1]))
+    calls = []
+    real = notebook.course_notebook
+    monkeypatch.setattr(notebook, "course_notebook", lambda *a, **k: calls.append(k) or real(*a, **k))
+
+    html = (await enrolled.get(f"/notes?course={COURSE}&lesson={order[1]}")).text
+
+    assert len(calls) == 1
+    graph = CourseGraph.load(conn)
+    assert graph.concept(order[1]).sections[0].title in html
+    assert graph.concept(order[0]).sections[0].title not in html
+    assert f"lesson={order[0]}" in html  # чипы — все занятия курса
+
+
+async def test_short_reference_shown_as_text_not_markdown(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    item = next(i for i in repos.get_items(conn) if i.answer_type == "short" and i.section)
+    conn.execute("UPDATE items SET answer = ? WHERE id = ?", ("__getitem__", item.id))
+    conn.commit()
+    _solution(conn, 1.0, "getitem", repos.get_item(conn, item.id), result=0.0)
+
+    html = (await enrolled.get("/notes?all=1")).text
+
+    assert "__getitem__" in html
+    assert "<strong>getitem</strong>" not in html
+
+
+async def test_closed_counter_ignores_lessons_outside_course(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0], "ghost_a", "ghost_b"))
+
+    book = notebook.course_notebook(conn)
+
+    assert book["closed"] == 1
+    assert f"Пройдено 1 из {len(order)} занятий" in (await enrolled.get("/notes")).text
+
+
+async def test_retired_item_mistake_skipped(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.answer_type == "choice" and i.section)
+    _solution(conn, 1.0, "неверно", item, result=0.0)
+    conn.execute("UPDATE items SET active = 0 WHERE id = ?", (item.id,))
+    conn.commit()
+
+    assert notebook.task_mistakes(conn) == []

@@ -74,7 +74,7 @@
       <li class="nb-snag">
         <div class="nb-snag-task"><span class="nb-snag-label">Ошибка{% if mistake.final %} в итоговом задании{% endif %}</span>{% if mistake.prompt_html %}<div class="nb-snag-prompt">{{ mistake.prompt_html }}</div>{% endif %}</div>
         <p class="nb-snag-given">Ваш ответ: «{{ mistake.given }}»</p>
-        {% if mistake.correct_html %}<div class="nb-snag-correct"><span>Верно:</span> {{ mistake.correct_html }}</div>{% endif %}
+        {% if mistake.correct_html %}<div class="nb-snag-correct"><span>Верно:</span> {{ mistake.correct_html }}</div>{% elif mistake.correct %}<p class="nb-snag-correct"><span>Верно:</span> «{{ mistake.correct }}»</p>{% endif %}
         {% if mistake.solved_later %}<p class="nb-snag-ok">✓ потом решено верно</p>{% endif %}
       </li>
       {% endfor %}

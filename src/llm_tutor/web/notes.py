@@ -32,6 +32,7 @@ import json
 import re
 import sqlite3
 from datetime import datetime
+from functools import lru_cache
 
 from markupsafe import Markup
 
@@ -213,6 +214,18 @@ def _meta(raw: str | None) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+@lru_cache(maxsize=4096)
+def _answer_parts(answer: str) -> tuple[Markup, Markup | None]:
+    """Отрендеренный полный ответ (код свёрнут) и его первый абзац.
+
+    Кэш по тексту ответа: реплика после записи не меняется, а рендер сотен
+    ответов — главная цена страницы «Конспект» (аудит ветки, срез 112).
+    Результат общий и неизменяемый (``Markup`` — строка).
+    """
+    gist = answer_gist(answer)
+    return _collapse_code(render(answer)), render(gist) if gist else None
+
+
 def _takeaway(raw_meta: str | None) -> str | None:
     """Итог тьютора из ``meta`` его реплики (``core.turn.post_turn``)."""
     value = _meta(raw_meta).get("takeaway")
@@ -225,7 +238,9 @@ def _entry(row: sqlite3.Row, meta: dict, question: str, focus: Focus | None) -> 
     failed = answer.startswith(LLM_FAILURE_REPLY)
     # Конспект собирается сам (срез 108): главный текст — итог тьютора, без него
     # — первый абзац ответа. Полный ответ остаётся под спойлером.
-    gist = None if failed else _takeaway(row["answer_meta"]) or (answer_gist(answer) if answer else None)
+    answer_html, answer_gist_html = _answer_parts(answer) if answer and not failed else (None, None)
+    takeaway = None if failed else _takeaway(row["answer_meta"])
+    gist_html = render(takeaway) if takeaway else answer_gist_html
     ts = row["ts"]
     source = focus.source if focus is not None else None
     node_id = meta.get("node")
@@ -242,8 +257,8 @@ def _entry(row: sqlite3.Row, meta: dict, question: str, focus: Focus | None) -> 
         "quote": focus.text if focus is not None else None,
         "source": SOURCE_LABELS.get(source) if source is not None else None,
         "note": note or None,
-        "answer_html": _collapse_code(render(answer)) if answer and not failed else None,
-        "gist_html": render(gist) if gist else None,
+        "answer_html": answer_html,
+        "gist_html": gist_html,
         "failed": failed,
     }
 

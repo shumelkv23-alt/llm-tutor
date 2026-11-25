@@ -269,17 +269,13 @@ async def notes_page(
                 book = None
                 count = sum(entry["count"] for entry in lessons)
             else:
-                book = notebook.course_notebook(
-                    conn, skeleton=not every, query=query, node_id=lesson_id
-                )
+                # Одна сборка на курс: чипам тем нужен весь курс, а «Тема» —
+                # выборка из него (аудит ветки: две сборки удваивали цену).
+                full = notebook.course_notebook(conn, skeleton=not every, query=query)
+                book = notebook.only_lesson(full, lesson_id) if lesson_id is not None else full
                 lessons = book["lessons"]
                 count = book["count"] + book["hits"]
-                # Чипы тем — все занятия курса, а не только отфильтрованное.
-                lessons_for_chips = (
-                    notebook.course_notebook(conn, query=query)["lessons"]
-                    if lesson_id is not None
-                    else lessons
-                )
+                lessons_for_chips = full["lessons"]
         except (*COURSE_ERRORS, OSError):
             logger.exception("Конспект: БД ученика %s по курсу %s не читается", user.id, item.id)
             groups.append(

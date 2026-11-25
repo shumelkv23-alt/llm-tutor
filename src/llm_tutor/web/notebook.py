@@ -50,6 +50,23 @@ MISTAKE_CORRECT_CHARS = 200
 _MATERIAL = ("questions", "fragments", "mistakes")
 
 
+def only_lesson(book: dict, node_id: str) -> dict:
+    """Конспект одного занятия из уже собранного курса (фильтр «Тема»).
+
+    Страница строит конспект курса один раз: чипам тем нужен весь курс, а
+    повторная сборка ради одного занятия удваивала цену страницы (аудит ветки).
+    """
+    lessons = [lesson for lesson in book["lessons"] if lesson["node_id"] == node_id]
+    return {
+        **book,
+        "lessons": lessons,
+        "ahead": [],
+        "outside": None,
+        "count": sum(lesson["count"] for lesson in lessons),
+        "hits": sum(lesson.get("hits", 0) for lesson in lessons),
+    }
+
+
 def lesson_statuses(route: Route | None, current: str | None) -> dict[str, str]:
     """Статус занятия для конспекта: закрыто > идёт сейчас > открыто снова.
 
@@ -194,7 +211,7 @@ def task_mistakes(conn: sqlite3.Connection) -> list[dict]:
     ``(item_id, ts)`` — ядро пишет событие на каждый концепт задания. Неверно —
     ``result < SUCCESS_SCORE``; верный ответ позже ставит «потом решено верно».
     Ответ ученика — его реплика с тем же ``ts``. Задание, которого больше нет в
-    банке, пропускается.
+    банке или которое погашено (убрано из курса), пропускается.
     """
     rows = conn.execute(
         "SELECT item_id, ts, result FROM events WHERE id IN ("
@@ -213,7 +230,8 @@ def task_mistakes(conn: sqlite3.Connection) -> list[dict]:
     mistakes = []
     for item_id, ts in sorted(last_wrong.items(), key=lambda pair: pair[1]):
         item = repos.get_item(conn, item_id)
-        if item is None:
+        # Погашенное задание (убрано из seed) — больше не часть курса.
+        if item is None or not item.active:
             continue
         message = conn.execute(
             "SELECT content FROM messages WHERE role = 'user' AND ts = ? ORDER BY id DESC LIMIT 1",
@@ -240,11 +258,15 @@ def task_mistakes(conn: sqlite3.Connection) -> list[dict]:
                 ),
                 "solved_later": solved[item_id],
                 "ts": ts,
+                "prompt_html": render(prompt) if (prompt := _short(item.prompt, MISTAKE_PROMPT_CHARS)) else None,
             }
         )
-    for mistake in mistakes:
-        mistake["prompt_html"] = render(mistake["prompt"]) if mistake["prompt"] else None
-        mistake["correct_html"] = render(mistake["correct"]) if mistake["correct"] else None
+        # Вариант choice — текст курса в Markdown; эталон короткого ответа — имя или
+        # число (``__getitem__``), Markdown превратил бы его в жирное «getitem».
+        correct = mistakes[-1]["correct"]
+        mistakes[-1]["correct_html"] = (
+            render(correct) if correct and item.answer_type == "choice" else None
+        )
     return mistakes
 
 
@@ -435,6 +457,7 @@ def course_notebook(
         "count": sum(lesson["count"] for lesson in lessons) + (outside["count"] if show_outside else 0),
         # Совпадения поиска по сути разделов (материалом ученика не считаются).
         "hits": hits,
-        "closed": sum(1 for status in statuses.values() if status in ("passed", "weak")),
+        # Только занятия курса: в снимке маршрута остаются id ушедших из графа.
+        "closed": sum(1 for node in order if statuses.get(node) in ("passed", "weak")),
         "total": len(order),
     }
