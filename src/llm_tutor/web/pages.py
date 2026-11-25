@@ -217,10 +217,10 @@ async def notes_page(
     course: str | None = None,
     lesson: str | None = None,
     view: str | None = None,
-    kind: str | None = None,
+    q: str | None = None,
     user: User = Depends(page_user),
 ) -> HTMLResponse:
-    """«Конспект»: вопросы тьютору и решения ученика по занятиям всех курсов.
+    """«Конспект»: определения и пояснения, выполненные задания по всем курсам.
 
     Журнал ``messages`` у каждого курса свой, поэтому страница проходит по
     записанным курсам (как главная и профиль). Нечитаемый курс не роняет
@@ -229,12 +229,13 @@ async def notes_page(
     id фильтр игнорирует. Курс один — он выбран сразу, без лишнего клика: темы
     показываются его.
 
-    ``?view=solutions`` — вкладка «Мои решения» (ответы на задания вместо
-    вопросов), ``?kind=text|code`` — только текстовые записи или только
-    связанные с кодом. Неизвестные значения — как без фильтра.
+    ``?view=solutions`` — лента «Выполненные задания» (ответы на задания
+    вместо пояснений). ``?q=`` — поиск по конспекту (все слова запроса,
+    регистр не важен); пустой запрос — без фильтра. Старое ``?kind=`` больше не
+    фильтрует — значение игнорируется, ссылки из закладок страницу не ломают.
     """
     part = "solutions" if view == "solutions" else "questions"
-    kind = kind if kind in ("text", "code") else None
+    query = q.strip()[: notebook.SEARCH_MAX_CHARS] if q and q.strip() else None
     pool = request.app.state.userdbs
     candidates = []
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
@@ -256,10 +257,17 @@ async def notes_page(
             continue
         try:
             conn = pool.open(user.id, item.id)
+            # Чужой или неизвестный id темы игнорируется; известный — фильтр
+            # ещё до поиска и лимита, иначе поиск в теме показывал бы чужие.
+            lesson_id = (
+                lesson
+                if selected is not None and lesson and notebook.has_lesson(conn, lesson)
+                else None
+            )
             lessons = (
-                notebook.lesson_solutions(conn, kind=kind)
+                notebook.lesson_solutions(conn, query=query, node_id=lesson_id)
                 if part == "solutions"
-                else notebook.lesson_notes(conn, kind=kind)
+                else notebook.lesson_notes(conn, query=query, node_id=lesson_id)
             )
         except (*COURSE_ERRORS, OSError):
             logger.exception("Конспект: БД ученика %s по курсу %s не читается", user.id, item.id)
@@ -268,6 +276,7 @@ async def notes_page(
             )
             continue
         if selected is not None:
+            selected_lesson = lesson_id
             lesson_filters = [
                 {
                     "id": entry["node_id"],
@@ -278,11 +287,6 @@ async def notes_page(
                 for entry in lessons
                 if entry.get("node_id")
             ]
-            if lesson:
-                match = next((entry for entry in lessons if entry["node_id"] == lesson), None)
-                if match is not None:
-                    selected_lesson = match["node_id"]
-                    lessons = [match]
         count = sum(entry["count"] for entry in lessons)
         total += count
         groups.append(
@@ -307,7 +311,9 @@ async def notes_page(
         lesson_filters=lesson_filters,
         filter_courses=[{"id": item.id, "title": item.title} for item in candidates],
         part=part,
-        kind=kind,
+        query=query,
+        note_max=notebook.NOTE_MAX_CHARS,
+        search_max=notebook.SEARCH_MAX_CHARS,
     )
 
 

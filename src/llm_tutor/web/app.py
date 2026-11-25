@@ -347,6 +347,7 @@ def create_app(
         api_admin_courses,
         api_auth,
         api_lesson,
+        api_notes,
         api_project,
         api_reminders,
         pages,
@@ -357,6 +358,7 @@ def create_app(
     app.include_router(api_auth.router)
     app.include_router(api_reminders.router)
     app.include_router(api_lesson.router)
+    app.include_router(api_notes.router)
     app.include_router(api_project.router)
     app.include_router(api_admin.router)
     app.include_router(api_admin_courses.router)
