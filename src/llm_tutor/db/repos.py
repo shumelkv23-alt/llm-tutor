@@ -290,12 +290,12 @@ def get_note(conn: sqlite3.Connection, note_id: int) -> Note | None:
     return _note(row) if row is not None else None
 
 
-def list_notes(conn: sqlite3.Connection, *, limit: int = NOTE_LIMIT) -> list[Note]:
-    """Заметки ученика, новые первыми."""
+def list_notes(conn: sqlite3.Connection, *, limit: int | None = NOTE_LIMIT) -> list[Note]:
+    """Заметки ученика, новые первыми; ``limit=None`` — все (конспект, срез 109)."""
     rows = conn.execute(
         "SELECT id, concept_id, source, quote, created_at, comment, section_id"
         " FROM notes ORDER BY created_at DESC, id DESC LIMIT ?",
-        (limit,),
+        (-1 if limit is None else limit,),
     ).fetchall()
     return [_note(row) for row in rows]
 

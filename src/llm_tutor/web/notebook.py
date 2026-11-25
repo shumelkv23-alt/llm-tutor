@@ -21,7 +21,7 @@ import sqlite3
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import section_text
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Route, SessionState
+from llm_tutor.schemas import Concept, Note, Route, SessionState
 from llm_tutor.student import explain as student_explain
 from llm_tutor.web import notes as notes_feed
 from llm_tutor.web.gist import section_gist
@@ -131,6 +131,17 @@ def _sections(
     return sections
 
 
+def fragment_view(note: Note) -> dict:
+    """Сохранённый фрагмент для конспекта: цитата, комментарий, откуда взят."""
+    return {
+        "id": note.id,
+        "quote": note.quote,
+        "comment": (note.comment or "").strip() or None,
+        "source": notes_feed.SOURCE_LABELS.get(note.source, note.source),
+        "when": notes_feed._format_ts(note.created_at),
+    }
+
+
 def _place(lesson: dict, kind: str, section_id: str | None, entry: dict) -> None:
     """Кладёт запись в раздел занятия, а без раздела (или с чужим) — в блок занятия."""
     target = next((s for s in lesson["sections"] if s["id"] == section_id), None)
@@ -188,6 +199,20 @@ def course_notebook(
         if lesson["locked"]:
             continue
         _place(lesson, "questions", entry["section_id"], entry)
+
+    # Фрагменты (заметки ветки golos) — все, по порядку сохранения.
+    for note in reversed(repos.list_notes(conn, limit=None)):
+        if node_id is not None and note.concept_id != node_id:
+            continue
+        if not notes_feed._matches(query, note.quote, note.comment):
+            continue
+        entry = fragment_view(note)
+        lesson = blocks.get(note.concept_id or "")
+        if lesson is None:
+            outside["fragments"].append(entry)
+            outside["count"] += 1
+        elif not lesson["locked"]:
+            _place(lesson, "fragments", note.section_id, entry)
 
     lessons: list[dict] = []
     ahead: list[str] = []

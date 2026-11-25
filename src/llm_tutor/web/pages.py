@@ -14,7 +14,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from llm_tutor.core import project as core_project
-from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
 from llm_tutor.web import accounts, notebook, reminders, courses as course_registry, notes as notes_feed
 from llm_tutor.web.accounts import User
@@ -26,7 +25,6 @@ from llm_tutor.web.views import (
     calibration_view,
     course_card,
     learning_view,
-    note_view,
     search_course,
     weekly_plan,
 )
@@ -371,7 +369,6 @@ async def profile(
     joined = datetime.fromtimestamp(user.created_at).strftime("%d.%m.%Y")
     card = _current_card(request, user)
     query = q.strip()[:100]
-    notes: list[dict] = []
     search: list[dict] = []
     calibration: list[dict] = []
     plan: dict = {"steps": [], "total_minutes": 0}
@@ -382,21 +379,15 @@ async def profile(
         if pool.exists(user.id, course_id):
             try:
                 conn = pool.open(user.id, course_id)
-                graph = CourseGraph.load(conn)
                 calibration = calibration_view(conn, settings=request.app.state.settings)
                 plan = weekly_plan(conn, settings=request.app.state.settings)
                 if query:
-                    notes = [
-                        note_view(note, graph) for note in repos.search_notes(conn, query)
-                    ]
                     search = search_course(conn, query, course_id=course_id)
-                else:
-                    notes = [note_view(note, graph) for note in repos.list_notes(conn)]
             except COURSE_ERRORS + (ValueError,):
                 notes_error = True
     # Профиль — краткая сводка по текущему курсу; подробности (занятия,
-    # анкета) — в маршруте на странице занятия. Заметки и поиск читаются из
-    # БД текущего курса, если она открывается.
+    # анкета) — в маршруте на странице занятия. Заметки-фрагменты — в конспекте
+    # (срез 109), здесь только поиск по материалам курса.
     return render(
         request,
         "profile.html",
@@ -404,7 +395,6 @@ async def profile(
         user=user,
         joined=joined,
         card=card,
-        notes=notes,
         search=search,
         query=query,
         notes_error=notes_error,

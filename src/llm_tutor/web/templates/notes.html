@@ -41,10 +41,31 @@
       </li>
 {% endmacro %}
 
+{% macro fragment_entry(fragment, course_id) %}
+      <li class="note-row nb-fragment">
+        <blockquote class="note-quote">{{ fragment.quote }}{% if fragment.source %} <span class="note-source">· {{ fragment.source }}</span>{% endif %}</blockquote>
+        {% if fragment.comment %}<p class="note-comment">{{ fragment.comment }}</p>{% endif %}
+        <details class="nb-fragment-edit">
+          <summary>изменить</summary>
+          <form class="note-comment-form" data-note="{{ fragment.id }}" data-course="{{ course_id }}">
+            <label class="visually-hidden" for="note-comment-{{ course_id }}-{{ fragment.id }}">Комментарий к фрагменту</label>
+            <input id="note-comment-{{ course_id }}-{{ fragment.id }}" name="comment" maxlength="2000" value="{{ fragment.comment or '' }}" placeholder="Ваш комментарий">
+            <button class="btn ghost" type="submit">Сохранить</button>
+            <button class="btn ghost" type="button" data-delete-note="{{ fragment.id }}" data-course="{{ course_id }}">Удалить</button>
+          </form>
+        </details>
+      </li>
+{% endmacro %}
+
 {% macro material(block, course_id) %}
     {% if block.questions %}
     <ul class="note-list nb-questions">
       {% for entry in block.questions %}{{ question_entry(entry, course_id) }}{% endfor %}
+    </ul>
+    {% endif %}
+    {% if block.fragments %}
+    <ul class="nb-fragments">
+      {% for fragment in block.fragments %}{{ fragment_entry(fragment, course_id) }}{% endfor %}
     </ul>
     {% endif %}
 {% endmacro %}

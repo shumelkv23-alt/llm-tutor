@@ -1205,3 +1205,87 @@ async def test_search_finds_question_by_takeaway(enrolled, web_app) -> None:
     html = (await enrolled.get("/notes?q=бутстрэп")).text
 
     assert "Вопрос А" in html and "Вопрос Б" not in html
+
+
+# --- фрагменты в конспекте (срез 109) ---
+
+
+async def test_fragment_in_its_section_with_comment(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    repos.add_note(
+        conn, concept_id=node, source="theory", quote="цитата из раздела", comment="моё", section_id=section
+    )
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+    fragment = lesson["sections"][0]["fragments"][0]
+    html = (await enrolled.get("/notes")).text
+
+    assert fragment["quote"] == "цитата из раздела" and fragment["comment"] == "моё"
+    assert fragment["source"] == "Теория"
+    assert "цитата из раздела" in html and "моё" in html
+    assert f'data-delete-note="{fragment["id"]}"' in html
+    assert 'class="note-comment-form"' in html
+
+
+async def test_fragment_lesson_level_and_outside(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    repos.add_note(conn, concept_id=node, source="task", quote="без раздела", section_id="нет-такого")
+    repos.add_note(conn, concept_id=None, source="theory", quote="без занятия")
+
+    book = notebook.course_notebook(conn)
+    lesson = next(item for item in book["lessons"] if item["node_id"] == node)
+
+    assert [item["quote"] for item in lesson["fragments"]] == ["без раздела"]
+    assert [item["quote"] for item in book["outside"]["fragments"]] == ["без занятия"]
+    assert "без занятия" in (await enrolled.get("/notes")).text
+
+
+async def test_all_fragments_shown_beyond_100(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    for number in range(101):
+        repos.add_note(
+            conn, concept_id=node, source="theory", quote=f"фрагмент {number}", section_id=section, now=float(number)
+        )
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+
+    assert len(lesson["sections"][0]["fragments"]) == 101
+    # По порядку сохранения: конспект читается сверху вниз.
+    assert lesson["sections"][0]["fragments"][0]["quote"] == "фрагмент 0"
+
+
+async def test_fragment_quote_escaped(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    repos.add_note(
+        conn, concept_id=node, source="theory", quote="<img src=x onerror=alert(1)>", section_id=section,
+        comment="<b>жирно</b>",
+    )
+
+    html = (await enrolled.get("/notes")).text
+
+    assert "<img src=x" not in html and "<b>жирно</b>" not in html
+    assert "&lt;img src=x onerror=alert(1)&gt;" in html
+
+
+async def test_locked_lesson_hides_fragments(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    important = next(node for node in _order(conn) if node in repos.get_explain_configs(conn))
+    repos.add_note(conn, concept_id=important, source="theory", quote="подсказка к объяснению")
+    _route(conn, closed=(important,), closed_at=time.time() + 60)
+
+    assert "подсказка к объяснению" not in (await enrolled.get("/notes")).text
+
+
+async def test_search_finds_fragment_by_comment(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    repos.add_note(conn, concept_id=node, source="theory", quote="первая", comment="про EDA", section_id=section)
+    repos.add_note(conn, concept_id=node, source="theory", quote="вторая", section_id=section)
+
+    html = (await enrolled.get("/notes?q=eda")).text
+
+    assert "первая" in html and "вторая" not in html

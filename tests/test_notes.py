@@ -56,18 +56,21 @@ async def test_note_api_and_profile_search(enrolled, web_app) -> None:
     notes = repos.list_notes(_user_db(web_app))
     assert [item.id for item in notes] == [note["id"]]
 
+    # Срез 109: фрагменты живут в конспекте, в профиле — только ссылка на него.
     profile = await enrolled.get("/profile")
     assert profile.status_code == 200
-    assert "groupby делит строки на группы" in profile.text
-    assert "Мои заметки" in profile.text
+    assert "groupby делит строки на группы" not in profile.text
+    assert "Мои заметки" not in profile.text
+    assert 'href="/notes"' in profile.text
     assert "На неделю" in profile.text
     assert "Калибровка" in profile.text
-    # Ссылка из заметки открывает занятие заметки и её раздел.
-    assert f'href="/lesson/{COURSE}?node=grouping#section-groupby"' in profile.text
+    notebook_page = await enrolled.get(f"/notes?course={COURSE}")
+    assert "groupby делит строки на группы" in notebook_page.text
+    assert f'data-delete-note="{note["id"]}"' in notebook_page.text
 
+    # Поиск по материалам курса в профиле остаётся.
     search = await enrolled.get("/profile", params={"q": "groupby"})
     assert search.status_code == 200
-    assert "groupby делит строки на группы" in search.text
     assert "В конспектах" in search.text
     # Найденный конспект открывается на своём занятии, а не на текущем.
     assert f'href="/lesson/{COURSE}?node=grouping"' in search.text
@@ -78,7 +81,7 @@ async def test_note_api_and_profile_search(enrolled, web_app) -> None:
 
     deleted = await enrolled.delete(f"/api/courses/{COURSE}/notes/{note['id']}")
     assert deleted.status_code == 200
-    after = await enrolled.get("/profile")
+    after = await enrolled.get(f"/notes?course={COURSE}")
     assert "groupby делит строки на группы" not in after.text
 
 
@@ -139,7 +142,7 @@ async def test_note_comment_and_search_by_it(enrolled) -> None:
     assert note["comment"] == "важно для EDA"
     assert note["section_id"] == "groupby"
 
-    search = await enrolled.get("/profile", params={"q": "EDA"})
+    search = await enrolled.get("/notes", params={"q": "EDA", "course": COURSE})
     assert "важно для EDA" in search.text
 
     edited = await enrolled.put(
@@ -148,8 +151,8 @@ async def test_note_comment_and_search_by_it(enrolled) -> None:
     )
     assert edited.status_code == 200
     assert edited.json()["note"]["comment"] == "перечитано перед практикой"
-    profile = await enrolled.get("/profile")
-    assert "перечитано перед практикой" in profile.text
+    page = await enrolled.get(f"/notes?course={COURSE}")
+    assert "перечитано перед практикой" in page.text
 
 
 async def test_note_comment_repo_and_404(enrolled) -> None:

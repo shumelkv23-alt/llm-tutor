@@ -656,3 +656,48 @@
 .nb-lesson .note-mine-edit {
   font-size: 12px;
 }
+
+/* Сохранённые фрагменты в конспекте (срез 109): цитата, «Моё: …», правка под «изменить». */
+.nb-fragments {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nb-fragment .note-quote {
+  margin: 0;
+}
+
+.nb-fragment .note-comment {
+  margin: 4px 0 0 17px;
+  color: var(--text);
+}
+
+.nb-fragment .note-comment::before {
+  content: "Моё: ";
+  color: var(--muted);
+}
+
+.nb-fragment-edit {
+  margin: 2px 0 0 17px;
+}
+
+.nb-fragment-edit summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.nb-fragment-edit .note-comment-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.nb-fragment-edit input {
+  flex: 1 1 220px;
+  min-width: 0;
+}
