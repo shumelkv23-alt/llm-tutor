@@ -50,8 +50,12 @@ def _add(
     section: str | None = None,
     quote: dict | None = None,
     answer: str = "Ответ тьютора.",
+    takeaway: str | None = None,
 ):
-    """Реплика вопроса и ответ тьютора — как их пишет post_turn (один ts)."""
+    """Реплика вопроса и ответ тьютора — как их пишет post_turn (один ts).
+
+    ``takeaway`` — итог тьютора: ``post_turn`` кладёт его в ``meta`` реплики тьютора.
+    """
     session_id = repos.ensure_open_session(conn, ts)
     meta: dict = {"question": True}
     if node:
@@ -63,7 +67,8 @@ def _add(
     repos.add_message(
         conn, session_id, "user", question, ts=ts, meta=json.dumps(meta, ensure_ascii=False)
     )
-    repos.add_message(conn, session_id, "assistant", answer, ts=ts)
+    answer_meta = json.dumps({"takeaway": takeaway}, ensure_ascii=False) if takeaway else None
+    repos.add_message(conn, session_id, "assistant", answer, ts=ts, meta=answer_meta)
 
 
 def _question_id(conn) -> int:
@@ -1104,3 +1109,99 @@ async def test_default_course_is_current_and_all_has_no_skeleton(student, web_ap
     assert "Впереди" in default
     assert "Вопрос про pandas" in every and "Вопрос про деревья" in every
     assert "Впереди" not in every and "ещё впереди" not in every
+
+
+# --- вопросы тьютору в конспекте (срез 108) ---
+
+
+def _first_section(conn) -> tuple[str, str]:
+    node = _order(conn)[0]
+    return node, CourseGraph.load(conn).concept(node).sections[0].id
+
+
+async def test_question_shows_takeaway_as_gist(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    _add(
+        conn,
+        1.0,
+        "Чем энтропия отличается от Джини?",
+        node=node,
+        section=section,
+        answer="Длинный разбор с примерами и формулами.",
+        takeaway="Джини считается **без логарифма**.",
+    )
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+    entry = lesson["sections"][0]["questions"][0]
+    html = (await enrolled.get("/notes")).text
+
+    assert str(entry["gist_html"]).strip() == "<p>Джини считается <strong>без логарифма</strong>.</p>"
+    assert "Джини считается <strong>без логарифма</strong>." in html
+    assert "Длинный разбор с примерами и формулами." in html  # полный ответ — под спойлером
+    assert 'class="note-gist"' in html
+
+
+async def test_question_without_takeaway_uses_first_paragraph(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    _add(
+        conn,
+        1.0,
+        "Что такое лист?",
+        node=node,
+        section=section,
+        answer="Лист хранит самый частый класс среди объектов.\n\nВторой абзац с подробностями.",
+    )
+
+    entry = notebook.course_notebook(conn)["lessons"][0]["sections"][0]["questions"][0]
+
+    assert "Лист хранит самый частый класс" in str(entry["gist_html"])
+    assert "Второй абзац" not in str(entry["gist_html"])
+
+
+async def test_question_without_section_goes_to_lesson_block(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    _add(conn, 1.0, "Общий вопрос по занятию", node=node, takeaway="Итог по занятию.")
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+    html = (await enrolled.get("/notes")).text
+
+    assert [entry["question"] for entry in lesson["questions"]] == ["Общий вопрос по занятию"]
+    assert lesson["status"] == "ahead"  # занятие с материалом показывается целиком
+    assert "По занятию целиком" in html
+
+
+async def test_takeaway_html_is_escaped(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    _add(conn, 1.0, "Вопрос", node=node, section=section, takeaway="<script>alert(1)</script>")
+
+    html = (await enrolled.get("/notes")).text
+
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+
+
+async def test_failed_answer_has_no_gist(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    _add(conn, 1.0, "Вопрос без ответа", node=node, section=section, answer=LLM_FAILURE_REPLY)
+
+    entry = notebook.course_notebook(conn)["lessons"][0]["sections"][0]["questions"][0]
+    html = (await enrolled.get("/notes")).text
+
+    assert entry["gist_html"] is None and entry["failed"] is True
+    assert "Ответ не получен" in html
+
+
+async def test_search_finds_question_by_takeaway(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node, section = _first_section(conn)
+    _add(conn, 1.0, "Вопрос А", node=node, section=section, answer="Ответ.", takeaway="про бутстрэп")
+    _add(conn, 2.0, "Вопрос Б", node=node, section=section, answer="Ответ.", takeaway="про Джини")
+
+    html = (await enrolled.get("/notes?q=бутстрэп")).text
+
+    assert "Вопрос А" in html and "Вопрос Б" not in html

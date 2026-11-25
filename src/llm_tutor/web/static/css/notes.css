@@ -632,3 +632,27 @@
   color: var(--muted);
   font-size: 12px;
 }
+
+/* Итог тьютора у вопроса и необязательная «Моя заметка» (срез 108). */
+.note-gist p {
+  margin: 2px 0 4px;
+}
+
+.nb-lesson .note-answer summary {
+  font-size: 12px;
+}
+
+.nb-lesson .note-mine {
+  margin-top: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.nb-lesson .note-mine-label {
+  font-size: 12px;
+}
+
+.nb-lesson .note-mine-edit {
+  font-size: 12px;
+}

@@ -14,6 +14,7 @@
         <blockquote class="note-quote">{{ entry.quote }}{% if entry.source %} <span class="note-source">· {{ entry.source }}</span>{% endif %}</blockquote>
         {% endif %}
         <h5 class="note-topic">{{ entry.question }}</h5>
+        {% if entry.gist_html %}<div class="note-gist">{{ entry.gist_html }}</div>{% endif %}
         {% if entry.answer_html %}
         <details class="note-answer">
           <summary>Полный ответ</summary>

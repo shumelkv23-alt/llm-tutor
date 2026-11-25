@@ -6,10 +6,10 @@
 и хранит личные заметки ученика (таблица ``note_entries``, миграция 011); ходы
 и состояние занятия не трогает.
 
-Запись ленты «Определения и пояснения» — вопрос-тема, полный ответ под
-спойлером и личная заметка ученика. Записи сгруппированы по занятиям, а
-внутри — по разделам. Автоитог тьютора (``takeaway``) остаётся в ``meta``
-реплики для истории, но страница его не показывает: заметка теперь своя.
+Запись вопроса — вопрос-тема, коротко итог тьютора (``takeaway`` из ``meta``
+его реплики, без него — первый абзац ответа; срез 108: конспект собирается
+сам), полный ответ под спойлером и необязательная личная заметка ученика.
+Раскладку по скелету курса делает ``web.notebook``.
 Разбор кода в эту ленту не попадает: вопрос с выделенным кодом или с длинной
 вставкой кода в тексте остаётся в чате, а длинный код в ответе сворачивается
 под спойлер. Поиск (``query``) идёт по вопросу, фрагменту, ответу и заметке.
@@ -41,6 +41,7 @@ from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
 from llm_tutor.student.diagnostic import SUCCESS_SCORE
+from llm_tutor.web.gist import answer_gist
 from llm_tutor.web.markdown import render
 
 # Сколько последних вопросов курса попадает в конспект: страница личная, но
@@ -155,7 +156,8 @@ def question_entries(
     после всех отборов.
     """
     rows = conn.execute(
-        "SELECT u.id, u.ts, u.content, u.meta, a.content AS answer, n.text AS note "
+        "SELECT u.id, u.ts, u.content, u.meta, a.content AS answer, a.meta AS answer_meta, "
+        "n.text AS note "
         "FROM messages u LEFT JOIN messages a ON a.id = ("
         "  SELECT a2.id FROM messages a2"
         "  WHERE a2.session_id = u.session_id AND a2.role = 'assistant'"
@@ -193,6 +195,7 @@ def question_entries(
             focus.text if focus is not None else None,
             row["note"],
             row["answer"],
+            _takeaway(row["answer_meta"]),
         ):
             continue
         entries.append(_entry(row, meta, text, focus))
@@ -210,10 +213,19 @@ def _meta(raw: str | None) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def _takeaway(raw_meta: str | None) -> str | None:
+    """Итог тьютора из ``meta`` его реплики (``core.turn.post_turn``)."""
+    value = _meta(raw_meta).get("takeaway")
+    return value.strip() or None if isinstance(value, str) else None
+
+
 def _entry(row: sqlite3.Row, meta: dict, question: str, focus: Focus | None) -> dict:
     answer = (row["answer"] or "").strip()
     # Сбой модели — не ответ: заглушку в конспект не тащим, показываем пометку.
     failed = answer.startswith(LLM_FAILURE_REPLY)
+    # Конспект собирается сам (срез 108): главный текст — итог тьютора, без него
+    # — первый абзац ответа. Полный ответ остаётся под спойлером.
+    gist = None if failed else _takeaway(row["answer_meta"]) or (answer_gist(answer) if answer else None)
     ts = row["ts"]
     source = focus.source if focus is not None else None
     node_id = meta.get("node")
@@ -231,6 +243,7 @@ def _entry(row: sqlite3.Row, meta: dict, question: str, focus: Focus | None) -> 
         "source": SOURCE_LABELS.get(source) if source is not None else None,
         "note": note or None,
         "answer_html": _collapse_code(render(answer)) if answer and not failed else None,
+        "gist_html": render(gist) if gist else None,
         "failed": failed,
     }
 
