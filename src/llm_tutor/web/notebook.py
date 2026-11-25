@@ -17,9 +17,12 @@
 from __future__ import annotations
 
 import sqlite3
+from functools import lru_cache
+
+from markupsafe import Markup
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import main_concept, section_text
+from llm_tutor.course.seed import main_concept, section_texts
 from llm_tutor.db import repos
 from llm_tutor.schemas import Concept, Item, Note, Route, SessionState
 from llm_tutor.student import explain as student_explain
@@ -83,7 +86,9 @@ def _empty_section(section_id: str, title: str) -> dict:
         "id": section_id,
         "title": title,
         "passed": False,
+        "gist": None,
         "gist_html": None,
+        "matched": False,
         **{key: [] for key in _MATERIAL},
     }
 
@@ -125,16 +130,30 @@ def _sections(
     passed: set[str],
 ) -> list[dict]:
     theory = repos.get_theory(conn, concept.id) if passed else None
+    gists = theory_gists(theory) if theory else {}
     sections = []
     for section in concept.sections:
         block = _empty_section(section.id, section.title)
         if section.id in passed:
             block["passed"] = True
-            body = section_text(theory, section.title) if theory else None
-            gist = section_gist(body) if body else None
-            block["gist_html"] = render(gist) if gist else None
+            block["gist"], block["gist_html"] = gists.get(section.title, (None, None))
         sections.append(block)
     return sections
+
+
+@lru_cache(maxsize=512)
+def theory_gists(theory: str) -> dict[str, tuple[str | None, Markup | None]]:
+    """Суть каждого раздела конспекта занятия: заголовок → (Markdown, HTML).
+
+    Кэш по тексту конспекта: разбор Markdown — основная цена страницы (десятки
+    занятий), а конспект курса между открытиями не меняется. Правка курса
+    меняет текст — и ключ кэша. Результат не изменяют: он общий.
+    """
+    gists: dict[str, tuple[str | None, Markup | None]] = {}
+    for title, body in section_texts(theory).items():
+        gist = section_gist(body) if body else None
+        gists[title] = (gist, render(gist) if gist else None)
+    return gists
 
 
 def fragment_view(note: Note) -> dict:
@@ -381,6 +400,15 @@ def course_notebook(
                 lesson["explain"].append(snag)
                 lesson["count"] += 1
 
+    # Поиск по сути пройденных разделов: совпавший раздел показывается с сутью.
+    hits = 0
+    if query is not None:
+        for lesson in blocks.values():
+            for section in lesson["sections"]:
+                if section["gist"] and notes_feed._matches(query, section["gist"]):
+                    section["matched"] = True
+                    lesson["hits"] = lesson.get("hits", 0) + 1
+
     lessons: list[dict] = []
     ahead: list[str] = []
     searching = query is not None or not skeleton
@@ -389,8 +417,9 @@ def course_notebook(
         if node_id is not None and node != node_id:
             continue
         if searching:
-            if lesson["count"]:
+            if lesson["count"] or lesson.get("hits"):
                 lessons.append(lesson)
+                hits += lesson.get("hits", 0)
             continue
         if lesson["status"] == "ahead" and not lesson["count"] and not lesson["locked"]:
             ahead.append(lesson["name"])
@@ -404,6 +433,8 @@ def course_notebook(
         "ahead": ahead,
         "outside": outside if show_outside else None,
         "count": sum(lesson["count"] for lesson in lessons) + (outside["count"] if show_outside else 0),
+        # Совпадения поиска по сути разделов (материалом ученика не считаются).
+        "hits": hits,
         "closed": sum(1 for status in statuses.values() if status in ("passed", "weak")),
         "total": len(order),
     }

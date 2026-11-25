@@ -1580,3 +1580,88 @@ async def test_active_explain_session_ignored(enrolled, web_app) -> None:
     )
 
     assert notebook.explain_snags(conn) == {}
+
+
+# --- поиск, темы, скорость (срез 112) ---
+
+
+async def test_search_finds_gist_of_passed_section(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0], order[1]))
+    section = notebook.course_notebook(conn)["lessons"][0]["sections"][0]
+    word = max(section["gist"].replace("*", " ").replace("`", " ").split(), key=len)
+
+    book = notebook.course_notebook(conn, query=word)
+    html = (await enrolled.get(f"/notes?q={word}")).text
+
+    assert any(s["id"] == section["id"] and s["matched"] for s in book["lessons"][0]["sections"])
+    assert section["title"] in html and 'class="gist"' in html
+    assert "ещё впереди" not in html and "Впереди" not in html
+
+
+async def test_search_finds_mistake_and_hides_other_lessons(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0], order[1]))
+    item = next(i for i in _lesson_items(conn, order[0]) if i.answer_type == "choice" and i.section)
+    _solution(conn, 1.0, "уникальнаяошибка", item, result=0.0)
+    graph = CourseGraph.load(conn)
+
+    html = (await enrolled.get("/notes?q=уникальнаяошибка")).text
+
+    assert "уникальнаяошибка" in html
+    assert graph.concept(order[1]).sections[0].title not in html
+
+
+async def test_lesson_filter_shows_one_lesson(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0], order[1]))
+    graph = CourseGraph.load(conn)
+
+    html = (await enrolled.get(f"/notes?course={COURSE}&lesson={order[1]}")).text
+
+    assert graph.concept(order[1]).sections[0].title in html
+    assert graph.concept(order[0]).sections[0].title not in html
+
+
+async def test_lesson_chips_in_course_order_with_counts(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0], order[1]))
+    node, section = order[1], CourseGraph.load(conn).concept(order[1]).sections[0].id
+    _add(conn, 1.0, "Вопрос", node=node, section=section)
+
+    html = (await enrolled.get("/notes")).text
+
+    first, second = html.index(f"lesson={order[0]}"), html.index(f"lesson={order[1]}")
+    assert first < second
+    chip = html[second : html.index("</a>", second)]
+    assert '<span class="notes-chip-count">1</span>' in chip
+
+
+async def test_course_notebook_is_fast_on_full_course(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=tuple(order))
+    graph = CourseGraph.load(conn)
+    items = repos.get_items(conn)
+    for number in range(300):
+        node = order[number % len(order)]
+        sections = graph.concept(node).sections
+        _add(conn, float(number), f"Вопрос {number}", node=node, section=sections[number % len(sections)].id,
+             takeaway=f"Итог {number}.")
+    for number in range(100):
+        node = order[number % len(order)]
+        repos.add_note(conn, concept_id=node, source="theory", quote=f"Фрагмент {number}", now=float(number))
+    for number in range(200):
+        _solution(conn, 1000.0 + number, f"ответ {number}", items[number % len(items)], result=float(number % 2))
+
+    timings = []
+    for _ in range(3):
+        start = time.perf_counter()
+        notebook.course_notebook(conn)
+        timings.append(time.perf_counter() - start)
+
+    assert min(timings) < 0.1, timings

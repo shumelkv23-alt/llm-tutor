@@ -156,6 +156,17 @@ def test_skips_tables_quotes_and_headings() -> None:
     assert section_gist(md) == "Нормальный абзац раздела, достаточно длинный для сути без добавки."
 
 
+def test_section_texts_match_section_text() -> None:
+    from llm_tutor.course.seed import section_texts
+
+    text = "# Занятие\n\n## Первый\n\nА.\n\n```\n## не заголовок\n```\n\n## Второй\n\nБ.\n"
+    texts = section_texts(text)
+
+    assert list(texts) == ["Первый", "Второй"]
+    assert texts["Первый"] == section_text(text, "Первый")
+    assert texts["Второй"] == section_text(text, "Второй")
+
+
 def test_answer_gist_first_paragraph() -> None:
     answer = "Джини считается без логарифма, поэтому чуть быстрее.\n\n```python\nx\n```\n\nЕщё."
     assert answer_gist(answer) == "Джини считается без логарифма, поэтому чуть быстрее."

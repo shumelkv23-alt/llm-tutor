@@ -317,6 +317,22 @@ def section_text(text: str, title: str) -> str | None:
     return None
 
 
+def section_texts(text: str) -> dict[str, str]:
+    """Все разделы конспекта за один разбор: заголовок → текст, как ``section_text``.
+
+    Конспект ученика (срез 112) берёт суть каждого раздела занятия: разбирать
+    Markdown заново на каждый раздел — тысячи разборов на страницу.
+    Повторный заголовок — берётся первый, как у ``section_text``.
+    """
+    headings = _h2(text)
+    lines = text.splitlines()
+    texts: dict[str, str] = {}
+    for index, (heading, start) in enumerate(headings):
+        end = headings[index + 1][1] if index + 1 < len(headings) else len(lines)
+        texts.setdefault(heading, "\n".join(lines[start:end]).strip())
+    return texts
+
+
 def _theory_section_gaps(node: Concept, text: str) -> list[str]:
     """Разделы, которых нет в конспекте (``## <title>``), — предупреждения.
 

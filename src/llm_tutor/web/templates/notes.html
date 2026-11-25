@@ -97,9 +97,9 @@
     <p class="nb-locked">{{ locked_note }}</p>
     {% else %}
     {% for section in lesson.sections %}
-    {% if section.passed and skeleton or has_material(section) %}
+    {% if section.passed and skeleton or section.matched or has_material(section) %}
     <h4 class="notes-section">{{ section.title }}</h4>
-    {% if section.gist_html and skeleton %}<div class="gist">{{ section.gist_html }}</div>{% endif %}
+    {% if section.gist_html and (skeleton or section.matched) %}<div class="gist">{{ section.gist_html }}</div>{% endif %}
     {{ material(section, course_id) }}
     {% elif skeleton %}
     <p class="nb-ahead-line">{{ section.title }} — ещё впереди</p>

@@ -273,7 +273,7 @@ async def notes_page(
                     conn, skeleton=not every, query=query, node_id=lesson_id
                 )
                 lessons = book["lessons"]
-                count = book["count"]
+                count = book["count"] + book["hits"]
                 # Чипы тем — все занятия курса, а не только отфильтрованное.
                 lessons_for_chips = (
                     notebook.course_notebook(conn, query=query)["lessons"]
