@@ -1,7 +1,8 @@
-/* Страница «Конспект»: вопросы ученика по занятиям.
+/* Страница «Конспект»: определения и пояснения, свои заметки, задания.
  *
- * Данные приходят с сервера готовым HTML (ответ тьютора — web.markdown),
- * JS на странице нет. Цвета — только из токенов, тёмная тема получается сама.
+ * Данные приходят с сервера готовым HTML (ответ тьютора и условие задания —
+ * web.markdown); личную заметку правит notes.js. Цвета — только из токенов,
+ * тёмная тема получается сама.
  */
 
 .notes-toolbar {
@@ -69,10 +70,9 @@
   color: var(--primary-text);
 }
 
-/* Переключатель «Вопросы тьютору / Мои решения» и фильтр типа решений:
- * две ленты одного конспекта, код — отдельно, но на этой же странице. */
-.notes-views,
-.notes-kinds {
+/* Переключатель «Определения и пояснения / Выполненные задания»: две ленты
+ * одного конспекта. */
+.notes-views {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -81,8 +81,34 @@
   padding: 10px 12px;
 }
 
-.notes-kinds .notes-filter-label {
-  margin-right: 2px;
+/* Поиск по конспекту: GET-форма, результат — та же страница с ?q=. */
+.notes-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.notes-search-input {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.notes-search-input:focus {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
 }
 
 .notes-empty p {
@@ -150,8 +176,16 @@
   font-size: 12px;
 }
 
-.note-section {
-  font-size: 12px;
+/* Раздел занятия внутри конспекта: записи сгруппированы по темам. */
+.notes-section {
+  margin: 18px 0 10px;
+  color: var(--heading);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.notes-section:first-of-type {
+  margin-top: 0;
 }
 
 .note-quote {
@@ -187,8 +221,9 @@
   overflow-wrap: anywhere;
 }
 
-/* Краткая выжимка «что вы узнали»: главное в записи, полный ответ — под ней. */
-.note-brief {
+/* Личная заметка ученика: своя запись рядом с пояснением; правку ведёт
+ * notes.js, сохранённый текст — обычный текст с переносами строк. */
+.note-mine {
   margin: 0 0 10px;
   padding: 10px 14px;
   border-left: 3px solid var(--accent);
@@ -196,9 +231,16 @@
   background: var(--surface);
 }
 
-.note-brief-label {
-  display: block;
+.note-mine-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 10px;
   margin-bottom: 4px;
+}
+
+.note-mine-label {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -206,33 +248,68 @@
   text-transform: uppercase;
 }
 
-.note-brief-body {
+.note-mine-edit {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--primary-text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.note-mine-edit:hover {
+  text-decoration: underline;
+}
+
+.note-mine-text {
   color: var(--text);
   font-size: 14px;
   line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.note-brief-body p,
-.note-brief-body ul,
-.note-brief-body ol {
-  margin: 0 0 6px;
+.note-mine-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
 }
 
-.note-brief-body :last-child {
-  margin-bottom: 0;
+.note-mine-form[hidden],
+.note-mine-text[hidden] {
+  display: none;
 }
 
-.note-brief-body ul,
-.note-brief-body ol {
-  padding-left: 20px;
-}
-
-.note-brief-body code {
-  padding: 1px 5px;
-  border-radius: 4px;
+.note-mine-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
   background: var(--surface-2);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.note-mine-form textarea:focus {
+  border-color: var(--primary);
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.note-mine-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-mine-status {
+  color: var(--danger);
+  font-size: 12px;
 }
 
 .note-failed {
@@ -241,12 +318,53 @@
   font-size: 13px;
 }
 
-/* «Мои решения»: условие задания подписью, ответ ученика и вердикт. */
+/* «Выполненные задания»: условие целиком сверху, ответ ученика или код снизу. */
 .solution-prompt {
   margin: 0 0 10px;
-  color: var(--muted);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.solution-prompt p,
+.solution-prompt ul,
+.solution-prompt ol,
+.solution-prompt pre {
+  margin: 0 0 8px;
+}
+
+.solution-prompt :last-child {
+  margin-bottom: 0;
+}
+
+.solution-prompt ul,
+.solution-prompt ol {
+  padding-left: 20px;
+}
+
+.solution-prompt code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: var(--font-mono);
   font-size: 13px;
-  line-height: 1.45;
+}
+
+.solution-prompt pre {
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: #0b1424;
+  color: #e3eaf1;
+  overflow-x: auto;
+}
+
+.solution-prompt pre code {
+  padding: 0;
+  background: none;
 }
 
 .solution-verdict {
@@ -318,6 +436,26 @@
   background: var(--surface);
   font-family: var(--font-mono);
   font-size: 13px;
+}
+
+/* Длинный код в ответе свёрнут: в конспекте виден текст пояснения. */
+.note-code {
+  margin: 8px 0 0;
+}
+
+.note-code summary {
+  cursor: pointer;
+  color: var(--primary-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.note-code summary:hover {
+  text-decoration: underline;
+}
+
+.note-code pre {
+  margin: 8px 0 0;
 }
 
 .note-answer-body pre {

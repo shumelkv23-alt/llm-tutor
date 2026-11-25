@@ -1,22 +1,26 @@
-"""Личный конспект ученика: вопросы тьютору и его решения, разложенные по занятиям.
+"""Личный конспект ученика: пояснения, свои заметки и выполненные задания.
 
-Источник — журнал ``messages`` (миграций нет): вопрос помечается в ``meta``
-реплики ученика (``core.turn.post_turn(..., question=True)``), ответ тьютора —
-следующая за ней реплика ``assistant``. Модуль только читает и собирает
-данные для страницы «Конспект»; ходы и состояние не трогает.
+Источник — журнал ``messages``: вопрос помечается в ``meta`` реплики ученика
+(``core.turn.post_turn(..., question=True)``), ответ тьютора — следующая за ней
+реплика ``assistant``. Модуль читает и собирает данные для страницы «Конспект»
+и хранит личные заметки ученика (таблица ``note_entries``, миграция 011); ходы
+и состояние занятия не трогает.
 
-Запись конспекта — тема (вопрос) и краткая выжимка «что я узнал»: её пишет
-модель в ``TutorReply.takeaway``, и ``post_turn`` кладёт её в ``meta`` реплики
-тьютора. У старых записей итога нет — выжимкой становится первый абзац ответа.
-Полный ответ страница оставляет под спойлером.
+Запись ленты «Определения и пояснения» — вопрос-тема, полный ответ под
+спойлером и личная заметка ученика. Записи сгруппированы по занятиям, а
+внутри — по разделам. Автоитог тьютора (``takeaway``) остаётся в ``meta``
+реплики для истории, но страница его не показывает: заметка теперь своя.
+Разбор кода в эту ленту не попадает: вопрос с выделенным кодом или с длинной
+вставкой кода в тексте остаётся в чате, а длинный код в ответе сворачивается
+под спойлер. Поиск (``query``) идёт по вопросу, фрагменту, ответу и заметке.
 
-Вторая часть конспекта — «Мои решения»: ответы ученика на задания. Отдельной
+Вторая лента — «Выполненные задания»: ответы ученика на задания. Отдельной
 пометки у них нет: ход пишет реплику ученика и событие ``events`` одним ``ts``
 (так их и находит админка), поэтому ответ — реплика ``user``, совпавшая по
 ``ts`` с событием задания. Код из вкладки «Код» лежит там же текстом: его
 собирает ``web.api_lesson.code_message``, а «Результат проверки:» отделяет код
-от отчёта тестов. Записи делятся на текстовые и кодовые: код длинный, и его
-удобнее смотреть отдельным фильтром.
+от отчёта тестов. Условие задания показывается целиком (Markdown), ответ —
+под ним; поиск идёт по условию и ответу.
 
 Слои: ``web`` → ``core``/``course``/``student``/``db``. Рендер ответа —
 ``web.markdown`` (HTML в тексте модели запрещён, как и везде).
@@ -28,6 +32,8 @@ import json
 import re
 import sqlite3
 from datetime import datetime
+
+from markupsafe import Markup
 
 from llm_tutor.core.context import Focus, focus_from_meta
 from llm_tutor.course.graph import CourseGraph
@@ -50,15 +56,14 @@ SOURCE_LABELS: dict[str, str] = {
 
 NO_LESSON = "Вне занятия"
 
-# Выжимка в записи не длиннее этого: конспект читают глазами, а не стеной
-# текста. Итог модели просим короче; запас — на старые записи и разошедшуюся
-# модель.
-BRIEF_CHARS = 320
-
-# «Мои решения»: сколько последних ответов на задания показывать и какую часть
-# условия задания оставить в строке-подписи (сам ответ показывается целиком).
+# «Выполненные задания»: сколько последних ответов на задания показывать.
+# Условие задания выводится целиком — в конспекте это часть записи, а не
+# подпись.
 SOLUTION_LIMIT = 200
-PROMPT_CHARS = 200
+
+# Личная заметка ученика: предел на запись. Длиннее — это уже конспект, а не
+# пометка на полях.
+NOTE_MAX_CHARS = 2000
 
 # Так ``web.api_lesson.code_message`` отделяет код от отчёта тестов; тем же
 # способом его разбирает админка (``web.admin._test_result``).
@@ -68,30 +73,95 @@ TEST_MARK = "\n\nРезультат проверки:"
 # серия ` не короче трёх, внутри неё `` ` `` не встречается.
 CODE_FENCE = re.compile(r"^(?P<mark>`{3,})python\n(?P<code>.*)\n(?P=mark)$", re.S)
 
+# Огорождённый блок кода в тексте вопроса или ответа (``` или ~~~).
+# CommonMark разрешает отступ до трёх пробелов, а закрывающая серия может быть
+# длиннее открывающей — оба случая иначе пропускали бы блок.
+FENCE_BLOCK = re.compile(
+    r"^[ \t]{0,3}(?P<mark>`{3,}|~{3,})[^\n]*\n"
+    r"(?P<code>.*?)^[ \t]{0,3}(?P=mark)[`~]*[ \t]*$",
+    re.S | re.M,
+)
+_TAG = re.compile(r"<[^>]+>")
+
+# Сколько строк кода ещё считается «мелким кодом». Длиннее — это разбор кода:
+# вопрос уходит из «Определений», а блок в ответе сворачивается.
+MAX_CODE_LINES = 3
+
+# Предел поискового запроса: GET-ссылка не должна расти без конца.
+SEARCH_MAX_CHARS = 100
+
+_PRE_BLOCK = re.compile(r"<pre>.*?</pre>", re.S)
+
+
+def code_lines(text: str | None) -> int:
+    """Самая длинная огорождённая вставка кода в тексте (0 — вставок нет)."""
+    if not text:
+        return 0
+    longest = 0
+    for match in FENCE_BLOCK.finditer(text):
+        lines = [line for line in match.group("code").splitlines() if line.strip()]
+        longest = max(longest, len(lines))
+    return longest
+
+
+def _collapse_code(html: Markup) -> Markup:
+    """Длинный код в пояснении — под спойлер: в теории виден текст, не стены кода."""
+
+    def replace(match: re.Match[str]) -> str:
+        block = match.group(0)
+        # Считаем непустые строки, как code_lines: пустые строки внутри кода
+        # не делают пример «длинным».
+        lines = [line for line in _TAG.sub("", block).splitlines() if line.strip()]
+        if len(lines) <= MAX_CODE_LINES:
+            return block
+        return (
+            '<details class="note-code"><summary>Показать код</summary>'
+            f"{block}</details>"
+        )
+
+    return Markup(_PRE_BLOCK.sub(replace, str(html)))
+
+
+def _matches(query: str | None, *parts: object) -> bool:
+    """Все слова запроса есть в тексте (регистр и лишние пробелы не важны)."""
+    if not query:
+        return True
+    haystack = " ".join(str(part) for part in parts if part).casefold()
+    return all(word in haystack for word in query.casefold().split())
+
 
 def question_entries(
     conn: sqlite3.Connection,
     *,
     limit: int = NOTE_LIMIT,
-    kind: str | None = None,
+    query: str | None = None,
+    node_id: str | None = None,
 ) -> list[dict]:
-    """Вопросы ученика с ответами тьютора — от новых к старым.
+    """Вопросы ученика с ответами тьютора и личной заметкой — от новых к старым.
 
     Вопрос — реплика с ``meta.question`` (её пишет ``core.turn.post_turn``);
     ответ — следующая реплика ``assistant`` той же сессии (ход пишется одним
     коммитом, поэтому она идёт сразу за вопросом). Ответа может не быть —
-    тогда запись показывается без разворота.
+    тогда запись показывается без разворота. Заметка приходит из
+    ``note_entries`` (может отсутствовать).
 
-    ``kind`` — ``code`` (вопрос по выделенному коду) или ``text`` (всё
-    остальное): код длинный, и его удобнее смотреть отдельной лентой.
+    «Определения и пояснения» — не разбор кода: вопрос с выделенным кодом или
+    длинной вставкой кода в самом тексте (больше ``MAX_CODE_LINES`` строк) в
+    ленту не попадает. В истории чата он остаётся.
+
+    ``query`` — поиск по вопросу, фрагменту, заметке и ответу тьютора: нужны
+    все слова запроса, регистр не важен. ``node_id`` — только записи занятия
+    (проверку, что занятие есть в курсе, делает страница). Лимит считается
+    после всех отборов.
     """
     rows = conn.execute(
-        "SELECT u.id, u.ts, u.content, u.meta, a.content AS answer, a.meta AS answer_meta "
+        "SELECT u.id, u.ts, u.content, u.meta, a.content AS answer, n.text AS note "
         "FROM messages u LEFT JOIN messages a ON a.id = ("
         "  SELECT a2.id FROM messages a2"
         "  WHERE a2.session_id = u.session_id AND a2.role = 'assistant'"
         "    AND a2.id > u.id AND a2.ts = u.ts"
         "  ORDER BY a2.id LIMIT 1) "
+        "LEFT JOIN note_entries n ON n.message_id = u.id "
         "WHERE u.role = 'user' "
         "ORDER BY u.ts DESC, u.id DESC"
     ).fetchall()
@@ -104,12 +174,28 @@ def question_entries(
         if not text:
             continue
         focus = focus_from_meta(row["meta"])
-        entry = _entry(row, meta, text, focus)
-        if kind == "code" and entry["source_key"] != "code":
+        # Разбор кода — не определение: вопрос с выделенным кодом или большой
+        # вставкой кода в тексте остаётся в истории чата, а в «Определениях и
+        # пояснениях» видны объяснения по теории/заданию и вопросы без
+        # фрагмента. Мелкий код (до MAX_CODE_LINES строк) не мешает.
+        if focus is not None and focus.source == "code":
             continue
-        if kind == "text" and entry["source_key"] == "code":
+        if code_lines(text) > MAX_CODE_LINES:
             continue
-        entries.append(entry)
+        node = meta.get("node")
+        node_value = node if isinstance(node, str) and node else None
+        if node_id is not None and node_value != node_id:
+            continue
+        # Поиск — до рендера полного ответа: несовпавшие записи не рендерим.
+        if not _matches(
+            query,
+            text,
+            focus.text if focus is not None else None,
+            row["note"],
+            row["answer"],
+        ):
+            continue
+        entries.append(_entry(row, meta, text, focus))
         if len(entries) >= limit:
             break
     return entries
@@ -132,7 +218,7 @@ def _entry(row: sqlite3.Row, meta: dict, question: str, focus: Focus | None) -> 
     source = focus.source if focus is not None else None
     node_id = meta.get("node")
     section_id = meta.get("section")
-    brief = None if failed else _brief(_meta(row["answer_meta"]).get("takeaway"), answer)
+    note = (row["note"] or "").strip()
     return {
         "id": row["id"],
         "ts": ts,
@@ -143,38 +229,10 @@ def _entry(row: sqlite3.Row, meta: dict, question: str, focus: Focus | None) -> 
         "question": question,
         "quote": focus.text if focus is not None else None,
         "source": SOURCE_LABELS.get(source) if source is not None else None,
-        "source_key": source,
-        "is_code": source == "code",
-        "brief_html": render(brief) if brief else None,
-        "answer_html": render(answer) if answer and not failed else None,
+        "note": note or None,
+        "answer_html": _collapse_code(render(answer)) if answer and not failed else None,
         "failed": failed,
     }
-
-
-def _brief(takeaway: object, answer: str) -> str | None:
-    """Краткая выжимка записи: итог модели, а без него — первый абзац ответа.
-
-    ``takeaway`` приходит из ``meta`` реплики тьютора и может отсутствовать
-    (старые записи) или быть пустым (модель не заполнила): тогда конспект
-    показывает первый абзац ответа — обычно это и есть определение по сути.
-    """
-    if isinstance(takeaway, str) and takeaway.strip():
-        return _clip(takeaway.strip())
-    return _clip(answer.strip().split("\n\n", 1)[0].strip())
-
-
-def _clip(text: str, *, limit: int = BRIEF_CHARS) -> str | None:
-    """Обрезка выжимки по границе предложения (или слова) с многоточием."""
-    if not text:
-        return None
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
-    if end >= limit // 2:
-        return cut[: end + 1].strip()
-    space = cut.rfind(" ")
-    return (cut[:space] if space > 0 else cut).rstrip(" ,;:—-") + "…"
 
 
 def _format_ts(ts: float | int | None) -> str:
@@ -191,19 +249,66 @@ def _iso(ts: float | int | None) -> str:
         return ""
 
 
+def save_note(
+    conn: sqlite3.Connection,
+    message_id: int,
+    text: str,
+    *,
+    now: float,
+) -> str:
+    """Сохраняет заметку к записи конспекта; пустой текст удаляет её.
+
+    Заметка есть только у вопроса тьютору: реплика без ``meta.question``
+    адресом не становится — ``LookupError`` (API отвечает 404). Текст хранится
+    как текст (края обрезаются); длиннее ``NOTE_MAX_CHARS`` — ``ValueError``.
+    """
+    note = text.strip()
+    if len(note) > NOTE_MAX_CHARS:
+        raise ValueError(f"Заметка длиннее {NOTE_MAX_CHARS} знаков.")
+    try:
+        row = conn.execute(
+            "SELECT role, meta FROM messages WHERE id = ?", (message_id,)
+        ).fetchone()
+    except (OverflowError, ValueError):
+        # id больше, чем влезает в INTEGER SQLite: такой записи нет.
+        raise LookupError(message_id) from None
+    if row is None or row["role"] != "user" or _meta(row["meta"]).get("question") is not True:
+        raise LookupError(message_id)
+    with conn:
+        if note:
+            conn.execute(
+                "INSERT INTO note_entries(message_id, text, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(message_id) DO UPDATE SET "
+                "text = excluded.text, updated_at = excluded.updated_at",
+                (message_id, note, now),
+            )
+        else:
+            conn.execute("DELETE FROM note_entries WHERE message_id = ?", (message_id,))
+    return note
+
+
+def has_lesson(conn: sqlite3.Connection, node_id: str | None) -> bool:
+    """Есть ли занятие в графе курса (опубликованный модуль)."""
+    return bool(node_id) and CourseGraph.load(conn).has_node(node_id)
+
+
 def lesson_notes(
     conn: sqlite3.Connection,
     *,
     limit: int = NOTE_LIMIT,
-    kind: str | None = None,
+    query: str | None = None,
+    node_id: str | None = None,
 ) -> list[dict]:
     """Записи конспекта по занятиям одного курса.
 
     Занятия идут в порядке последнего вопроса (о чём спрашивали недавно — то
-    выше), внутри — от новых к старым. Имя занятия, модуль и название раздела
-    берутся из графа курса; занятие, ушедшее из графа, показывается своим id.
+    выше), внутри — от новых к старым, а записи сгруппированы по разделам
+    занятия. Имя занятия, модуль и название раздела берутся из графа курса;
+    занятие, ушедшее из графа, показывается своим id. ``query`` — поиск,
+    ``node_id`` — только одно занятие; пустые после отбора занятия не
+    показываются.
     """
-    entries = question_entries(conn, limit=limit, kind=kind)
+    entries = question_entries(conn, limit=limit, query=query, node_id=node_id)
     if not entries:
         return []
     graph = CourseGraph.load(conn)
@@ -222,7 +327,23 @@ def lesson_notes(
     for group in groups.values():
         group.pop("sections")
         group["count"] = len(group["entries"])
+        group["sections"] = _section_groups(group["entries"])
     return list(groups.values())
+
+
+def _section_groups(entries: list[dict]) -> list[dict]:
+    """Записи занятия по разделам: порядок разделов — по первому (новому) входу."""
+    groups: list[dict] = []
+    index: dict[str, dict] = {}
+    for entry in entries:
+        key = entry["section_id"] or ""
+        group = index.get(key)
+        if group is None:
+            group = {"id": key, "name": entry["section"] or "", "entries": []}
+            index[key] = group
+            groups.append(group)
+        group["entries"].append(entry)
+    return groups
 
 
 def _lesson_group(graph: CourseGraph, topics: dict[int, str], node_id: str | None) -> dict:
@@ -249,7 +370,13 @@ def _lesson_group(graph: CourseGraph, topics: dict[int, str], node_id: str | Non
 # --- «Мои решения»: ответы ученика на задания ---
 
 
-def solution_entries(conn: sqlite3.Connection, *, limit: int = SOLUTION_LIMIT) -> list[dict]:
+def solution_entries(
+    conn: sqlite3.Connection,
+    *,
+    limit: int = SOLUTION_LIMIT,
+    query: str | None = None,
+    node_id: str | None = None,
+) -> list[dict]:
     """Ответы ученика на задания — от новых к старым.
 
     Ответа не помечают: он находится по совпадению ``ts`` с событием задания.
@@ -257,34 +384,44 @@ def solution_entries(conn: sqlite3.Connection, *, limit: int = SOLUTION_LIMIT) -
     поэтому реплики без события (вопросы тьютору, команды) сюда не попадают.
     Событие на каждый концепт задания даёт несколько строк с одним ``ts`` —
     оставляем одну на ``(item_id, ts, source)``, как это делает админка.
+
+    ``query`` — поиск по условию задания и ответу ученика, ``node_id`` — только
+    одно занятие; лимит считается после всех отборов. Без запроса и фильтра
+    SQL сразу берёт последние ``limit`` событий.
     """
-    rows = conn.execute(
-        "SELECT ts, concept_id, item_id, source, result FROM events "
-        "WHERE id IN (SELECT MIN(id) FROM events WHERE item_id IS NOT NULL "
-        "GROUP BY item_id, ts, source) ORDER BY ts DESC, id DESC LIMIT ?",
-        (limit,),
-    ).fetchall()
-    if not rows:
-        return []
-    marks = ",".join("?" for _ in rows)
-    texts: dict[float, str] = {
-        ts: content
-        for ts, content in conn.execute(
-            f"SELECT ts, content FROM messages WHERE role = 'user' AND ts IN ({marks})",
-            [row["ts"] for row in rows],
-        )
-    }
+    sql = (
+        "SELECT e.ts, e.concept_id, e.item_id, e.source, e.result, m.content "
+        "FROM events e JOIN messages m ON m.id = ("
+        "  SELECT m2.id FROM messages m2 WHERE m2.role = 'user' AND m2.ts = e.ts"
+        "  ORDER BY m2.id DESC LIMIT 1) "
+        "WHERE e.id IN (SELECT MIN(id) FROM events WHERE item_id IS NOT NULL "
+        "GROUP BY item_id, ts, source) "
+        "ORDER BY e.ts DESC, e.id DESC"
+    )
+    rows = (
+        conn.execute(sql + " LIMIT ?", (limit,)).fetchall()
+        if query is None and node_id is None
+        else conn.execute(sql).fetchall()
+    )
     entries: list[dict] = []
     for row in rows:
-        text = texts.get(row["ts"])
-        if not text or not text.strip():
+        text = (row["content"] or "").strip()
+        if not text:
             continue
-        entries.append(_solution_entry(conn, row, text.strip()))
+        item = repos.get_item(conn, row["item_id"])
+        node = main_concept(item) if item is not None else row["concept_id"]
+        if node_id is not None and node != node_id:
+            continue
+        # Поиск — до рендера условия: несовпавшие записи не рендерим.
+        if not _matches(query, item.prompt if item is not None else None, text):
+            continue
+        entries.append(_solution_entry(row, text, item))
+        if len(entries) >= limit:
+            break
     return entries
 
 
-def _solution_entry(conn: sqlite3.Connection, row: sqlite3.Row, text: str) -> dict:
-    item = repos.get_item(conn, row["item_id"])
+def _solution_entry(row: sqlite3.Row, text: str, item) -> dict:
     node_id = main_concept(item) if item is not None else row["concept_id"]
     code = _code_answer(text)
     score = row["result"]
@@ -294,7 +431,9 @@ def _solution_entry(conn: sqlite3.Connection, row: sqlite3.Row, text: str) -> di
         "when": _format_ts(row["ts"]),
         "iso": _iso(row["ts"]),
         "node_id": node_id if isinstance(node_id, str) and node_id else None,
-        "prompt": _prompt_preview(item.prompt) if item is not None else None,
+        # Условие — часть записи конспекта, а не подпись: показываем целиком
+        # и тем же безопасным Markdown, что «Практика» и вкладка «Код».
+        "prompt_html": render(item.prompt) if item is not None else None,
         "is_code": code is not None,
         "code": code["code"] if code is not None else None,
         "passed": code["passed"] if code is not None else None,
@@ -325,14 +464,6 @@ def _code_answer(text: str) -> dict | None:
     return {"code": code.strip(), "passed": passed, "report": report}
 
 
-def _prompt_preview(text: str) -> str:
-    """Начало условия задания одной строкой — подпись решения, не сам ответ."""
-    flat = " ".join(text.split())
-    if len(flat) <= PROMPT_CHARS:
-        return flat
-    return flat[:PROMPT_CHARS].rstrip(" ,;:—-") + "…"
-
-
 def _score_label(score: float) -> str:
     if score >= 1.0:
         return "Верно"
@@ -345,18 +476,17 @@ def lesson_solutions(
     conn: sqlite3.Connection,
     *,
     limit: int = SOLUTION_LIMIT,
-    kind: str | None = None,
+    query: str | None = None,
+    node_id: str | None = None,
 ) -> list[dict]:
-    """Решения по занятиям: ``kind`` — ``text`` или ``code`` (``None`` — все).
+    """Решения по занятиям.
 
     Группировка и порядок — как у вопросов: занятия по последнему ответу,
-    внутри — от новых к старым. Пустые после фильтра занятия не показываются.
+    внутри — от новых к старым. Показываются все решения, с вердиктом.
+    ``query`` — поиск по условию и ответу, ``node_id`` — только одно занятие;
+    пустые занятия не показываются.
     """
-    entries = solution_entries(conn, limit=limit)
-    if kind == "code":
-        entries = [entry for entry in entries if entry["is_code"]]
-    elif kind == "text":
-        entries = [entry for entry in entries if not entry["is_code"]]
+    entries = solution_entries(conn, limit=limit, query=query, node_id=node_id)
     if not entries:
         return []
     graph = CourseGraph.load(conn)

@@ -125,6 +125,6 @@ def test_project_repos(conn) -> None:
 
 
 def test_schema_version(conn) -> None:
-    assert SCHEMA_VERSION == 10
+    assert SCHEMA_VERSION == 11
     tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    assert {"projects", "project_turns"} <= tables
+    assert {"projects", "project_turns", "note_entries"} <= tables
