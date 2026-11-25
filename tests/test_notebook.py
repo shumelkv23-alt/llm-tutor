@@ -4,6 +4,7 @@
 """
 
 import json
+import time
 
 import pytest
 from legacy_course import load_seed
@@ -15,8 +16,8 @@ from llm_tutor.course.graph import CourseGraph
 from llm_tutor.course.seed import main_concept
 from llm_tutor.db import repos
 from llm_tutor.llm.prompts import LLM_FAILURE_REPLY
-from llm_tutor.schemas import Event, SessionState
-from llm_tutor.web import accounts, notes
+from llm_tutor.schemas import Event, Route, RouteStep, SessionState
+from llm_tutor.web import accounts, notebook, notes
 
 REPLY = "Группировка делит строки по ключу."
 TAKEAWAY = "groupby делит строки по ключу и считает агрегаты по группам."
@@ -548,7 +549,7 @@ async def test_page_shows_question_fragment_and_answer(enrolled, web_app) -> Non
     html = (await enrolled.get("/notes")).text
 
     assert "Конспект" in html
-    assert "Определения и пояснения" in html
+    assert "Определения и пояснения" not in html  # лента заменена скелетом курса (срез 107)
     assert "Что такое groupby?" in html
     assert "groupby делит строки" in html
     assert "Теория" in html
@@ -572,7 +573,7 @@ async def test_page_hides_answers_and_plain_messages(enrolled, web_app) -> None:
     html = (await enrolled.get("/notes")).text
 
     assert "Мой ответ: 42" not in html
-    assert "Здесь появятся определения и пояснения" in html
+    assert "Конспект заполняется сам" in html
 
 
 async def test_page_escapes_tutor_html(enrolled, web_app) -> None:
@@ -642,13 +643,14 @@ async def test_page_filter_by_course(student, web_app) -> None:
     _add(web_app.state.userdbs.open(user.id, COURSE), 1.0, "Вопрос про pandas")
     _add(web_app.state.userdbs.open(user.id, "trees-demo"), 2.0, "Вопрос про деревья")
 
-    all_html = (await student.get("/notes")).text
-    filtered = (await student.get("/notes?course=trees-demo")).text
+    all_html = (await student.get("/notes?all=1")).text
+    filtered = (await student.get(f"/notes?course={COURSE}")).text
     unknown = (await student.get("/notes?course=nope")).text
 
     assert "Вопрос про pandas" in all_html and "Вопрос про деревья" in all_html
-    assert "Вопрос про деревья" in filtered and "Вопрос про pandas" not in filtered
-    assert "Вопрос про pandas" in unknown and "Вопрос про деревья" in unknown
+    assert "Вопрос про pandas" in filtered and "Вопрос про деревья" not in filtered
+    # Неизвестный курс игнорируется: выбран текущий (последний записанный).
+    assert "Вопрос про деревья" in unknown and "Вопрос про pandas" not in unknown
 
 
 async def test_page_filter_by_lesson_and_shows_topic_chips(student, web_app) -> None:
@@ -672,13 +674,13 @@ async def test_page_filter_by_lesson_and_shows_topic_chips(student, web_app) -> 
 
 async def test_page_single_course_shows_topic_chips(student, web_app) -> None:
     await student.post(f"/api/courses/{COURSE}/enroll", json={})
-    _add(_user_db(web_app), 1.0, "Вопрос про группировку", node="l1_group")
+    _add(_user_db(web_app), 1.0, "Вопрос про группировку", node="grouping")
 
     html = (await student.get("/notes")).text
 
     # Курс один — он выбран сразу, чипы тем видны без клика по курсу.
     assert "Все темы" in html
-    assert "lesson=l1_group" in html
+    assert "lesson=grouping" in html
 
 
 async def test_page_shows_theory_and_hides_code_questions(enrolled, web_app) -> None:
@@ -930,3 +932,175 @@ async def test_page_without_courses_offers_catalog(student) -> None:
 
     assert "Вы ещё не записаны ни на один курс" in html
     assert 'href="/courses"' in html
+
+
+# --- скелет курса (срез 107) ---
+
+
+def _route(
+    conn,
+    *,
+    closed: tuple[str, ...] = (),
+    weak: tuple[str, ...] = (),
+    reopened: tuple[str, ...] = (),
+    current: str | None = None,
+    passed_sections: tuple[str, ...] = (),
+    section: str | None = None,
+    closed_at: float = 1.0,
+) -> None:
+    """Пишет снимок маршрута в открытую сессию: закрытые, переоткрытые и текущее занятие."""
+    steps = [
+        RouteStep(concept_id=node, mode="full", status="closed", closed_at=closed_at)
+        for node in closed
+    ]
+    steps += [
+        RouteStep(concept_id=node, mode="full", status="closed", closed_at=closed_at, weak=True)
+        for node in weak
+    ]
+    steps += [
+        RouteStep(concept_id=node, mode="full", status="ahead", closed_at=closed_at)
+        for node in reopened
+    ]
+    if current is not None:
+        steps.append(RouteStep(concept_id=current, mode="full", status="current"))
+    session_id = repos.ensure_open_session(conn, 1.0)
+    state = repos.get_session_state(conn, session_id).model_copy(
+        update={
+            "route": Route(steps=steps),
+            "current_node_id": current,
+            "passed_sections": list(passed_sections),
+            "section_id": section,
+        }
+    )
+    repos.update_session_state(conn, session_id, state)
+    conn.commit()
+
+
+def _order(conn) -> list[str]:
+    return CourseGraph.load(conn).topo_order()
+
+
+async def test_skeleton_orders_lessons_and_marks_statuses(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    _route(conn, closed=(order[0],), weak=(order[1],), current=order[2])
+
+    book = notebook.course_notebook(conn)
+
+    assert [lesson["node_id"] for lesson in book["lessons"]] == order[:3]
+    assert [lesson["status"] for lesson in book["lessons"]] == ["passed", "weak", "current"]
+    graph = CourseGraph.load(conn)
+    assert book["ahead"] == [graph.concept(node).name for node in order[3:]]
+    first = book["lessons"][0]
+    assert [section["title"] for section in first["sections"]] == [
+        s.title for s in graph.concept(order[0]).sections
+    ]
+    assert all(section["passed"] and section["gist_html"] for section in first["sections"])
+    assert book["closed"] == 2 and book["total"] == len(order)
+
+
+async def test_current_lesson_passed_and_current_sections_have_gist(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    sections = CourseGraph.load(conn).concept(node).sections
+    assert len(sections) >= 3
+    _route(conn, current=node, passed_sections=(sections[0].id,), section=sections[1].id)
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+
+    passed = [(section["passed"], bool(section["gist_html"])) for section in lesson["sections"]]
+    assert passed[:3] == [(True, True), (True, True), (False, False)]
+
+
+async def test_reopened_lesson_keeps_gist(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    _route(conn, reopened=(node,))
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+
+    assert lesson["status"] == "reopened"
+    assert all(section["gist_html"] for section in lesson["sections"])
+
+
+async def test_pending_explain_lesson_is_locked(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    important = next(node for node in _order(conn) if node in repos.get_explain_configs(conn))
+    _route(conn, closed=(important,), closed_at=time.time() + 60)
+
+    book = notebook.course_notebook(conn)
+    lesson = next(item for item in book["lessons"] if item["node_id"] == important)
+    html = (await enrolled.get("/notes")).text
+
+    assert lesson["locked"] is True
+    assert lesson["sections"] == []
+    assert notebook.LOCKED_NOTE in html
+
+
+async def test_no_route_everything_ahead(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+
+    book = notebook.course_notebook(conn)
+    response = await enrolled.get("/notes")
+
+    assert book["lessons"] == []
+    assert len(book["ahead"]) == len(_order(conn))
+    assert response.status_code == 200
+    assert "Впереди" in response.text
+
+
+async def test_section_without_theory_heading_has_no_gist(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    conn.execute("UPDATE concepts SET theory = ? WHERE id = ?", ("# Занятие\n\nБез разделов.", node))
+    conn.commit()
+    _route(conn, closed=(node,))
+
+    lesson = notebook.course_notebook(conn)["lessons"][0]
+    response = await enrolled.get("/notes")
+
+    assert lesson["sections"] and all(s["gist_html"] is None for s in lesson["sections"])
+    assert response.status_code == 200
+
+
+async def test_page_renders_skeleton(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    order = _order(conn)
+    graph = CourseGraph.load(conn)
+    sections = graph.concept(order[0]).sections
+    _route(conn, current=order[0], passed_sections=(sections[0].id,), section=sections[0].id)
+
+    html = (await enrolled.get("/notes")).text
+
+    assert "Конспект" in html and "Выполненные задания" in html
+    assert sections[0].title in html
+    assert f"{sections[-1].title} — ещё впереди" in html
+    assert "идёт сейчас" in html
+    assert graph.concept(order[-1]).name in html
+    assert 'class="gist"' in html
+
+
+async def test_old_view_questions_is_notebook(enrolled, web_app) -> None:
+    _route(_user_db(web_app), closed=(_order(_user_db(web_app))[0],))
+
+    old = (await enrolled.get("/notes?view=questions")).text
+    new = (await enrolled.get("/notes")).text
+
+    assert 'class="gist"' in old and 'class="gist"' in new
+
+
+async def test_default_course_is_current_and_all_has_no_skeleton(student, web_app) -> None:
+    await student.post(f"/api/courses/{COURSE}/enroll", json={})
+    await student.post("/api/courses/trees-demo/enroll", json={})
+    user = accounts.find_user(web_app.state.accounts, "ann@example.com")
+    _add(web_app.state.userdbs.open(user.id, COURSE), 1.0, "Вопрос про pandas", node="grouping")
+    _add(web_app.state.userdbs.open(user.id, "trees-demo"), 2.0, "Вопрос про деревья")
+
+    default = (await student.get("/notes")).text
+    every = (await student.get("/notes?all=1")).text
+
+    # Последний записанный курс — текущий: его скелет, чужих вопросов нет.
+    assert "Вопрос про деревья" in default and "Вопрос про pandas" not in default
+    assert "Впереди" in default
+    assert "Вопрос про pandas" in every and "Вопрос про деревья" in every
+    assert "Впереди" not in every and "ещё впереди" not in every

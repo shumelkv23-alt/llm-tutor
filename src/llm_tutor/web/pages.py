@@ -16,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from llm_tutor.core import project as core_project
 from llm_tutor.course.graph import CourseGraph
 from llm_tutor.db import repos
-from llm_tutor.web import accounts, reminders, courses as course_registry, notes as notebook
+from llm_tutor.web import accounts, notebook, reminders, courses as course_registry, notes as notes_feed
 from llm_tutor.web.accounts import User
 from llm_tutor.web.api_lesson import cards_for
 from llm_tutor.web.courses import RENAMED_COURSES, published_courses, student_course
@@ -218,24 +218,25 @@ async def notes_page(
     lesson: str | None = None,
     view: str | None = None,
     q: str | None = None,
+    all: str | None = None,  # noqa: A002 — имя параметра адреса ``?all=1``
     user: User = Depends(page_user),
 ) -> HTMLResponse:
-    """«Конспект»: определения и пояснения, выполненные задания по всем курсам.
+    """«Конспект» по скелету курса и «Выполненные задания».
 
-    Журнал ``messages`` у каждого курса свой, поэтому страница проходит по
-    записанным курсам (как главная и профиль). Нечитаемый курс не роняет
-    страницу: он показывается строкой с ошибкой. ``?course=`` сужает выдачу,
-    ``?lesson=`` — до одного занятия выбранного курса; неизвестный или чужой
-    id фильтр игнорирует. Курс один — он выбран сразу, без лишнего клика: темы
-    показываются его.
+    Журнал у каждого курса свой, поэтому страница проходит по записанным
+    курсам. Нечитаемый курс не роняет страницу: он показывается строкой с
+    ошибкой. ``?course=`` — курс; без него выбран текущий (последний
+    записанный, как в профиле). ``?all=1`` — все курсы, но без скелета: только
+    материал ученика. ``?lesson=`` — одно занятие выбранного курса; неизвестный
+    или чужой id фильтр игнорирует.
 
-    ``?view=solutions`` — лента «Выполненные задания» (ответы на задания
-    вместо пояснений). ``?q=`` — поиск по конспекту (все слова запроса,
-    регистр не важен); пустой запрос — без фильтра. Старое ``?kind=`` больше не
-    фильтрует — значение игнорируется, ссылки из закладок страницу не ломают.
+    ``?view=solutions`` — «Выполненные задания»; ``notebook`` (по умолчанию) и
+    старое ``questions`` — конспект. ``?q=`` — поиск (все слова, регистр не
+    важен). Старое ``?kind=`` игнорируется — закладки страницу не ломают.
     """
-    part = "solutions" if view == "solutions" else "questions"
-    query = q.strip()[: notebook.SEARCH_MAX_CHARS] if q and q.strip() else None
+    part = "solutions" if view == "solutions" else "notebook"
+    query = q.strip()[: notes_feed.SEARCH_MAX_CHARS] if q and q.strip() else None
+    every = all is not None and all not in ("", "0")
     pool = request.app.state.userdbs
     candidates = []
     for course_id in accounts.enrolled_courses(accounts_db(request), user.id):
@@ -244,10 +245,11 @@ async def notes_page(
             candidates.append(found)
     known = {item.id for item in candidates}
     selected = course if course in known else None
-    if selected is None and len(candidates) == 1:
-        # Единственный курс — не заставляем выбирать его в фильтре, чтобы
-        # сразу показать темы занятий.
+    if selected is None and not every and candidates:
+        # Текущий курс (последний записанный) — его скелет, без лишнего клика.
         selected = candidates[0].id
+    if selected is not None:
+        every = False
     lesson_filters: list[dict] = []
     selected_lesson: str | None = None
     groups: list[dict] = []
@@ -261,14 +263,25 @@ async def notes_page(
             # ещё до поиска и лимита, иначе поиск в теме показывал бы чужие.
             lesson_id = (
                 lesson
-                if selected is not None and lesson and notebook.has_lesson(conn, lesson)
+                if selected is not None and lesson and notes_feed.has_lesson(conn, lesson)
                 else None
             )
-            lessons = (
-                notebook.lesson_solutions(conn, query=query, node_id=lesson_id)
-                if part == "solutions"
-                else notebook.lesson_notes(conn, query=query, node_id=lesson_id)
-            )
+            if part == "solutions":
+                lessons = notes_feed.lesson_solutions(conn, query=query, node_id=lesson_id)
+                book = None
+                count = sum(entry["count"] for entry in lessons)
+            else:
+                book = notebook.course_notebook(
+                    conn, skeleton=not every, query=query, node_id=lesson_id
+                )
+                lessons = book["lessons"]
+                count = book["count"]
+                # Чипы тем — все занятия курса, а не только отфильтрованное.
+                lessons_for_chips = (
+                    notebook.course_notebook(conn, query=query)["lessons"]
+                    if lesson_id is not None
+                    else lessons
+                )
         except (*COURSE_ERRORS, OSError):
             logger.exception("Конспект: БД ученика %s по курсу %s не читается", user.id, item.id)
             groups.append(
@@ -277,6 +290,7 @@ async def notes_page(
             continue
         if selected is not None:
             selected_lesson = lesson_id
+            source = lessons if part == "solutions" else lessons_for_chips
             lesson_filters = [
                 {
                     "id": entry["node_id"],
@@ -284,10 +298,9 @@ async def notes_page(
                     "module": entry.get("module"),
                     "count": entry["count"],
                 }
-                for entry in lessons
-                if entry.get("node_id")
+                for entry in source
+                if entry.get("node_id") and (part == "solutions" or not entry.get("locked"))
             ]
-        count = sum(entry["count"] for entry in lessons)
         total += count
         groups.append(
             {
@@ -295,6 +308,7 @@ async def notes_page(
                 "title": item.title,
                 "error": False,
                 "lessons": lessons,
+                "book": book,
                 "count": count,
             }
         )
@@ -307,13 +321,15 @@ async def notes_page(
         total=total,
         any_error=any(group["error"] for group in groups),
         selected=selected,
+        every=every,
         selected_lesson=selected_lesson,
         lesson_filters=lesson_filters,
         filter_courses=[{"id": item.id, "title": item.title} for item in candidates],
         part=part,
         query=query,
-        note_max=notebook.NOTE_MAX_CHARS,
-        search_max=notebook.SEARCH_MAX_CHARS,
+        note_max=notes_feed.NOTE_MAX_CHARS,
+        search_max=notes_feed.SEARCH_MAX_CHARS,
+        locked_note=notebook.LOCKED_NOTE,
     )
 
 

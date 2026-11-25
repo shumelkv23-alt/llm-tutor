@@ -1,39 +1,111 @@
 {% extends "base.html" %}
 {% block styles %}<link rel="stylesheet" href="{{ static_url('css/notes.css') }}">{% endblock %}
-{% block scripts %}<script src="{{ static_url('js/notebook.js') }}" defer></script>{% endblock %}
+{% block scripts %}<script src="{{ static_url('js/notebook.js') }}" defer></script><script src="{{ static_url('js/notes.js') }}" defer></script>{% endblock %}
 {% block eyebrow %}Личное{% endblock %}
-{% block description %}{% if part == "solutions" %}Ваши ответы на задания по занятиям: условие и ваш ответ или код.{% else %}Разобранные с тьютором вопросы: пояснения, выделенные фрагменты и ваши заметки по занятиям.{% endif %}{% endblock %}
+{% block description %}{% if part == "solutions" %}Ваши ответы на задания по занятиям: условие и ваш ответ или код.{% else %}Собирается сам по ходу учёбы: суть пройденных разделов, ваши вопросы, сохранённые фрагменты и ошибки.{% endif %}{% endblock %}
 {% block content %}
-{% macro notes_url(view, course, lesson, query) -%}
-/notes?view={{ view }}{% if course %}&amp;course={{ course|urlencode }}{% endif %}{% if lesson %}&amp;lesson={{ lesson|urlencode }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}
+{% macro notes_url(view, course, lesson, query, every=False) -%}
+/notes?view={{ view }}{% if every %}&amp;all=1{% elif course %}&amp;course={{ course|urlencode }}{% endif %}{% if lesson %}&amp;lesson={{ lesson|urlencode }}{% endif %}{% if query %}&amp;q={{ query|urlencode }}{% endif %}
 {%- endmacro %}
+
+{% macro question_entry(entry, course_id) %}
+      <li class="note">
+        {% if entry.quote %}
+        <blockquote class="note-quote">{{ entry.quote }}{% if entry.source %} <span class="note-source">· {{ entry.source }}</span>{% endif %}</blockquote>
+        {% endif %}
+        <h5 class="note-topic">{{ entry.question }}</h5>
+        {% if entry.answer_html %}
+        <details class="note-answer">
+          <summary>Полный ответ</summary>
+          <div class="note-answer-body">{{ entry.answer_html }}</div>
+        </details>
+        {% elif entry.failed %}
+        <p class="note-failed">Ответ не получен — модель была недоступна. Спросите ещё раз.</p>
+        {% endif %}
+        <div class="note-mine" data-note-endpoint="/api/courses/{{ course_id }}/notebook/{{ entry.id }}">
+          <div class="note-mine-head">
+            <span class="note-mine-label">Моя заметка</span>
+            <button class="note-mine-edit" type="button" data-note-edit aria-expanded="false" aria-controls="note-form-{{ course_id }}-{{ entry.id }}">{% if entry.note %}Изменить{% else %}Добавить заметку{% endif %}</button>
+          </div>
+          <div class="note-mine-text" data-note-text{% if not entry.note %} hidden{% endif %}>{{ entry.note or "" }}</div>
+          <form class="note-mine-form" id="note-form-{{ course_id }}-{{ entry.id }}" data-note-form hidden>
+            <textarea name="text" rows="3" maxlength="{{ note_max }}" aria-label="Моя заметка" placeholder="Что запомнить по этому вопросу">{{ entry.note or "" }}</textarea>
+            <div class="note-mine-actions">
+              <button class="btn primary" type="submit">Сохранить</button>
+              <button class="btn ghost" type="button" data-note-cancel>Отмена</button>
+              <span class="note-mine-status" data-note-status aria-live="polite"></span>
+            </div>
+          </form>
+        </div>
+      </li>
+{% endmacro %}
+
+{% macro material(block, course_id) %}
+    {% if block.questions %}
+    <ul class="note-list nb-questions">
+      {% for entry in block.questions %}{{ question_entry(entry, course_id) }}{% endfor %}
+    </ul>
+    {% endif %}
+{% endmacro %}
+
+{% macro has_material(block) -%}
+{{ "1" if block.questions or block.fragments or block.mistakes else "" }}
+{%- endmacro %}
+
+{% macro lesson_block(lesson, course_id, skeleton) %}
+  <section class="nb-lesson">
+    <div class="nb-lesson-head">
+      <h3>{{ lesson.name }}</h3>
+      {% if lesson.status_label %}<span class="nb-status nb-status-{{ lesson.status }}">{{ lesson.status_label }}</span>{% endif %}
+    </div>
+    {% if lesson.module %}<p class="nb-module">{{ lesson.module }}</p>{% endif %}
+    {% if lesson.locked %}
+    <p class="nb-locked">{{ locked_note }}</p>
+    {% else %}
+    {% for section in lesson.sections %}
+    {% if section.passed and skeleton or has_material(section) %}
+    <h4 class="notes-section">{{ section.title }}</h4>
+    {% if section.gist_html and skeleton %}<div class="gist">{{ section.gist_html }}</div>{% endif %}
+    {{ material(section, course_id) }}
+    {% elif skeleton %}
+    <p class="nb-ahead-line">{{ section.title }} — ещё впереди</p>
+    {% endif %}
+    {% endfor %}
+    {% if has_material(lesson) %}
+    <h4 class="notes-section nb-lesson-extra">{% if lesson.node_id %}По занятию целиком{% else %}Без привязки к занятию{% endif %}</h4>
+    {{ material(lesson, course_id) }}
+    {% endif %}
+    {% endif %}
+  </section>
+{% endmacro %}
+
 {% if not filter_courses %}
 <section class="panel notes-empty">
-  <p>Вы ещё не записаны ни на один курс. <a href="/courses">Выберите курс в каталоге</a> — вопросы тьютору будут собираться здесь.</p>
+  <p>Вы ещё не записаны ни на один курс. <a href="/courses">Выберите курс в каталоге</a> — конспект будет собираться здесь.</p>
 </section>
 {% else %}
 <nav class="notes-toolbar notes-views" aria-label="Раздел конспекта">
-  <a class="notes-chip" href="{{ notes_url('questions', selected, selected_lesson, query) }}"{% if part == "questions" %} aria-current="page"{% endif %}>Определения и пояснения</a>
-  <a class="notes-chip" href="{{ notes_url('solutions', selected, selected_lesson, query) }}"{% if part == "solutions" %} aria-current="page"{% endif %}>Выполненные задания</a>
+  <a class="notes-chip" href="{{ notes_url('notebook', selected, selected_lesson, query, every) }}"{% if part != "solutions" %} aria-current="page"{% endif %}>Конспект</a>
+  <a class="notes-chip" href="{{ notes_url('solutions', selected, selected_lesson, query, every) }}"{% if part == "solutions" %} aria-current="page"{% endif %}>Выполненные задания</a>
 </nav>
 <form class="notes-search" method="get" action="/notes" role="search">
   <input type="hidden" name="view" value="{{ part }}">
-  {% if selected %}<input type="hidden" name="course" value="{{ selected }}">{% endif %}
+  {% if every %}<input type="hidden" name="all" value="1">{% elif selected %}<input type="hidden" name="course" value="{{ selected }}">{% endif %}
   {% if selected_lesson %}<input type="hidden" name="lesson" value="{{ selected_lesson }}">{% endif %}
   <label class="notes-filter-label" for="notes-q">Поиск</label>
   <input class="notes-search-input" id="notes-q" type="search" name="q" value="{{ query or '' }}" maxlength="{{ search_max }}" placeholder="Слово или фраза" autocomplete="off">
   <button class="btn ghost" type="submit">Найти</button>
-  {% if query %}<a class="notes-chip" href="{{ notes_url(part, selected, selected_lesson, None) }}">Сбросить</a>{% endif %}
+  {% if query %}<a class="notes-chip" href="{{ notes_url(part, selected, selected_lesson, None, every) }}">Сбросить</a>{% endif %}
 </form>
 {% if filter_courses|length > 1 or (selected and (lesson_filters or selected_lesson)) %}
 <div class="notes-toolbar">
   {% if filter_courses|length > 1 %}
   <nav class="notes-filter" aria-label="Курс">
     <span class="notes-filter-label">Курс</span>
-    <a class="notes-chip" href="{{ notes_url(part, None, None, query) }}"{% if not selected %} aria-current="page"{% endif %}>Все курсы</a>
     {% for item in filter_courses %}
     <a class="notes-chip" href="{{ notes_url(part, item.id, None, query) }}"{% if selected == item.id %} aria-current="page"{% endif %}>{{ item.title }}</a>
     {% endfor %}
+    <a class="notes-chip" href="{{ notes_url(part, None, None, query, True) }}"{% if every %} aria-current="page"{% endif %}>Все курсы</a>
   </nav>
   {% endif %}
   {% if selected and (lesson_filters or selected_lesson) %}
@@ -41,34 +113,32 @@
     <span class="notes-filter-label">Тема</span>
     <a class="notes-chip" href="{{ notes_url(part, selected, None, query) }}"{% if not selected_lesson %} aria-current="page"{% endif %}>Все темы</a>
     {% for item in lesson_filters %}
-    <a class="notes-chip" href="{{ notes_url(part, selected, item.id, query) }}"{% if selected_lesson == item.id %} aria-current="page"{% endif %}{% if item.module %} title="{{ item.module }}"{% endif %}>{{ item.name }}<span class="notes-chip-count">{{ item.count }}</span></a>
+    <a class="notes-chip" href="{{ notes_url(part, selected, item.id, query) }}"{% if selected_lesson == item.id %} aria-current="page"{% endif %}{% if item.module %} title="{{ item.module }}"{% endif %}>{{ item.name }}{% if item.count %}<span class="notes-chip-count">{{ item.count }}</span>{% endif %}</a>
     {% endfor %}
   </nav>
   {% endif %}
 </div>
 {% endif %}
 
+{% if part == "solutions" %}
 {% if not total and (not any_error or query) %}
 <section class="panel notes-empty">
   {% if query %}
   <p>По запросу «{{ query }}» ничего не найдено.</p>
-  <p class="muted"><a href="{{ notes_url(part, selected, selected_lesson, None) }}">Сбросить поиск</a> — или поищите в другой ленте.</p>
+  <p class="muted"><a href="{{ notes_url(part, selected, selected_lesson, None, every) }}">Сбросить поиск</a> — или поищите в конспекте.</p>
   {% if any_error %}<p class="muted">Один из курсов сейчас не открывается — поиск по нему не проверен.</p>{% endif %}
-  {% elif part == "solutions" %}
+  {% else %}
   <p>Здесь появятся выполненные задания — ответы на задачи и запуски кода.</p>
   <p class="muted">Ответьте на задание в «Практике» или запустите тесты в «Коде» — решение останется здесь.</p>
-  {% else %}
-  <p>Здесь появятся определения и пояснения — вопросы по теории, которые вы задаёте тьютору.</p>
-  <p class="muted">Выделите текст в конспекте или задании, спросите по нему тьютора — запись появится на этой странице. Вопросы с кодом в конспект не попадают: разбор кода остаётся в чате занятия.</p>
   {% endif %}
 </section>
-{% else %}
+{% endif %}
 {% for item in courses %}
 {% if item.lessons %}
 <section class="panel notes-course" aria-labelledby="notes-course-{{ item.id }}">
   <div class="panel-header">
     <div><p class="eyebrow">Курс</p><h2 id="notes-course-{{ item.id }}">{{ item.title }}</h2></div>
-    <span class="badge">{% if part == "solutions" %}Заданий{% else %}Записей{% endif %}: {{ item.count }}</span>
+    <span class="badge">Заданий: {{ item.count }}</span>
   </div>
   {% for lesson in item.lessons %}
   <section class="notes-lesson" aria-labelledby="notes-lesson-{{ item.id }}-{{ loop.index }}">
@@ -76,7 +146,6 @@
       <h3 id="notes-lesson-{{ item.id }}-{{ loop.index }}">{{ lesson.name }}</h3>
       {% if lesson.module %}<span class="muted">{{ lesson.module }}</span>{% endif %}
     </div>
-    {% if part == "solutions" %}
     <ol class="note-list">
       {% for entry in lesson.entries %}
       <li class="note solution">
@@ -94,48 +163,6 @@
       </li>
       {% endfor %}
     </ol>
-    {% else %}
-    {% for section in lesson.sections %}
-    {% if section.name %}<h4 class="notes-section">{{ section.name }}</h4>{% endif %}
-    <ol class="note-list">
-      {% for entry in section.entries %}
-      <li class="note">
-        <div class="note-meta">
-          <time datetime="{{ entry.iso }}">{{ entry.when }}</time>
-          {% if entry.source %}<span class="badge note-source">{{ entry.source }}</span>{% endif %}
-        </div>
-        {% if entry.quote %}
-        <blockquote class="note-quote">{{ entry.quote }}</blockquote>
-        {% endif %}
-        <h5 class="note-topic">{{ entry.question }}</h5>
-        <div class="note-mine" data-note-endpoint="/api/courses/{{ item.id }}/notebook/{{ entry.id }}">
-          <div class="note-mine-head">
-            <span class="note-mine-label">Моя заметка</span>
-            <button class="note-mine-edit" type="button" data-note-edit aria-expanded="false" aria-controls="note-form-{{ item.id }}-{{ entry.id }}">{% if entry.note %}Изменить{% else %}Добавить заметку{% endif %}</button>
-          </div>
-          <div class="note-mine-text" data-note-text{% if not entry.note %} hidden{% endif %}>{{ entry.note or "" }}</div>
-          <form class="note-mine-form" id="note-form-{{ item.id }}-{{ entry.id }}" data-note-form hidden>
-            <textarea name="text" rows="3" maxlength="{{ note_max }}" aria-label="Моя заметка" placeholder="Что запомнить по этому вопросу">{{ entry.note or "" }}</textarea>
-            <div class="note-mine-actions">
-              <button class="btn primary" type="submit">Сохранить</button>
-              <button class="btn ghost" type="button" data-note-cancel>Отмена</button>
-              <span class="note-mine-status" data-note-status aria-live="polite"></span>
-            </div>
-          </form>
-        </div>
-        {% if entry.answer_html %}
-        <details class="note-answer">
-          <summary>Полный ответ</summary>
-          <div class="note-answer-body">{{ entry.answer_html }}</div>
-        </details>
-        {% elif entry.failed %}
-        <p class="note-failed">Ответ не получен — модель была недоступна. Спросите ещё раз.</p>
-        {% endif %}
-      </li>
-      {% endfor %}
-    </ol>
-    {% endfor %}
-    {% endif %}
   </section>
   {% endfor %}
 </section>
@@ -144,6 +171,46 @@
 <section class="panel notes-course">
   <div class="panel-header"><h2>{{ item.title }}</h2><span class="badge">Ошибка</span></div>
   <p class="notice error">Данные этого курса сейчас не открываются. Сообщите администратору.</p>
+</section>
+{% endif %}
+{% endfor %}
+
+{% else %}
+{% if (every or query) and not total and (not any_error or query) %}
+<section class="panel notes-empty">
+  {% if query %}
+  <p>По запросу «{{ query }}» ничего не найдено.</p>
+  <p class="muted"><a href="{{ notes_url(part, selected, selected_lesson, None, every) }}">Сбросить поиск</a> — или поищите в выполненных заданиях.</p>
+  {% if any_error %}<p class="muted">Один из курсов сейчас не открывается — поиск по нему не проверен.</p>{% endif %}
+  {% else %}
+  <p>В конспекте пока нет ваших записей: вопросов тьютору, сохранённых фрагментов и ошибок.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% for item in courses %}
+{% if item.error %}
+<section class="panel notes-course">
+  <div class="panel-header"><h2>{{ item.title }}</h2><span class="badge">Ошибка</span></div>
+  <p class="notice error">Данные этого курса сейчас не открываются. Сообщите администратору.</p>
+</section>
+{% elif item.book and (item.book.lessons or item.book.ahead or item.book.outside) %}
+{% set book = item.book %}
+<section class="panel notes-course nb-course" aria-labelledby="notes-course-{{ item.id }}">
+  <div class="nb-course-head">
+    <h2 id="notes-course-{{ item.id }}">{{ item.title }}</h2>
+    {% if book.skeleton %}<p class="nb-crumbs">Пройдено {{ book.closed }} из {{ book.total }} занятий</p>{% endif %}
+  </div>
+  {% if book.skeleton and not book.closed and not book.count %}
+  <p class="nb-hint">Конспект заполняется сам: суть пройденных разделов, ваши вопросы тьютору, сохранённые фрагменты и ошибки появятся здесь по ходу занятий.</p>
+  {% endif %}
+  {% for lesson in book.lessons %}{{ lesson_block(lesson, item.id, book.skeleton) }}{% endfor %}
+  {% if book.outside %}{{ lesson_block(book.outside, item.id, False) }}{% endif %}
+  {% if book.ahead %}
+  <div class="nb-ahead">
+    <h3>Впереди</h3>
+    <ul>{% for name in book.ahead %}<li>{{ name }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
 </section>
 {% endif %}
 {% endfor %}
