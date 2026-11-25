@@ -1289,3 +1289,147 @@ async def test_search_finds_fragment_by_comment(enrolled, web_app) -> None:
     html = (await enrolled.get("/notes?q=eda")).text
 
     assert "первая" in html and "вторая" not in html
+
+
+# --- загвоздки: ошибки в заданиях (срез 110) ---
+
+
+def _lesson_items(conn, node: str) -> list:
+    return [item for item in repos.get_items(conn) if main_concept(item) == node]
+
+
+def _lesson_of(book: dict, node: str) -> dict:
+    return next(lesson for lesson in book["lessons"] if lesson["node_id"] == node)
+
+
+def _section_of(lesson: dict, section_id: str) -> dict:
+    return next(section for section in lesson["sections"] if section["id"] == section_id)
+
+
+async def test_wrong_choice_shows_given_and_correct(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.answer_type == "choice" and i.section)
+    right = int(item.answer)
+    wrong = (right + 1) % len(item.options)
+    _solution(conn, 1.0, item.options[wrong], item, result=0.0)
+
+    lesson = _lesson_of(notebook.course_notebook(conn), node)
+    mistake = _section_of(lesson, item.section)["mistakes"][0]
+    html = (await enrolled.get("/notes")).text
+
+    assert mistake["item_id"] == item.id
+    assert mistake["given"].startswith(item.options[wrong][:20])
+    assert mistake["correct"].startswith(item.options[right][:20])
+    assert mistake["solved_later"] is False
+    assert "Ошибка" in html and "Ваш ответ" in html and "Верно" in html
+
+
+async def test_mistake_later_solved_marked(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.answer_type == "choice" and i.section)
+    _solution(conn, 1.0, "неверно", item, result=0.0)
+    _solution(conn, 2.0, item.options[int(item.answer)], item, result=1.0)
+
+    mistake = _section_of(_lesson_of(notebook.course_notebook(conn), node), item.section)["mistakes"][0]
+
+    assert mistake["solved_later"] is True
+    assert "потом решено верно" in (await enrolled.get("/notes")).text
+
+
+async def test_one_entry_per_item_latest_wrong(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.answer_type == "choice" and i.section)
+    _solution(conn, 1.0, "первая попытка", item, result=0.0)
+    _solution(conn, 2.0, "вторая попытка", item, result=0.0)
+    # Ядро пишет по событию на концепт задания с одним ts.
+    repos.add_event(conn, Event(source="checked", result=0.0, item_id=item.id, concept_id=node, ts=2.0))
+
+    mistakes = _section_of(_lesson_of(notebook.course_notebook(conn), node), item.section)["mistakes"]
+
+    assert len(mistakes) == 1
+    assert mistakes[0]["given"] == "вторая попытка"
+
+
+async def test_final_item_mistake_on_lesson_level(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.final)
+    _solution(conn, 1.0, "что-то не то", item, result=0.0)
+
+    lesson = _lesson_of(notebook.course_notebook(conn), node)
+
+    assert [m["item_id"] for m in lesson["mistakes"]] == [item.id]
+    assert all(not section["mistakes"] for section in lesson["sections"])
+
+
+async def test_code_mistake_without_reference(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.tests and i.section and not i.final)
+    _solution(
+        conn,
+        1.0,
+        "```python\nresult = 1\n```\n\nРезультат проверки: не пройдено — AssertionError",
+        item,
+        result=0.0,
+        source="autotest",
+    )
+
+    mistake = _section_of(_lesson_of(notebook.course_notebook(conn), node), item.section)["mistakes"][0]
+
+    assert mistake["given"] == "код не прошёл проверку"
+    assert mistake["correct"] is None
+
+
+async def test_open_item_mistake_shows_reference(enrolled, web_app) -> None:
+    # Эталон есть у коротких ответов (short); открытые (open) проверяет рубрика.
+    conn = _user_db(web_app)
+    item = next(
+        i for i in repos.get_items(conn)
+        if i.answer_type not in ("choice", "code") and i.section and i.answer
+    )
+    node = main_concept(item)
+    _solution(conn, 1.0, "мой открытый ответ", item, result=0.2, source="rubric")
+
+    mistake = _section_of(_lesson_of(notebook.course_notebook(conn), node), item.section)["mistakes"][0]
+
+    assert mistake["given"] == "мой открытый ответ"
+    assert mistake["correct"] and item.answer.split()[0] in mistake["correct"]
+
+
+async def test_explain_events_are_not_mistakes(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.answer_type == "choice" and i.section)
+    _solution(conn, 1.0, "объяснение", item, result=0.0, source="explain")
+
+    assert notebook.task_mistakes(conn) == []
+
+
+async def test_missing_item_event_skipped(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    node = _order(conn)[0]
+    item = next(i for i in _lesson_items(conn, node) if i.answer_type == "choice" and i.section)
+    _solution(conn, 1.0, "ответ", item, result=0.0)
+    conn.execute("PRAGMA foreign_keys = OFF")
+    conn.execute("UPDATE events SET item_id = 999999 WHERE item_id = ?", (item.id,))
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    response = await enrolled.get("/notes")
+
+    assert notebook.task_mistakes(conn) == []
+    assert response.status_code == 200
+
+
+async def test_locked_lesson_hides_mistakes(enrolled, web_app) -> None:
+    conn = _user_db(web_app)
+    important = next(node for node in _order(conn) if node in repos.get_explain_configs(conn))
+    item = next(i for i in _lesson_items(conn, important) if i.answer_type == "choice")
+    _solution(conn, 1.0, "неверный выбор", item, result=0.0)
+    _route(conn, closed=(important,), closed_at=time.time() + 60)
+
+    assert "неверный выбор" not in (await enrolled.get("/notes")).text

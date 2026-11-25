@@ -19,12 +19,13 @@ from __future__ import annotations
 import sqlite3
 
 from llm_tutor.course.graph import CourseGraph
-from llm_tutor.course.seed import section_text
+from llm_tutor.course.seed import main_concept, section_text
 from llm_tutor.db import repos
-from llm_tutor.schemas import Concept, Note, Route, SessionState
+from llm_tutor.schemas import Concept, Item, Note, Route, SessionState
 from llm_tutor.student import explain as student_explain
+from llm_tutor.student.diagnostic import SUCCESS_SCORE
 from llm_tutor.web import notes as notes_feed
-from llm_tutor.web.gist import section_gist
+from llm_tutor.web.gist import clip_sentences, section_gist
 from llm_tutor.web.markdown import render
 
 STATUS_LABELS: dict[str, str] = {
@@ -36,6 +37,11 @@ STATUS_LABELS: dict[str, str] = {
 }
 
 LOCKED_NOTE = "Откроется после объяснения новичку."
+
+# Загвоздка «ошибка в задании»: условие, ответ ученика и как верно — коротко.
+MISTAKE_PROMPT_CHARS = 120
+MISTAKE_GIVEN_CHARS = 160
+MISTAKE_CORRECT_CHARS = 200
 
 # Материал ученика, который раскладывается по разделам и занятиям.
 _MATERIAL = ("questions", "fragments", "mistakes")
@@ -142,6 +148,87 @@ def fragment_view(note: Note) -> dict:
     }
 
 
+def _short(text: str | None, limit: int) -> str | None:
+    """Первая непустая строка текста, обрезанная по предложениям."""
+    for line in (text or "").splitlines():
+        if line.strip():
+            return clip_sentences(line.strip(), limit)
+    return None
+
+
+def _correct_answer(item: Item) -> str | None:
+    """Как верно: текст верного варианта, эталон открытого ответа; у кода — нет."""
+    if item.runnable:
+        return None
+    if item.answer_type == "choice":
+        try:
+            return item.options[int(item.answer or "")]
+        except (ValueError, IndexError):
+            return None
+    return item.answer or None
+
+
+def task_mistakes(conn: sqlite3.Connection) -> list[dict]:
+    """Ошибки в заданиях — по записи на задание, последняя неверная попытка.
+
+    Источник — журнал: события с ``item_id`` (не «Объясни новичку»), свёрнутые по
+    ``(item_id, ts)`` — ядро пишет событие на каждый концепт задания. Неверно —
+    ``result < SUCCESS_SCORE``; верный ответ позже ставит «потом решено верно».
+    Ответ ученика — его реплика с тем же ``ts``. Задание, которого больше нет в
+    банке, пропускается.
+    """
+    rows = conn.execute(
+        "SELECT item_id, ts, result FROM events WHERE id IN ("
+        "  SELECT MIN(id) FROM events WHERE item_id IS NOT NULL AND source != 'explain'"
+        "  GROUP BY item_id, ts) "
+        "ORDER BY ts, id"
+    ).fetchall()
+    last_wrong: dict[int, float] = {}
+    solved: dict[int, bool] = {}
+    for row in rows:
+        if row["result"] < SUCCESS_SCORE:
+            last_wrong[row["item_id"]] = row["ts"]
+            solved[row["item_id"]] = False
+        elif row["item_id"] in last_wrong:
+            solved[row["item_id"]] = True
+    mistakes = []
+    for item_id, ts in sorted(last_wrong.items(), key=lambda pair: pair[1]):
+        item = repos.get_item(conn, item_id)
+        if item is None:
+            continue
+        message = conn.execute(
+            "SELECT content FROM messages WHERE role = 'user' AND ts = ? ORDER BY id DESC LIMIT 1",
+            (ts,),
+        ).fetchone()
+        text = (message["content"] if message is not None else "") or ""
+        code = item.runnable or notes_feed.TEST_MARK in text
+        mistakes.append(
+            {
+                "item_id": item.id,
+                "node_id": main_concept(item),
+                "section_id": None if item.final else item.section,
+                "final": item.final,
+                "prompt": _short(item.prompt, MISTAKE_PROMPT_CHARS) or "",
+                "given": "код не прошёл проверку"
+                if code
+                else clip_sentences(" ".join(text.split()), MISTAKE_GIVEN_CHARS),
+                "correct": None
+                if code
+                else (
+                    clip_sentences(" ".join(answer.split()), MISTAKE_CORRECT_CHARS)
+                    if (answer := _correct_answer(item))
+                    else None
+                ),
+                "solved_later": solved[item_id],
+                "ts": ts,
+            }
+        )
+    for mistake in mistakes:
+        mistake["prompt_html"] = render(mistake["prompt"]) if mistake["prompt"] else None
+        mistake["correct_html"] = render(mistake["correct"]) if mistake["correct"] else None
+    return mistakes
+
+
 def _place(lesson: dict, kind: str, section_id: str | None, entry: dict) -> None:
     """Кладёт запись в раздел занятия, а без раздела (или с чужим) — в блок занятия."""
     target = next((s for s in lesson["sections"] if s["id"] == section_id), None)
@@ -213,6 +300,19 @@ def course_notebook(
             outside["count"] += 1
         elif not lesson["locked"]:
             _place(lesson, "fragments", note.section_id, entry)
+
+    # Загвоздки: ошибки в заданиях — в раздел задания, итоговое — на занятие.
+    for mistake in task_mistakes(conn):
+        if node_id is not None and mistake["node_id"] != node_id:
+            continue
+        if not notes_feed._matches(query, mistake["prompt"], mistake["given"], mistake["correct"]):
+            continue
+        lesson = blocks.get(mistake["node_id"] or "")
+        if lesson is None:
+            outside["mistakes"].append(mistake)
+            outside["count"] += 1
+        elif not lesson["locked"]:
+            _place(lesson, "mistakes", mistake["section_id"], mistake)
 
     lessons: list[dict] = []
     ahead: list[str] = []

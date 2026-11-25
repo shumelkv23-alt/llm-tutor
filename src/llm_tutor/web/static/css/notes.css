@@ -701,3 +701,56 @@
   flex: 1 1 220px;
   min-width: 0;
 }
+
+/* Загвоздки (срезы 110–111): мягкая плашка «Ошибка» / «Объясняя новичку». */
+.nb-snags {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nb-snag {
+  padding: 8px 12px;
+  border: 1px solid var(--warning-soft);
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft);
+  color: var(--text);
+}
+
+.nb-snag p {
+  margin: 2px 0 0;
+}
+
+.nb-snag-label {
+  margin-right: 6px;
+  color: var(--warning);
+  font-weight: 700;
+}
+
+.nb-snag-task {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 4px;
+}
+
+.nb-snag-prompt p,
+.nb-snag-correct p {
+  display: inline;
+  margin: 0;
+}
+
+.nb-snag-correct {
+  margin-top: 2px;
+}
+
+.nb-snag-correct > span {
+  font-weight: 600;
+}
+
+.nb-snag-ok {
+  color: var(--success);
+  font-size: 13px;
+}
