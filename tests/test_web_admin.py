@@ -266,6 +266,7 @@ def test_cli_leaves_database_usable(web_settings) -> None:
 
 import logging
 import sqlite3 as _sqlite3
+import os
 import time
 
 from course_fixtures import WEB_T1
@@ -490,7 +491,10 @@ async def test_snapshot_is_cached_for_a_minute(web_app, monkeypatch) -> None:
     again = len(calls)
     now[0] += 61
     assert _snapshot(web_app, clock=lambda: now[0]).built_at == now[0]
-    assert len(calls) > again
+    # Снимок пересобран, но БД не менялась: он строится из сводки, не открывая
+    # БД ученика (раньше её открывали лишь потому, что mtime файла был новее
+    # подставных часов).
+    assert len(calls) == again
     await client.aclose()
 
 
@@ -2129,3 +2133,38 @@ async def test_profile_broken_db(admin, web_app) -> None:
     assert response.status_code == 200
     assert "недоступны" in response.text.lower()
     await client.aclose()
+
+
+async def test_snapshot_sees_write_right_after_summary(web_app) -> None:
+    """Запись в БД сразу после сводки видна, даже если mtime файла её не выдал.
+
+    Ядро ставит mtime по грубым часам: запись через миллисекунду после сводки
+    получала mtime *раньше* ``updated_at``, и админка показывала старый прогресс.
+    """
+    client, user = await _learner(web_app, "Ann", survey_done=True)
+    _snapshot(web_app, refresh=True)  # сводка записана
+    web_app.state.admin_cache.clear()
+    path = web_app.state.userdbs.path(user.id, COURSE)
+    stored = web_app.state.accounts.execute(
+        "SELECT updated_at FROM course_progress WHERE user_id = ?", (user.id,)
+    ).fetchone()[0]
+    _close_lesson(web_app, user, "pandas_structures")
+    # Худший случай грубых часов: mtime обеих частей БД не новее сводки.
+    for candidate in (path, path.with_name(path.name + "-wal")):
+        if candidate.exists():
+            os.utime(candidate, (stored - 1, stored - 1))
+
+    assert _snapshot(web_app).rows[user.id].closed == 1
+    await client.aclose()
+
+
+def test_summary_without_signature_falls_back_to_mtime(tmp_path) -> None:
+    db = tmp_path / "u.sqlite3"
+    db.write_bytes(b"")
+    os.utime(db, (100.0, 100.0))
+    assert admin_data._summary_fresh(db, {}, updated_at=100.0)
+    assert not admin_data._summary_fresh(db, {}, updated_at=99.0)
+    signature = admin_data._db_signature(db)
+    assert admin_data._summary_fresh(db, {"db_signature": signature}, updated_at=0.0)
+    db.write_bytes(b"x")
+    assert not admin_data._summary_fresh(db, {"db_signature": signature}, updated_at=1e12)

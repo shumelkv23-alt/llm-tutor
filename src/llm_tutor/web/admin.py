@@ -278,6 +278,35 @@ def _db_mtime(path: Path) -> float:
     return max(mtimes, default=0.0)
 
 
+def _db_signature(path: Path) -> list[list[int]]:
+    """Отпечаток БД ученика: (mtime_ns, размер) основного файла и WAL.
+
+    Одного mtime мало: ядро ставит его по грубым часам, и запись сразу после
+    сводки получает mtime *раньше* ``time.time()`` сводки — правка не видна.
+    Commit в WAL дописывает кадры, поэтому меняется хотя бы размер файла.
+    """
+    signature = []
+    for candidate in (path, path.with_name(path.name + "-wal")):
+        try:
+            stat = candidate.stat()
+        except OSError:
+            signature.append([0, -1])
+        else:
+            signature.append([stat.st_mtime_ns, stat.st_size])
+    return signature
+
+
+def _summary_fresh(path: Path, payload: dict, updated_at: float) -> bool:
+    """Сводка свежая, если БД с её записи не менялась.
+
+    Сводки, записанные до отпечатка, сверяются по старому правилу (mtime).
+    """
+    stored = payload.get("db_signature")
+    if stored is None:
+        return _db_mtime(path) <= updated_at
+    return stored == _db_signature(path)
+
+
 def _data_from_payload(payload: dict) -> StudentData:
     """Восстановить ``StudentData`` из JSON материализованной сводки."""
     lessons = {
@@ -334,12 +363,17 @@ def update_progress(state, course: Course, conn, user_id: int, *, now: float | N
         logger.exception("Сводка: БД ученика %s по курсу %s не читается", user_id, course.id)
         return
     stamp = time.time() if now is None else now
+    payload = asdict(data)
+    try:
+        payload["db_signature"] = _db_signature(state.userdbs.path(user_id, course.id))
+    except (KeyError, OSError):
+        pass  # без отпечатка снимок сверит сводку по mtime
     try:
         state.accounts.execute(
             "INSERT INTO course_progress (course_id, user_id, data, updated_at) "
             "VALUES (?, ?, ?, ?) ON CONFLICT(course_id, user_id) DO UPDATE SET "
             "data = excluded.data, updated_at = excluded.updated_at",
-            (course.id, user_id, json.dumps(asdict(data), ensure_ascii=False), stamp),
+            (course.id, user_id, json.dumps(payload, ensure_ascii=False), stamp),
         )
         state.accounts.commit()
     except sqlite3.Error:
@@ -380,21 +414,22 @@ def snapshot(state, course: Course, *, refresh: bool = False, clock=time.time) -
         if stored_row is not None:
             payload, updated_at = stored_row
             # БД изменили мимо хода (тест, перенос, восстановление): сводка
-            # устарела. Сравнение mtime — один stat на ученика, без чтения БД.
+            # устарела. Отпечаток файла — два stat на ученика, без чтения БД.
             try:
                 path = state.userdbs.path(user_id, course.id)
-                modified = _db_mtime(path)
                 exists = path.is_file()
             except (KeyError, OSError):
-                modified = 0.0
+                path = None
                 exists = False
-            if not busy and exists and modified <= updated_at:
+            if not busy and exists:
                 try:
-                    rows[user_id] = _row_from_data(
-                        user_id, _data_from_payload(json.loads(payload)), busy=busy
-                    )
-                    continue
-                except (KeyError, TypeError, ValueError):
+                    data = json.loads(payload)
+                    if _summary_fresh(path, data, updated_at):
+                        rows[user_id] = _row_from_data(
+                            user_id, _data_from_payload(data), busy=busy
+                        )
+                        continue
+                except (KeyError, TypeError, ValueError, AttributeError):
                     logger.warning("Сводка ученика %s битая, читаю БД", user_id)
         row = _row(state, course, user_id, earlier.get(user_id))
         rows[user_id] = row
